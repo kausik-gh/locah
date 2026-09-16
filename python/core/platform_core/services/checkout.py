@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.context_resolver import bind_public_context
 from platform_core.exceptions import ResourceNotFound, ValidationError
-from platform_core.models import BusinessModuleState, MerchantConnection, Offering
+from platform_core.models import BusinessModuleState, MediaAsset, MerchantConnection, Offering
 from platform_core.services.business import BusinessService
 from platform_core.services.customer import CustomerService
 from platform_core.services.fulfilment import ACTIVE_MODULE_STATES, FulfilmentService
@@ -62,6 +62,28 @@ class CheckoutService:
                 ).order_by(Offering.title.asc()).limit(limit)
             )
         ).scalars().all()
+        # First image per Offering, resolved to a public URL. Scoped to this
+        # Business so an Offering cannot surface another tenant's asset by
+        # holding its id, the same rule the Website section resolver applies.
+        wanted = {ids[0] for o in rows if (ids := list(o.image_asset_ids or []))}
+        images: dict[str, str] = {}
+        if wanted:
+            assets = (
+                await session.execute(
+                    select(MediaAsset).where(
+                        MediaAsset.id.in_(wanted),
+                        MediaAsset.business_id == business.id,
+                        MediaAsset.status == "ready",
+                        MediaAsset.deleted_at.is_(None),
+                    )
+                )
+            ).scalars().all()
+            images = {str(a.id): a.public_url for a in assets if a.public_url}
+
+        def _image_for(o: Offering) -> str | None:
+            ids = list(o.image_asset_ids or [])
+            return images.get(str(ids[0])) if ids else None
+
         return {
             "business": {
                 "id": str(business.id),
@@ -76,6 +98,7 @@ class CheckoutService:
                     "offering_type": o.offering_type,
                     "price_amount": float(o.price_amount) if o.price_amount is not None else None,
                     "currency": o.currency,
+                    "image_url": _image_for(o),
                 }
                 for o in rows
             ],

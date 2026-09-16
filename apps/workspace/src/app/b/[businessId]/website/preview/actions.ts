@@ -117,3 +117,24 @@ export async function completeImageUpload(
   revalidatePath(`/b/${businessId}/website/preview`)
   return { ok: true, url: body.data.url }
 }
+
+/**
+ * A short-lived token that lets the public web app render this Business's
+ * DRAFT. The editor shows the real site in an iframe rather than a lookalike,
+ * so "what will this look like?" is answered by the thing itself.
+ */
+export async function refreshPreviewToken(
+  businessId: string
+): Promise<{ ok: true; previewPath: string } | { ok: false; error: string }> {
+  const token = await getAccessToken()
+  if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+  const res = await fetch(`${apiUrl}/v1/b/${businessId}/website/preview-token`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  if (!res.ok) return { ok: false, error: `Could not open a preview (${res.status})` }
+  const body = (await res.json()) as { data: { preview_path: string } }
+  return { ok: true, previewPath: body.data.preview_path }
+}

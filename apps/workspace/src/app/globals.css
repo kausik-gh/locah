@@ -394,3 +394,254 @@ a .ws-card {
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* --------------------------------------------------------------------------
+   Website editor
+   Controls left, the real draft site right. The stage is deliberately the
+   larger half: the owner is judging their site, not this form.
+   -------------------------------------------------------------------------- */
+
+.ed {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+@media (min-width: 1040px) {
+  .ed {
+    grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+    height: calc(100vh - 6rem);
+  }
+}
+
+.ed__rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.ed__railhead {
+  padding: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.ed__sections {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.ed__railfoot {
+  padding: 0.85rem 1rem;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+.ed__publish {
+  width: 100%;
+  justify-content: center;
+}
+
+.ed-sec + .ed-sec {
+  border-top: 1px solid var(--color-border);
+}
+.ed-sec__head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-foreground);
+}
+.ed-sec__head:hover {
+  background: var(--color-surface-2);
+}
+.ed-sec[data-open='true'] .ed-sec__head {
+  background: var(--color-surface-2);
+}
+.ed-sec__body {
+  padding: 0.25rem 1rem 1rem;
+}
+
+.ed-field {
+  margin-bottom: 0.9rem;
+}
+.ed-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.3rem;
+  color: var(--color-foreground);
+}
+.ed-input {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-background);
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--color-foreground);
+}
+.ed-input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+.ed-input--area {
+  min-height: 5.5rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+.ed-select {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-background);
+  font: inherit;
+  color: var(--color-foreground);
+}
+.ed-help {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-muted);
+  margin: 0.35rem 0 0;
+}
+.ed-error {
+  font-size: 0.78rem;
+  color: var(--status-bad-fg);
+  margin: 0.4rem 0 0;
+}
+.ed-status {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  margin: 0 0 0.6rem;
+}
+.ed-status.is-error {
+  color: var(--status-bad-fg);
+}
+.ed-thumb {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  display: block;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--color-border);
+}
+.ed-upload {
+  width: 100%;
+  justify-content: center;
+  cursor: pointer;
+}
+.ed-upload.is-busy {
+  cursor: wait;
+}
+.ed-upload input {
+  display: none;
+}
+
+.ed__stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-2);
+  overflow: hidden;
+}
+.ed__stagebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.ed__devices {
+  display: inline-flex;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.ed__devices button {
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  font-size: 0.8rem;
+  background: var(--color-background);
+  border: 0;
+  cursor: pointer;
+  color: var(--color-muted);
+}
+.ed__devices button[data-active='true'] {
+  background: var(--color-primary);
+  color: var(--color-primary-fg);
+}
+.ed__frame {
+  flex: 1;
+  min-height: 60vh;
+  display: flex;
+  justify-content: center;
+  padding: 1rem;
+  overflow: auto;
+}
+.ed__frame iframe {
+  width: 100%;
+  height: 100%;
+  min-height: 58vh;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+.ed__frame[data-device='mobile'] iframe {
+  width: 390px;
+  max-width: 100%;
+  flex: none;
+  box-shadow: var(--shadow-pop);
+}
+
+/* Action cards — a small set of clear next steps, not a nav dump. */
+.ws-actions {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+.ws-action {
+  display: block;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  text-decoration: none;
+  color: var(--color-foreground);
+  transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+.ws-action:hover {
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-pop);
+}
+.ws-action--primary {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary) inset;
+}
+.ws-action__title {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.ws-action__body {
+  display: block;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-muted);
+}

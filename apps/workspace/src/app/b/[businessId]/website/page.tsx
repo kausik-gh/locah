@@ -11,11 +11,13 @@ type WebsiteResponse = {
     website: { status: string; published_version_id: string | null }
     draft: {
       generated_by?: string | null
-      pages: { id: string; title: string; slug: string }[]
+      pages: { id: string; title: string; slug: string; sections?: unknown[] }[]
       navigation: { label: string; path: string }[]
-    }
+    } | null
   }
 }
+
+type Business = { slug: string; display_name: string; visibility: string }
 
 export default async function WebsiteOverviewPage({
   params,
@@ -24,47 +26,117 @@ export default async function WebsiteOverviewPage({
 }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
-  const res = await apiTry<WebsiteResponse>(`/v1/b/${params.businessId}/website`, token)
+
+  const [res, bizRes] = await Promise.all([
+    apiTry<WebsiteResponse>(`/v1/b/${params.businessId}/website`, token),
+    apiTry<{ data: Business }>(`/v1/b/${params.businessId}`, token),
+  ])
+
   if (!res.ok) {
     return (
       <div>
-        <PageHeader title="Website Overview" />
+        <PageHeader title="Your website" />
         <GateNotice error={res.error} businessId={params.businessId} moduleLabel="Website" />
       </div>
     )
   }
+
   const { website, draft } = res.data.data
+  const business = bizRes.ok ? bizRes.data.data : null
   const base = `/b/${params.businessId}/website`
+  const webUrl = process.env.NEXT_PUBLIC_WEB_URL || 'http://localhost:3000'
+  const isPublished = website.status === 'published'
+  const pages = draft?.pages || []
+
+  const builtBy =
+    draft?.generated_by === 'ai_generation'
+      ? 'Written for you from what you told us about the business.'
+      : draft?.generated_by === 'deterministic_fallback'
+        ? 'Built from your business details.'
+        : null
 
   return (
     <div>
-      <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Website Overview</h1>
-      <p style={{ marginBottom: '1rem' }}>
-        Your website&apos;s publish status, draft content, and page structure.
-      </p>
-      <p>
-        Status: <strong>{website.status === 'published' ? 'Published' : 'Draft'}</strong>
-        {draft.generated_by
-          ? ` · ${
-              draft.generated_by === 'ai_generation'
-                ? 'written by AI from your business details'
-                : 'built from your business details'
-            }`
-          : ''}
-      </p>
-      <p>Draft pages: {draft.pages.length}</p>
-      <ul>
-        {draft.pages.map((p) => (
-          <li key={p.id}>
-            {p.title} <code>/{p.slug}</code>
-          </li>
-        ))}
-      </ul>
-      <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-        <Link href={`${base}/preview`}>Visual preview & inline edit</Link>
-        <Link href={`${base}/pages`}>Edit pages</Link>
-        <Link href={`${base}/theme`}>Theme & navigation</Link>
-        <Link href={`${base}/publish`}>Preview & publish</Link>
+      <PageHeader
+        title="Your website"
+        subtitle={
+          isPublished
+            ? 'Your site is live. Changes you make stay in your draft until you publish them.'
+            : 'Your site is not live yet. Publish it when it reads the way you want.'
+        }
+      />
+
+      <div className="ws-stats" style={{ marginBottom: '1.5rem' }}>
+        <div className="ws-stat">
+          <p className="ws-stat__label">Status</p>
+          <p className="ws-stat__value" style={{ fontSize: '1.15rem' }}>
+            {isPublished ? 'Live' : 'Not published'}
+          </p>
+          {business && isPublished ? (
+            <p className="ws-stat__note">
+              <a href={`${webUrl}/${business.slug}`} target="_blank" rel="noreferrer">
+                {`locah.app/${business.slug}`} ↗
+              </a>
+            </p>
+          ) : (
+            <p className="ws-stat__note">Only you can see it right now</p>
+          )}
+        </div>
+        <div className="ws-stat">
+          <p className="ws-stat__label">Pages</p>
+          <p className="ws-stat__value" style={{ fontSize: '1.15rem' }}>
+            {pages.length}
+          </p>
+          <p className="ws-stat__note">{pages.map((p) => p.title).join(' · ') || '—'}</p>
+        </div>
+        <div className="ws-stat">
+          <p className="ws-stat__label">Findable in the Marketplace</p>
+          <p className="ws-stat__value" style={{ fontSize: '1.15rem' }}>
+            {business?.visibility === 'discoverable' ? 'Yes' : 'No'}
+          </p>
+          <p className="ws-stat__note">
+            {business?.visibility === 'discoverable' ? (
+              'Customers can find you by searching'
+            ) : (
+              <Link href={`/b/${params.businessId}/marketplace`}>Set this up →</Link>
+            )}
+          </p>
+        </div>
+      </div>
+
+      {builtBy ? (
+        <p style={{ color: 'var(--color-muted)', marginBottom: '1.25rem' }}>{builtBy}</p>
+      ) : null}
+
+      <div className="ws-actions">
+        <Link className="ws-action" href={`${base}/preview`}>
+          <span className="ws-action__title">Edit your website</span>
+          <span className="ws-action__body">
+            Change the words and pictures on any page and watch it update as you go.
+          </span>
+        </Link>
+        <Link className="ws-action" href={`${base}/theme`}>
+          <span className="ws-action__title">Colours &amp; menu</span>
+          <span className="ws-action__body">
+            Your brand colours and which pages appear in your site&apos;s menu.
+          </span>
+        </Link>
+        <Link className="ws-action" href={`${base}/pages`}>
+          <span className="ws-action__title">Pages &amp; sections</span>
+          <span className="ws-action__body">
+            Add or remove a page, reorder the sections on it, or hide one for now.
+          </span>
+        </Link>
+        <Link className="ws-action ws-action--primary" href={`${base}/publish`}>
+          <span className="ws-action__title">
+            {isPublished ? 'Publish your changes' : 'Publish your site'}
+          </span>
+          <span className="ws-action__body">
+            {isPublished
+              ? 'Push what is in your draft out to the live site.'
+              : 'Make your site public so customers can find it.'}
+          </span>
+        </Link>
       </div>
     </div>
   )

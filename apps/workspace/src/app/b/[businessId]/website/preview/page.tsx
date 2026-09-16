@@ -1,9 +1,8 @@
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
-import { PreviewCanvas } from './PreviewCanvas'
+import { SiteEditor, type EditorPage } from './SiteEditor'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,68 +12,69 @@ type WebsiteResponse = {
     draft: {
       generated_by?: string | null
       theme?: Record<string, unknown> | null
-      pages: {
-        id: string
-        title: string
-        slug: string
-        sections: {
-          id: string
-          section_type_id: string
-          layout_variant?: string | null
-          content: Record<string, unknown>
-          is_visible: boolean
-        }[]
-      }[]
+      pages: EditorPage[]
     } | null
   }
 }
 
+type PreviewTokenResponse = { data: { preview_path: string } }
+
 /**
- * CORE-005/006/007 — visual preview of the draft with inline click-to-edit
- * (Doc 09 §9.1.1). Double-click any text to change it in place; each save is
- * the existing section content-update endpoint. Structural changes
- * (add/remove/reorder sections, variants, navigation, theme) stay in the
- * structured editors.
+ * CORE-005/006/007 — the Website editor (Doc 09 §9.1.1).
+ *
+ * Controls on the left, the real draft site on the right through a preview
+ * token. Every field maps to its SectionType schema, so editing cannot produce
+ * a section the structured model would reject; layout, section order,
+ * navigation and theme stay in their own editors.
  */
-export default async function WebsitePreviewPage({
+export default async function WebsiteEditorPage({
   params,
 }: {
   params: { businessId: string }
 }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
-  const res = await apiTry<WebsiteResponse>(`/v1/b/${params.businessId}/website`, token)
-  if (!res.ok) {
+
+  const [siteRes, previewRes] = await Promise.all([
+    apiTry<WebsiteResponse>(`/v1/b/${params.businessId}/website`, token),
+    apiTry<PreviewTokenResponse>(`/v1/b/${params.businessId}/website/preview-token`, token),
+  ])
+
+  if (!siteRes.ok) {
     return (
       <div>
-        <PageHeader title="Website Preview" />
-        <GateNotice error={res.error} businessId={params.businessId} moduleLabel="Website" />
+        <PageHeader title="Edit your website" />
+        <GateNotice error={siteRes.error} businessId={params.businessId} moduleLabel="Website" />
       </div>
     )
   }
 
-  const draft = res.data.data.draft
+  const draft = siteRes.data.data.draft
   const base = `/b/${params.businessId}/website`
+  const webUrl = process.env.NEXT_PUBLIC_WEB_URL || 'http://localhost:3000'
+
+  if (!draft || draft.pages.length === 0) {
+    return (
+      <div>
+        <PageHeader
+          title="Edit your website"
+          subtitle="Once LOCAH has built your site, you can change any of it here."
+        />
+        <p style={{ color: 'var(--color-muted)' }}>
+          There is no draft yet. Generate your website first and it will appear here ready to
+          edit.
+        </p>
+      </div>
+    )
+  }
 
   return (
-    <div>
-      <h1 style={{ fontSize: '2rem', marginBottom: '0.4rem' }}>Website Preview</h1>
-      <p style={{ marginBottom: '1rem', maxWidth: '44rem', lineHeight: 1.5 }}>
-        Double-click any text to edit it in place. Changes save to your draft — nothing goes
-        live until you{' '}
-        <Link href={`${base}/publish`}>publish</Link>. For sections, layout, navigation and
-        theme, use <Link href={`${base}/pages`}>Pages</Link> and{' '}
-        <Link href={`${base}/theme`}>Theme</Link>.
-      </p>
-      {!draft || draft.pages.length === 0 ? (
-        <p style={{ color: '#8a94a0' }}>No draft yet. Generate your website first.</p>
-      ) : (
-        <PreviewCanvas
-          businessId={params.businessId}
-          pages={draft.pages}
-          theme={draft.theme || {}}
-        />
-      )}
-    </div>
+    <SiteEditor
+      businessId={params.businessId}
+      pages={draft.pages}
+      previewPath={previewRes.ok ? previewRes.data.data.preview_path : null}
+      webUrl={webUrl}
+      publishHref={`${base}/publish`}
+    />
   )
 }
