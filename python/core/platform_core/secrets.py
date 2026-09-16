@@ -23,6 +23,18 @@ _DEV_ENVIRONMENTS = {"", "development", "dev", "local", "test", "testing", "ci"}
 
 _warned: set[str] = set()
 
+# Values that are public because they live in this repository — the development
+# defaults below and the constant the test suite signs with. Setting one of
+# these in a deployed environment is the same as setting no secret at all, and
+# is easy to do by copying a fixture, so it is refused rather than trusted.
+_PUBLIC_VALUES = frozenset(
+    {
+        "preview-dev-secret",
+        "test-payment-webhook-secret",
+        "super-secret-jwt-token-with-at-least-32-characters-long",
+    }
+)
+
 
 def is_development() -> bool:
     return os.getenv("ENVIRONMENT", "").strip().lower() in _DEV_ENVIRONMENTS
@@ -38,6 +50,11 @@ def resolve_signing_secret(name: str, dev_default: str, *, fallback_env: str | N
     if not value and fallback_env:
         value = os.getenv(fallback_env, "").strip()
     if value:
+        if value in _PUBLIC_VALUES and not is_development():
+            raise RuntimeError(
+                f"{name} is set to a value published in this repository. It signs "
+                f"security tokens and must be a secret unique to this deployment."
+            )
         return value
 
     if not is_development():
