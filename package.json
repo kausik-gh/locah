@@ -1,0 +1,32 @@
+{
+  "name": "platform-root",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"apps/**/*.{ts,tsx,js,jsx}\" \"packages/**/*.{ts,tsx,js,jsx}\"",
+    "python:lint": "uv run ruff check .",
+    "python:format": "uv run ruff format .",
+    "python:typecheck": "uv run mypy --explicit-package-bases .",
+    "python:test": "cd apps/api && uv run pytest tests ../worker/tests -c pyproject.toml --rootdir .",
+    "test": "turbo run test",
+    "verify": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm python:lint && pnpm python:typecheck && pnpm python:test",
+    "db:start": "cd infra && npx supabase start",
+    "db:stop": "cd infra && npx supabase stop",
+    "db:status": "cd infra && npx supabase status",
+    "db:reset": "cd infra && npx supabase db reset",
+    "db:migration": "cd infra && npx supabase migration new"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.2.0",
+    "@typescript-eslint/parser": "^7.2.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "supabase": "^2.109.1",
+    "turbo": "^2.0.4"
+  },
+  "packageManager": "pnpm@9.1.0"
+}

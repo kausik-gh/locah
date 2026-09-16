@@ -1,0 +1,396 @@
+/* ------------------------------------------------------------------------
+   Startup Platform — Workspace design system (Frontend Design Work Order,
+   Prompt B). Data-Dense Dashboard. Light ground, operators work in daylight.
+   Tokens are locked — do not substitute.
+   ------------------------------------------------------------------------ */
+
+:root {
+  --color-background: #f8fafc; /* Slate Enterprise */
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f5f9; /* subtle raised / hover fill */
+  --color-foreground: #1e293b;
+  --color-primary: #2563eb;
+  --color-primary-fg: #ffffff;
+  --color-accent: #ea580c;
+  --color-muted: #64748b;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+
+  /* Semantic status — distinct from the accent, always paired with text */
+  --status-good-fg: #15803d;
+  --status-good-bg: #f0fdf4;
+  --status-good-bd: #bbf7d0;
+  --status-warn-fg: #b45309;
+  --status-warn-bg: #fffbeb;
+  --status-warn-bd: #fde68a;
+  --status-bad-fg: #b91c1c;
+  --status-bad-bg: #fef2f2;
+  --status-bad-bd: #fecaca;
+  --status-neutral-fg: #475569;
+  --status-neutral-bg: #f1f5f9;
+  --status-neutral-bd: #e2e8f0;
+  --status-info-fg: #1d4ed8;
+  --status-info-bg: #eff6ff;
+  --status-info-bd: #bfdbfe;
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --row-h: 44px;
+  --sidebar-w: 248px;
+  --sidebar-w-collapsed: 60px;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-pop: 0 8px 28px rgba(15, 23, 42, 0.12);
+
+  --font-sans: var(--font-general-sans, 'General Sans'), ui-sans-serif,
+    system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+h2 {
+  font-size: 1.15rem;
+}
+h3 {
+  font-size: 1rem;
+}
+
+p {
+  margin: 0 0 0.75rem;
+}
+p:last-child {
+  margin-bottom: 0;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+small {
+  color: var(--color-muted);
+}
+
+code {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 0.85em;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
+
+/* --- Focus: always visible, always --color-primary --- */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* --- Forms: consistent, 44px targets --- */
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--color-foreground);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+  min-height: 40px;
+}
+textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--color-muted);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-primary);
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  outline-offset: 0;
+}
+label {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+/* --- Buttons: default = primary; .btn-ghost / .btn-quiet as needed --- */
+button,
+.btn {
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0 0.95rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-fg);
+  transition: filter 120ms ease, transform 80ms ease;
+}
+button:hover,
+.btn:hover {
+  filter: brightness(1.06);
+  text-decoration: none;
+}
+button:active,
+.btn:active {
+  transform: scale(0.98);
+}
+button:disabled,
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.btn-ghost,
+.btn-ghost {
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  border-color: var(--color-border-strong);
+}
+button.btn-ghost:hover,
+.btn-ghost:hover {
+  background: var(--color-surface-2);
+  filter: none;
+}
+button.btn-quiet,
+.btn-quiet {
+  background: transparent;
+  color: var(--color-primary);
+  border-color: transparent;
+  padding: 0 0.4rem;
+  min-height: 32px;
+}
+button.btn-danger,
+.btn-danger {
+  background: var(--status-bad-bg);
+  color: var(--status-bad-fg);
+  border-color: var(--status-bad-bd);
+}
+button.btn-danger:hover,
+.btn-danger:hover {
+  filter: none;
+  background: color-mix(in srgb, var(--status-bad-bd) 45%, var(--status-bad-bg));
+}
+
+/* --- Raw tables (pages not yet on <DataTable>) still get the system look --- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface-2);
+  color: var(--color-muted);
+  font-weight: 500;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+tbody td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  height: var(--row-h);
+}
+tbody tr:hover {
+  background: var(--color-surface-2);
+}
+td[data-num],
+th[data-num] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.25rem 0;
+}
+
+/* --- Card + hover lift (Prompt B permits: 2px lift, 180ms) --- */
+.ws-card--interactive {
+  transition: transform 180ms cubic-bezier(0.33, 0, 0.67, 1), box-shadow 180ms;
+  will-change: transform;
+}
+.ws-card--interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-pop);
+}
+a.ws-card,
+a .ws-card {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+/* --- Layout primitives --- */
+.ws-page {
+  padding: 2rem 2.25rem;
+  max-width: 1180px;
+}
+@media (max-width: 1320px) {
+  .ws-page {
+    padding: 1.5rem 1.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* --- Skeleton shimmer for table loading --- */
+@keyframes ws-skeleton {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+.ws-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2) 25%,
+    #e9eef4 37%,
+    var(--color-surface-2) 63%
+  );
+  background-size: 400px 100%;
+  animation: ws-skeleton 1.2s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   Workspace Home — summary and activity
+   Every figure here is computed from records the owner can already see. A stat
+   is rendered only when its module is active AND the role permits reading it,
+   so the dashboard never implies data the viewer has no access to.
+   -------------------------------------------------------------------------- */
+
+.ws-stats {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  margin-bottom: 1.75rem;
+}
+.ws-stat {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.95rem 1.05rem;
+}
+.ws-stat__label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-muted);
+  margin: 0 0 0.35rem;
+}
+.ws-stat__value {
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+.ws-stat__note {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  margin: 0.3rem 0 0;
+}
+
+.ws-activity {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.ws-activity__row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  text-decoration: none;
+  color: inherit;
+}
+.ws-activity__row:last-child {
+  border-bottom: 0;
+}
+.ws-activity__row:hover {
+  background: var(--color-surface-2);
+}
+.ws-activity__main {
+  min-width: 0;
+  flex: 1;
+}
+.ws-activity__title {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ws-activity__meta {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+.ws-activity__amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}

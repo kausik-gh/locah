@@ -1,0 +1,111 @@
+"""Supabase Storage access for the media service (Doc 12 §15.3).
+
+The API never handles binary file content. It mints a short-lived **signed
+upload URL** and hands it to the client, which uploads directly.
+
+Authorisation deliberately uses the **caller's own JWT**, never a service-role
+key — this project has a standing rule that no service-role client exists
+anywhere. Storage RLS (migration 20260901020000) scopes a signed-in caller to
+their own `{supabase_user_id}/` path prefix; business ownership of an asset is
+authoritative in `media_assets`, which only the API writes.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import httpx
+
+from platform_core.logging import get_logger
+
+_log = get_logger("media.storage")
+
+# Doc 12 §15.4 — static images only. SVG stays out (XSS); PDF deferred.
+ALLOWED_MIME_TYPES: frozenset[str] = frozenset(
+    {"image/jpeg", "image/png", "image/webp", "image/gif"}
+)
+MAX_FILE_BYTES = 10 * 1024 * 1024
+
+EXTENSION_BY_MIME: dict[str, str] = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+
+
+class StorageNotConfigured(RuntimeError):
+    """SUPABASE_URL / anon key missing — callers degrade, they don't crash."""
+
+
+def _base_url() -> str:
+    base = (os.getenv("SUPABASE_URL") or "").rstrip("/")
+    if not base:
+        raise StorageNotConfigured("SUPABASE_URL is not set")
+    return base
+
+
+def _anon_key() -> str:
+    key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY") or ""
+    if not key:
+        raise StorageNotConfigured("SUPABASE_ANON_KEY is not set")
+    return key
+
+
+def public_url(bucket: str, storage_key: str) -> str:
+    return f"{_base_url()}/storage/v1/object/public/{bucket}/{storage_key}"
+
+
+async def create_signed_upload_url(
+    *, user_jwt: str, bucket: str, storage_key: str, timeout_seconds: int = 10
+) -> dict[str, Any]:
+    """POST /storage/v1/object/upload/sign/{bucket}/{key} as the caller.
+
+    Returns Supabase's `{"url": "/object/upload/sign/..."}`; we hand the client
+    an absolute URL plus the key it must PUT to.
+    """
+    url = f"{_base_url()}/storage/v1/object/upload/sign/{bucket}/{storage_key}"
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        resp = await client.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {user_jwt}",
+                "apikey": _anon_key(),
+                "Content-Type": "application/json",
+            },
+            json={},
+        )
+    if resp.status_code >= 400:
+        _log.warning(
+            "media.signed_upload_url_failed",
+            bucket=bucket,
+            status=resp.status_code,
+            detail=resp.text[:300],
+        )
+        raise RuntimeError(f"Storage refused the upload URL ({resp.status_code})")
+    body = resp.json()
+    signed_path = str(body.get("url") or "")
+    return {
+        "upload_url": f"{_base_url()}/storage/v1{signed_path}"
+        if signed_path.startswith("/")
+        else signed_path,
+        "storage_key": storage_key,
+        "bucket": bucket,
+    }
+
+
+async def object_exists(*, bucket: str, storage_key: str, timeout_seconds: int = 10) -> int | None:
+    """Byte size if the object is there, else None. Public bucket → plain HEAD."""
+    async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
+        try:
+            resp = await client.head(public_url(bucket, storage_key))
+        except httpx.HTTPError as exc:
+            _log.warning("media.head_failed", bucket=bucket, error=str(exc))
+            return None
+    if resp.status_code != 200:
+        return None
+    try:
+        return int(resp.headers.get("content-length") or 0)
+    except ValueError:
+        return 0

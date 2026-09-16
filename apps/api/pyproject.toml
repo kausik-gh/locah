@@ -1,0 +1,31 @@
+[project]
+name = "platform-api"
+version = "0.1.0"
+description = "FastAPI Modular-Monolith Backend Application"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
+    "platform-core",
+    "platform-domain-events",
+    "pyjwt[crypto]>=2.13.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "platform-testing",
+]
+
+[tool.uv.sources]
+platform-core = { workspace = true }
+platform-domain-events = { workspace = true }
+platform-testing = { workspace = true }
+
+[tool.pytest.ini_options]
+pythonpath = [
+    "src",
+    "../../python/testing",
+    "../worker/src",
+]
+asyncio_mode = "auto"
+

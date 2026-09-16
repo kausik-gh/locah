@@ -1,0 +1,27 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "--env-file",
+        ".env",
+        "uvicorn",
+        "platform_api.main:app",
+        "--app-dir",
+        "apps/api/src",
+        "--port",
+        "8000"
+      ],
+      "port": 8000
+    }
+  ]
+}

@@ -1,0 +1,213 @@
+/* ==========================================================================
+   LOCAH — Brand token layer
+   Local Businesses. Limitless Possibilities.
+
+   ONE brand, THREE visual contexts. They deliberately do not look the same:
+
+     1. locah-public  — the LOCAH product/marketing site + Marketplace.
+                        Confident, editorial, navy ground, orange used sparingly.
+     2. locah-app     — the operator Workspace. Data-dense, light, daylight
+                        working surface. (apps/workspace/globals.css owns this;
+                        those tokens are locked and are NOT redefined here.)
+     3. locah-site    — a TENANT's generated website. Must look like the
+                        BUSINESS, never like LOCAH. Every colour here is driven
+                        by the business's own theme record, not LOCAH brand.
+
+   Rule: LOCAH brand colour never leaks into a tenant website. A hotel must
+   look like hospitality, not like our dashboard.
+   ========================================================================== */
+
+:root {
+  /* ---- Brand core (from the LOCAH mark) ------------------------------- */
+  --locah-ink: #1b1f3b; /* deep navy — the brand ground */
+  --locah-ink-2: #262b4f; /* raised navy surface */
+  --locah-ink-3: #343a63; /* hairline / border on navy */
+  --locah-periwinkle: #9ba3d0; /* the mark's inner dots — quiet brand signal */
+  --locah-cream: #f7f4ef; /* warm paper, the light ground */
+  --locah-accent: #e8622c; /* ORANGE. Primary action only. Used sparingly. */
+  --locah-accent-hover: #d4551f;
+  --locah-accent-soft: #fdf0e9;
+
+  /* ---- Neutrals (warm-leaning, not pure grey) ------------------------- */
+  --locah-n-0: #ffffff;
+  --locah-n-25: #fbfaf8;
+  --locah-n-50: #f4f2ee;
+  --locah-n-100: #e9e6e0;
+  --locah-n-200: #d8d4cc;
+  --locah-n-300: #b8b3a9;
+  --locah-n-400: #8e8a81;
+  --locah-n-500: #6b6862;
+  --locah-n-600: #4e4c47;
+  --locah-n-700: #35342f;
+  --locah-n-900: #1a1a17;
+
+  /* ---- Semantic status (shared across contexts) ----------------------- */
+  --locah-good-fg: #15803d;
+  --locah-good-bg: #f0fdf4;
+  --locah-good-bd: #bbf7d0;
+  --locah-warn-fg: #b45309;
+  --locah-warn-bg: #fffbeb;
+  --locah-warn-bd: #fde68a;
+  --locah-bad-fg: #b91c1c;
+  --locah-bad-bg: #fef2f2;
+  --locah-bad-bd: #fecaca;
+  --locah-info-fg: #1d4ed8;
+  --locah-info-bg: #eff6ff;
+  --locah-info-bd: #bfdbfe;
+
+  /* ---- Type scale -----------------------------------------------------
+     Display sizes are fluid. Body is fixed — fluid body text is a tell that
+     a site was generated rather than designed.                            */
+  --fs-display: clamp(2.6rem, 1.6rem + 4.4vw, 5rem);
+  --fs-h1: clamp(2rem, 1.45rem + 2.4vw, 3.25rem);
+  --fs-h2: clamp(1.5rem, 1.22rem + 1.2vw, 2.25rem);
+  --fs-h3: 1.3rem;
+  --fs-h4: 1.075rem;
+  --fs-body-lg: 1.125rem;
+  --fs-body: 1rem;
+  --fs-sm: 0.9rem;
+  --fs-xs: 0.8rem;
+  --fs-micro: 0.72rem;
+
+  --lh-tight: 1.08;
+  --lh-heading: 1.18;
+  --lh-body: 1.65;
+
+  --tracking-display: -0.025em;
+  --tracking-heading: -0.015em;
+  --tracking-eyebrow: 0.14em;
+
+  /* ---- Space: 4px base, named by intent not by number ----------------- */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+  --sp-8: 4rem;
+  --sp-9: 6rem;
+  --sp-10: 8rem;
+
+  /* Vertical rhythm between full-bleed page sections. */
+  --section-y: clamp(3.5rem, 2rem + 6vw, 7rem);
+  --section-y-tight: clamp(2.5rem, 1.5rem + 4vw, 4.5rem);
+
+  /* ---- Radius: restrained. Not everything is a pill. ------------------ */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-full: 999px;
+
+  /* ---- Elevation: layered surfaces, not drop shadows everywhere ------- */
+  --el-hairline: 0 0 0 1px rgba(27, 31, 59, 0.08);
+  --el-1: 0 1px 2px rgba(27, 31, 59, 0.06), 0 0 0 1px rgba(27, 31, 59, 0.05);
+  --el-2: 0 4px 16px rgba(27, 31, 59, 0.08), 0 0 0 1px rgba(27, 31, 59, 0.05);
+  --el-3: 0 12px 40px rgba(27, 31, 59, 0.14);
+  --el-4: 0 24px 70px rgba(27, 31, 59, 0.2);
+
+  /* ---- Motion: fast, purposeful, never bouncy ------------------------- */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur: 220ms;
+  --dur-slow: 420ms;
+
+  /* ---- Layout --------------------------------------------------------- */
+  --container: 1200px;
+  --container-wide: 1380px;
+  --container-prose: 68ch;
+  --gutter: clamp(1.25rem, 0.75rem + 2vw, 2.5rem);
+  --nav-h: 68px;
+
+  /* ---- Fonts ----------------------------------------------------------
+     General Sans is already self-hosted in apps/workspace. The public app
+     loads the same family so LOCAH speaks with one voice.                 */
+  --font-sans: var(--font-general-sans, 'General Sans'), ui-sans-serif, system-ui,
+    -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: var(--font-display-serif, 'Instrument Serif'), var(--font-sans);
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+/* ==========================================================================
+   Tenant website theme contract.
+
+   A generated business website reads ONLY these variables. They are written
+   onto the site root at render time from the business's `theme` record
+   (primary_color / accent_color / etc). The fallbacks below are a neutral
+   editorial default — deliberately NOT LOCAH navy/orange, so an unthemed
+   tenant site still looks like an independent business.
+   ========================================================================== */
+
+[data-locah-site] {
+  --site-primary: #14532d;
+  --site-primary-fg: #ffffff;
+  --site-accent: #b45309;
+  --site-ink: #171614;
+  --site-muted: #5f5b54;
+  --site-bg: #ffffff;
+  --site-bg-alt: #f7f5f1;
+  --site-border: rgba(23, 22, 20, 0.12);
+  --site-radius: 10px;
+  --site-font: var(--font-sans);
+  --site-display-font: var(--font-sans);
+  --site-section-y: clamp(3rem, 2rem + 5vw, 6rem);
+}
+
+/* Personality presets. The template a business picks sets this attribute;
+   it changes proportion and type feel, not just hue — that is what stops
+   every template looking like the same site in a different colour. */
+
+[data-locah-site][data-personality='warm'] {
+  --site-radius: 14px;
+  --site-bg-alt: #faf6ef;
+  --site-display-font: var(--font-display);
+}
+
+[data-locah-site][data-personality='premium'] {
+  --site-radius: 2px;
+  --site-bg-alt: #f6f5f3;
+  --site-display-font: var(--font-display);
+  --site-section-y: clamp(4rem, 2.5rem + 6vw, 8rem);
+}
+
+[data-locah-site][data-personality='bold'] {
+  --site-radius: 4px;
+  --site-bg-alt: #f2f2f2;
+}
+
+[data-locah-site][data-personality='clean'] {
+  --site-radius: 10px;
+  --site-bg-alt: #f6f8f9;
+}
+
+[data-locah-site][data-personality='dark'] {
+  --site-ink: #f4f3f1;
+  --site-muted: #a8a49d;
+  --site-bg: #121212;
+  --site-bg-alt: #1b1b1b;
+  --site-border: rgba(255, 255, 255, 0.14);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Every page paints its own ground. Without this the document is transparent
+   and composites over whatever the host browser or embedder paints behind it,
+   which is how a light page ends up with black gutters. Tenant sites override
+   this inside [data-locah-site] via --site-bg. */
+html,
+body {
+  background: var(--locah-n-0);
+  margin: 0;
+}

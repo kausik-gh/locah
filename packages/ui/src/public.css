@@ -1,0 +1,1376 @@
+/* ==========================================================================
+   LOCAH — Public surface (marketing site + Marketplace)
+   Consumes tokens.css. Pure CSS, no framework, no build step.
+
+   Design intent: editorial confidence. Navy is the brand ground, orange is a
+   scalpel (primary CTA and one emphasis per view, never decoration). Type does
+   the heavy lifting; boxes stay quiet. Generous vertical rhythm — the product
+   is complicated, so the page must breathe or it reads as a dashboard.
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+/* Element-agnostic: LOCAH's own pages wrap their content in this class, which
+   may be a <div> inside <body> rather than <body> itself. */
+.locah-public {
+  margin: 0;
+  background: var(--locah-n-0);
+  color: var(--locah-n-900);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.locah-public h1,
+.locah-public h2,
+.locah-public h3,
+.locah-public h4 {
+  margin: 0;
+  font-weight: 600;
+  line-height: var(--lh-heading);
+  letter-spacing: var(--tracking-heading);
+  text-wrap: balance;
+}
+
+.locah-public h1 {
+  font-size: var(--fs-h1);
+}
+.locah-public h2 {
+  font-size: var(--fs-h2);
+}
+.locah-public h3 {
+  font-size: var(--fs-h3);
+}
+.locah-public h4 {
+  font-size: var(--fs-h4);
+}
+
+.locah-public p {
+  margin: 0 0 var(--sp-4);
+  text-wrap: pretty;
+}
+.locah-public p:last-child {
+  margin-bottom: 0;
+}
+
+.locah-public a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.locah-public img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+:where(.locah-public a, .locah-public button, .locah-public input,
+    .locah-public select, .locah-public textarea):focus-visible {
+  outline: 2px solid var(--locah-accent);
+  outline-offset: 3px;
+  border-radius: var(--r-xs);
+}
+
+/* --------------------------------------------------------------------------
+   Layout primitives
+   -------------------------------------------------------------------------- */
+
+.lc-container {
+  width: 100%;
+  max-width: var(--container);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+.lc-container--wide {
+  max-width: var(--container-wide);
+}
+.lc-container--prose {
+  max-width: var(--container-prose);
+}
+
+.lc-section {
+  padding-block: var(--section-y);
+}
+.lc-section--tight {
+  padding-block: var(--section-y-tight);
+}
+
+/* Full-bleed grounds. The page alternates paper → navy → paper so a long
+   marketing page has rhythm instead of endlessly scrolling white. */
+.lc-ground-paper {
+  background: var(--locah-n-25);
+}
+.lc-ground-cream {
+  background: var(--locah-cream);
+}
+.lc-ground-ink {
+  background: var(--locah-ink);
+  color: var(--locah-cream);
+}
+.lc-ground-ink h1,
+.lc-ground-ink h2,
+.lc-ground-ink h3 {
+  color: #fff;
+}
+
+.lc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.lc-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+.lc-grid {
+  display: grid;
+  gap: var(--sp-5);
+}
+.lc-grid--2 {
+  grid-template-columns: 1fr;
+}
+/* Pinned to exactly two once there is room: auto-fit was resolving to three
+   columns on a wide desktop, which orphans the fourth card of a 2x2 set. */
+@media (min-width: 860px) {
+  .lc-grid--2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* auto-FILL, not auto-fit: with one result auto-fit collapses the row to a
+   single full-width track, so a lone card stretches across the page. */
+.lc-grid--3 {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+}
+.lc-grid--4 {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+}
+
+/* Asymmetric split — copy column + product column. Avoids the 50/50 look
+   that makes every AI-built landing page identical. */
+.lc-split {
+  display: grid;
+  gap: clamp(2rem, 1rem + 4vw, 4.5rem);
+  align-items: center;
+}
+@media (min-width: 900px) {
+  .lc-split {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  }
+  .lc-split--reverse > :first-child {
+    order: 2;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Type helpers
+   -------------------------------------------------------------------------- */
+
+.lc-display {
+  font-size: var(--fs-display);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-display);
+  font-weight: 600;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.lc-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--locah-n-500);
+  margin: 0 0 var(--sp-3);
+}
+.lc-ground-ink .lc-eyebrow {
+  color: var(--locah-periwinkle);
+}
+.lc-eyebrow::before {
+  content: '';
+  width: 18px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.lc-lead {
+  font-size: var(--fs-body-lg);
+  line-height: var(--lh-body);
+  color: var(--locah-n-600);
+  max-width: 46ch;
+}
+.lc-ground-ink .lc-lead {
+  color: rgba(247, 244, 239, 0.78);
+}
+
+.lc-muted {
+  color: var(--locah-n-500);
+}
+.lc-small {
+  font-size: var(--fs-sm);
+}
+.lc-xs {
+  font-size: var(--fs-xs);
+}
+
+/* One accent word inside a headline. This is the ONLY decorative use of
+   orange on the page — everything else earns it by being an action. */
+.lc-mark {
+  color: var(--locah-accent);
+}
+
+/* --------------------------------------------------------------------------
+   Buttons
+   -------------------------------------------------------------------------- */
+
+.lc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 46px;
+  padding: 0 1.35rem;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: var(--locah-ink);
+  color: #fff;
+  font: inherit;
+  font-weight: 550;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.lc-btn:hover {
+  background: var(--locah-ink-2);
+  transform: translateY(-1px);
+  box-shadow: var(--el-2);
+}
+.lc-btn:active {
+  transform: translateY(0);
+}
+.lc-btn:disabled,
+.lc-btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* The one true primary action. Reserve it. */
+.lc-btn--primary {
+  background: var(--locah-accent);
+  color: #fff;
+}
+.lc-btn--primary:hover {
+  background: var(--locah-accent-hover);
+}
+
+.lc-btn--ghost {
+  background: transparent;
+  color: var(--locah-n-900);
+  border-color: var(--locah-n-200);
+}
+.lc-btn--ghost:hover {
+  background: var(--locah-n-50);
+  border-color: var(--locah-n-300);
+  box-shadow: none;
+}
+.lc-ground-ink .lc-btn--ghost {
+  color: var(--locah-cream);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+.lc-ground-ink .lc-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.lc-btn--lg {
+  min-height: 54px;
+  padding: 0 1.75rem;
+  font-size: var(--fs-body);
+}
+.lc-btn--sm {
+  min-height: 36px;
+  padding: 0 0.85rem;
+  font-size: var(--fs-xs);
+}
+.lc-btn--block {
+  width: 100%;
+}
+
+/* Text link with a travelling underline. */
+.lc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 550;
+  font-size: var(--fs-sm);
+  color: var(--locah-ink);
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size var(--dur) var(--ease);
+}
+.lc-link:hover {
+  background-size: 100% 1px;
+}
+.lc-ground-ink .lc-link {
+  color: var(--locah-cream);
+}
+.lc-link--accent {
+  color: var(--locah-accent);
+}
+
+/* --------------------------------------------------------------------------
+   Navigation
+   -------------------------------------------------------------------------- */
+
+.lc-nav {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--locah-n-100);
+}
+.lc-nav--ink {
+  background: rgba(27, 31, 59, 0.82);
+  border-bottom-color: var(--locah-ink-3);
+  color: var(--locah-cream);
+}
+.lc-nav__inner {
+  width: 100%;
+  max-width: var(--container-wide);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+}
+.lc-nav__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+.lc-nav__links {
+  display: none;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-right: auto;
+}
+@media (min-width: 900px) {
+  .lc-nav__links {
+    display: flex;
+  }
+}
+.lc-nav__link {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--locah-n-600);
+  transition: color var(--dur-fast) var(--ease);
+}
+.lc-nav__link:hover,
+.lc-nav__link[aria-current='page'] {
+  color: var(--locah-n-900);
+}
+.lc-nav--ink .lc-nav__link {
+  color: rgba(247, 244, 239, 0.7);
+}
+.lc-nav--ink .lc-nav__link:hover,
+.lc-nav--ink .lc-nav__link[aria-current='page'] {
+  color: #fff;
+}
+.lc-nav__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-left: auto;
+}
+
+/* --------------------------------------------------------------------------
+   Cards
+   -------------------------------------------------------------------------- */
+
+.lc-card {
+  background: var(--locah-n-0);
+  border: 1px solid var(--locah-n-100);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+.lc-card--interactive:hover {
+  border-color: var(--locah-n-200);
+  box-shadow: var(--el-2);
+  transform: translateY(-2px);
+}
+.lc-card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+.lc-ground-ink .lc-card {
+  background: var(--locah-ink-2);
+  border-color: var(--locah-ink-3);
+}
+
+.lc-card__icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: var(--locah-accent-soft);
+  color: var(--locah-accent);
+  margin-bottom: var(--sp-4);
+  flex-shrink: 0;
+}
+.lc-ground-ink .lc-card__icon {
+  background: rgba(232, 98, 44, 0.16);
+}
+.lc-card__title {
+  font-size: var(--fs-h4);
+  font-weight: 600;
+  margin: 0 0 var(--sp-2);
+  /* Explicit, not inherited: a title nested inside muted body copy would
+     otherwise render the same grey as the paragraph under it. */
+  color: var(--locah-n-900);
+}
+.lc-ground-ink .lc-card__title {
+  color: #fff;
+}
+.lc-card__body {
+  font-size: var(--fs-sm);
+  color: var(--locah-n-500);
+  line-height: 1.6;
+  margin: 0;
+}
+.lc-ground-ink .lc-card__body {
+  color: rgba(247, 244, 239, 0.66);
+}
+
+/* Media card — used for Marketplace business cards and template previews. */
+.lc-mediacard {
+  display: flex;
+  flex-direction: column;
+  background: var(--locah-n-0);
+  border: 1px solid var(--locah-n-100);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+.lc-mediacard:hover {
+  border-color: var(--locah-n-200);
+  box-shadow: var(--el-2);
+  transform: translateY(-3px);
+}
+.lc-mediacard__media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: var(--locah-n-50);
+  overflow: hidden;
+}
+.lc-mediacard__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.lc-mediacard:hover .lc-mediacard__media img {
+  transform: scale(1.04);
+}
+.lc-mediacard__fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 2.4rem;
+  font-weight: 600;
+  color: var(--locah-n-300);
+  background: linear-gradient(135deg, var(--locah-n-50), var(--locah-n-100));
+}
+.lc-mediacard__body {
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  flex: 1;
+}
+.lc-mediacard__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.lc-mediacard__meta {
+  font-size: var(--fs-xs);
+  color: var(--locah-n-500);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.lc-mediacard__foot {
+  margin-top: auto;
+  padding-top: var(--sp-3);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------------------
+   Badges / pills / chips
+   -------------------------------------------------------------------------- */
+
+.lc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.6rem;
+  border-radius: var(--r-full);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--locah-n-200);
+  background: var(--locah-n-50);
+  color: var(--locah-n-600);
+  white-space: nowrap;
+}
+.lc-badge--accent {
+  background: var(--locah-accent-soft);
+  border-color: rgba(232, 98, 44, 0.24);
+  color: var(--locah-accent-hover);
+}
+.lc-badge--good {
+  background: var(--locah-good-bg);
+  border-color: var(--locah-good-bd);
+  color: var(--locah-good-fg);
+}
+.lc-badge--warn {
+  background: var(--locah-warn-bg);
+  border-color: var(--locah-warn-bd);
+  color: var(--locah-warn-fg);
+}
+.lc-badge--bad {
+  background: var(--locah-bad-bg);
+  border-color: var(--locah-bad-bd);
+  color: var(--locah-bad-fg);
+}
+.lc-badge--ink {
+  background: var(--locah-ink);
+  border-color: var(--locah-ink);
+  color: #fff;
+}
+
+/* Filter chips — Marketplace category rail. */
+.lc-chiprail {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  padding-block: var(--sp-1);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.lc-chiprail::-webkit-scrollbar {
+  display: none;
+}
+.lc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.95rem;
+  border-radius: var(--r-full);
+  border: 1px solid var(--locah-n-200);
+  background: var(--locah-n-0);
+  color: var(--locah-n-600);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+.lc-chip:hover {
+  border-color: var(--locah-n-400);
+  color: var(--locah-n-900);
+}
+.lc-chip[aria-pressed='true'],
+.lc-chip--active {
+  background: var(--locah-ink);
+  border-color: var(--locah-ink);
+  color: #fff;
+}
+
+/* --------------------------------------------------------------------------
+   Search
+   -------------------------------------------------------------------------- */
+
+.lc-search {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: var(--locah-n-0);
+  border: 1px solid var(--locah-n-200);
+  border-radius: var(--r-full);
+  padding: 0.4rem 0.4rem 0.4rem 1.1rem;
+  box-shadow: var(--el-1);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.lc-search:focus-within {
+  border-color: var(--locah-n-400);
+  box-shadow: var(--el-2);
+}
+.lc-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-body);
+  min-height: 44px;
+  color: inherit;
+}
+.lc-search input::placeholder {
+  color: var(--locah-n-400);
+}
+.lc-search__divider {
+  width: 1px;
+  height: 26px;
+  background: var(--locah-n-100);
+  flex-shrink: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Stats
+   -------------------------------------------------------------------------- */
+
+.lc-stat__value {
+  font-size: clamp(1.9rem, 1.4rem + 1.8vw, 2.75rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.lc-stat__label {
+  font-size: var(--fs-xs);
+  color: var(--locah-n-500);
+  margin-top: var(--sp-2);
+}
+.lc-ground-ink .lc-stat__label {
+  color: rgba(247, 244, 239, 0.62);
+}
+
+/* --------------------------------------------------------------------------
+   Product frame — wraps a real screenshot / live UI preview so it reads as
+   "software", not "image dropped on a page".
+   -------------------------------------------------------------------------- */
+
+.lc-frame {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--locah-n-200);
+  background: var(--locah-n-0);
+  box-shadow: var(--el-3);
+  overflow: hidden;
+}
+.lc-frame__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--locah-n-100);
+  background: var(--locah-n-25);
+}
+.lc-frame__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--locah-n-200);
+}
+.lc-frame__addr {
+  margin-left: 0.5rem;
+  font-size: var(--fs-micro);
+  color: var(--locah-n-400);
+  font-family: var(--font-mono);
+}
+.lc-frame__body {
+  position: relative;
+}
+
+/* Floating callout tiles layered over a product frame (WordPress-style
+   "here's the feature" overlays). Hidden on small screens — they overlap. */
+.lc-float {
+  display: none;
+  position: absolute;
+  background: var(--locah-n-0);
+  border: 1px solid var(--locah-n-100);
+  border-radius: var(--r-md);
+  box-shadow: var(--el-3);
+  padding: var(--sp-3) var(--sp-4);
+  min-width: 190px;
+}
+@media (min-width: 1080px) {
+  .lc-float {
+    display: block;
+  }
+}
+.lc-float__label {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--locah-n-400);
+  margin-bottom: 0.2rem;
+}
+.lc-float__value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* --------------------------------------------------------------------------
+   Step / journey list
+   -------------------------------------------------------------------------- */
+
+.lc-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  counter-reset: lc-step;
+}
+.lc-step {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: var(--sp-4);
+  align-items: start;
+}
+.lc-step::before {
+  counter-increment: lc-step;
+  content: counter(lc-step);
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-full);
+  background: var(--locah-ink);
+  color: #fff;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.lc-ground-ink .lc-step::before {
+  background: var(--locah-accent);
+}
+.lc-step__title {
+  font-weight: 600;
+  margin: 0 0 0.15rem;
+}
+.lc-step__body {
+  font-size: var(--fs-sm);
+  color: var(--locah-n-500);
+  margin: 0;
+}
+.lc-ground-ink .lc-step__body {
+  color: rgba(247, 244, 239, 0.66);
+}
+
+/* --------------------------------------------------------------------------
+   Empty / loading / error states
+   -------------------------------------------------------------------------- */
+
+.lc-empty {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-5);
+  border: 1px dashed var(--locah-n-200);
+  border-radius: var(--r-lg);
+  background: var(--locah-n-25);
+}
+.lc-empty__title {
+  font-size: var(--fs-h4);
+  font-weight: 600;
+  margin: 0;
+}
+.lc-empty__body {
+  font-size: var(--fs-sm);
+  color: var(--locah-n-500);
+  max-width: 44ch;
+  margin: 0;
+}
+
+@keyframes lc-shimmer {
+  0% {
+    background-position: -320px 0;
+  }
+  100% {
+    background-position: calc(320px + 100%) 0;
+  }
+}
+.lc-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--locah-n-50) 25%,
+    var(--locah-n-100) 37%,
+    var(--locah-n-50) 63%
+  );
+  background-size: 640px 100%;
+  animation: lc-shimmer 1.3s ease-in-out infinite;
+  border-radius: var(--r-sm);
+}
+
+/* --------------------------------------------------------------------------
+   Footer
+   -------------------------------------------------------------------------- */
+
+.lc-footer {
+  background: var(--locah-ink);
+  color: rgba(247, 244, 239, 0.72);
+  padding-block: var(--sp-8) var(--sp-6);
+}
+.lc-footer h4 {
+  color: #fff;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  margin: 0 0 var(--sp-3);
+  font-weight: 600;
+}
+.lc-footer a {
+  display: block;
+  font-size: var(--fs-sm);
+  padding-block: 0.3rem;
+  color: rgba(247, 244, 239, 0.72);
+  transition: color var(--dur-fast) var(--ease);
+}
+.lc-footer a:hover {
+  color: #fff;
+}
+.lc-footer__bottom {
+  margin-top: var(--sp-7);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--locah-ink-3);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+}
+
+/* --------------------------------------------------------------------------
+   Entrance motion — subtle, once, never on reduced-motion.
+   -------------------------------------------------------------------------- */
+
+@keyframes lc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.lc-rise {
+  animation: lc-rise var(--dur-slow) var(--ease-out) both;
+}
+.lc-rise-1 {
+  animation-delay: 60ms;
+}
+.lc-rise-2 {
+  animation-delay: 120ms;
+}
+.lc-rise-3 {
+  animation-delay: 180ms;
+}
+.lc-rise-4 {
+  animation-delay: 240ms;
+}
+
+/* Utilities */
+.lc-hide-sm {
+  display: none;
+}
+@media (min-width: 720px) {
+  .lc-hide-sm {
+    display: revert;
+  }
+}
+.lc-center {
+  text-align: center;
+}
+.lc-center .lc-lead,
+.lc-center .lc-eyebrow {
+  margin-inline: auto;
+}
+.lc-mt-auto {
+  margin-top: auto;
+}
+.lc-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Row modifiers
+   -------------------------------------------------------------------------- */
+
+.lc-row--between {
+  justify-content: space-between;
+}
+.lc-row--center {
+  justify-content: center;
+}
+
+/* --------------------------------------------------------------------------
+   Home page
+   Scoped `hp-` because these compositions only make sense on the front door.
+   -------------------------------------------------------------------------- */
+
+.hp-hero {
+  padding-block: clamp(3rem, 1.5rem + 6vw, 6rem);
+}
+
+/* Signed-in strip above the marketing page — a way back to work, not a banner. */
+.hp-resume {
+  background: var(--locah-ink);
+  color: var(--locah-cream);
+  padding-block: var(--sp-3);
+}
+.hp-resume strong {
+  color: #fff;
+}
+
+/* Ticked feature lists inside cards. */
+.hp-ticks {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+.hp-ticks li {
+  position: relative;
+  padding-left: 1.5rem;
+  font-size: var(--fs-sm);
+  color: var(--locah-n-600);
+}
+.hp-ticks li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.42em;
+  width: 0.62rem;
+  height: 0.34rem;
+  border-left: 2px solid var(--locah-accent);
+  border-bottom: 2px solid var(--locah-accent);
+  transform: rotate(-45deg);
+}
+
+/* Business-type list — two columns of hairline-separated rows. */
+.hp-types {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  border-top: 1px solid var(--locah-n-100);
+}
+.hp-types li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: var(--sp-4) var(--sp-2);
+  border-bottom: 1px solid var(--locah-n-100);
+}
+
+/* The miniature website inside the hero's browser frame. Real data, drawn
+   small — it is a preview of the product, so it must not look invented. */
+.hp-mini {
+  font-size: 0.78rem;
+  background: #fffdf9;
+}
+.hp-mini__nav {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--locah-n-100);
+  color: var(--locah-n-500);
+}
+.hp-mini__nav strong {
+  margin-right: auto;
+  color: var(--locah-n-900);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+}
+.hp-mini__hero {
+  padding: clamp(1.4rem, 0.5rem + 3vw, 2.6rem) 1rem;
+  text-align: center;
+  background: linear-gradient(160deg, #c8511f, #a03d16);
+  color: #fff;
+}
+.hp-mini__eyebrow {
+  margin: 0 0 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  font-size: 0.6rem;
+  opacity: 0.85;
+}
+.hp-mini__hero h3 {
+  margin: 0;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: clamp(1.1rem, 0.7rem + 1.4vw, 1.6rem);
+}
+.hp-mini__cta {
+  display: inline-block;
+  margin-top: 0.9rem;
+  padding: 0.38rem 0.9rem;
+  border-radius: var(--r-full);
+  background: #fff;
+  color: #a03d16;
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+.hp-mini__items {
+  padding: 0.6rem 1rem 1rem;
+}
+.hp-mini__item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px dashed var(--locah-n-200);
+  color: var(--locah-n-700);
+}
+.hp-mini__item:last-child {
+  border-bottom: 0;
+}
+.hp-mini__item b {
+  font-variant-numeric: tabular-nums;
+  color: var(--locah-n-900);
+}
+
+/* Marketplace card description: keep cards the same height regardless of how
+   much the owner wrote. */
+.mk-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   Monogram cards
+   A business with no photo still needs to look like itself. Each trade gets a
+   duotone ground and a large display initial. Reads as a considered monogram,
+   never as a photograph the business did not provide.
+   -------------------------------------------------------------------------- */
+
+.lc-mediacard__fallback {
+  font-size: clamp(2.6rem, 1.6rem + 3vw, 3.6rem);
+  color: rgba(255, 255, 255, 0.92);
+  background: linear-gradient(140deg, #4a5568, #2d3748);
+  letter-spacing: -0.03em;
+  position: relative;
+  overflow: hidden;
+}
+/* A single soft highlight keeps the ground from reading as flat colour. */
+.lc-mediacard__fallback::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 26% 22%, rgba(255, 255, 255, 0.22), transparent 58%);
+}
+
+.lc-mediacard__fallback[data-type='restaurant'],
+.lc-mediacard__fallback[data-type='cafe'] {
+  background: linear-gradient(140deg, #b4552a, #7d2f14);
+}
+.lc-mediacard__fallback[data-type='salon'],
+.lc-mediacard__fallback[data-type='spa'] {
+  background: linear-gradient(140deg, #2f6152, #17332c);
+}
+.lc-mediacard__fallback[data-type='gym'],
+.lc-mediacard__fallback[data-type='studio'] {
+  background: linear-gradient(140deg, #2b2d33, #0f1013);
+}
+.lc-mediacard__fallback[data-type='hotel'],
+.lc-mediacard__fallback[data-type='homestay'] {
+  background: linear-gradient(140deg, #3c6b74, #1d3b42);
+}
+.lc-mediacard__fallback[data-type='retail'] {
+  background: linear-gradient(140deg, #2f4a73, #17263c);
+}
+.lc-mediacard__fallback[data-type='education'] {
+  background: linear-gradient(140deg, #6a4b86, #37244a);
+}
+.lc-mediacard__fallback[data-type='professional_service'],
+.lc-mediacard__fallback[data-type='clinic'] {
+  background: linear-gradient(140deg, #235a86, #10334f);
+}
+
+/* --------------------------------------------------------------------------
+   Onboarding (/start)
+   A setup wizard, not a marketing page: narrower measure, calmer ground, and
+   one clear action per screen.
+   -------------------------------------------------------------------------- */
+
+.ob-shell {
+  min-height: 100vh;
+  background: var(--locah-n-25);
+}
+.ob-shell__head {
+  border-bottom: 1px solid var(--locah-n-100);
+  background: var(--locah-n-0);
+  padding-block: var(--sp-4);
+}
+.ob-shell__body {
+  padding-block: clamp(2rem, 1rem + 4vw, 3.5rem);
+  max-width: 54rem;
+}
+
+.ob-steps {
+  display: flex;
+  gap: var(--sp-2);
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--sp-7);
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+}
+.ob-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.85rem 0.35rem 0.4rem;
+  border-radius: var(--r-full);
+  border: 1px solid var(--locah-n-200);
+  color: var(--locah-n-500);
+  background: var(--locah-n-0);
+  white-space: nowrap;
+}
+.ob-step__n {
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  background: var(--locah-n-100);
+  color: inherit;
+}
+.ob-step[data-state='active'] {
+  background: var(--locah-ink);
+  border-color: var(--locah-ink);
+  color: #fff;
+  font-weight: 600;
+}
+.ob-step[data-state='active'] .ob-step__n {
+  background: rgba(255, 255, 255, 0.2);
+}
+.ob-step[data-state='done'] {
+  color: var(--locah-good-fg);
+  border-color: var(--locah-good-bd);
+  background: var(--locah-good-bg);
+}
+.ob-step[data-state='done'] .ob-step__n {
+  background: transparent;
+}
+
+.ob-error {
+  padding: var(--sp-5);
+  border-radius: var(--r-md);
+  border: 1px solid var(--locah-bad-bd);
+  background: var(--locah-bad-bg);
+  max-width: 38rem;
+}
+.ob-error h2 {
+  margin: 0 0 var(--sp-2);
+  font-size: 1.1rem;
+  color: var(--locah-bad-fg);
+}
+.ob-error p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--locah-bad-fg);
+}
+
+/* Form primitives shared by the onboarding screens. */
+.ob-field {
+  margin-bottom: var(--sp-5);
+}
+.ob-label {
+  display: block;
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  margin-bottom: 0.35rem;
+}
+.ob-help {
+  font-size: var(--fs-xs);
+  color: var(--locah-n-500);
+  margin: 0.4rem 0 0;
+}
+.ob-input,
+.ob-textarea,
+.ob-select {
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--locah-n-200);
+  background: var(--locah-n-0);
+  font: inherit;
+  font-size: var(--fs-body);
+  color: var(--locah-n-900);
+}
+.ob-input:focus,
+.ob-textarea:focus,
+.ob-select:focus {
+  outline: 2px solid var(--locah-accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+.ob-textarea {
+  min-height: 6.5rem;
+  resize: vertical;
+}
+
+/* Business-type picker: a grid of real choices rather than a dropdown, because
+   this is the decision that reshapes the whole product for the owner. */
+.ob-types {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ob-type {
+  position: relative;
+  display: block;
+  cursor: pointer;
+}
+.ob-type input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.ob-type__box {
+  display: block;
+  height: 100%;
+  padding: var(--sp-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--locah-n-200);
+  background: var(--locah-n-0);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+.ob-type:hover .ob-type__box {
+  border-color: var(--locah-n-300);
+  transform: translateY(-1px);
+}
+.ob-type input:focus-visible + .ob-type__box {
+  outline: 2px solid var(--locah-accent);
+  outline-offset: 2px;
+}
+.ob-type input:checked + .ob-type__box {
+  border-color: var(--locah-accent);
+  box-shadow: 0 0 0 1px var(--locah-accent) inset;
+  background: var(--locah-accent-soft);
+}
+.ob-type__name {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+.ob-type__hint {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--locah-n-500);
+  line-height: 1.45;
+}
+
+.ob-notice {
+  padding: var(--sp-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--locah-good-bd);
+  background: var(--locah-good-bg);
+}
+.ob-notice p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--locah-good-fg);
+}
+
+/* The search bar also carries a type filter on the results page. */
+.lc-search select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-body);
+  min-height: 44px;
+  color: inherit;
+  cursor: pointer;
+  max-width: 11rem;
+}
+/* Stack on phones — four controls will not fit on one pill. */
+@media (max-width: 720px) {
+  .lc-search {
+    flex-wrap: wrap;
+    border-radius: var(--r-lg);
+    padding: 0.6rem;
+    gap: var(--sp-2);
+  }
+  .lc-search input,
+  .lc-search select {
+    flex: 1 1 100%;
+    max-width: none;
+    padding-inline: 0.6rem;
+  }
+  .lc-search__divider {
+    display: none;
+  }
+  .lc-search .lc-btn {
+    width: 100%;
+  }
+}

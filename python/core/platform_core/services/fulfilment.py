@@ -1,0 +1,643 @@
+"""Fulfilment module service (Doc 11 §10.4) — consumes Orders; does not mutate Order internals."""
+
+from __future__ import annotations
+
+import secrets
+import uuid
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from platform_core.context_resolver import bind_public_context
+from platform_core.exceptions import ModuleNotActive, ResourceNotFound, ValidationError
+from platform_core.gates import assert_business_mutable
+from platform_core.models import (
+    BusinessModuleState,
+    FulfilmentJob,
+    FulfilmentSettings,
+    FulfilmentZone,
+    Offering,
+    SalesOrder,
+)
+from platform_core.services.audit import AuditService
+from platform_core.services.business import BusinessService
+from platform_core.services.outbox import OutboxService
+from platform_core.validation.fulfilment import (
+    CUSTOMER_FACING_STATUS,
+    FULFILMENT_MODES,
+    haversine_km,
+    validate_job_status_payload,
+    validate_settings_payload,
+    validate_zone_payload,
+)
+
+TRACKING_TTL_DAYS = 30
+ACTIVE_MODULE_STATES = frozenset({"enabled", "ready", "active"})
+
+
+class FulfilmentService:
+    @staticmethod
+    def serialize_settings(settings: FulfilmentSettings) -> dict[str, Any]:
+        return {
+            "business_id": str(settings.business_id),
+            "pickup_enabled": settings.pickup_enabled,
+            "delivery_enabled": settings.delivery_enabled,
+            "delivery_fee_offering_id": (
+                str(settings.delivery_fee_offering_id)
+                if settings.delivery_fee_offering_id
+                else None
+            ),
+            "version": settings.version,
+        }
+
+    @staticmethod
+    def serialize_zone(zone: FulfilmentZone) -> dict[str, Any]:
+        return {
+            "id": str(zone.id),
+            "business_id": str(zone.business_id),
+            "location_id": str(zone.location_id) if zone.location_id else None,
+            "name": zone.name,
+            "match_type": zone.match_type,
+            "city": zone.city,
+            "postal_prefix": zone.postal_prefix,
+            "center_lat": float(zone.center_lat) if zone.center_lat is not None else None,
+            "center_lng": float(zone.center_lng) if zone.center_lng is not None else None,
+            "radius_km": float(zone.radius_km) if zone.radius_km is not None else None,
+            "charge_amount": float(zone.charge_amount),
+            "currency": zone.currency,
+            "is_active": zone.is_active,
+            "version": zone.version,
+        }
+
+    @staticmethod
+    def serialize_job(job: FulfilmentJob, *, public: bool = False) -> dict[str, Any]:
+        base = {
+            "id": str(job.id),
+            "order_id": str(job.order_id),
+            "mode": job.mode,
+            "status": job.status,
+            "customer_status": CUSTOMER_FACING_STATUS.get(job.status, job.status),
+            "delivery_charge": float(job.delivery_charge),
+            "currency": job.currency,
+            "delivery_address": job.delivery_address,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        }
+        if public:
+            return base
+        return {
+            **base,
+            "business_id": str(job.business_id),
+            "location_id": str(job.location_id),
+            "zone_id": str(job.zone_id) if job.zone_id else None,
+            "tracking_token": job.tracking_token,
+            "tracking_expires_at": job.tracking_expires_at.isoformat(),
+            "outcome_reason": job.outcome_reason,
+            "version": job.version,
+        }
+
+    @staticmethod
+    async def assert_module_active(session: AsyncSession, business_id: uuid.UUID) -> None:
+        state = (
+            (
+                await session.execute(
+                    select(BusinessModuleState).where(
+                        BusinessModuleState.business_id == business_id,
+                        BusinessModuleState.module_id == "fulfilment",
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if state is None or state.activation_state not in ACTIVE_MODULE_STATES:
+            raise ModuleNotActive("fulfilment")
+
+    @staticmethod
+    async def ensure_settings(session: AsyncSession, business_id: uuid.UUID) -> FulfilmentSettings:
+        settings = (
+            (
+                await session.execute(
+                    select(FulfilmentSettings).where(FulfilmentSettings.business_id == business_id)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if settings is None:
+            settings = FulfilmentSettings(business_id=business_id)
+            session.add(settings)
+            await session.flush()
+        return settings
+
+    @staticmethod
+    async def update_settings(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        payload: dict[str, Any],
+    ) -> FulfilmentSettings:
+        await FulfilmentService.assert_module_active(session, business_id)
+        business = await BusinessService.get_by_id(session, business_id)
+        assert_business_mutable(business.state, action="configure_fulfilment")
+        validated = validate_settings_payload(payload)
+        settings = await FulfilmentService.ensure_settings(session, business_id)
+        before = FulfilmentService.serialize_settings(settings)
+        settings.pickup_enabled = validated["pickup_enabled"]
+        settings.delivery_enabled = validated["delivery_enabled"]
+        settings.version += 1
+        settings.updated_at = datetime.now(timezone.utc)
+        await session.flush()
+        after = FulfilmentService.serialize_settings(settings)
+        await AuditService.record(
+            session,
+            event_type="fulfilment.settings_updated",
+            actor_identity_id=actor_id,
+            actor_context="business",
+            business_id=business_id,
+            resource_type="fulfilment_settings",
+            resource_id=business_id,
+            action="settings_updated",
+            before_state=before,
+            after_state=after,
+        )
+        return settings
+
+    @staticmethod
+    async def _ensure_delivery_fee_offering(
+        session: AsyncSession, *, business_id: uuid.UUID
+    ) -> uuid.UUID:
+        settings = await FulfilmentService.ensure_settings(session, business_id)
+        if settings.delivery_fee_offering_id:
+            return settings.delivery_fee_offering_id
+        offering = Offering(
+            business_id=business_id,
+            title="Delivery fee",
+            offering_type="product",
+            status="active",
+            visibility="private",
+            track_inventory=False,
+            price_amount=0,
+            currency="INR",
+            sku=f"FULFIL-DELIVERY-{uuid.uuid4().hex[:8].upper()}",
+        )
+        session.add(offering)
+        await session.flush()
+        settings.delivery_fee_offering_id = offering.id
+        settings.updated_at = datetime.now(timezone.utc)
+        await session.flush()
+        return offering.id
+
+    @staticmethod
+    async def create_zone(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        correlation_id: str,
+        payload: dict[str, Any],
+    ) -> FulfilmentZone:
+        await FulfilmentService.assert_module_active(session, business_id)
+        business = await BusinessService.get_by_id(session, business_id)
+        assert_business_mutable(business.state, action="configure_fulfilment_zone")
+        validated = validate_zone_payload(payload)
+        await FulfilmentService._ensure_delivery_fee_offering(session, business_id=business_id)
+        settings = await FulfilmentService.ensure_settings(session, business_id)
+        if not settings.delivery_enabled:
+            settings.delivery_enabled = True
+            settings.version += 1
+        zone = FulfilmentZone(
+            business_id=business_id,
+            location_id=validated["location_id"],
+            name=validated["name"],
+            match_type=validated["match_type"],
+            city=validated["city"],
+            postal_prefix=validated["postal_prefix"],
+            center_lat=validated["center_lat"],
+            center_lng=validated["center_lng"],
+            radius_km=validated["radius_km"],
+            charge_amount=float(validated["charge_amount"]),
+            currency=validated["currency"],
+            is_active=validated["is_active"],
+        )
+        session.add(zone)
+        await session.flush()
+        after = FulfilmentService.serialize_zone(zone)
+        await AuditService.record(
+            session,
+            event_type="fulfilment.zone_configured",
+            actor_identity_id=actor_id,
+            actor_context="business",
+            business_id=business_id,
+            resource_type="fulfilment_zone",
+            resource_id=zone.id,
+            action="created",
+            after_state=after,
+        )
+        await OutboxService.publish(
+            session,
+            event_type="fulfilment.zone_configured",
+            payload={"business_id": str(business_id), "zone": after},
+            business_id=business_id,
+            correlation_id=correlation_id,
+        )
+        return zone
+
+    @staticmethod
+    async def list_zones(
+        session: AsyncSession, business_id: uuid.UUID, *, active_only: bool = False
+    ) -> list[FulfilmentZone]:
+        query = select(FulfilmentZone).where(
+            FulfilmentZone.business_id == business_id,
+            FulfilmentZone.deleted_at.is_(None),
+        )
+        if active_only:
+            query = query.where(FulfilmentZone.is_active.is_(True))
+        query = query.order_by(FulfilmentZone.name.asc())
+        return list((await session.execute(query)).scalars().all())
+
+    @staticmethod
+    async def match_zone(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        address: dict[str, Any],
+    ) -> tuple[FulfilmentZone | None, Decimal]:
+        zones = await FulfilmentService.list_zones(session, business_id, active_only=True)
+        city = str(address.get("city") or "").strip().lower()
+        postal = str(address.get("postal_code") or address.get("postal") or "").strip()
+        lat = address.get("lat") or address.get("latitude")
+        lng = address.get("lng") or address.get("longitude")
+        for zone in zones:
+            if (
+                zone.match_type == "city"
+                and city
+                and zone.city
+                and zone.city.strip().lower() == city
+            ):
+                return zone, Decimal(str(zone.charge_amount))
+            if (
+                zone.match_type == "postal_prefix"
+                and postal
+                and zone.postal_prefix
+                and postal.startswith(zone.postal_prefix)
+            ):
+                return zone, Decimal(str(zone.charge_amount))
+            if (
+                zone.match_type == "radius"
+                and lat is not None
+                and lng is not None
+                and zone.center_lat is not None
+                and zone.center_lng is not None
+                and zone.radius_km is not None
+            ):
+                dist = haversine_km(
+                    float(lat), float(lng), float(zone.center_lat), float(zone.center_lng)
+                )
+                if dist <= float(zone.radius_km):
+                    return zone, Decimal(str(zone.charge_amount))
+        return None, Decimal("0")
+
+    @staticmethod
+    async def active_modes(session: AsyncSession, business_id: uuid.UUID) -> list[str]:
+        try:
+            await FulfilmentService.assert_module_active(session, business_id)
+        except ValidationError:
+            return []
+        settings = await FulfilmentService.ensure_settings(session, business_id)
+        modes: list[str] = []
+        if settings.pickup_enabled:
+            modes.append("pickup")
+        if settings.delivery_enabled:
+            zones = await FulfilmentService.list_zones(session, business_id, active_only=True)
+            if zones:
+                modes.append("delivery")
+        return modes
+
+    @staticmethod
+    async def create_job_for_order(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        order: SalesOrder,
+        actor_id: uuid.UUID | None,
+        correlation_id: str,
+        mode: str,
+        delivery_address: dict[str, Any] | None = None,
+    ) -> FulfilmentJob:
+        await FulfilmentService.assert_module_active(session, business_id)
+        if mode not in FULFILMENT_MODES:
+            raise ValidationError("Unsupported fulfilment mode")
+        modes = await FulfilmentService.active_modes(session, business_id)
+        if mode not in modes:
+            raise ValidationError(
+                "Fulfilment mode is not enabled for this Business",
+                details={"mode": mode, "active_modes": modes},
+            )
+        existing = (
+            (await session.execute(select(FulfilmentJob).where(FulfilmentJob.order_id == order.id)))
+            .scalars()
+            .first()
+        )
+        if existing is not None:
+            return existing
+
+        zone = None
+        charge = Decimal("0")
+        if mode == "delivery":
+            if not delivery_address:
+                raise ValidationError("Delivery address is required")
+            zone, charge = await FulfilmentService.match_zone(
+                session, business_id=business_id, address=delivery_address
+            )
+            if zone is None:
+                raise ValidationError(
+                    "Address is outside configured delivery zones",
+                    details={"field": "delivery_address"},
+                )
+
+        token = secrets.token_urlsafe(24)
+        job = FulfilmentJob(
+            business_id=business_id,
+            order_id=order.id,
+            location_id=order.location_id,
+            mode=mode,
+            status="pending",
+            zone_id=zone.id if zone else None,
+            delivery_address=delivery_address,
+            delivery_charge=float(charge),
+            currency=order.currency,
+            tracking_token=token,
+            tracking_expires_at=datetime.now(timezone.utc) + timedelta(days=TRACKING_TTL_DAYS),
+            created_by=actor_id,
+            updated_by=actor_id,
+        )
+        session.add(job)
+        await session.flush()
+        after = FulfilmentService.serialize_job(job)
+        if actor_id is not None:
+            await AuditService.record(
+                session,
+                event_type="fulfilment.job_created",
+                actor_identity_id=actor_id,
+                actor_context="business",
+                business_id=business_id,
+                resource_type="fulfilment_job",
+                resource_id=job.id,
+                action="created",
+                after_state=after,
+            )
+        await OutboxService.publish(
+            session,
+            event_type="fulfilment.job_created",
+            payload={
+                "business_id": str(business_id),
+                "job_id": str(job.id),
+                "order_id": str(order.id),
+                "mode": mode,
+                "status": job.status,
+            },
+            business_id=business_id,
+            correlation_id=correlation_id,
+        )
+        return job
+
+    @staticmethod
+    async def list_jobs(
+        session: AsyncSession,
+        business_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        mode: str | None = None,
+    ) -> list[FulfilmentJob]:
+        query = select(FulfilmentJob).where(FulfilmentJob.business_id == business_id)
+        if status:
+            query = query.where(FulfilmentJob.status == status)
+        if mode:
+            query = query.where(FulfilmentJob.mode == mode)
+        query = query.order_by(FulfilmentJob.created_at.desc())
+        return list((await session.execute(query)).scalars().all())
+
+    @staticmethod
+    async def get_job(
+        session: AsyncSession, *, business_id: uuid.UUID, job_id: uuid.UUID
+    ) -> FulfilmentJob:
+        job = (
+            (
+                await session.execute(
+                    select(FulfilmentJob).where(
+                        FulfilmentJob.business_id == business_id,
+                        FulfilmentJob.id == job_id,
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if job is None:
+            raise ResourceNotFound("FulfilmentJob")
+        return job
+
+    @staticmethod
+    async def get_job_by_order(
+        session: AsyncSession, *, business_id: uuid.UUID, order_id: uuid.UUID
+    ) -> FulfilmentJob | None:
+        return (
+            (
+                await session.execute(
+                    select(FulfilmentJob).where(
+                        FulfilmentJob.business_id == business_id,
+                        FulfilmentJob.order_id == order_id,
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+
+    @staticmethod
+    async def transition_status(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        job_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        correlation_id: str,
+        payload: dict[str, Any],
+    ) -> FulfilmentJob:
+        job = await FulfilmentService.get_job(session, business_id=business_id, job_id=job_id)
+        validated = validate_job_status_payload(payload, current=job.status)
+        next_status = validated["status"]
+        if job.mode == "pickup" and next_status == "out_for_delivery":
+            raise ValidationError("Pickup jobs cannot enter out_for_delivery")
+        if job.mode == "delivery" and job.status == "ready" and next_status == "delivered":
+            raise ValidationError(
+                "Delivery jobs must pass through out_for_delivery",
+                details={"from": "ready", "to": "delivered"},
+            )
+        before = FulfilmentService.serialize_job(job)
+        job.status = next_status
+        job.outcome_reason = validated["reason"]
+        job.updated_by = actor_id
+        job.updated_at = datetime.now(timezone.utc)
+        job.version += 1
+        await session.flush()
+        after = FulfilmentService.serialize_job(job)
+        await AuditService.record(
+            session,
+            event_type="fulfilment.status_changed",
+            actor_identity_id=actor_id,
+            actor_context="business",
+            business_id=business_id,
+            resource_type="fulfilment_job",
+            resource_id=job.id,
+            action="status_changed",
+            before_state=before,
+            after_state=after,
+            reason=validated["reason"],
+        )
+        event_type = "fulfilment.status_changed"
+        if next_status == "delivered":
+            event_type = "fulfilment.delivered"
+        elif next_status == "failed":
+            event_type = "fulfilment.failed"
+        await OutboxService.publish(
+            session,
+            event_type=event_type,
+            payload={
+                "business_id": str(business_id),
+                "job_id": str(job.id),
+                "order_id": str(job.order_id),
+                "from": before["status"],
+                "to": next_status,
+                "reason": validated["reason"],
+            },
+            business_id=business_id,
+            correlation_id=correlation_id,
+        )
+        if event_type != "fulfilment.status_changed":
+            await OutboxService.publish(
+                session,
+                event_type="fulfilment.status_changed",
+                payload={
+                    "business_id": str(business_id),
+                    "job_id": str(job.id),
+                    "order_id": str(job.order_id),
+                    "from": before["status"],
+                    "to": next_status,
+                },
+                business_id=business_id,
+                correlation_id=correlation_id,
+            )
+        return job
+
+    @staticmethod
+    async def cancel_for_order(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        order_id: uuid.UUID,
+        correlation_id: str,
+        reason: str,
+    ) -> None:
+        job = await FulfilmentService.get_job_by_order(
+            session, business_id=business_id, order_id=order_id
+        )
+        if job is None or job.status in {"delivered", "cancelled", "failed"}:
+            return
+        before = job.status
+        job.status = "cancelled"
+        job.outcome_reason = reason
+        job.updated_at = datetime.now(timezone.utc)
+        job.version += 1
+        await session.flush()
+        await OutboxService.publish(
+            session,
+            event_type="fulfilment.status_changed",
+            payload={
+                "business_id": str(business_id),
+                "job_id": str(job.id),
+                "order_id": str(order_id),
+                "from": before,
+                "to": "cancelled",
+                "reason": reason,
+            },
+            business_id=business_id,
+            correlation_id=correlation_id,
+        )
+
+    @staticmethod
+    async def get_tracking(
+        session: AsyncSession,
+        *,
+        order_id: uuid.UUID,
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        # Public endpoint: no identity, no business context bound yet, and
+        # the order/job tables' RLS policies are business-scoped. Resolve the
+        # owning Business via a narrow SECURITY DEFINER function (exposes
+        # only orders_orders.business_id for this one order id, nothing
+        # else) and bind it, mirroring bind_public_context's use elsewhere
+        # for guest-facing reads. This bind establishes tenant scope only —
+        # it is not an authorization decision. The tracking_token check
+        # below remains the sole authorization gate, unchanged.
+        business_id = (
+            await session.execute(
+                text("SELECT resolve_order_business_id(:order_id)"),
+                {"order_id": order_id},
+            )
+        ).scalar()
+        if business_id is None:
+            raise ResourceNotFound("Order tracking")
+        await bind_public_context(session, business_id)
+
+        job = (
+            (await session.execute(select(FulfilmentJob).where(FulfilmentJob.order_id == order_id)))
+            .scalars()
+            .first()
+        )
+        if job is None:
+            raise ResourceNotFound("Order tracking")
+        if token is None or not secrets.compare_digest(job.tracking_token, token):
+            raise ResourceNotFound("Order tracking")
+        order = (
+            (await session.execute(select(SalesOrder).where(SalesOrder.id == order_id)))
+            .scalars()
+            .first()
+        )
+        if order is None:
+            raise ResourceNotFound("Order tracking")
+        if job.tracking_expires_at < datetime.now(timezone.utc):
+            return {
+                "state": "expired",
+                "order": {"id": str(order.id), "order_number": order.order_number},
+                "fulfilment": None,
+            }
+        state = "ok"
+        if job.status == "failed":
+            state = "failed"
+        elif job.status == "cancelled":
+            state = "cancelled"
+        elif (
+            job.status == "out_for_delivery"
+            and job.updated_at
+            and job.updated_at < datetime.now(timezone.utc) - timedelta(hours=6)
+        ):
+            state = "delayed"
+        return {
+            "order": {
+                "id": str(order.id),
+                "order_number": order.order_number,
+                "status": order.status,
+                "payment_status": order.payment_status,
+                "payment_method": order.payment_method,
+                "total_amount": float(order.total_amount),
+                "currency": order.currency,
+            },
+            "fulfilment": FulfilmentService.serialize_job(job, public=True),
+            "state": state,
+        }

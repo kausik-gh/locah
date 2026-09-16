@@ -1,0 +1,39 @@
+[tool.uv]
+workspace = { members = ["apps/api", "apps/worker", "python/core", "python/domain_events", "python/testing"] }
+
+[project]
+name = "platform-root"
+version = "0.1.0"
+description = "Canonical Multi-tenant Platform Root"
+requires-python = ">=3.12"
+dependencies = [
+    "ruff>=0.3.0",
+    "mypy>=1.9.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-xdist>=3.5.0",
+    "fastapi>=0.110.0",
+    "httpx>=0.27.0",
+    "sqlalchemy[asyncio]>=2.0.25",
+    "asyncpg>=0.29.0",
+    "structlog>=24.1.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+explicit_package_bases = true
+exclude = [
+    "\\.venv",
+    "node_modules",
+]
+
+
+
+
+

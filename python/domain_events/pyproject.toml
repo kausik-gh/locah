@@ -1,0 +1,8 @@
+[project]
+name = "platform-domain-events"
+version = "0.1.0"
+description = "Platform Domain Events and Outbox Models"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.6.0",
+]
