@@ -8,11 +8,18 @@ export const revalidate = 60
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: { slug: string }
+  searchParams?: { preview_token?: string }
 }): Promise<Metadata> {
   if (RESERVED_SLUGS.has(params.slug)) return {}
-  return websiteMetadata(await fetchPublicWebsite(params.slug))
+  // The token has to be passed here too. Without it a draft belonging to a
+  // Business that is not public yet resolves to nothing, and the tab falls back
+  // to LOCAH's own title while the page below shows the business.
+  return websiteMetadata(
+    await fetchPublicWebsite(params.slug, undefined, searchParams?.preview_token)
+  )
 }
 
 export default async function BusinessWebsiteHome({
