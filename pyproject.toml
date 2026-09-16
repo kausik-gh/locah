@@ -33,6 +33,15 @@ exclude = [
     "node_modules",
 ]
 
+# Vercel FastAPI deploy (monorepo): the API lives under apps/api/src, not at a
+# default entrypoint path. See https://vercel.com/docs/frameworks/backend/fastapi
+[tool.vercel]
+entrypoint = "apps.api.src.platform_api.main:app"
+
+[tool.vercel.scripts]
+# Install API runtime workspace deps (platform-core, domain-events, etc.) from uv.lock.
+install = "uv sync --frozen --package platform-api"
+
 
 
 
