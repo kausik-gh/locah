@@ -1,0 +1,142 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  typescript:
+    name: TypeScript Checks (Lint, Typecheck, Build, Test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint Workspace
+        run: pnpm lint
+
+      - name: Typecheck Workspace
+        run: pnpm typecheck
+
+      - name: Run Build
+        run: pnpm build
+
+      - name: Run Tests
+        run: pnpm test
+
+  python:
+    name: Python Checks (Ruff, Mypy, Pytest)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # CI-only value for the platform_api role created by
+      # 20260802000000_stage7_rls_role_separation.sql. Never used outside
+      # this job's own ephemeral Postgres container.
+      CI_PLATFORM_API_PASSWORD: ci-only-platform-api-password
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.11.28"
+
+      - name: Sync Dependencies
+        run: uv sync --all-packages
+
+      - name: Ruff Lint
+        run: uv run ruff check .
+
+      - name: Ruff Format Check
+        run: uv run ruff format --check .
+
+      - name: Mypy Typecheck
+        run: uv run mypy --explicit-package-bases .
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply CI Supabase shim
+        # infra/deploy/ci-bootstrap.sql exists only so migrations that target
+        # Supabase-managed schemas (auth.*, storage.*) can apply against this
+        # plain postgres:16 container. See that file's header comment.
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f infra/deploy/ci-bootstrap.sql
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      - name: Apply migrations
+        # infra/supabase/migrations/*.sql is forward-only and never edited
+        # here; applied in filename (timestamp) order. Fails the job on the
+        # first error rather than continuing past a broken migration.
+        run: |
+          set -e
+          for f in infra/supabase/migrations/*.sql; do
+            echo "Applying $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      - name: Apply seed
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f infra/supabase/seed/00_platform.sql
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      - name: Provision RLS role password
+        # 20260802000000_stage7_rls_role_separation.sql creates the
+        # `platform_api` login role without a password (migrations are in
+        # git) — set one here, CI-only, never committed.
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+            "ALTER ROLE platform_api WITH PASSWORD '$CI_PLATFORM_API_PASSWORD'"
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      - name: Run Pytest
+        # Root pyproject.toml carries no [tool.pytest.ini_options] — invoking
+        # from repo root breaks apps/api's and apps/worker's imports. Must run
+        # from apps/api with its own pytest config (which also picks up
+        # ../worker/tests via pythonpath).
+        #
+        # API_DATABASE_URL is set intentionally: the suite then runs on the
+        # RLS-enforcing `platform_api` role rather than the `postgres` bypass
+        # path (Doc 11 §21.1 gate 2 / AUD-02).
+        run: cd apps/api && uv run pytest tests ../worker/tests -c pyproject.toml --rootdir .
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres
+          API_DATABASE_URL: postgresql+asyncpg://platform_api:${{ env.CI_PLATFORM_API_PASSWORD }}@localhost:5432/postgres
