@@ -40,7 +40,7 @@ out/
 .env.test.local
 .env.production.local
 *.env
-!*.env.example
+!.env.example
 
 # IDEs and OS files
 .idea/
@@ -52,3 +52,6 @@ out/
 *.sw?
 .DS_Store
 Thumbs.db
+
+# Vercel project link files (per-machine; never commit)
+.vercel/

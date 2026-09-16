@@ -63,6 +63,45 @@ def test_normalize_razorpay_captured_event() -> None:
     assert event["payment_id"] == "11111111-1111-1111-1111-111111111111"
 
 
+def test_razorpay_webhook_hmac_accepts_valid_and_rejects_forged(
+    monkeypatch: Any,
+) -> None:
+    """Razorpay callbacks are HMAC-SHA256 of the raw body. Route transfers
+    cannot be exercised until Razorpay enables Route; the signature path still
+    has to refuse a forged event.
+    """
+    import hashlib
+    import hmac
+
+    from platform_core.payments.provider_adapter import verify_webhook_signature
+
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("PAYMENT_WEBHOOK_SECRET", "unit-test-unique-webhook-secret")
+    body = b'{"event":"payment.captured","id":"evt_probe"}'
+    signature = hmac.new(
+        b"unit-test-unique-webhook-secret", body, hashlib.sha256
+    ).hexdigest()
+    assert verify_webhook_signature(
+        "razorpay", body, {"X-Razorpay-Signature": signature}
+    )
+    assert not verify_webhook_signature(
+        "razorpay", body, {"X-Razorpay-Signature": "00" * 32}
+    )
+    assert not verify_webhook_signature("razorpay", body, {})
+
+
+def test_route_unavailable_matches_live_razorpay_error() -> None:
+    from platform_core.payments.razorpay import _razorpay_error_description, _route_unavailable
+
+    body = (
+        '{"error":{"code":"BAD_REQUEST_ERROR",'
+        '"description":"Route feature not enabled for the merchant",'
+        '"source":"business","step":"linked_account_create","reason":"NA"}}'
+    )
+    assert _route_unavailable(body)
+    assert _razorpay_error_description(body) == "Route feature not enabled for the merchant"
+
+
 def test_normalize_stub_payload_unchanged() -> None:
     event = normalize_payment_event(
         "stub",

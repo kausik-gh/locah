@@ -15,6 +15,7 @@ The normal merchant UX no longer requires it.
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
@@ -131,13 +132,27 @@ def _route_unavailable(body: str) -> bool:
     return any(
         token in lowered
         for token in (
-            "route",
+            "route feature not enabled",
+            "route is not enabled",
+            "this transfer is not supported",
+            "marketplace feature is not enabled",
             "linked account",
             "accounts feature",
-            "not enabled",
-            "access denied",
+            "the requested url was not found on the server",
         )
     )
+
+
+def _razorpay_error_description(body: str) -> str:
+    """Surface Razorpay's own description; never invent a dashboard diagnosis."""
+    try:
+        payload = json.loads(body)
+        err = payload.get("error") if isinstance(payload, dict) else None
+        if isinstance(err, dict) and err.get("description"):
+            return str(err["description"])
+    except Exception:  # noqa: BLE001 — body may not be JSON
+        pass
+    return body[:300]
 
 
 async def create_linked_account(
@@ -189,7 +204,7 @@ async def create_linked_account(
     except httpx.HTTPError as exc:
         return LinkedAccountResult(False, None, None, f"Could not reach Razorpay: {exc}")
 
-    body = resp.text[:400]
+    body = resp.text[:800]
     if resp.status_code in {200, 201}:
         data = resp.json()
         account_id = str(data.get("id") or "")
@@ -197,20 +212,25 @@ async def create_linked_account(
         if not account_id:
             return LinkedAccountResult(False, None, None, "Razorpay created an account without an id.")
         return LinkedAccountResult(True, account_id, status, "Linked account created.")
-    if resp.status_code in {400, 401, 403} and _route_unavailable(body):
+    description = _razorpay_error_description(body)
+    if resp.status_code in {400, 401, 403, 404} and (
+        _route_unavailable(body) or _route_unavailable(description)
+    ):
         return LinkedAccountResult(
             ok=False,
             account_id=None,
             status=None,
             detail=(
-                "Razorpay Route is not enabled on the LOCAH platform account. "
-                "Enable Route in the Razorpay dashboard, then try again. "
-                "Cash and pay-at-business still work."
+                f"Razorpay rejected linked-account creation ({resp.status_code}): "
+                f"{description}. Cash and pay-at-business still work."
             ),
             external_dependency=True,
         )
     return LinkedAccountResult(
-        False, None, None, f"Razorpay returned {resp.status_code} creating a linked account: {body}"
+        False,
+        None,
+        None,
+        f"Razorpay returned {resp.status_code} creating a linked account: {description}",
     )
 
 
@@ -279,5 +299,5 @@ async def create_route_order(
         amount_paise,
         transfer_paise,
         fee_paise,
-        f"Razorpay returned {resp.status_code} creating an order: {resp.text[:300]}",
+        f"Razorpay returned {resp.status_code} creating an order: {_razorpay_error_description(resp.text)}",
     )

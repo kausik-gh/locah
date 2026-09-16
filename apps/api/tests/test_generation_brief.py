@@ -79,3 +79,25 @@ def test_fallback_clinic_includes_enquiry_form() -> None:
     enquire = next(p for p in payload["pages"] if p["page_type"] == "enquire")
     types = [s["section_type_id"] for s in enquire["sections"]]
     assert "enquiry_form" in types
+
+
+def test_complete_structure_normalises_home_nav_path() -> None:
+    from platform_core.services.website_generation import WebsiteGenerationService
+
+    payload = {
+        "pages": [
+            {
+                "slug": "home",
+                "title": "Home",
+                "page_type": "home",
+                "sections": [{"section_type_id": "hero", "content": {"headline": "Hi"}}],
+            }
+        ],
+        "navigation": [{"label": "Home", "path": "/home"}],
+        "theme_hints": {},
+    }
+    out = WebsiteGenerationService._complete_structure(
+        payload, {"display_name": "Ragi House", "business_type": "restaurant"}
+    )
+    assert out["navigation"][0]["path"] == "/"
+    assert out["theme_hints"]["personality"] == "warm"

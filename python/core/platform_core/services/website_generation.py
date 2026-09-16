@@ -280,6 +280,18 @@ class WebsiteGenerationService:
                         "is_visible": True,
                     }
                 )
+
+        navigation = payload.get("navigation")
+        if isinstance(navigation, list):
+            for item in navigation:
+                if not isinstance(item, dict):
+                    continue
+                path = str(item.get("path") or "/").strip() or "/"
+                if path in {"home", "/home"}:
+                    path = "/"
+                elif not path.startswith("/"):
+                    path = f"/{path}"
+                item["path"] = path
         return payload
 
     @staticmethod

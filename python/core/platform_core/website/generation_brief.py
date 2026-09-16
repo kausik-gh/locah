@@ -16,7 +16,6 @@ from platform_core.website.section_registry import (
     DEFAULT_PAGES,
     PAGES_BY_BUSINESS_TYPE,
     SECTION_CATALOGUE_PROMPT,
-    catalogue_section_for_page,
 )
 
 # What the catalogue page is for, in the owner's terms — never invent checkout
