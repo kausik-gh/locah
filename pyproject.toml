@@ -1,5 +1,6 @@
 [tool.uv]
 workspace = { members = ["apps/api", "apps/worker", "python/core", "python/domain_events", "python/testing"] }
+default-groups = ["dev"]
 
 [project]
 name = "platform-root"
@@ -7,6 +8,12 @@ version = "0.1.0"
 description = "Canonical Multi-tenant Platform Root"
 requires-python = ">=3.12"
 dependencies = [
+    # Vercel API runtime: pulls platform-core + platform-domain-events from the workspace.
+    "platform-api",
+]
+
+[dependency-groups]
+dev = [
     "ruff>=0.3.0",
     "mypy>=1.9.0",
     "pytest>=8.0.0",
@@ -18,6 +25,9 @@ dependencies = [
     "asyncpg>=0.29.0",
     "structlog>=24.1.0",
 ]
+
+[tool.uv.sources]
+platform-api = { workspace = true }
 
 [tool.ruff]
 line-length = 100
@@ -36,11 +46,11 @@ exclude = [
 # Vercel FastAPI deploy (monorepo): the API lives under apps/api/src, not at a
 # default entrypoint path. See https://vercel.com/docs/frameworks/backend/fastapi
 [tool.vercel]
-entrypoint = "apps.api.src.platform_api.main:app"
+entrypoint = "platform_api.main:app"
 
 [tool.vercel.scripts]
-# Install API runtime workspace deps (platform-core, domain-events, etc.) from uv.lock.
-install = "uv sync --frozen --package platform-api"
+# Runtime-only install: workspace API package + its deps, no dev/test tooling.
+install = "uv sync --frozen --no-group dev"
 
 
 
