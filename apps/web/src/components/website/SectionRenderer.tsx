@@ -50,15 +50,16 @@ function pathHref(slug: string, path: string) {
   return `/${slug}/${cleaned}`
 }
 
+/** No `theme` prop: the business's theme reaches every section through the
+ *  `--site-*` custom properties set once on the page wrapper, so sections never
+ *  need to read colours in JavaScript. */
 export function SectionRenderer({
   section,
   businessSlug,
-  theme,
   index = 0,
 }: {
   section: Section
   businessSlug: string
-  theme: Record<string, unknown>
   /** Position on the page — used only to alternate section grounds. */
   index?: number
 }) {

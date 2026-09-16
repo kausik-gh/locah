@@ -133,7 +133,6 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
             key={section.id}
             section={section}
             businessSlug={slug}
-            theme={theme}
             index={i}
           />
         ))}
