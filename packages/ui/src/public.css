@@ -1374,3 +1374,10 @@ html {
     width: 100%;
   }
 }
+
+/* Marketplace business profile head */
+.mkp-head {
+  display: grid;
+  gap: var(--sp-6);
+  max-width: 52rem;
+}
