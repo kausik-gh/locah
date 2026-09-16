@@ -28,6 +28,7 @@ const PERSONALITY: Record<string, string> = {
   gym: 'bold',
   studio: 'bold',
   fitness: 'bold',
+  clinic: 'premium',
   retail: 'clean',
   professional_service: 'clean',
   education: 'clean',
@@ -57,7 +58,8 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
   const slug = data.business.slug
   const name = data.business.display_name
   const type = (data.business.business_type || '').toLowerCase()
-  const personality = PERSONALITY[type] || 'clean'
+  const personality =
+    String(theme.personality || '') || PERSONALITY[type] || 'clean'
 
   const primary = String(theme.primary_color || DEFAULT_PRIMARY[personality] || '#1f3d34')
   const accent = String(theme.accent_color || primary)

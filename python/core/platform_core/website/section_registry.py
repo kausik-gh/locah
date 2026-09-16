@@ -71,6 +71,52 @@ CORE_SECTION_SCHEMAS: dict[str, dict[str, Any]] = {
             "cta_url": {"type": "string", "maxLength": 200},
         },
     },
+    "gallery": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "image_asset_ids": {"type": "array", "items": {"type": "string"}},
+        },
+    },
+    "enquiry_form": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "subtitle": {"type": "string", "maxLength": 300},
+            "offering_id": {"type": "string", "format": "uuid"},
+        },
+    },
+    "menu_section": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "show_prices": {"type": "boolean"},
+            "category_filter": {"type": "array", "items": {"type": "string"}},
+        },
+    },
+    "rooms_section": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "subtitle": {"type": "string", "maxLength": 300},
+        },
+    },
+    "plans_section": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "subtitle": {"type": "string", "maxLength": 300},
+            "highlight_plan_id": {"type": "string", "format": "uuid"},
+        },
+    },
+    "classes_section": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "show_upcoming_only": {"type": "boolean"},
+            "max_items": {"type": "integer", "minimum": 1, "maximum": 20},
+        },
+    },
 }
 
 ALLOWED_SECTION_TYPE_IDS = frozenset(CORE_SECTION_SCHEMAS.keys())
@@ -155,6 +201,13 @@ PAGES_BY_BUSINESS_TYPE: dict[str, list[tuple[str, str, str]]] = {
         ("about", "About", "about"),
         ("contact", "Contact", "contact"),
     ],
+    "clinic": [
+        ("home", "Home", "home"),
+        ("services", "Services", "services"),
+        ("about", "About", "about"),
+        ("contact", "Contact", "contact"),
+        ("enquire", "Enquire", "enquire"),
+    ],
     "hotel": [
         ("home", "Home", "home"),
         ("rooms", "Rooms", "rooms"),
@@ -200,6 +253,66 @@ DEFAULT_PAGES: list[tuple[str, str, str]] = [
     ("about", "About", "about"),
     ("contact", "Contact", "contact"),
 ]
+
+
+def catalogue_section_for_page(
+    page_type: str, slug: str, title: str, name: str
+) -> dict[str, Any] | None:
+    """Platform-owned list section for a catalogue page. AI must not invent items."""
+    page_type = page_type.lower()
+    slug = slug.strip("/").lower()
+    binding = {"module": "offerings-catalog"}
+    if page_type == "menu" or slug == "menu":
+        return {
+            "section_type_id": "menu_section",
+            "layout_variant": "categorized",
+            "content": {"title": title, "show_prices": True},
+            "module_binding": binding,
+            "is_visible": True,
+        }
+    if page_type == "rooms" or slug == "rooms":
+        return {
+            "section_type_id": "rooms_section",
+            "layout_variant": "cards",
+            "content": {"title": title, "subtitle": f"Places to stay at {name}"},
+            "module_binding": binding,
+            "is_visible": True,
+        }
+    if page_type == "plans" or slug == "plans":
+        return {
+            "section_type_id": "plans_section",
+            "layout_variant": "cards",
+            "content": {"title": title, "subtitle": f"Ways to join {name}"},
+            "module_binding": binding,
+            "is_visible": True,
+        }
+    if page_type == "classes" or slug == "classes":
+        return {
+            "section_type_id": "classes_section",
+            "layout_variant": "cards",
+            "content": {"title": title, "max_items": 12, "show_upcoming_only": False},
+            "module_binding": binding,
+            "is_visible": True,
+        }
+    if page_type in {"offerings", "services", "products"} or slug in {
+        "offerings",
+        "services",
+        "products",
+        "shop",
+        "courses",
+    }:
+        return {
+            "section_type_id": "offerings_list",
+            "layout_variant": "cards",
+            "content": {
+                "title": title,
+                "subtitle": f"From {name}",
+                "max_items": 12,
+            },
+            "module_binding": binding,
+            "is_visible": True,
+        }
+    return None
 
 
 # ---------------------------------------------------------------------------

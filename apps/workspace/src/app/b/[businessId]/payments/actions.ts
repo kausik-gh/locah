@@ -68,6 +68,30 @@ async function trySend(
   return { ok: true, data: json?.data }
 }
 
+export async function enablePlatformPayments(
+  _prev: RazorpayState,
+  formData: FormData
+): Promise<RazorpayState> {
+  const businessId = String(formData.get('businessId'))
+  const r = await trySend(
+    `/v1/platform/businesses/${businessId}/payments/razorpay/enable`,
+    'POST'
+  )
+  revalidatePath(`/b/${businessId}/payments`)
+  if (!r.ok) return { ok: false, error: r.error ?? 'Could not enable online payments.' }
+  const status = String(r.data?.status ?? '')
+  if (status === 'active') {
+    return { ok: true, error: null, status }
+  }
+  return {
+    ok: false,
+    status,
+    error:
+      String(r.data?.verification_error ?? '') ||
+      'Razorpay could not finish linking this business yet. Cash still works.',
+  }
+}
+
 export async function connectRazorpay(
   _prev: RazorpayState,
   formData: FormData

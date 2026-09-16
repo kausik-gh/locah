@@ -233,6 +233,32 @@ async def verify_razorpay(
     }
 
 
+@router.post("/{business_id}/payments/razorpay/enable")
+async def enable_platform_payments(
+    business_id: UUID,
+    actor: BusinessActorContext = Depends(
+        require_business_actor(PAYMENTS_MANAGE_CONNECTION, "payments")
+    ),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Onboard this Business as a Razorpay Route linked account.
+
+    Owners never paste API keys. If Route is not enabled on the LOCAH
+    Razorpay account, the response is honest and cash still works.
+    """
+    connection = await MerchantService.enable_platform_payments(
+        session,
+        business_id=business_id,
+        actor_id=actor.request.identity_id,
+        correlation_id=actor.request.correlation_id,
+    )
+    await session.commit()
+    return {
+        "data": MerchantService.serialize(connection),
+        "meta": {"correlation_id": actor.request.correlation_id},
+    }
+
+
 @router.post("/{business_id}/payments")
 async def create_payment(
     business_id: UUID,

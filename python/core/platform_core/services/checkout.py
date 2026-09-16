@@ -209,13 +209,36 @@ class CheckoutService:
         else:
             location_id = uuid.UUID(str(location_id))
 
-        options = await CheckoutService.checkout_options(session, slug=slug)
-        if mode not in options["fulfilment_modes"]:
+        modes = await FulfilmentService.active_modes(session, business.id)
+        payments_active = (
+            await session.execute(
+                select(BusinessModuleState).where(
+                    BusinessModuleState.business_id == business.id,
+                    BusinessModuleState.module_id == "payments",
+                )
+            )
+        ).scalars().first()
+        merchant = (
+            await session.execute(
+                select(MerchantConnection).where(
+                    MerchantConnection.business_id == business.id,
+                    MerchantConnection.status == "active",
+                ).limit(1)
+            )
+        ).scalars().first()
+        payment_methods = ["cod"]
+        if (
+            payments_active
+            and payments_active.activation_state in ACTIVE_MODULE_STATES
+            and merchant is not None
+        ):
+            payment_methods.append("online")
+        if mode not in modes:
             raise ValidationError(
                 "Selected fulfilment mode is not available",
-                details={"mode": mode, "active_modes": options["fulfilment_modes"]},
+                details={"mode": mode, "active_modes": modes},
             )
-        if payment_method not in options["payment_methods"]:
+        if payment_method not in payment_methods:
             raise ValidationError(
                 "Selected payment method is not available",
                 details={"payment_method": payment_method},

@@ -14,6 +14,7 @@ from platform_core.logging import get_logger
 from platform_core.models import PaymentAttempt, PaymentWebhookReceipt
 from platform_core.payments.provider_adapter import (
     extract_event_id,
+    normalize_payment_event,
     parse_webhook_payload,
     verify_webhook_signature,
 )
@@ -68,29 +69,45 @@ class PaymentWebhookService:
         session.add(receipt)
         await session.flush()
 
-        payment_id_raw = payload.get("payment_id") or payload.get("payment_attempt_id")
-        status_raw = payload.get("status")
-        if not payment_id_raw or not status_raw:
+        event = normalize_payment_event(provider, payload)
+        payment_id_raw = event.get("payment_id")
+        status_raw = event.get("status")
+        order_id = event.get("order_id")
+        if (not payment_id_raw and not order_id) or not status_raw:
             receipt.status = "failed"
-            receipt.failure_reason = "Missing payment_id or status"
+            receipt.failure_reason = "Missing payment_id/order_id or status"
             await session.flush()
             return {"status": "ignored", "event_id": event_id}
 
-        payment_uuid = uuid.UUID(str(payment_id_raw))
-        result = await session.execute(
-            select(PaymentAttempt).where(
-                PaymentAttempt.id == payment_uuid,
-                PaymentAttempt.deleted_at.is_(None),
+        payment: PaymentAttempt | None = None
+        if payment_id_raw:
+            try:
+                payment_uuid = uuid.UUID(str(payment_id_raw))
+            except ValueError:
+                payment_uuid = None
+            if payment_uuid is not None:
+                result = await session.execute(
+                    select(PaymentAttempt).where(
+                        PaymentAttempt.id == payment_uuid,
+                        PaymentAttempt.deleted_at.is_(None),
+                    )
+                )
+                payment = result.scalars().first()
+        if payment is None and order_id:
+            result = await session.execute(
+                select(PaymentAttempt).where(
+                    PaymentAttempt.provider_reference == str(order_id),
+                    PaymentAttempt.deleted_at.is_(None),
+                )
             )
-        )
-        payment = result.scalars().first()
+            payment = result.scalars().first()
         if payment is None:
             receipt.status = "failed"
             receipt.failure_reason = "Payment not found"
             await session.flush()
             raise ValidationError(
                 "Payment not found for webhook",
-                details={"payment_id": str(payment_uuid)},
+                details={"event_id": event_id},
             )
 
         receipt.payment_attempt_id = payment.id
@@ -109,9 +126,9 @@ class PaymentWebhookService:
                 target_status=target_status,
                 correlation_id=correlation_id,
                 actor_id=business.primary_owner_identity_id,
-                failure_code=payload.get("failure_code"),
-                failure_reason=payload.get("failure_reason"),
-                provider_reference=payload.get("provider_reference"),
+                failure_code=event.get("failure_code") or payload.get("failure_code"),
+                failure_reason=event.get("failure_reason") or payload.get("failure_reason"),
+                provider_reference=event.get("provider_reference") or payload.get("provider_reference"),
             )
             receipt.status = "processed"
             receipt.processed_at = datetime.now(timezone.utc)

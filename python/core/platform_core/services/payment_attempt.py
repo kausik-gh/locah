@@ -183,6 +183,64 @@ class PaymentAttemptService:
         return list((await session.execute(query)).scalars().all())
 
     @staticmethod
+    async def _attach_online_provider(
+        session: AsyncSession,
+        payment: PaymentAttempt,
+    ) -> PaymentAttempt:
+        """Create a Razorpay Route order when this Business is on platform payments.
+
+        Legacy merchant-key connections and missing connections stay on the
+        existing stub/processing path. COD is never routed here.
+        """
+        from decimal import Decimal
+
+        from platform_core.payments.razorpay import create_route_order, platform_credentials
+
+        merchant = await PaymentResolver.resolve_merchant(
+            session, business_id=payment.business_id, provider="razorpay"
+        )
+        if merchant is None or merchant.status != "active":
+            return payment
+        metadata = merchant.provider_metadata or {}
+        if str(metadata.get("connection_mode") or "") != "platform_route":
+            return payment
+        linked = str(metadata.get("linked_account_id") or "").strip()
+        if not linked:
+            return payment
+
+        creds = platform_credentials()
+        result = await create_route_order(
+            amount=Decimal(str(payment.amount)),
+            currency=payment.currency,
+            receipt=str(payment.id).replace("-", "")[:40],
+            linked_account_id=linked,
+            notes={
+                "locah_payment_id": str(payment.id),
+                "business_id": str(payment.business_id),
+            },
+        )
+        payment.provider = "razorpay"
+        if not result.ok:
+            payment.status = "failed"
+            payment.failure_code = "provider_unavailable"
+            payment.failure_reason = result.detail
+            payment.provider_metadata = {"connection_mode": "platform_route"}
+            await session.flush()
+            return payment
+        payment.provider_reference = result.order_id
+        payment.provider_metadata = {
+            "connection_mode": "platform_route",
+            "razorpay_order_id": result.order_id,
+            "linked_account_id": linked,
+            "checkout_key_id": creds.key_id if creds else None,
+            "gross_amount": float(payment.amount),
+            "platform_fee": result.platform_fee_paise / 100.0,
+            "business_amount": result.transfer_paise / 100.0,
+        }
+        await session.flush()
+        return payment
+
+    @staticmethod
     async def create_attempt(
         session: AsyncSession,
         *,
@@ -243,6 +301,10 @@ class PaymentAttemptService:
         )
         session.add(payment)
         await session.flush()
+        if validated["payment_method"] == "online":
+            payment = await PaymentAttemptService._attach_online_provider(
+                session, payment
+            )
         await PaymentAttemptService._sync_source_payment_status(session, payment)
         after = PaymentAttemptService.serialize(payment)
         await PaymentAttemptService._publish_status(

@@ -77,7 +77,8 @@ def _q(
 
 # --- universal questions (every Business) ------------------------------------
 
-UNIVERSAL_QUESTIONS: list[dict[str, Any]] = [
+# Shown first. The rest of the universal set is behind "more detail".
+ESSENTIAL_QUESTIONS: list[dict[str, Any]] = [
     _q(
         "lead_with",
         "single_select",
@@ -90,19 +91,6 @@ UNIVERSAL_QUESTIONS: list[dict[str, Any]] = [
             {"value": "booking", "label": "Booking / making an appointment"},
             {"value": "contact", "label": "How to reach us / visit"},
             {"value": "gallery", "label": "Photos of our work or space"},
-        ],
-    ),
-    _q(
-        "tone",
-        "slider_pair",
-        "How should it read?",
-        help="Drag each slider. This nudges word choice and layout density — nothing more.",
-        example="Most independent shops land warm + a little playful.",
-        pairs=[
-            {"id": "warm_minimal", "left": "Warm", "right": "Minimal"},
-            {"id": "playful_serious", "left": "Playful", "right": "Serious"},
-            {"id": "modern_classic", "left": "Modern", "right": "Classic"},
-            {"id": "bold_understated", "left": "Bold", "right": "Understated"},
         ],
     ),
     _q(
@@ -133,6 +121,23 @@ UNIVERSAL_QUESTIONS: list[dict[str, Any]] = [
         "Main image for the top of the homepage",
         example="A photo of your space, your product, or your team works well.",
         options=_IMAGE_CHOICES,
+    ),
+]
+
+
+OPTIONAL_QUESTIONS: list[dict[str, Any]] = [
+    _q(
+        "tone",
+        "slider_pair",
+        "How should it read?",
+        help="Drag each slider. This nudges word choice and layout density — nothing more.",
+        example="Most independent shops land warm + a little playful.",
+        pairs=[
+            {"id": "warm_minimal", "left": "Warm", "right": "Minimal"},
+            {"id": "playful_serious", "left": "Playful", "right": "Serious"},
+            {"id": "modern_classic", "left": "Modern", "right": "Classic"},
+            {"id": "bold_understated", "left": "Bold", "right": "Understated"},
+        ],
     ),
     _q(
         "words_prefer",
@@ -177,6 +182,9 @@ UNIVERSAL_QUESTIONS: list[dict[str, Any]] = [
         networks=["instagram", "facebook", "whatsapp", "youtube", "linkedin"],
     ),
 ]
+
+
+UNIVERSAL_QUESTIONS = ESSENTIAL_QUESTIONS + OPTIONAL_QUESTIONS
 
 
 # --- type-specific question builders ----------------------------------------
@@ -300,24 +308,34 @@ def get_questionnaire(business_type: str | None) -> dict[str, Any]:
     btype = (business_type or "not_sure").strip().lower()
     if btype not in SUPPORTED_BUSINESS_TYPES:
         btype = "not_sure"
-    sections: list[dict[str, Any]] = [
-        {
-            "id": "universal",
-            "title": "The essentials",
-            "subtitle": "Every question here is optional — skip anything and we'll fill it in.",
-            "questions": UNIVERSAL_QUESTIONS,
-        }
-    ]
+    sections: list[dict[str, Any]] = []
     specific = _TYPE_SPECIFIC.get(btype)
     if specific:
         sections.append(
             {
                 "id": "type_specific",
                 "title": specific["title"],
-                "subtitle": "Optional. Anything you add here, we write up properly; anything you skip, you can add later.",
+                "subtitle": "Optional, but this is what makes the site yours. Skip anything you would rather add later.",
                 "questions": specific["questions"],
             }
         )
+    sections.append(
+        {
+            "id": "essentials",
+            "title": "Look and feel",
+            "subtitle": "Optional. Skip anything and we'll fill it in from your business details.",
+            "questions": ESSENTIAL_QUESTIONS,
+        }
+    )
+    sections.append(
+        {
+            "id": "optional",
+            "title": "More detail",
+            "subtitle": "Skip this entire section if you like — it only refines voice and contact.",
+            "collapsed": True,
+            "questions": OPTIONAL_QUESTIONS,
+        }
+    )
     return {
         "version": QUESTIONNAIRE_VERSION,
         "business_type": btype,

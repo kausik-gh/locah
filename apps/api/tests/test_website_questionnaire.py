@@ -20,12 +20,12 @@ def test_every_universal_question_is_optional_with_an_example() -> None:
 
 def test_get_questionnaire_is_business_type_aware() -> None:
     salon = get_questionnaire("salon")
-    assert [s["id"] for s in salon["sections"]] == ["universal", "type_specific"]
-    assert salon["sections"][1]["questions"][0]["id"] == "services"
+    assert [s["id"] for s in salon["sections"]] == ["type_specific", "essentials", "optional"]
+    assert salon["sections"][0]["questions"][0]["id"] == "services"
 
     unknown = get_questionnaire("wat")
     assert unknown["business_type"] == "not_sure"
-    assert [s["id"] for s in unknown["sections"]] == ["universal"]  # no type block
+    assert [s["id"] for s in unknown["sections"]] == ["essentials", "optional"]  # no type block
 
 
 def test_validate_intake_clamps_and_drops_empties() -> None:

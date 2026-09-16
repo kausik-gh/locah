@@ -15,7 +15,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from platform_core.website.section_registry import DEFAULT_PAGES, PAGES_BY_BUSINESS_TYPE
+from platform_core.website.section_registry import (
+    DEFAULT_PAGES,
+    PAGES_BY_BUSINESS_TYPE,
+    catalogue_section_for_page,
+)
 
 # Business types grouped by how their customers actually buy. Drives wording,
 # CTA verbs and what the catalogue page is called.
@@ -275,6 +279,7 @@ def build_deterministic_draft(
             ]
 
         elif page_type in _CATALOGUE_PAGE_TYPES:
+            typed = catalogue_section_for_page(page_type, slug, title, name)
             sections = [
                 {
                     "section_type_id": "hero",
@@ -282,7 +287,7 @@ def build_deterministic_draft(
                     "content": {"headline": title, "subheadline": voice["catalogue_lead"]},
                     "is_visible": True,
                 },
-                _offerings_section(title, "", max_items=24),
+                typed or _offerings_section(title, "", max_items=24),
             ]
 
         elif page_type == "enquire":
@@ -293,6 +298,15 @@ def build_deterministic_draft(
                     "content": {
                         "title": "Tell us what you need",
                         "body": voice["expect_body"],
+                    },
+                    "is_visible": True,
+                },
+                {
+                    "section_type_id": "enquiry_form",
+                    "layout_variant": "default",
+                    "content": {
+                        "title": "Send a message",
+                        "subtitle": "A short note is enough — we will come back to you.",
                     },
                     "is_visible": True,
                 },
@@ -329,9 +343,18 @@ def build_deterministic_draft(
     return {
         "pages": pages,
         "navigation": navigation,
-        "theme_hints": _THEME_BY_FAMILY.get(
-            _FAMILY.get(btype, "general"), _THEME_BY_FAMILY["general"]
-        ),
+        "theme_hints": {
+            **_THEME_BY_FAMILY.get(_FAMILY.get(btype, "general"), _THEME_BY_FAMILY["general"]),
+            "personality": {
+                "food": "warm",
+                "appointment": "premium",
+                "membership": "bold",
+                "stay": "premium",
+                "retail": "clean",
+                "professional": "clean",
+                "general": "clean",
+            }.get(_FAMILY.get(btype, "general"), "clean"),
+        },
     }
 
 

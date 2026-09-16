@@ -35,9 +35,14 @@ type MerchantConnection = {
   status: string
   key_id?: string | null
   has_credentials?: boolean
+  connection_mode?: string | null
+  linked_account_id?: string | null
+  linked_account_status?: string | null
+  requires_merchant_keys?: boolean
+  external_dependency?: boolean
   last_verified_at?: string | null
   verification_error?: string | null
-  provider_metadata?: { mode?: string }
+  provider_metadata?: { mode?: string; connection_mode?: string }
 } | null
 
 const STATUSES = ['pending', 'succeeded', 'failed', 'refunded']
@@ -99,8 +104,8 @@ export default async function PaymentsPage({
             fontSize: '0.9rem',
           }}
         >
-          Online card payments are not live until Razorpay is connected and verified above. Cash
-          and offline settlement still work in the meantime.
+          Online card payments are not live until this business is linked through Razorpay above.
+          Cash and offline settlement still work in the meantime.
         </p>
       ) : null}
 

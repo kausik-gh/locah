@@ -50,6 +50,24 @@ class PaymentResolver:
     @staticmethod
     def serialize_attempt(payment: PaymentAttempt) -> dict[str, Any]:
         refundable = max(float(payment.amount) - float(payment.refunded_amount), 0)
+        meta = payment.provider_metadata or {}
+        checkout = None
+        settlement = None
+        if meta.get("razorpay_order_id") and meta.get("checkout_key_id"):
+            checkout = {
+                "provider": "razorpay",
+                "order_id": meta["razorpay_order_id"],
+                "key_id": meta["checkout_key_id"],
+                "amount": float(payment.amount),
+                "currency": payment.currency,
+            }
+        if meta.get("gross_amount") is not None:
+            settlement = {
+                "gross_amount": meta.get("gross_amount"),
+                "platform_fee": meta.get("platform_fee"),
+                "business_amount": meta.get("business_amount"),
+                "connection_mode": meta.get("connection_mode"),
+            }
         return {
             "id": str(payment.id),
             "business_id": str(payment.business_id),
@@ -68,6 +86,8 @@ class PaymentResolver:
             "refundable_amount": refundable,
             "failure_code": payment.failure_code,
             "failure_reason": payment.failure_reason,
+            "checkout": checkout,
+            "settlement": settlement,
             "version": payment.version,
             "created_at": payment.created_at.isoformat(),
             "updated_at": payment.updated_at.isoformat(),
@@ -91,16 +111,31 @@ class PaymentResolver:
     @staticmethod
     def serialize_merchant(connection: MerchantConnection) -> dict[str, Any]:
         metadata = connection.provider_metadata or {}
+        stored_mode = str(metadata.get("connection_mode") or "").strip()
+        if stored_mode:
+            connection_mode = stored_mode
+        elif metadata.get("linked_account_id"):
+            connection_mode = "platform_route"
+        elif connection.encrypted_credentials or metadata.get("key_id"):
+            connection_mode = "merchant_keys"
+        else:
+            connection_mode = "unlinked"
+        # Never the secret. Platform Route uses LOCAH's key — do not show it as
+        # if it belonged to the owner. Legacy merchant-key mode still shows Key ID.
+        key_id = None if connection_mode == "platform_route" else metadata.get("key_id")
         return {
             "id": str(connection.id),
             "business_id": str(connection.business_id),
             "provider": connection.provider,
             "status": connection.status,
             "provider_metadata": metadata,
-            # Never the secret. The Key ID is not sensitive and lets the owner
-            # confirm which account is connected.
-            "key_id": metadata.get("key_id"),
+            "key_id": key_id,
             "has_credentials": connection.encrypted_credentials is not None,
+            "connection_mode": connection_mode,
+            "linked_account_id": metadata.get("linked_account_id"),
+            "linked_account_status": metadata.get("linked_account_status"),
+            "requires_merchant_keys": connection_mode == "merchant_keys",
+            "external_dependency": bool(metadata.get("external_dependency")),
             "last_verified_at": (
                 connection.last_verified_at.isoformat()
                 if connection.last_verified_at

@@ -471,27 +471,55 @@ export function WebsiteQuestionnaire({
 
   return (
     <form onSubmit={onSubmit} style={{ display: 'grid', gap: '1.75rem' }}>
-      {schema.sections.map((s) => (
-        <section key={s.id} style={{ display: 'grid', gap: '0.9rem' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.3rem' }}>{s.title}</h2>
-            {s.subtitle ? (
-              <p style={{ margin: '0.3rem 0 0', ...helpStyle }}>{s.subtitle}</p>
-            ) : null}
-          </div>
-          {s.questions.map((q) => (
-            <QuestionView
-              key={q.id}
-              q={q}
-              value={answers[q.id]}
-              set={(v) => set(q.id, v)}
-              onAsset={(assetId) => set(`${q.id}_asset_id`, assetId)}
-              uploadStart={uploadStart}
-              uploadFinish={uploadFinish}
-            />
-          ))}
-        </section>
-      ))}
+      {schema.sections.map((s) => {
+        const body = (
+          <>
+            {s.questions.map((q) => (
+              <QuestionView
+                key={q.id}
+                q={q}
+                value={answers[q.id]}
+                set={(v) => set(q.id, v)}
+                onAsset={(assetId) => set(`${q.id}_asset_id`, assetId)}
+                uploadStart={uploadStart}
+                uploadFinish={uploadFinish}
+              />
+            ))}
+          </>
+        )
+        return (
+          <section key={s.id} style={{ display: 'grid', gap: '0.9rem' }}>
+            {s.id === 'optional' ? (
+              <details>
+                <summary
+                  style={{
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '1.15rem',
+                    listStyle: 'none',
+                  }}
+                >
+                  {s.title}
+                  <span style={{ ...helpStyle, display: 'block', fontWeight: 400, marginTop: '0.25rem' }}>
+                    {s.subtitle || 'Skip this if you like — it only refines voice and contact.'}
+                  </span>
+                </summary>
+                <div style={{ display: 'grid', gap: '0.9rem', marginTop: '0.9rem' }}>{body}</div>
+              </details>
+            ) : (
+              <>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.3rem' }}>{s.title}</h2>
+                  {s.subtitle ? (
+                    <p style={{ margin: '0.3rem 0 0', ...helpStyle }}>{s.subtitle}</p>
+                  ) : null}
+                </div>
+                {body}
+              </>
+            )}
+          </section>
+        )
+      })}
 
       <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <button

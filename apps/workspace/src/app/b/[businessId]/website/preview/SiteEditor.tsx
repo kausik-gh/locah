@@ -86,6 +86,25 @@ const FIELDS: Record<string, Field[]> = {
       help: 'The items themselves come from your Offerings — edit them there.',
     },
   ],
+  menu_section: [
+    { key: 'title', label: 'Menu heading' },
+  ],
+  rooms_section: [
+    { key: 'title', label: 'Rooms heading' },
+    { key: 'subtitle', label: 'Supporting line', multiline: true },
+  ],
+  plans_section: [
+    { key: 'title', label: 'Plans heading' },
+    { key: 'subtitle', label: 'Supporting line', multiline: true },
+  ],
+  classes_section: [
+    { key: 'title', label: 'Classes heading' },
+  ],
+  enquiry_form: [
+    { key: 'title', label: 'Form heading' },
+    { key: 'subtitle', label: 'Supporting line', multiline: true },
+  ],
+  gallery: [{ key: 'title', label: 'Gallery heading' }],
   location_list: [{ key: 'title', label: 'Heading' }],
 }
 
@@ -97,6 +116,12 @@ const SECTION_NAMES: Record<string, string> = {
   contact: 'Contact details',
   cta_band: 'Call to action',
   offerings_list: 'What you offer',
+  menu_section: 'Menu',
+  rooms_section: 'Rooms',
+  plans_section: 'Plans',
+  classes_section: 'Classes',
+  enquiry_form: 'Enquiry form',
+  gallery: 'Gallery',
   location_list: 'Locations',
 }
 

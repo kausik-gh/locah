@@ -22,8 +22,13 @@ from platform_core.services.website import WebsiteService
 from platform_core.validation.website import validate_generation_payload
 from platform_core.website.ai_provider import get_ai_provider
 from platform_core.website.fallback_generator import build_deterministic_draft
-from platform_core.website.questionnaire import build_intake_brief, validate_intake
-from platform_core.website.section_registry import SECTION_CATALOGUE_PROMPT, WEBSITE_GENERATION_SCHEMA
+from platform_core.website.generation_brief import (
+    apply_intake_theme,
+    build_generation_prompt,
+    default_theme_for_type,
+)
+from platform_core.website.questionnaire import validate_intake
+from platform_core.website.section_registry import WEBSITE_GENERATION_SCHEMA, catalogue_section_for_page
 
 
 class WebsiteGenerationService:
@@ -68,7 +73,7 @@ class WebsiteGenerationService:
         job = WebsiteGenerationJob(
             business_id=business_id,
             status="pending",
-            prompt_version="v1",
+            prompt_version="v2",
             triggered_by=actor_id,
             intake=cleaned_intake or None,
         )
@@ -130,20 +135,7 @@ class WebsiteGenerationService:
             raise RuntimeError(
                 "AI provider not configured (no XAI_API_KEY); use deterministic fallback"
             )
-        prompt = (
-            f"Generate a structured multi-page business website draft for "
-            f"{context['display_name']} ({context.get('business_type') or 'business'}).\n"
-            "Write real, specific, publishable copy in the business's own voice — "
-            "no lorem ipsum, no placeholders, no bracketed instructions. Produce 3-5 "
-            "pages. Every page needs at least a hero plus one or two more sections. "
-            "Do not invent navigation, cart, checkout, or booking behaviour — content only.\n\n"
-            f"{SECTION_CATALOGUE_PROMPT}"
-        )
-        if context.get("tagline"):
-            prompt += f"\nTagline: {context['tagline']}."
-        if context.get("description"):
-            prompt += f"\nAbout: {context['description']}."
-        prompt += build_intake_brief(context, intake)
+        prompt = build_generation_prompt(context, intake)
         from platform_core.website.ai_provider import AIProviderPermanentError
 
         last_error: Exception | None = None
@@ -204,7 +196,16 @@ class WebsiteGenerationService:
         {"offerings", "services", "menu", "rooms", "plans", "classes", "products"}
     )
     _CATALOGUE_SLUGS = frozenset(
-        {"menu", "offerings", "services", "rooms", "plans", "classes", "products", "shop"}
+        {"menu", "offerings", "services", "rooms", "plans", "classes", "products", "shop", "courses"}
+    )
+    _LIST_SECTION_IDS = frozenset(
+        {
+            "offerings_list",
+            "menu_section",
+            "plans_section",
+            "rooms_section",
+            "classes_section",
+        }
     )
 
     @staticmethod
@@ -217,59 +218,145 @@ class WebsiteGenerationService:
                 "subtitle": f"Explore {title.lower()} from {name}",
                 "max_items": 12,
             },
-            # Bound to the module, not to generated copy — the section renders
-            # the Business's real catalogue and stays correct as it changes.
             "module_binding": {"module": "offerings-catalog"},
             "is_visible": True,
         }
 
     @staticmethod
     def _complete_structure(
-        payload: dict[str, Any], context: dict[str, Any]
+        payload: dict[str, Any],
+        context: dict[str, Any],
+        intake: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Guarantee the structure the model is unreliable about.
+        """Guarantee catalogue structure and type-appropriate theme defaults.
 
-        The AI supplies voice and copy; it must not be trusted to remember that
-        a Menu page needs a menu on it. Any page whose type or slug says it
-        lists the catalogue gets a module-bound offerings section if the model
-        omitted one, and the home page gets a preview of the catalogue so the
-        first thing a visitor sees is what the business actually sells.
+        The AI supplies voice and copy. It is not trusted to remember that a
+        Menu page needs a menu, or that theme_hints must carry a personality.
         """
         name = context.get("display_name") or "this business"
+        btype = context.get("business_type")
+        theme = apply_intake_theme(
+            {**default_theme_for_type(btype), **(payload.get("theme_hints") or {})},
+            intake,
+        )
+        payload["theme_hints"] = theme
+
         for page in payload.get("pages") or []:
             sections = page.get("sections")
             if not isinstance(sections, list):
                 continue
-            has_offerings = any(
-                s.get("section_type_id") == "offerings_list" for s in sections
-            )
-            if has_offerings:
-                continue
+            has_list = any(s.get("section_type_id") in WebsiteGenerationService._LIST_SECTION_IDS for s in sections)
             page_type = str(page.get("page_type") or "").lower()
             slug = str(page.get("slug") or "").strip("/").lower()
             title = str(page.get("title") or "What we offer")
 
-            if (
-                page_type in WebsiteGenerationService._CATALOGUE_PAGE_TYPES
-                or slug in WebsiteGenerationService._CATALOGUE_SLUGS
+            if not has_list:
+                typed = catalogue_section_for_page(page_type, slug, title, name)
+                if typed is not None:
+                    sections.append(typed)
+                elif page_type == "home" or slug in {"", "home", "index"}:
+                    preview = WebsiteGenerationService._offerings_section("What we offer", name)
+                    preview["content"]["max_items"] = 6
+                    cta_at = next(
+                        (
+                            i
+                            for i, s in enumerate(sections)
+                            if s.get("section_type_id") == "cta_band"
+                        ),
+                        len(sections),
+                    )
+                    sections.insert(cta_at, preview)
+            if page_type == "enquire" and not any(
+                s.get("section_type_id") == "enquiry_form" for s in sections
             ):
-                sections.append(WebsiteGenerationService._offerings_section(title, name))
-            elif page_type == "home" or slug in {"", "home", "index"}:
-                # Sits after the hero, before any closing CTA band.
-                preview = WebsiteGenerationService._offerings_section(
-                    "What we offer", name
+                sections.append(
+                    {
+                        "section_type_id": "enquiry_form",
+                        "layout_variant": "default",
+                        "content": {
+                            "title": "Tell us what you need",
+                            "subtitle": "A short note is enough — we will come back to you.",
+                        },
+                        "is_visible": True,
+                    }
                 )
-                preview["content"]["max_items"] = 6
-                cta_at = next(
-                    (
-                        i
-                        for i, s in enumerate(sections)
-                        if s.get("section_type_id") == "cta_band"
-                    ),
-                    len(sections),
-                )
-                sections.insert(cta_at, preview)
         return payload
+
+    @staticmethod
+    async def _seed_offerings_from_intake(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        correlation_id: str,
+        business_type: str | None,
+        intake: dict[str, Any] | None,
+    ) -> None:
+        """Persist questionnaire catalogue answers as real Offerings.
+
+        List sections bind to the live catalogue. If the owner typed menu items
+        or services during onboarding and we only stuffed them into the prompt,
+        the published site would show empty cards. This stays inside OfferingService.
+        """
+        if not intake:
+            return
+        from platform_core.models import Offering
+        from platform_core.services.offering import OfferingService
+
+        existing = (
+            await session.execute(
+                select(Offering).where(
+                    Offering.business_id == business_id,
+                    Offering.deleted_at.is_(None),
+                ).limit(1)
+            )
+        ).scalars().first()
+        if existing is not None:
+            return
+
+        type_map = {
+            "menu_items": "menu_item",
+            "services": "service",
+            "products": "product",
+            "rooms": "accommodation",
+            "classes": "class_session"
+            if (business_type or "") in {"gym", "studio", "education"}
+            else "membership_plan",
+        }
+        for key, offering_type in type_map.items():
+            rows = intake.get(key)
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                title = str(row.get("name") or "").strip()
+                if not title:
+                    continue
+                description = str(
+                    row.get("description")
+                    or row.get("what_to_expect")
+                    or row.get("occupancy_hint")
+                    or row.get("schedule_hint")
+                    or ""
+                ).strip() or None
+                try:
+                    await OfferingService.create_offering(
+                        session,
+                        business_id=business_id,
+                        actor_id=actor_id,
+                        correlation_id=correlation_id,
+                        payload={
+                            "title": title,
+                            "description": description,
+                            "offering_type": offering_type,
+                            "status": "active",
+                            "visibility": "public",
+                            "price_type": "enquiry",
+                        },
+                    )
+                except Exception:  # noqa: BLE001 — never fail generation on a seed miss
+                    continue
 
     @staticmethod
     async def execute_job(
@@ -321,7 +408,15 @@ class WebsiteGenerationService:
             job.model_name = None
 
         payload = WebsiteGenerationService._apply_intake_assets(payload, intake)
-        payload = WebsiteGenerationService._complete_structure(payload, context)
+        payload = WebsiteGenerationService._complete_structure(payload, context, intake)
+        await WebsiteGenerationService._seed_offerings_from_intake(
+            session,
+            business_id=job.business_id,
+            actor_id=job.triggered_by,
+            correlation_id=correlation_id,
+            business_type=context.get("business_type"),
+            intake=intake,
+        )
         # Re-validate: the stitched asset id and the completion pass have not
         # been through the schema + content-safety pass that _try_ai / the
         # fallback already applied.

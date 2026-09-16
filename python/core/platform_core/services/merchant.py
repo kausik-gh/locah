@@ -12,7 +12,7 @@ from platform_core.crypto import decrypt_secret, encrypt_secret
 from platform_core.exceptions import ResourceNotFound, ValidationError
 from platform_core.gates import assert_business_mutable
 from platform_core.models import MerchantConnection
-from platform_core.payments.razorpay import verify_key_pair
+from platform_core.payments.razorpay import create_linked_account, platform_credentials, verify_key_pair
 from platform_core.resolvers.payment_resolver import PaymentResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.business import BusinessService
@@ -140,7 +140,11 @@ class MerchantService:
             session.add(connection)
         connection.status = "pending"
         connection.encrypted_credentials = ciphertext
-        connection.provider_metadata = {"key_id": key_id, "mode": mode}
+        connection.provider_metadata = {
+            "key_id": key_id,
+            "mode": mode,
+            "connection_mode": "merchant_keys",
+        }
         connection.verification_error = None
         connection.last_verified_at = None
         connection.version = (connection.version or 0) + 1
@@ -233,6 +237,96 @@ class MerchantService:
             resource_type="merchant_connection",
             resource_id=connection.id,
             action="razorpay_verified" if result.ok else "razorpay_verification_failed",
+            before_state=before,
+            after_state=after,
+        )
+        return connection
+
+    @staticmethod
+    async def enable_platform_payments(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        correlation_id: str,
+        contact_email: str | None = None,
+    ) -> MerchantConnection:
+        """Onboard this Business as a Razorpay Route linked account.
+
+        Ordinary owners never paste API keys. Cash / pay-at-business stay
+        available if Route is not enabled on the LOCAH Razorpay account.
+        """
+        business = await BusinessService.get_by_id(session, business_id)
+        if business is None:
+            raise ResourceNotFound("Business")
+        assert_business_mutable(business.state, action="enable online payments")
+
+        existing = await PaymentResolver.resolve_merchant(
+            session, business_id=business_id, provider="razorpay"
+        )
+        before = MerchantService.serialize(existing) if existing else None
+        if existing is not None:
+            connection = existing
+        else:
+            connection = MerchantConnection(business_id=business_id, provider="razorpay")
+            session.add(connection)
+
+        metadata = dict(connection.provider_metadata or {})
+        existing_account = str(metadata.get("linked_account_id") or "").strip()
+        if existing_account and connection.status == "active":
+            return connection
+
+        email = (contact_email or "").strip() or f"business-{business.id.hex[:12]}@payments.locah.app"
+        result = await create_linked_account(
+            email=email,
+            legal_business_name=business.display_name,
+            reference_id=business.id.hex[:20],
+            contact_name=business.display_name,
+        )
+        now = datetime.now(timezone.utc)
+        creds = platform_credentials()
+        metadata["connection_mode"] = "platform_route"
+        metadata["mode"] = creds.mode if creds else "test"
+        # Platform key stays on the server. Never store it as the merchant's key.
+        metadata.pop("key_id", None)
+        if result.ok and result.account_id:
+            metadata["linked_account_id"] = result.account_id
+            metadata["linked_account_status"] = result.status or "created"
+            metadata.pop("external_dependency", None)
+            connection.status = "active"
+            connection.encrypted_credentials = None
+            connection.verification_error = None
+            connection.last_verified_at = now
+        else:
+            metadata["external_dependency"] = result.external_dependency
+            connection.status = "pending"
+            connection.verification_error = result.detail
+            connection.last_verified_at = now
+        connection.provider_metadata = metadata
+        connection.version = (connection.version or 0) + 1
+        await session.flush()
+
+        after = MerchantService.serialize(connection)
+        await OutboxService.publish(
+            session,
+            event_type="payment.merchant.updated",
+            payload={
+                "business_id": str(business_id),
+                "provider": "razorpay",
+                "after": after,
+            },
+            business_id=business_id,
+            correlation_id=correlation_id,
+        )
+        await AuditService.record(
+            session,
+            event_type="payment.merchant.updated",
+            actor_identity_id=actor_id,
+            actor_context="business",
+            business_id=business_id,
+            resource_type="merchant_connection",
+            resource_id=connection.id,
+            action="razorpay_platform_enabled" if result.ok else "razorpay_platform_enable_failed",
             before_state=before,
             after_state=after,
         )

@@ -16,6 +16,47 @@ type Options = {
   business: { display_name: string; slug: string }
 }
 
+type RazorpayCheckout = {
+  provider: string
+  order_id: string
+  key_id: string
+  amount: number
+  currency: string
+}
+
+function loadRazorpayScript(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve()
+  if (document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')) {
+    return Promise.resolve()
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error('Could not load Razorpay Checkout.'))
+    document.body.appendChild(script)
+  })
+}
+
+function openRazorpayCheckout(checkout: RazorpayCheckout, name: string) {
+  void loadRazorpayScript().then(() => {
+    const RazorpayCtor = (window as unknown as { Razorpay?: new (opts: Record<string, unknown>) => { open: () => void } }).Razorpay
+    if (!RazorpayCtor) return
+    const rzp = new RazorpayCtor({
+      key: checkout.key_id,
+      amount: Math.round(checkout.amount * 100),
+      currency: checkout.currency,
+      order_id: checkout.order_id,
+      name,
+      handler: () => {
+        window.location.reload()
+      },
+    })
+    rzp.open()
+  })
+}
+
 export default function CheckoutClient({
   slug,
   options,
@@ -40,6 +81,14 @@ export default function CheckoutClient({
     order_number: string
     tracking: { href: string }
     state: string
+    checkout?: {
+      provider: string
+      order_id: string
+      key_id: string
+      amount: number
+      currency: string
+    } | null
+    paymentError?: string | null
   } | null>(null)
 
   useEffect(() => {
@@ -67,6 +116,12 @@ export default function CheckoutClient({
         setDeliveryCharge(0)
       })
   }, [slug, mode, city, line1, postal])
+
+  useEffect(() => {
+    if (confirmation?.checkout) {
+      openRazorpayCheckout(confirmation.checkout, options.business.display_name)
+    }
+  }, [confirmation, options.business.display_name])
 
   const subtotal = items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0)
   const grand = subtotal + (mode === 'delivery' ? deliveryCharge : 0)
@@ -108,10 +163,25 @@ export default function CheckoutClient({
         idempotency_key: crypto.randomUUID(),
       })
       localStorage.removeItem(cartStorageKey(slug))
+      const payment = data.payment as
+        | {
+            checkout?: {
+              provider: string
+              order_id: string
+              key_id: string
+              amount: number
+              currency: string
+            }
+            failure_reason?: string
+          }
+        | null
+        | undefined
       setConfirmation({
         order_number: data.confirmation.order_number,
         tracking: data.tracking,
         state: data.state,
+        checkout: payment?.checkout ?? null,
+        paymentError: payment?.failure_reason ?? null,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Checkout failed')
@@ -123,17 +193,37 @@ export default function CheckoutClient({
   if (confirmation) {
     return (
       <div style={{ maxWidth: '32rem', margin: '0 auto', padding: '2rem 1.25rem' }}>
-        <h1>Order confirmed</h1>
+        <h1>
+          {confirmation.checkout && confirmation.state !== 'succeeded' && confirmation.state !== 'paid'
+            ? 'Complete payment'
+            : confirmation.state === 'payment_failed' || confirmation.state === 'failed'
+              ? 'Order placed — payment did not go through'
+              : 'Order confirmed'}
+        </h1>
         <p>
           Order <strong>{confirmation.order_number}</strong>
         </p>
         <p style={{ opacity: 0.8 }}>
-          {confirmation.state === 'pending_offline'
-            ? 'Pay when you collect your order.'
-            : confirmation.state === 'paid'
-              ? 'Payment received.'
-              : 'The business has received your order.'}
+          {confirmation.checkout && confirmation.state !== 'succeeded' && confirmation.state !== 'paid'
+            ? 'Your order is held. Finish the Razorpay payment to confirm it.'
+            : confirmation.state === 'pending_offline'
+              ? 'Pay when you collect your order.'
+              : confirmation.state === 'paid' || confirmation.state === 'succeeded'
+                ? 'Payment received.'
+                : confirmation.paymentError
+                  ? confirmation.paymentError
+                  : 'The business has received your order.'}
         </p>
+        {confirmation.checkout ? (
+          <p>
+            <button
+              type="button"
+              onClick={() => openRazorpayCheckout(confirmation.checkout!, options.business.display_name)}
+            >
+              Pay now
+            </button>
+          </p>
+        ) : null}
         <p>
           <Link href={confirmation.tracking.href}>Track your order</Link>
         </p>
@@ -286,7 +376,11 @@ export default function CheckoutClient({
           </p>
           {error ? <p style={{ color: '#b00020' }}>{error}</p> : null}
           <button type="submit" disabled={submitting || !mode}>
-            {submitting ? 'Placing order…' : 'Place order'}
+            {submitting
+              ? 'Placing order…'
+              : paymentMethod === 'online'
+                ? 'Place order and pay'
+                : 'Place order'}
           </button>
         </form>
       )}

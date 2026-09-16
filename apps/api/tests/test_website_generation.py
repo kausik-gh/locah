@@ -328,12 +328,12 @@ def test_questionnaire_endpoint_is_business_type_aware(
     data = resp.json()["data"]
     assert data["business_type"] == "restaurant"
     section_ids = {s["id"] for s in data["sections"]}
-    assert "universal" in section_ids
+    assert "essentials" in section_ids
+    assert "optional" in section_ids
     assert "type_specific" in section_ids
     ts = next(s for s in data["sections"] if s["id"] == "type_specific")
     assert ts["questions"][0]["id"] == "menu_items"
-    # every universal question is optional and carries an example
-    uni = next(s for s in data["sections"] if s["id"] == "universal")
-    for q in uni["questions"]:
+    essentials = next(s for s in data["sections"] if s["id"] == "essentials")
+    for q in essentials["questions"]:
         assert q["optional"] is True
         assert q.get("example")
