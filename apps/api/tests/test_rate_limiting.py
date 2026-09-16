@@ -7,6 +7,8 @@ it directly. No database.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from platform_api.rate_limit import BUCKETS, Bucket, RateLimiter, RateLimitMiddleware
@@ -108,28 +110,31 @@ def test_separate_buckets_have_separate_counters() -> None:
     assert client.get("/v1/public/websites/acme").status_code == 200
 
 
-def test_x_forwarded_for_is_used_as_the_client_key() -> None:
+def test_x_forwarded_for_is_ignored_unless_trusted(monkeypatch: Any) -> None:
+    from platform_api.rate_limit import client_key
+
+    monkeypatch.delenv("RATE_LIMIT_TRUST_XFF", raising=False)
+    scope = {
+        "client": ("10.0.0.1", 1234),
+        "headers": [(b"x-forwarded-for", b"9.9.9.9, 8.8.8.8")],
+    }
+    assert client_key(scope) == "10.0.0.1"
+
+    monkeypatch.setenv("RATE_LIMIT_TRUST_XFF", "1")
+    assert client_key(scope) == "8.8.8.8"
+
+
+def test_spoofed_x_forwarded_for_cannot_bypass_public_limit() -> None:
     client = TestClient(_app())
-    # Two distinct upstream clients behind the same proxy get separate quotas.
     for _ in range(5):
-        assert (
-            client.post(
-                "/v1/b/x/website/generate", headers={"x-forwarded-for": "1.1.1.1"}
-            ).status_code
-            == 200
-        )
-    assert (
-        client.post(
+        assert client.post(
             "/v1/b/x/website/generate", headers={"x-forwarded-for": "1.1.1.1"}
-        ).status_code
-        == 429
+        ).status_code == 200
+    # Without RATE_LIMIT_TRUST_XFF, a new spoofed IP still shares the socket peer bucket.
+    blocked = client.post(
+        "/v1/b/x/website/generate", headers={"x-forwarded-for": "2.2.2.2"}
     )
-    assert (
-        client.post(
-            "/v1/b/x/website/generate", headers={"x-forwarded-for": "2.2.2.2"}
-        ).status_code
-        == 200
-    )
+    assert blocked.status_code == 429
 
 
 def test_every_bucket_name_is_unique() -> None:

@@ -276,9 +276,22 @@ async def test_scheduled_job_materialization(db_session: AsyncSession) -> None:
     assert jrow.status == "pending"
     assert str(jrow.causation_id) == str(schedule_id)
 
-    # Materializing again must not duplicate
+    # Materializing again must not duplicate THIS schedule. Other due rows on
+    # a shared hosted database may still materialize in the same poll.
     again = await materialize_due_schedules(db_session, "test-scheduler")
-    assert again == 0
+    db_session.expire_all()
+    reread = await db_session.execute(
+        text("""
+            SELECT status, materialized_job_id
+            FROM platform_scheduled_jobs
+            WHERE id = :id
+        """),
+        {"id": str(schedule_id)},
+    )
+    again_row = reread.one()
+    assert again_row.status == "materialized"
+    assert str(again_row.materialized_job_id) == str(srow.materialized_job_id)
+    assert again >= 0
 
     # Execute the materialized job. Same backlog concern as
     # test_async_job_claim_and_completion — poll until this specific job
@@ -299,7 +312,8 @@ async def test_concurrent_job_claim_safety(db_session: AsyncSession) -> None:
     # slot in the LIMIT-10 batch each concurrent claim below draws from.
     await _drain_backlog(db_session, "test-concurrent-drain")
 
-    job_id = await _insert_async_job(db_session, job_type="platform.noop")
+    isolated_type = f"platform.noop.{uuid.uuid4().hex[:12]}"
+    job_id = await _insert_async_job(db_session, job_type=isolated_type)
 
     url = get_database_url()
     assert url
@@ -309,8 +323,8 @@ async def test_concurrent_job_claim_safety(db_session: AsyncSession) -> None:
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with factory() as session_a, factory() as session_b:
-        claimed_a = await claim_job_batch(session_a, "worker-a", limit=10)
-        claimed_b = await claim_job_batch(session_b, "worker-b", limit=10)
+        claimed_a = await claim_job_batch(session_a, "worker-a", limit=10, job_type=isolated_type)
+        claimed_b = await claim_job_batch(session_b, "worker-b", limit=10, job_type=isolated_type)
         await session_a.commit()
         await session_b.commit()
 

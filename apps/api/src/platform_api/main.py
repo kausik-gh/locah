@@ -127,10 +127,18 @@ if os.getenv("RATE_LIMIT_ENABLED", "1") != "0":
 # a log line and an X-Correlation-Id.
 app.add_middleware(RequestLogMiddleware)
 
-# Standard CORS Middleware setup
+# Standard CORS. Credentials cannot be used with wildcard origins.
+_cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://localhost:3001,http://localhost:3002",
+    ).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

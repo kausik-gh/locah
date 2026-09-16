@@ -17,6 +17,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   completeImageUpload,
+  generateSectionImage,
   refreshPreviewToken,
   requestImageUpload,
   saveSectionContent,
@@ -134,10 +135,12 @@ const IMAGE_SECTIONS = new Set(['hero', 'about'])
 
 function ImageField({
   businessId,
+  sectionId,
   currentUrl,
   onUploaded,
 }: {
   businessId: string
+  sectionId: string
   currentUrl?: string
   onUploaded: (assetId: string) => void | Promise<void>
 }) {
@@ -194,7 +197,7 @@ function ImageField({
         </p>
       )}
       <label className={`btn btn-ghost ed-upload${busy ? ' is-busy' : ''}`}>
-        {busy ? 'Uploading…' : shown ? 'Replace picture' : 'Add a picture'}
+        {busy ? 'Working…' : shown ? 'Replace picture' : 'Add a picture'}
         <input
           type="file"
           accept={ACCEPTED_IMAGE_TYPES}
@@ -206,6 +209,30 @@ function ImageField({
           }}
         />
       </label>
+      <button
+        type="button"
+        className="btn btn-ghost"
+        disabled={busy}
+        onClick={async () => {
+          setError(null)
+          setBusy(true)
+          try {
+            const result = await generateSectionImage(businessId, sectionId)
+            if (!result.ok) {
+              setError(result.error)
+              return
+            }
+            if (result.url) setJustUploaded(result.url)
+            await onUploaded(result.assetId)
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Generation failed.')
+          } finally {
+            setBusy(false)
+          }
+        }}
+      >
+        {shown ? 'Generate a new picture' : 'Generate a picture'}
+      </button>
       {error ? <p className="ed-error">{error}</p> : null}
     </div>
   )
@@ -369,6 +396,7 @@ export function SiteEditor({
                     {IMAGE_SECTIONS.has(section.section_type_id) ? (
                       <ImageField
                         businessId={businessId}
+                        sectionId={section.id}
                         currentUrl={section.assets?.image_asset_id?.url}
                         onUploaded={(assetId) => commit(section, 'image_asset_id', assetId)}
                       />

@@ -118,6 +118,45 @@ export async function completeImageUpload(
   return { ok: true, url: body.data.url }
 }
 
+export async function generateSectionImage(
+  businessId: string,
+  sectionId: string
+): Promise<{ ok: true; assetId: string; url: string | null } | { ok: false; error: string }> {
+  const token = await getAccessToken()
+  if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+  const res = await fetch(
+    `${apiUrl}/v1/b/${businessId}/website/sections/${sectionId}/generate-image`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    }
+  )
+  if (!res.ok) {
+    let message = `Could not generate a picture (${res.status})`
+    try {
+      const body = (await res.json()) as { error?: { message?: string } }
+      if (body?.error?.message) message = body.error.message
+    } catch {
+      /* keep status message */
+    }
+    return { ok: false, error: message }
+  }
+  const body = (await res.json()) as {
+    data: { ok: boolean; asset?: { id: string; url: string | null }; detail?: string }
+  }
+  if (!body.data.ok || !body.data.asset) {
+    return {
+      ok: false,
+      error: body.data.detail || 'Image generation is unavailable. Upload a picture instead.',
+    }
+  }
+  revalidatePath(`/b/${businessId}/website/preview`)
+  return { ok: true, assetId: body.data.asset.id, url: body.data.asset.url }
+}
+
 /**
  * A short-lived token that lets the public web app render this Business's
  * DRAFT. The editor shows the real site in an iframe rather than a lookalike,

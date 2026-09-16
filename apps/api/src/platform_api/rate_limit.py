@@ -130,15 +130,25 @@ class RateLimiter:
 
 
 def client_key(scope: Scope) -> str:
+    """Public buckets must not trust a caller-supplied X-Forwarded-For.
+
+    Direct connections use the socket peer. When the process sits behind a
+    reverse proxy (Render, Vercel), set RATE_LIMIT_TRUST_XFF=1 so the *last*
+    X-Forwarded-For hop — the one that proxy appended — is used. Left-hand
+    spoofed hops are ignored.
+    """
+    import os
+
+    client = scope.get("client")
+    peer = str(client[0]) if client else "unknown"
     headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
     forwarded = headers.get("x-forwarded-for")
-    if forwarded:
-        # First hop is the original client.
-        return str(forwarded.split(",")[0].strip())
-    client = scope.get("client")
-    if client:
-        return str(client[0])
-    return "unknown"
+    trust = os.getenv("RATE_LIMIT_TRUST_XFF", "").strip().lower() in {"1", "true", "yes"}
+    if trust and forwarded:
+        hops = [part.strip() for part in forwarded.split(",") if part.strip()]
+        if hops:
+            return hops[-1]
+    return peer
 
 
 def _bucket_for(method: str, path: str) -> Bucket | None:

@@ -275,6 +275,7 @@ class WebsiteGenerationJob(Base):
     triggered_by: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id")
     )
+    provider_usage: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -94,6 +94,21 @@ async def _execute_job(session: AsyncSession, job: dict[str, Any]) -> None:
             correlation_id=str(payload.get("correlation_id") or job.get("id")),
             trigger="async_job",
         )
+    elif job_type == "media.generate_website_images":
+        from uuid import UUID
+
+        from platform_core.services.website_images import WebsiteImageService
+
+        business_id = payload.get("business_id")
+        actor_id = payload.get("actor_id")
+        if not business_id or not actor_id:
+            raise RuntimeError("media.generate_website_images payload missing ids")
+        await WebsiteImageService.fill_missing(
+            session,
+            business_id=UUID(str(business_id)),
+            actor_id=UUID(str(actor_id)),
+            correlation_id=str(payload.get("correlation_id") or job.get("id")),
+        )
 
 
 async def _mark_completed(session: AsyncSession, job_id: str) -> None:

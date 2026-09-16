@@ -267,6 +267,72 @@ class MediaService:
         return sections
 
     @staticmethod
+    async def persist_generated(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        purpose: str,
+        mime_type: str,
+        body: bytes,
+        alt_text: str | None,
+        original_filename: str,
+    ) -> dict[str, Any]:
+        """Persist platform-generated image bytes as a ready media asset.
+
+        User uploads still use the signed-URL path. This is only for images
+        the platform produced (Grok Imagine) so they follow the same
+        ownership and public-URL rules as an owner upload.
+        """
+        from platform_core.media.supabase_storage import (
+            EXTENSION_BY_MIME,
+            put_generated_object,
+            public_url,
+        )
+
+        MediaService.permission_for(purpose)
+        normalized_mime = (mime_type or "image/jpeg").strip().lower()
+        if normalized_mime not in ALLOWED_MIME_TYPES:
+            normalized_mime = "image/jpeg"
+        asset_id = uuid.uuid4()
+        extension = EXTENSION_BY_MIME.get(normalized_mime, "jpg")
+        storage_key = f"generated/{business_id}/{asset_id}.{extension}"
+        await put_generated_object(
+            bucket="media",
+            storage_key=storage_key,
+            body=body,
+            mime_type=normalized_mime,
+        )
+        asset = MediaAsset(
+            id=asset_id,
+            business_id=business_id,
+            uploader_identity_id=actor_id,
+            original_filename=original_filename,
+            mime_type=normalized_mime,
+            size_bytes=len(body),
+            bucket="media",
+            storage_key=storage_key,
+            public_url=public_url("media", storage_key),
+            alt_text=alt_text,
+            purpose=purpose,
+            status="ready",
+        )
+        session.add(asset)
+        await session.flush()
+        await AuditService.record(
+            session,
+            event_type="media.asset_generated",
+            actor_identity_id=actor_id,
+            actor_context="business",
+            business_id=business_id,
+            resource_type="media_asset",
+            resource_id=asset.id,
+            action="generate",
+            after_state={"purpose": purpose, "size_bytes": len(body)},
+        )
+        return MediaService.serialize(asset)
+
+    @staticmethod
     def serialize(asset: MediaAsset) -> dict[str, Any]:
         return {
             "id": str(asset.id),

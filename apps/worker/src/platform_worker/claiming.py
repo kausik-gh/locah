@@ -39,11 +39,16 @@ async def claim_outbox_batch(
 
 
 async def claim_job_batch(
-    session: AsyncSession, worker_id: str, limit: int = 10
+    session: AsyncSession, worker_id: str, limit: int = 10, job_type: str | None = None
 ) -> list[Any]:
-    """Claim pending/failed/expired-lease async jobs."""
+    """Claim pending/failed/expired-lease async jobs.
+
+    `job_type` is optional isolation for tests. Production callers omit it so
+    a worker processes the whole lane.
+    """
+    type_filter = "AND job_type = :job_type" if job_type else ""
     result = await session.execute(
-        text("""
+        text(f"""
             UPDATE platform_async_jobs
             SET status = 'processing',
                 leased_until = now() + make_interval(secs => :lease_seconds),
@@ -57,13 +62,19 @@ async def claim_job_batch(
                     )
                   AND next_attempt_at <= now()
                   AND (leased_until IS NULL OR leased_until < now())
+                  {type_filter}
                 ORDER BY next_attempt_at
                 FOR UPDATE SKIP LOCKED
                 LIMIT :limit
             )
             RETURNING *
         """),
-        {"worker_id": worker_id, "limit": limit, "lease_seconds": LEASE_SECONDS},
+        {
+            "worker_id": worker_id,
+            "limit": limit,
+            "lease_seconds": LEASE_SECONDS,
+            **({"job_type": job_type} if job_type else {}),
+        },
     )
     return list(result.mappings())
 

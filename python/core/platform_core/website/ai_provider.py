@@ -85,6 +85,7 @@ class GrokProvider:
     def __init__(self, api_key: str, model: str = _DEFAULT_MODEL) -> None:
         self._api_key = api_key
         self._model = model
+        self.last_usage: dict[str, Any] | None = None
 
     @property
     def model_name(self) -> str:
@@ -163,6 +164,13 @@ class GrokProvider:
 
             data = response.json()
             usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+            self.last_usage = {
+                "prompt_tokens": usage.get("prompt_tokens"),
+                "completion_tokens": usage.get("completion_tokens"),
+                "total_tokens": usage.get("total_tokens"),
+                "latency_ms": latency_ms,
+                "model": model,
+            }
             _log.info(
                 "website.ai_provider.completed",
                 provider=self.provider_name,

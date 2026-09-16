@@ -17,6 +17,7 @@ from platform_core.services.business import BusinessService
 from platform_core.services.website import PageService, SectionService, WebsiteService, WebsiteVersionService
 from platform_core.services.website_generation import WebsiteGenerationService
 from platform_core.services.website_publish import WebsitePublishService
+from platform_core.services.website_images import WebsiteImageService
 from platform_core.website.questionnaire import get_questionnaire
 
 router = APIRouter(prefix="/v1/b", tags=["website"])
@@ -157,6 +158,23 @@ async def patch_section(
         "data": WebsiteResolver.serialize_section(section),
         "meta": {"correlation_id": actor.request.correlation_id},
     }
+
+
+@router.post("/{business_id}/website/sections/{section_id}/generate-image")
+async def generate_section_image(
+    business_id: UUID,
+    section_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(WEBSITE_EDIT)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    result = await WebsiteImageService.generate_section_image(
+        session,
+        business_id=business_id,
+        actor_id=actor.request.identity_id,
+        section_id=section_id,
+    )
+    await session.commit()
+    return {"data": result, "meta": {"correlation_id": actor.request.correlation_id}}
 
 
 @router.patch("/{business_id}/website/theme")

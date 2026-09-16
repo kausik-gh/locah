@@ -39,15 +39,12 @@ PALETTE_PRESETS: dict[str, dict[str, str]] = {
     "classic": {"primary": "#1C5F57", "accent": "#F59E0B", "label": "Classic teal (default)"},
 }
 
-# Only `upload` and `skip` do anything today. A curated stock library and
-# AI placeholder generation are not built; the options stay visible so the
-# intent is recorded, but they are labelled honestly rather than silently
-# behaving like "skip".
+# `upload` writes an asset id. `generate` asks the platform to produce a
+# picture after the structured draft exists. `curated` is still deferred.
 _IMAGE_CHOICES = [
     {"value": "upload", "label": "I'll upload one"},
-    {"value": "curated", "label": "Pick from a curated set (not available yet)"},
-    {"value": "generate", "label": "Generate one for me (not available yet)"},
-    {"value": "skip", "label": "Skip for now"},
+    {"value": "generate", "label": "Generate one for me"},
+    {"value": "skip", "label": "Skip — generate a picture if I don't upload one"},
 ]
 
 
@@ -111,7 +108,6 @@ ESSENTIAL_QUESTIONS: list[dict[str, Any]] = [
         example="If you skip, we use your business name set in the chosen typeface.",
         options=[
             {"value": "upload", "label": "I'll upload one"},
-            {"value": "generate", "label": "Generate a wordmark (not available yet)"},
             {"value": "skip", "label": "Skip — use the business name"},
         ],
     ),

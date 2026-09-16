@@ -126,7 +126,7 @@ class WebsiteGenerationService:
     @staticmethod
     async def _try_ai(
         context: dict[str, Any], intake: dict[str, Any] | None = None
-    ) -> tuple[dict[str, Any], str, str]:
+    ) -> tuple[dict[str, Any], str, str, dict[str, Any] | None]:
         from platform_core.website.ai_provider import UnavailableAIProvider
 
         provider = get_ai_provider()
@@ -139,6 +139,7 @@ class WebsiteGenerationService:
         from platform_core.website.ai_provider import AIProviderPermanentError
 
         last_error: Exception | None = None
+        usage: dict[str, Any] | None = None
         for attempt in range(3):
             try:
                 raw = await provider.generate_structured(
@@ -149,22 +150,21 @@ class WebsiteGenerationService:
                         "max_output_tokens": 16384,
                         "schema_name": "website_generation",
                     },
-                    # A full multi-page site is a big generation; allow headroom.
                     timeout_seconds=75,
                 )
+                usage = getattr(provider, "last_usage", None)
                 return (
                     validate_generation_payload(raw),
                     provider.provider_name,
                     provider.model_name,
+                    usage if isinstance(usage, dict) else None,
                 )
             except AIProviderPermanentError as exc:
-                # A rejected key or unknown model answers the same way every
-                # time. Retrying it just makes the owner wait ~15s longer for
-                # the deterministic draft they were always going to get.
                 raise RuntimeError(str(exc)) from exc
             except Exception as exc:  # noqa: BLE001 — retry then fallback
                 last_error = exc
-                await asyncio.sleep(min(2**attempt, 8))
+                if attempt < 2:
+                    await asyncio.sleep(min(2**attempt, 8))
         raise RuntimeError(str(last_error or "AI generation failed"))
 
     @staticmethod
@@ -407,11 +407,13 @@ class WebsiteGenerationService:
         generated_by = "ai_generation"
         fallback_reason: str | None = None
         try:
-            payload, provider_name, model_name = await WebsiteGenerationService._try_ai(
+            payload, provider_name, model_name, usage = await WebsiteGenerationService._try_ai(
                 context, intake
             )
             job.ai_provider = provider_name
             job.model_name = model_name
+            if usage:
+                job.provider_usage = usage
         except Exception as exc:  # noqa: BLE001
             payload = _deterministic()
             generated_by = "deterministic_fallback"
@@ -551,6 +553,17 @@ class WebsiteGenerationService:
                 action="fell_back",
                 after_state={"fallback_reason": fallback_reason},
             )
+        await AsyncJobService.enqueue(
+            session,
+            job_type="media.generate_website_images",
+            payload={
+                "business_id": str(job.business_id),
+                "actor_id": str(job.triggered_by),
+                "correlation_id": correlation_id,
+                "generation_job_id": str(job.id),
+            },
+            business_id=job.business_id,
+        )
         return {
             "status": job.status,
             "job_id": str(job.id),
@@ -566,6 +579,7 @@ class WebsiteGenerationService:
             "status": job.status,
             "ai_provider": job.ai_provider,
             "model_name": job.model_name,
+            "provider_usage": job.provider_usage if isinstance(job.provider_usage, dict) else None,
             "prompt_version": job.prompt_version,
             "attempt_count": job.attempt_count,
             "error_detail": job.error_detail,

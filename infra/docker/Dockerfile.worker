@@ -1,0 +1,21 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir uv
+
+COPY pyproject.toml uv.lock ./
+COPY apps/api/pyproject.toml apps/api/pyproject.toml
+COPY apps/worker/pyproject.toml apps/worker/pyproject.toml
+COPY python/core/pyproject.toml python/core/pyproject.toml
+COPY python/domain_events/pyproject.toml python/domain_events/pyproject.toml
+COPY python/testing/pyproject.toml python/testing/pyproject.toml
+COPY apps/api apps/api
+COPY apps/worker apps/worker
+COPY python python
+
+RUN uv sync --frozen --no-group dev
+
+ENV PYTHONPATH=/app/apps/api/src:/app/apps/worker/src:/app/python/core:/app/python/domain_events
+
+CMD ["uv", "run", "python", "-m", "platform_worker.main"]
