@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import os
 from typing import Any
+from platform_core.secrets import resolve_signing_secret
 
 
 def verify_webhook_signature(
@@ -14,7 +14,9 @@ def verify_webhook_signature(
     raw_body: bytes,
     headers: dict[str, str],
 ) -> bool:
-    secret = os.getenv("PAYMENT_WEBHOOK_SECRET", "test-payment-webhook-secret")
+    # Same rule as the preview secret: a committed default would let anyone
+    # forge a provider callback and move a payment into a paid state.
+    secret = resolve_signing_secret("PAYMENT_WEBHOOK_SECRET", "test-payment-webhook-secret")
     if provider == "stub":
         signature = headers.get("x-payment-signature") or headers.get("X-Payment-Signature")
         if not signature:

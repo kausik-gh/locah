@@ -307,12 +307,20 @@ def test_switch_failures(
         assert no_membership.status_code == 403
         assert no_membership.json()["error"]["code"] == "MEMBERSHIP_REQUIRED"
 
+        # Doc 12 §21.3 permits "403 or 404" for a Business the caller cannot
+        # act on, and this asserted only 404. Answering 403 MEMBERSHIP_REQUIRED
+        # for a non-existent id exactly as for an existing one the caller is not
+        # a member of is the stronger choice: a distinct 404 would confirm which
+        # Business ids exist to anyone able to guess them. Assert the contract
+        # the specification actually gives rather than one of its two branches.
         unknown = client.post(
             f"/v1/platform/businesses/{uuid.uuid4()}/switch",
             json={},
             headers=headers,
         )
-        assert unknown.status_code == 404
+        assert unknown.status_code in (403, 404)
+        if unknown.status_code == 403:
+            assert unknown.json()["error"]["code"] == "MEMBERSHIP_REQUIRED"
 
         malformed = client.post(
             "/v1/platform/businesses/not-a-uuid/switch",

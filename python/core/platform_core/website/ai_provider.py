@@ -41,6 +41,15 @@ class AIModelProvider(Protocol):
     ) -> dict[str, Any]: ...
 
 
+class AIProviderPermanentError(RuntimeError):
+    """The provider refused in a way that retrying cannot fix.
+
+    A rejected key, a revoked key or an unknown model fails identically on every
+    attempt, so retrying only delays the deterministic fallback — and the owner
+    is sitting in onboarding watching it. Retry the transient cases only.
+    """
+
+
 class UnavailableAIProvider:
     """Default provider when no API key is configured — always fails fast."""
 
@@ -138,6 +147,18 @@ class GrokProvider:
                     latency_ms=latency_ms,
                     error=response.text[:500],
                 )
+                # 401/403 are unambiguous. xAI also answers a bad key with 400
+                # + code "invalid-argument", so match on the code rather than
+                # the status alone; a genuinely malformed request is equally
+                # not worth three attempts.
+                detail = response.text[:300]
+                if response.status_code in (401, 403) or (
+                    response.status_code == 400 and "invalid-argument" in detail
+                ):
+                    raise AIProviderPermanentError(
+                        f"{self.provider_name} rejected the request "
+                        f"({response.status_code}): {detail}"
+                    )
                 response.raise_for_status()
 
             data = response.json()

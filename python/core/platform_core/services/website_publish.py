@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -14,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from platform_core.exceptions import ValidationError
 from platform_core.gates import assert_business_mutable
 from platform_core.models import BusinessProfile, WebsitePage, WebsiteSection, WebsiteVersion
+from platform_core.secrets import resolve_signing_secret
 from platform_core.context_resolver import bind_public_context
 from platform_core.resolvers.website_resolver import WebsiteResolver
 from platform_core.services.audit import AuditService
@@ -27,8 +27,13 @@ class WebsitePublishService:
 
     @staticmethod
     def _preview_secret() -> str:
-        return os.getenv("WEBSITE_PREVIEW_SECRET") or os.getenv(
-            "SUPABASE_JWT_SECRET", "preview-dev-secret"
+        # Refuses the development default outside development: this signs the
+        # token that lets a caller read an unpublished draft, so a constant
+        # anyone can read in this repo would defeat the preview boundary.
+        return resolve_signing_secret(
+            "WEBSITE_PREVIEW_SECRET",
+            "preview-dev-secret",
+            fallback_env="SUPABASE_JWT_SECRET",
         )
 
     @staticmethod

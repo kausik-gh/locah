@@ -144,6 +144,8 @@ class WebsiteGenerationService:
         if context.get("description"):
             prompt += f"\nAbout: {context['description']}."
         prompt += build_intake_brief(context, intake)
+        from platform_core.website.ai_provider import AIProviderPermanentError
+
         last_error: Exception | None = None
         for attempt in range(3):
             try:
@@ -163,6 +165,11 @@ class WebsiteGenerationService:
                     provider.provider_name,
                     provider.model_name,
                 )
+            except AIProviderPermanentError as exc:
+                # A rejected key or unknown model answers the same way every
+                # time. Retrying it just makes the owner wait ~15s longer for
+                # the deterministic draft they were always going to get.
+                raise RuntimeError(str(exc)) from exc
             except Exception as exc:  # noqa: BLE001 — retry then fallback
                 last_error = exc
                 await asyncio.sleep(min(2**attempt, 8))
