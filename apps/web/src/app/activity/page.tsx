@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
+import { PublicNav } from '@/components/public/PublicNav'
+import { PublicFooter } from '@/components/public/PublicFooter'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,12 +30,13 @@ const ACTIVITY_LABEL: Record<string, string> = {
   'booking.completed': 'Completed',
 }
 
+/** Maps to the design-system badge tones, not raw hex. */
 const STATUS_TONE: Record<string, string> = {
-  confirmed: '#1f7a4d',
-  completed: '#1f7a4d',
-  pending: '#8a6d1f',
-  cancelled: '#a33',
-  no_show: '#a33',
+  confirmed: 'good',
+  completed: 'good',
+  pending: 'warn',
+  cancelled: 'bad',
+  no_show: 'bad',
 }
 
 /**
@@ -61,10 +64,11 @@ export default async function MyActivityPage() {
   if (!res.ok) {
     return (
       <Shell>
-        <h1 style={H1}>My activity</h1>
-        <div style={CARD}>
-          <p style={{ margin: 0, lineHeight: 1.6 }}>
-            We could not load your activity just now. Please try again in a moment.
+        <h1>My activity</h1>
+        <div className="lc-empty" style={{ marginTop: 'var(--sp-6)' }}>
+          <p className="lc-empty__title">We could not load your activity</p>
+          <p className="lc-empty__body">
+            Nothing is lost — please try again in a moment.
           </p>
         </div>
       </Shell>
@@ -93,27 +97,31 @@ export default async function MyActivityPage() {
 
   return (
     <Shell>
-      <h1 style={H1}>My activity</h1>
-      <p style={{ opacity: 0.8, lineHeight: 1.6, maxWidth: '38rem' }}>
-        Bookings you have made. This is your own record as a customer — it is separate from any
+      <p className="lc-eyebrow">Your record</p>
+      <h1>My activity</h1>
+      <p className="lc-lead" style={{ marginTop: 'var(--sp-3)' }}>
+        Bookings you have made. This is your own record as a customer, kept separate from any
         business you run.
       </p>
 
       {entries.length === 0 ? (
-        <div style={CARD}>
-          <h2 style={{ marginTop: 0, fontSize: '1.15rem' }}>Nothing here yet</h2>
-          <p style={{ lineHeight: 1.6 }}>
-            When you book something, it will show up here so you can find it again.
+        <div className="lc-empty" style={{ marginTop: 'var(--sp-7)' }}>
+          <p className="lc-empty__title">Nothing here yet</p>
+          <p className="lc-empty__body">
+            When you book something through LOCAH it appears here, so you can find it again
+            without digging through your email.
           </p>
-          <Link href="/marketplace">Find a business →</Link>
+          <Link className="lc-btn lc-btn--primary" href="/marketplace">
+            Find a business
+          </Link>
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: '0.75rem', maxWidth: '38rem' }}>
+        <div className="lc-stack" style={{ marginTop: 'var(--sp-7)', maxWidth: '42rem' }}>
           {entries.map((entry) => {
             const status = entry.summary.status
             const startsAt = entry.summary.starts_at
             return (
-              <article key={entry.id} style={CARD}>
+              <article key={entry.id} className="lc-card">
                 <div
                   style={{
                     display: 'flex',
@@ -123,33 +131,25 @@ export default async function MyActivityPage() {
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 600 }}>
+                    <h2 className="lc-card__title" style={{ fontSize: '1.05rem' }}>
                       {entry.business_name ?? 'A business'}
-                    </div>
-                    <div style={{ opacity: 0.85, marginTop: '0.2rem' }}>
+                    </h2>
+                    <p className="lc-card__body" style={{ margin: 0 }}>
                       {ACTIVITY_LABEL[entry.activity_type] ?? entry.activity_type}
                       {entry.summary.booking_number ? ` · ${entry.summary.booking_number}` : ''}
-                    </div>
+                    </p>
                     {startsAt ? (
-                      <div style={{ opacity: 0.7, fontSize: '0.9rem', marginTop: '0.2rem' }}>
+                      <p className="lc-small lc-muted" style={{ margin: '0.25rem 0 0' }}>
                         {new Date(startsAt).toLocaleString()}
-                      </div>
+                      </p>
                     ) : null}
                   </div>
                   {status ? (
                     <span
-                      style={{
-                        color: STATUS_TONE[status] ?? '#1a2229',
-                        border: `1px solid ${STATUS_TONE[status] ?? '#1a2229'}33`,
-                        background: `${STATUS_TONE[status] ?? '#1a2229'}14`,
-                        borderRadius: '999px',
-                        padding: '0.15rem 0.6rem',
-                        fontSize: '0.85rem',
-                        alignSelf: 'flex-start',
-                        whiteSpace: 'nowrap',
-                      }}
+                      className={`lc-badge lc-badge--${STATUS_TONE[status] ?? 'ink'}`}
+                      style={{ alignSelf: 'flex-start' }}
                     >
-                      {status}
+                      {status.replace(/_/g, ' ')}
                     </span>
                   ) : null}
                 </div>
@@ -159,9 +159,9 @@ export default async function MyActivityPage() {
         </div>
       )}
 
-      <section style={{ marginTop: '2rem', maxWidth: '38rem' }}>
-        <h2 style={{ fontSize: '1.05rem' }}>What is not here yet</h2>
-        <ul style={{ paddingLeft: '1.1rem', lineHeight: 1.8, opacity: 0.85 }}>
+      <section style={{ marginTop: 'var(--sp-9)', maxWidth: '42rem' }}>
+        <h2 style={{ fontSize: '1.05rem', marginBottom: 'var(--sp-3)' }}>What is not here yet</h2>
+        <ul className="lc-muted lc-small" style={{ paddingLeft: '1.1rem', lineHeight: 1.9 }}>
           <li>Orders and payments — these are not part of your activity record yet.</li>
           <li>
             Anything you did before signing in. Bookings made as a guest stay with the business
@@ -175,24 +175,12 @@ export default async function MyActivityPage() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        fontFamily: 'Georgia, "Iowan Old Style", serif',
-        background: 'linear-gradient(165deg, #f4f7f2, #e6eef5)',
-        color: '#1a2229',
-        padding: '2.5rem 1.5rem',
-      }}
-    >
-      <div style={{ maxWidth: '48rem', margin: '0 auto' }}>{children}</div>
+    <div className="locah-public">
+      <PublicNav signedIn audience="consumer" />
+      <main className="lc-section lc-container" style={{ maxWidth: '52rem' }}>
+        {children}
+      </main>
+      <PublicFooter />
     </div>
   )
-}
-
-const H1: React.CSSProperties = { fontSize: '2rem', marginBottom: '0.5rem' }
-const CARD: React.CSSProperties = {
-  padding: '1.1rem 1.25rem',
-  borderRadius: '10px',
-  border: '1px solid rgba(26,34,41,0.12)',
-  background: 'rgba(255,255,255,0.65)',
 }

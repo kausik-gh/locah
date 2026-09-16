@@ -12,6 +12,9 @@ export type PublicNavProps = {
   active?: 'marketplace' | 'business' | 'capabilities'
   /** Signed-in visitors get "Your workspace" instead of "Get started". */
   signedIn?: boolean
+  /** Consumer surfaces must not offer "Your businesses" — a customer who never
+   *  runs a business should not be pointed at the operator side of LOCAH. */
+  audience?: 'business' | 'consumer'
 }
 
 const LINKS: Array<{ href: string; label: string; key: PublicNavProps['active'] }> = [
@@ -20,7 +23,11 @@ const LINKS: Array<{ href: string; label: string; key: PublicNavProps['active'] 
   { href: '/capabilities', label: 'Capabilities', key: 'capabilities' },
 ]
 
-export function PublicNav({ active, signedIn = false }: PublicNavProps) {
+export function PublicNav({
+  active,
+  signedIn = false,
+  audience = 'business',
+}: PublicNavProps) {
   return (
     <header className="lc-nav">
       <div className="lc-nav__inner lc-container lc-container--wide">
@@ -45,8 +52,11 @@ export function PublicNav({ active, signedIn = false }: PublicNavProps) {
 
         <div className="lc-nav__actions">
           {signedIn ? (
-            <Link className="lc-btn lc-btn--primary lc-btn--sm" href="/">
-              Your businesses
+            <Link
+              className="lc-btn lc-btn--primary lc-btn--sm"
+              href={audience === 'consumer' ? '/activity' : '/'}
+            >
+              {audience === 'consumer' ? 'Your activity' : 'Your businesses'}
             </Link>
           ) : (
             <>
