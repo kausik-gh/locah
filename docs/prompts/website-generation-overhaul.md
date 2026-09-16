@@ -1,12 +1,10 @@
 Website Generation Overhaul + Workspace Cleanup
 Mega Work Order for Claude Code
 Sequencing: this comes after the immediate-priorities work order (performance diagnosis, Razorpay connect, location cleanup) already handed off. Do these sections in order; each is checkpointed on its own, per the project's standing discipline (targeted tests per change, full suite only at real milestones, diffs shown before anything touching schema/auth).
-0. Security — the exposed Gemini key
-The founder has explicitly authorized using this key now and will rotate it later: `AIzaSyA0Qm6IIhHIv3qBDn3-QpzRcUZlhcbB72A`
-
-* Store as `GEMINI_API_KEY` in `.env` only. Never in any committed file, never in any client-side/`NEXT_PUBLIC_*` variable, never returned in any API response.
-* Add `gemini_api_key` / `GEMINI_API_KEY` to the AUD-11 redaction filter's keyword list — confirm it would actually be caught if it ever appeared in a log line, the same way `service_role` was checked and added earlier.
-* Set a reminder note in memory: this key needs rotation once the founder generates a fresh one — don't silently forget this is a temporary key.
+0. Security — AI provider keys
+* Store `XAI_API_KEY` in `.env` only. Never in any committed file, never in any client-side/`NEXT_PUBLIC_*` variable, never returned in any API response.
+* Ensure `xai_api_key` / `XAI_API_KEY` is covered by the AUD-11 redaction filter if it ever appears in a log line.
+* Rotate any provider key immediately if it was ever committed to git history.
 
 1. Documentation amendment — this must happen, additively
 Several real product decisions were just made in conversation that aren't reflected in Documents 08-12. Update them following the same additive, dated-amendment discipline Document 08 §25.3 already establishes elsewhere in this project (a recorded amendment pass, not a silent rewrite that pretends this was always the plan) — because it wasn't; it was decided now, and the documents should say so honestly.

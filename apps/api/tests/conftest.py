@@ -26,10 +26,10 @@ os.environ.pop("SUPABASE_URL", None)
 os.environ.pop("SUPABASE_JWKS_URL", None)
 
 # Website generation must never make a live AI call from the suite. Drop any
-# GEMINI_API_KEY the environment/.env carries so `get_ai_provider()` returns
-# `UnavailableAIProvider` by default; the live Gemini path is covered with a
+# XAI_API_KEY the environment/.env carries so `get_ai_provider()` returns
+# `UnavailableAIProvider` by default; the live Grok path is covered with a
 # stubbed provider in test_website_generation.py.
-os.environ.pop("GEMINI_API_KEY", None)
+os.environ.pop("XAI_API_KEY", None)
 
 # AUD-11: keep the per-request INFO line ("request.completed") out of the test
 # transcript. WARN/ERROR — gate denials, 5xx, webhook signature rejections —

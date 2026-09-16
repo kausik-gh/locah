@@ -123,7 +123,7 @@ def test_generation_fallback_always_produces_draft(owner: tuple[dict[str, str], 
         return res
 
     res = asyncio.run(_run())
-    # No GEMINI_API_KEY in the suite (conftest) → deterministic fallback.
+    # No XAI_API_KEY in the suite (conftest) → deterministic fallback.
     assert res["status"] == "fallback_used"
     assert res["generated_by"] == "deterministic_fallback"
     assert res["version_id"]
@@ -168,7 +168,10 @@ def test_fallback_unit_schema_valid() -> None:
 
 
 class _StubProvider:
-    """Deterministic stand-in for GeminiProvider — records the prompt it saw."""
+    """Deterministic stand-in for GrokProvider — records the prompt it saw."""
+
+    provider_name = "xai"
+    model_name = "test-grok"
 
     last_prompt: str = ""
 
@@ -255,6 +258,61 @@ def test_generation_uses_ai_provider_and_intake(
     assert "Ragi dosa" in _StubProvider.last_prompt
     assert "hand-rolled" in _StubProvider.last_prompt
     assert "offerings" in _StubProvider.last_prompt
+
+
+class _InvalidProvider:
+    provider_name = "xai"
+    model_name = "invalid-grok"
+
+    async def generate_structured(self, prompt, schema, model_config, timeout_seconds):  # type: ignore[no-untyped-def]
+        return {"pages": [], "navigation": [], "theme_hints": {}}
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+def test_invalid_ai_output_falls_back_to_deterministic_draft(
+    owner: tuple[dict[str, str], uuid.UUID], monkeypatch: Any
+) -> None:
+    import platform_core.services.website_generation as gen_mod
+
+    monkeypatch.setattr(gen_mod, "get_ai_provider", lambda: _InvalidProvider())
+
+    headers, _ = owner
+    client = TestClient(app)
+    business_id = _create_business(client, headers)
+    biz_uuid = uuid.UUID(business_id)
+
+    async def _run() -> dict[str, Any]:
+        url = get_database_url()
+        assert url
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        engine = create_async_engine(url, echo=False, poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as session:
+            triggered_by = (
+                await session.execute(
+                    select(WGJ.triggered_by).where(WGJ.business_id == biz_uuid).limit(1)
+                )
+            ).scalar_one()
+            job = WGJ(
+                business_id=biz_uuid,
+                status="pending",
+                prompt_version="v1",
+                triggered_by=triggered_by,
+            )
+            session.add(job)
+            await session.flush()
+            await session.commit()
+            res = await gen_mod.WebsiteGenerationService.execute_job(
+                session, generation_job_id=job.id, correlation_id=str(uuid.uuid4())
+            )
+            await session.commit()
+        await engine.dispose()
+        return res
+
+    res = asyncio.run(_run())
+    assert res["generated_by"] == "deterministic_fallback"
+    assert res["status"] == "fallback_used"
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")

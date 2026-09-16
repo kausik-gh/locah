@@ -119,14 +119,16 @@ class WebsiteGenerationService:
         }
 
     @staticmethod
-    async def _try_ai(context: dict[str, Any], intake: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _try_ai(
+        context: dict[str, Any], intake: dict[str, Any] | None = None
+    ) -> tuple[dict[str, Any], str, str]:
         from platform_core.website.ai_provider import UnavailableAIProvider
 
         provider = get_ai_provider()
-        # Unconfigured provider (no GEMINI_API_KEY) fails immediately — no retry delay.
+        # Unconfigured provider (no XAI_API_KEY) fails immediately — no retry delay.
         if isinstance(provider, UnavailableAIProvider):
             raise RuntimeError(
-                "AI provider not configured (no GEMINI_API_KEY); use deterministic fallback"
+                "AI provider not configured (no XAI_API_KEY); use deterministic fallback"
             )
         prompt = (
             f"Generate a structured multi-page business website draft for "
@@ -148,12 +150,19 @@ class WebsiteGenerationService:
                 raw = await provider.generate_structured(
                     prompt,
                     WEBSITE_GENERATION_SCHEMA,
-                    {"purpose": "website.generate", "max_output_tokens": 16384},
-                    # A full multi-page site is a big generation; the flash
-                    # models routinely need 30-50s.
+                    {
+                        "purpose": "website.generate",
+                        "max_output_tokens": 16384,
+                        "schema_name": "website_generation",
+                    },
+                    # A full multi-page site is a big generation; allow headroom.
                     timeout_seconds=75,
                 )
-                return validate_generation_payload(raw)
+                return (
+                    validate_generation_payload(raw),
+                    provider.provider_name,
+                    provider.model_name,
+                )
             except Exception as exc:  # noqa: BLE001 — retry then fallback
                 last_error = exc
                 await asyncio.sleep(min(2**attempt, 8))
@@ -292,9 +301,11 @@ class WebsiteGenerationService:
         generated_by = "ai_generation"
         fallback_reason: str | None = None
         try:
-            payload = await WebsiteGenerationService._try_ai(context, intake)
-            job.ai_provider = "gemini"
-            job.model_name = "structured"
+            payload, provider_name, model_name = await WebsiteGenerationService._try_ai(
+                context, intake
+            )
+            job.ai_provider = provider_name
+            job.model_name = model_name
         except Exception as exc:  # noqa: BLE001
             payload = _deterministic()
             generated_by = "deterministic_fallback"

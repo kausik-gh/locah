@@ -36,18 +36,18 @@ def test_credential_keys_are_redacted() -> None:
     assert out["safe"] == "keep-me"
 
 
-def test_gemini_api_key_is_redacted() -> None:
+def test_xai_api_key_is_redacted() -> None:
     out = _run(
         {
             "event": "website.generate",
-            "GEMINI_API_KEY": "AIzaSyEXAMPLE",
-            "gemini_api_key": "AIzaSyEXAMPLE",
-            "model_config": {"gemini": "AIzaSyEXAMPLE", "purpose": "website.generate"},
+            "XAI_API_KEY": "xai-example-key",
+            "xai_api_key": "xai-example-key",
+            "model_config": {"xai": "xai-example-key", "purpose": "website.generate"},
         }
     )
-    assert out["GEMINI_API_KEY"] == "***redacted***"
-    assert out["gemini_api_key"] == "***redacted***"
-    assert out["model_config"]["gemini"] == "***redacted***"
+    assert out["XAI_API_KEY"] == "***redacted***"
+    assert out["xai_api_key"] == "***redacted***"
+    assert out["model_config"]["xai"] == "***redacted***"
     assert out["model_config"]["purpose"] == "website.generate"
 
 

@@ -47,7 +47,7 @@ _REDACT_KEY_SUBSTRINGS: tuple[str, ...] = (
     "service_role",  # SUPABASE_SERVICE_ROLE_KEY, service_role_key
     "service_key",
     "credential",  # encrypted_credentials, provider_credentials, key_secret is covered by "secret"
-    "gemini",  # GEMINI_API_KEY (also caught by "api_key"), gemini_key, bare gemini
+    "xai",  # XAI_API_KEY (also caught by "api_key")
 )
 _REDACTED = "***redacted***"
 
