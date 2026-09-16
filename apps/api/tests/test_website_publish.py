@@ -179,3 +179,41 @@ def test_preview_token_expiry(owner: tuple[dict[str, str], uuid.UUID]) -> None:
     )
     resp = client.get(f"/v1/public/websites/{slug}?preview_token={expired}")
     assert resp.status_code in (400, 422)
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+def test_preview_resolves_while_business_is_still_private(
+    owner: tuple[dict[str, str], uuid.UUID],
+) -> None:
+    """The owner can preview a draft before the Business is public at all.
+
+    `_create_business` promotes to "unlisted" so the public endpoints resolve,
+    which is right for the publish tests but hides this case: a Business is
+    private from creation until someone deliberately lists it, and previewing
+    the draft is what an owner does *before* making that decision. Resolving
+    the Business through the anonymous path first made preview 404 for exactly
+    that window, so this creates one and leaves it private.
+    """
+    headers, _ = owner
+    client = TestClient(app)
+    resp = client.post(
+        "/v1/platform/businesses",
+        json={"display_name": f"Private Co {uuid.uuid4().hex[:8]}", "business_type": "retail"},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    business = cast(dict[str, Any], resp.json()["data"]["business"])
+    bid = business["id"]
+    slug = business["slug"]
+    _drain_generation(bid)
+
+    token = client.get(f"/v1/b/{bid}/website/preview-token", headers=headers).json()["data"][
+        "token"
+    ]
+
+    preview = client.get(f"/v1/public/websites/{slug}?preview_token={token}")
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["data"]["is_preview"] is True
+
+    # Tenant isolation must be unchanged: no token, no public site.
+    assert client.get(f"/v1/public/websites/{slug}").status_code == 404

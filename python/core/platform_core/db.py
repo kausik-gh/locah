@@ -50,17 +50,33 @@ def create_worker_session_factory(
     engine = create_async_engine(
         db_url,
         echo=False,
-        # Perf (measured, ap-northeast-1 pooler from ap-south-1): pool_pre_ping
-        # emits a SELECT 1 on every checkout that, on this asyncpg + Supavisor
-        # session-pooler combination, costs ~400-500ms — it roughly *doubled*
-        # every query. Idle pooled connections survive here for minutes, so the
-        # ping buys little; pool_recycle is the safety net for a connection the
-        # pooler drops out from under us (SQLAlchemy transparently reconnects on
-        # the next use). pool_size default 5 + overflow 10 is plenty for a
-        # single-instance API.
-        pool_pre_ping=False,
-        pool_recycle=1800,
-        connect_args={"timeout": 10},
+        # Supersedes an earlier "pre_ping is too expensive" tuning. That was
+        # measured against an ap-northeast-1 pooler; the project has since moved
+        # to ap-south-1, and the assumption it rested on — "idle pooled
+        # connections survive here for minutes" — is simply not true of this
+        # pooler. Re-measured against it: a checkout costs ~570ms WITHOUT the
+        # ping, which is a full reconnect, i.e. the pooler is dropping
+        # connections between requests regardless. pool_recycle cannot catch
+        # that: a connection killed server-side thirty seconds after checkin is
+        # still handed out, and the request dies on
+        # `asyncpg.InterfaceError: connection is closed` — a 500 for the owner,
+        # which is exactly what Marketplace Presence and identity bootstrap were
+        # returning.
+        #
+        # pre_ping adds ~250ms and turns that 500 into a transparent reconnect.
+        # A slower correct answer beats a fast error page.
+        pool_pre_ping=True,
+        # Well inside the pooler's idle tolerance rather than the 30 minutes it
+        # demonstrably does not honour.
+        pool_recycle=600,
+        # The pooler allots each client a small number of slots, shared by the
+        # API and the worker. Overrunning it is what gets connections killed, so
+        # keep the ceiling modest instead of the default 5 + 10 overflow.
+        pool_size=5,
+        max_overflow=5,
+        # Connecting through the pooler measurably exceeds 10s under load; that
+        # timeout was itself turning slow connects into hard failures.
+        connect_args={"timeout": 30},
     )
 
     factory = async_sessionmaker(

@@ -215,6 +215,27 @@ class WebsitePublishService:
     ) -> dict[str, Any]:
         from platform_core.exceptions import ResourceNotFound
 
+        # A preview token has to be verified BEFORE the Business is looked up.
+        #
+        # `businesses_api_select` only exposes a Business to an unbound caller
+        # once it is unlisted or discoverable. A Business that has never been
+        # published is private, so resolving it first meant preview 404'd for
+        # exactly the case preview exists to serve — the owner checking a draft
+        # before making it public.
+        #
+        # Binding the tenant context from the token's own `business_id` does not
+        # weaken that policy: it satisfies the `id = current_business_id()` arm
+        # the policy already grants. The token is platform-signed, short-lived,
+        # names one Business, and is only minted for someone holding
+        # WEBSITE_READ on it. The claim is still checked against the resolved
+        # Business below, so a token for one tenant cannot open another's slug.
+        claims: dict[str, Any] | None = None
+        if preview_token:
+            claims = WebsitePublishService.verify_preview_token(preview_token)
+            token_business_id = claims.get("business_id")
+            if token_business_id:
+                await bind_public_context(session, uuid.UUID(str(token_business_id)))
+
         business = await BusinessService.get_by_slug(session, slug)
         if business is None or business.deleted_at is not None:
             raise ResourceNotFound("Website")
@@ -227,8 +248,7 @@ class WebsitePublishService:
 
         version: WebsiteVersion | None = None
         is_preview = False
-        if preview_token:
-            claims = WebsitePublishService.verify_preview_token(preview_token)
+        if claims is not None:
             if claims.get("business_id") != str(business.id):
                 raise ValidationError("Preview token does not match business")
             result = await session.execute(
