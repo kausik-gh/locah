@@ -170,7 +170,7 @@ class WebsitePublishService:
                         business_id=business_id,
                         section_type_id=section.section_type_id,
                         layout_variant=section.layout_variant,
-                        content=section.content,
+                        content=dict(section.content or {}),
                         module_binding=section.module_binding,
                         sort_order=section.sort_order,
                         is_visible=section.is_visible,

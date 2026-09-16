@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.exceptions import ConflictError, ValidationError
 from platform_core.gates import assert_business_mutable
-from platform_core.models import BusinessProfile, WebsiteGenerationJob
+from platform_core.models import BusinessProfile, WebsiteGenerationJob, WebsiteVersion
 from platform_core.resolvers.website_resolver import WebsiteResolver
 from platform_core.services.async_jobs import AsyncJobService
 from platform_core.services.audit import AuditService
@@ -433,6 +433,40 @@ class WebsiteGenerationService:
         # been through the schema + content-safety pass that _try_ai / the
         # fallback already applied.
         payload = validate_generation_payload(payload)
+
+        # Re-read the live draft from the database. The owner may have edited
+        # it on another connection while this job was talking to the model;
+        # replacing it now would throw those edits away.
+        live_draft = (
+            await session.execute(
+                select(WebsiteVersion)
+                .where(
+                    WebsiteVersion.website_id == website.id,
+                    WebsiteVersion.version_type == "draft",
+                    WebsiteVersion.superseded_at.is_(None),
+                )
+                .execution_options(populate_existing=True)
+            )
+        ).scalars().first()
+        if (
+            live_draft is not None
+            and job.started_at is not None
+            and live_draft.updated_at is not None
+            and live_draft.updated_at > job.started_at
+            and live_draft.generation_job_id != job.id
+        ):
+            job.status = "superseded"
+            job.fallback_reason = (
+                "The owner edited the draft while generation was running; "
+                "the generated draft was not applied."
+            )
+            job.completed_at = datetime.now(timezone.utc)
+            await session.flush()
+            return {
+                "status": job.status,
+                "job_id": str(job.id),
+                "preserved_owner_edits": True,
+            }
 
         async def _write(p: dict[str, Any], source: str) -> Any:
             return await WebsiteService.replace_draft_from_generation(

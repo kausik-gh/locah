@@ -94,9 +94,21 @@ def _drain_generation(business_id: str) -> None:
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
         engine = create_async_engine(url, echo=False, poolclass=NullPool)
         factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        async with factory() as session:
-            for _ in range(5):
+        from platform_core.services.website_generation import WebsiteGenerationService
+
+        for _ in range(15):
+            async with factory() as session:
                 await poll_and_execute_jobs(session, "test-publish-worker")
+                job = await WebsiteGenerationService.latest_job(
+                    session, business_id=uuid.UUID(business_id)
+                )
+                if job is not None and job.status in {
+                    "completed",
+                    "fallback_used",
+                    "failed",
+                    "superseded",
+                }:
+                    break
         await engine.dispose()
 
     asyncio.run(_run())
@@ -111,23 +123,43 @@ def test_publish_and_public_render(owner: tuple[dict[str, str], uuid.UUID]) -> N
     slug = business["slug"]
     _drain_generation(bid)
 
-    site = client.get(f"/v1/b/{bid}/website", headers=headers).json()["data"]
-    home = next(p for p in site["draft"]["pages"] if p["slug"] == "home")
+    patched = None
+    for _ in range(3):
+        site = client.get(f"/v1/b/{bid}/website", headers=headers).json()["data"]
+        home = next(p for p in site["draft"]["pages"] if p["slug"] == "home")
+        hero = next(s for s in home["sections"] if s["section_type_id"] == "hero")
+        patched = client.patch(
+            f"/v1/b/{bid}/website/sections/{hero['id']}",
+            json={"content": {"headline": "Ready to publish", "subheadline": "Launch ready"}},
+            headers=headers,
+        )
+        if patched.status_code == 200:
+            break
+        if patched.status_code != 422:
+            raise AssertionError(patched.text)
+        _drain_generation(bid)
+    assert patched is not None and patched.status_code == 200, patched.text if patched else "no patch"
+    assert patched.json()["data"]["content"]["headline"] == "Ready to publish"
+    refreshed = client.get(f"/v1/b/{bid}/website", headers=headers).json()["data"]
+    home = next(p for p in refreshed["draft"]["pages"] if p["slug"] == "home")
     hero = next(s for s in home["sections"] if s["section_type_id"] == "hero")
-    client.patch(
-        f"/v1/b/{bid}/website/sections/{hero['id']}",
-        json={"content": {"headline": "Ready to publish", "subheadline": "Launch ready"}},
-        headers=headers,
-    )
+    assert hero["content"]["headline"] == "Ready to publish"
 
     preview = client.get(f"/v1/b/{bid}/website/preview-token", headers=headers)
     assert preview.status_code == 200, preview.text
     token = preview.json()["data"]["token"]
+    assert preview.json()["data"]["draft_version_id"] == refreshed["draft"]["id"]
 
     preview_public = client.get(f"/v1/public/websites/{slug}?preview_token={token}")
     assert preview_public.status_code == 200, preview_public.text
     assert preview_public.json()["data"]["is_preview"] is True
     assert preview_public.headers.get("cache-control") == "no-store"
+    preview_hero = next(
+        s
+        for s in preview_public.json()["data"]["page"]["sections"]
+        if s["section_type_id"] == "hero"
+    )
+    assert preview_hero["content"]["headline"] == "Ready to publish"
 
     publish = client.post(f"/v1/b/{bid}/website/publish", headers=headers)
     assert publish.status_code == 200, publish.text
@@ -136,7 +168,12 @@ def test_publish_and_public_render(owner: tuple[dict[str, str], uuid.UUID]) -> N
     public = client.get(f"/v1/public/websites/{slug}")
     assert public.status_code == 200, public.text
     assert public.json()["data"]["is_preview"] is False
-    assert public.json()["data"]["page"]["sections"][0]["content"]["headline"] == "Ready to publish"
+    public_sections = public.json()["data"]["page"]["sections"]
+    public_hero = next(s for s in public_sections if s["section_type_id"] == "hero")
+    assert public_hero["content"]["headline"] == "Ready to publish", [
+        (s["section_type_id"], (s.get("content") or {}).get("headline"))
+        for s in public_sections
+    ]
 
     async def _check_outbox() -> None:
         url = get_database_url()

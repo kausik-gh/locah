@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from platform_core.gates import assert_business_mutable
 from platform_core.models import Website, WebsitePage, WebsiteSection, WebsiteVersion
@@ -141,9 +144,48 @@ class WebsiteService:
         generated_by: str,
         generation_job_id: uuid.UUID | None,
     ) -> WebsiteVersion:
-        # Soft-replace: mark the current live draft superseded, then insert the
-        # new one. Both in this transaction, so the partial unique index
-        # (one live draft per website) sees a clean hand-off. AUD-08.
+        # Soft-replace under the partial unique index (one live draft per
+        # website). Concurrent callers serialize on SELECT FOR UPDATE of the
+        # live row; if both still collide on INSERT, retry rather than leave
+        # the owner with a failed generation and the previous draft stuck.
+        last_error: Exception | None = None
+        for _attempt in range(3):
+            try:
+                async with session.begin_nested():
+                    return await WebsiteService._insert_live_draft(
+                        session,
+                        business_id=business_id,
+                        website=website,
+                        payload=payload,
+                        generated_by=generated_by,
+                        generation_job_id=generation_job_id,
+                    )
+            except IntegrityError as exc:
+                last_error = exc
+        raise last_error or RuntimeError("Could not replace the website draft")
+
+    @staticmethod
+    async def _insert_live_draft(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        website: Website,
+        payload: dict[str, Any],
+        generated_by: str,
+        generation_job_id: uuid.UUID | None,
+    ) -> WebsiteVersion:
+        # Lock the current live draft (if any) so a second replacement waits
+        # for this transaction instead of both inserting against the unique
+        # index and both losing.
+        await session.execute(
+            select(WebsiteVersion.id)
+            .where(
+                WebsiteVersion.website_id == website.id,
+                WebsiteVersion.version_type == "draft",
+                WebsiteVersion.superseded_at.is_(None),
+            )
+            .with_for_update()
+        )
         await session.execute(
             update(WebsiteVersion)
             .where(
@@ -218,10 +260,15 @@ class WebsiteVersionService:
         if navigation is not None:
             assert_no_unsafe_content(navigation, path="navigation")
             draft.navigation = navigation
+            flag_modified(draft, "navigation")
         if theme is not None:
             assert_no_unsafe_content(theme, path="theme")
             draft.theme = theme
+            flag_modified(draft, "theme")
         await session.flush()
+        # Bump the live draft so an in-flight generation job will not clobber
+        # owner edits when it later tries to soft-replace this version.
+        draft.updated_at = datetime.now(timezone.utc)
         await AuditService.record(
             session,
             event_type="website.content_edited",
@@ -267,6 +314,7 @@ class PageService:
         for key, value in validated.items():
             setattr(page, key, value)
         await session.flush()
+        draft.updated_at = datetime.now(timezone.utc)
         await AuditService.record(
             session,
             event_type="website.content_edited",
@@ -322,7 +370,11 @@ class SectionService:
             )
         for key, value in validated.items():
             setattr(section, key, value)
+            # JSONB replacements are not always detected as dirty without this.
+            if key in {"content", "module_binding"}:
+                flag_modified(section, key)
         await session.flush()
+        draft.updated_at = datetime.now(timezone.utc)
         await AuditService.record(
             session,
             event_type="website.content_edited",
