@@ -32,18 +32,6 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest.mark.asyncio
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 async def test_outbox_worker_processes_event(db_session: AsyncSession) -> None:
-    # Same shared-database backlog concern as apps/worker/tests/test_jobs.py's
-    # _drain_backlog: claim_outbox_batch claims the oldest-due LIMIT 10 rows
-    # system-wide, and this suite runs apps/api's tests (which write outbox
-    # events on every business/membership/order/etc. action but never
-    # dispatch them — only a worker test's own poll does) before this file.
-    # By the time this test runs, hundreds of older pending rows can already
-    # be queued ahead of the one event this test creates, so a bounded
-    # single-digit retry loop never reaches it. Drain first.
-    for _ in range(200):
-        if await poll_and_dispatch_outbox(db_session, "test-outbox-drain") == 0:
-            break
-
     identity_id = uuid.uuid4()
     await ensure_auth_user(db_session, identity_id, f"worker-{identity_id.hex[:8]}@test.local")
     await IdentityService.bootstrap_identity(
@@ -67,15 +55,20 @@ async def test_outbox_worker_processes_event(db_session: AsyncSession) -> None:
     assert event is not None
     event_id = event.id
 
-    for _ in range(10):
-        await poll_and_dispatch_outbox(db_session, "test-worker")
-        db_session.expire_all()
-        result = await db_session.execute(
-            select(PlatformOutboxEvent).where(PlatformOutboxEvent.id == event_id)
-        )
-        event = result.scalars().first()
-        assert event is not None
-        if event.status == "completed":
-            break
+    # Claim this event by id rather than draining the queue ahead of it.
+    # claim_outbox_batch is oldest-due-first across the whole shared database,
+    # so an unscoped poll has to chew through every pending row the rest of the
+    # suite left behind before reaching this one — which a bounded retry loop
+    # never manages, and which under `pytest -n` it can never win at all,
+    # because the other workers keep adding rows faster than it drains them.
+    await poll_and_dispatch_outbox(db_session, "test-worker", event_ids=[str(event_id)])
 
+    db_session.expire_all()
+    result = await db_session.execute(
+        select(PlatformOutboxEvent).where(PlatformOutboxEvent.id == event_id)
+    )
+    event = result.scalars().first()
+    assert event is not None
+    # business.created has no registered subscriber, so fan-out completes it
+    # outright — an event nobody listens to is delivered, not dead-lettered.
     assert event.status == "completed"

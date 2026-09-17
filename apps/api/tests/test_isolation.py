@@ -17,6 +17,18 @@ from sqlalchemy.pool import NullPool
 from platform_core.db import get_database_url
 from platform_testing.db_helpers import ensure_auth_user
 
+
+def _unique(name: str) -> str:
+    """Suffix a fixture business name so the suite can run more than once.
+
+    See the note on the same helper in test_business_creation.py: business
+    slugs are globally unique among non-deleted businesses, so a hardcoded
+    display_name passes once against a persistent database and collides on
+    every run after.
+    """
+    return f"{name} {uuid.uuid4().hex[:8]}"
+
+
 TEST_JWT_SECRET = "super-secret-jwt-token-with-at-least-32-characters-long"
 
 
@@ -69,7 +81,7 @@ def test_ordinary_member_cannot_access_admin_endpoints(
 
     create_resp = client.post(
         "/v1/platform/businesses",
-        json={"display_name": "Admin Gate Test"},
+        json={"display_name": _unique("Admin Gate Test")},
         headers=owner_headers,
     )
     assert create_resp.status_code == 200
@@ -117,7 +129,7 @@ def test_super_admin_action_is_attributed(client: TestClient, monkeypatch: Any) 
     owner_headers = {"Authorization": f"Bearer {_make_token(owner_id, owner_email)}"}
     create_resp = client.post(
         "/v1/platform/businesses",
-        json={"display_name": "Super Admin Audit"},
+        json={"display_name": _unique("Super Admin Audit")},
         headers=owner_headers,
     )
     business_id = create_resp.json()["data"]["business"]["id"]
@@ -162,7 +174,7 @@ def test_location_scoped_member_denied_for_unauthorized_location(client: TestCli
     owner_headers = {"Authorization": f"Bearer {_make_token(owner_id, owner_email)}"}
     create_resp = client.post(
         "/v1/platform/businesses",
-        json={"display_name": "Location Scope Shop"},
+        json={"display_name": _unique("Location Scope Shop")},
         headers=owner_headers,
     )
     assert create_resp.status_code == 200, create_resp.text
