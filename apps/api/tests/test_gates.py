@@ -24,6 +24,22 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+
+def _unique(name: str) -> str:
+    """Suffix a fixture business name so the suite can run more than once.
+
+    Business slugs are globally unique among non-deleted businesses, so a
+    hardcoded display_name creates a row that makes every later run of the same
+    test fail on businesses_slug_active_key. CI hides this by running against a
+    throwaway Postgres; against the hosted database it is the difference
+    between a suite you can re-run and one you cannot.
+
+    Names that are meant to be REJECTED (too short, blank, extra fields, no
+    auth) are deliberately left literal — no business is created for them.
+    """
+    return f"{name} {uuid.uuid4().hex[:8]}"
+
+
 TEST_JWT_SECRET = "super-secret-jwt-token-with-at-least-32-characters-long"
 
 
@@ -110,7 +126,7 @@ def test_closed_business_update_returns_conflict(
     with TestClient(app) as client:
         create_resp = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Closeable Co"},
+            json={"display_name": _unique("Closeable Co")},
             headers=headers,
         )
         assert create_resp.status_code == 200

@@ -22,6 +22,22 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+
+def _unique(name: str) -> str:
+    """Suffix a fixture business name so the suite can run more than once.
+
+    Business slugs are globally unique among non-deleted businesses, so a
+    hardcoded display_name creates a row that makes every later run of the same
+    test fail on businesses_slug_active_key. CI hides this by running against a
+    throwaway Postgres; against the hosted database it is the difference
+    between a suite you can re-run and one you cannot.
+
+    Names that are meant to be REJECTED (too short, blank, extra fields, no
+    auth) are deliberately left literal — no business is created for them.
+    """
+    return f"{name} {uuid.uuid4().hex[:8]}"
+
+
 TEST_JWT_SECRET = "super-secret-jwt-token-with-at-least-32-characters-long"
 
 
@@ -70,7 +86,7 @@ def test_switch_business_success(auth_pair: tuple[dict[str, str], uuid.UUID]) ->
     with TestClient(app) as client:
         a = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Biz A Switch", "business_type": "retail"},
+            json={"display_name": _unique("Biz A Switch"), "business_type": "retail"},
             headers=headers,
         )
         assert a.status_code == 200
@@ -78,7 +94,7 @@ def test_switch_business_success(auth_pair: tuple[dict[str, str], uuid.UUID]) ->
 
         b = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Biz B Switch", "business_type": "salon"},
+            json={"display_name": _unique("Biz B Switch"), "business_type": "salon"},
             headers=headers,
         )
         assert b.status_code == 200
@@ -117,12 +133,12 @@ def test_switch_set_as_default(auth_pair: tuple[dict[str, str], uuid.UUID]) -> N
     with TestClient(app) as client:
         a = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Default A", "business_type": "retail"},
+            json={"display_name": _unique("Default A"), "business_type": "retail"},
             headers=headers,
         ).json()["data"]["business"]["id"]
         b = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Default B", "business_type": "gym"},
+            json={"display_name": _unique("Default B"), "business_type": "gym"},
             headers=headers,
         ).json()["data"]["business"]["id"]
 
@@ -146,12 +162,12 @@ def test_restore_default_then_last(auth_pair: tuple[dict[str, str], uuid.UUID]) 
     with TestClient(app) as client:
         a = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Restore A", "business_type": "retail"},
+            json={"display_name": _unique("Restore A"), "business_type": "retail"},
             headers=headers,
         ).json()["data"]["business"]["id"]
         b = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Restore B", "business_type": "cafe"},
+            json={"display_name": _unique("Restore B"), "business_type": "cafe"},
             headers=headers,
         ).json()["data"]["business"]["id"]
 
@@ -234,7 +250,7 @@ def test_switch_manager_and_member_roles(
     with TestClient(app) as client:
         biz = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Role Switch Co", "business_type": "retail"},
+            json={"display_name": _unique("Role Switch Co"), "business_type": "retail"},
             headers=owner_headers,
         ).json()["data"]["business"]["id"]
 
@@ -274,9 +290,7 @@ def test_switch_manager_and_member_roles(
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
-def test_switch_failures(
-    auth_pair: tuple[dict[str, str], uuid.UUID], monkeypatch: Any
-) -> None:
+def test_switch_failures(auth_pair: tuple[dict[str, str], uuid.UUID], monkeypatch: Any) -> None:
     headers, _ = auth_pair
     other_id = uuid.uuid4()
     other_email = f"{other_id}@example.com"
@@ -339,9 +353,7 @@ def test_switch_failures(
             headers=headers,
         )
         assert invite.status_code == 200
-        pending_headers = {
-            "Authorization": f"Bearer {_make_token(pending_id, pending_email)}"
-        }
+        pending_headers = {"Authorization": f"Bearer {_make_token(pending_id, pending_email)}"}
         pending_switch = client.post(
             f"/v1/platform/businesses/{biz}/switch",
             json={},
@@ -458,12 +470,12 @@ def test_switch_audit_and_outbox(auth_pair: tuple[dict[str, str], uuid.UUID]) ->
     with TestClient(app) as client:
         biz = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Audit Switch Co", "business_type": "retail"},
+            json={"display_name": _unique("Audit Switch Co"), "business_type": "retail"},
             headers=headers,
         ).json()["data"]["business"]["id"]
         biz2 = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Audit Switch Co 2", "business_type": "salon"},
+            json={"display_name": _unique("Audit Switch Co 2"), "business_type": "salon"},
             headers=headers,
         ).json()["data"]["business"]["id"]
         resp = client.post(

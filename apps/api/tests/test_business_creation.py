@@ -12,7 +12,12 @@ import pytest
 from fastapi.testclient import TestClient
 from platform_api.main import app
 from platform_core.db import get_database_url
-from platform_core.models import Business, BusinessMembership, PlatformAuditEvent, PlatformOutboxEvent
+from platform_core.models import (
+    Business,
+    BusinessMembership,
+    PlatformAuditEvent,
+    PlatformOutboxEvent,
+)
 from platform_core.permissions import ROLE_PRIMARY_OWNER
 from platform_core.services.business import BusinessService
 from platform_core.services.identity import IdentityService
@@ -21,6 +26,22 @@ from platform_testing.db_helpers import ensure_auth_user
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+
+
+def _unique(name: str) -> str:
+    """Suffix a fixture business name so the suite can run more than once.
+
+    Business slugs are globally unique among non-deleted businesses, so a
+    hardcoded display_name creates a row that makes every later run of the same
+    test fail on businesses_slug_active_key. CI hides this by running against a
+    throwaway Postgres; against the hosted database it is the difference
+    between a suite you can re-run and one you cannot.
+
+    Names that are meant to be REJECTED (too short, blank, extra fields, no
+    auth) are deliberately left literal — no business is created for them.
+    """
+    return f"{name} {uuid.uuid4().hex[:8]}"
+
 
 TEST_JWT_SECRET = "super-secret-jwt-token-with-at-least-32-characters-long"
 
@@ -62,15 +83,14 @@ def auth_headers(monkeypatch: Any) -> dict[str, str]:
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
-def test_create_business_success_hydrated(
-    auth_headers: dict[str, str], monkeypatch: Any
-) -> None:
+def test_create_business_success_hydrated(auth_headers: dict[str, str], monkeypatch: Any) -> None:
     monkeypatch.setenv("SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
+    salon_name = _unique("Sunrise Salon")
     with TestClient(app) as client:
         response = client.post(
             "/v1/platform/businesses",
             json={
-                "display_name": "Sunrise Salon",
+                "display_name": salon_name,
                 "business_type": "salon",
                 "timezone": "Asia/Kolkata",
                 "currency": "INR",
@@ -81,7 +101,7 @@ def test_create_business_success_hydrated(
         )
         assert response.status_code == 200, response.text
         body = response.json()["data"]
-        assert body["business"]["display_name"] == "Sunrise Salon"
+        assert body["business"]["display_name"] == salon_name
         assert body["business"]["business_type"] == "salon"
         assert body["business"]["state"] == "draft"
         assert body["business"]["settings"]["currency"] == "INR"
@@ -154,7 +174,7 @@ def test_create_business_rejects_unsupported_type(
     with TestClient(app) as client:
         response = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Weird Co", "business_type": "spaceship"},
+            json={"display_name": _unique("Weird Co"), "business_type": "spaceship"},
             headers=auth_headers,
         )
         assert response.status_code == 422
@@ -170,7 +190,7 @@ def test_create_business_rejects_invalid_locale_currency_timezone(
         response = client.post(
             "/v1/platform/businesses",
             json={
-                "display_name": "Locale Co",
+                "display_name": _unique("Locale Co"),
                 "business_type": "retail",
                 "currency": "XYZ",
                 "country": "ZZ",
@@ -196,7 +216,7 @@ def test_create_business_duplicate_slug_conflict(
         first = client.post(
             "/v1/platform/businesses",
             json={
-                "display_name": "First Biz",
+                "display_name": _unique("First Biz"),
                 "business_type": "retail",
                 "slug": slug,
             },
@@ -207,7 +227,7 @@ def test_create_business_duplicate_slug_conflict(
         second = client.post(
             "/v1/platform/businesses",
             json={
-                "display_name": "Second Biz",
+                "display_name": _unique("Second Biz"),
                 "business_type": "retail",
                 "slug": slug,
             },
@@ -226,7 +246,7 @@ def test_create_business_rejects_reserved_slug(
         response = client.post(
             "/v1/platform/businesses",
             json={
-                "display_name": "Admin Co",
+                "display_name": _unique("Admin Co"),
                 "business_type": "retail",
                 "slug": "admin",
             },
@@ -245,7 +265,7 @@ def test_create_business_rejects_malformed_and_large_payload(
         malformed = client.post(
             "/v1/platform/businesses",
             json={
-                "display_name": "Extra Co",
+                "display_name": _unique("Extra Co"),
                 "business_type": "retail",
                 "unexpected_field": True,
             },
@@ -266,14 +286,12 @@ def test_create_business_rejects_malformed_and_large_payload(
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
-def test_create_business_audit_and_outbox(
-    auth_headers: dict[str, str], monkeypatch: Any
-) -> None:
+def test_create_business_audit_and_outbox(auth_headers: dict[str, str], monkeypatch: Any) -> None:
     monkeypatch.setenv("SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
     with TestClient(app) as client:
         response = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Audit Co", "business_type": "gym"},
+            json={"display_name": _unique("Audit Co"), "business_type": "gym"},
             headers=auth_headers,
         )
         assert response.status_code == 200
