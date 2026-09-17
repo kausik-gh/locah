@@ -21,7 +21,12 @@ _log = get_logger("website.ai_provider")
 # Content generation only — never platform mechanics (Doc 12 §12.6).
 # Default is a fast Grok model suited to large structured website drafts; override
 # with XAI_MODEL for staging/production tuning.
-_DEFAULT_MODEL = os.getenv("XAI_MODEL", "grok-3-mini")
+#
+# Must be an id xAI currently serves. `grok-3-mini` was the previous default and
+# is no longer in /v1/models — xAI still answers for it by aliasing to a current
+# model, so the substitution is silent and the configured id is not what runs.
+# Pin the real one instead of relying on an alias that can be withdrawn.
+_DEFAULT_MODEL = os.getenv("XAI_MODEL", "grok-4.3")
 _XAI_CHAT_COMPLETIONS_URL = "https://api.x.ai/v1/chat/completions"
 
 

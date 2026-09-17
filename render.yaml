@@ -25,7 +25,7 @@ services:
       - key: AI_PROVIDER
         value: xai
       - key: XAI_MODEL
-        value: grok-3-mini
+        value: grok-4.3
       - key: XAI_IMAGE_MODEL
         value: grok-imagine-image-2.0
       - key: PAYMENT_PROVIDER
@@ -66,7 +66,7 @@ services:
       - key: AI_PROVIDER
         value: xai
       - key: XAI_MODEL
-        value: grok-3-mini
+        value: grok-4.3
       - key: XAI_IMAGE_MODEL
         value: grok-imagine-image-2.0
       - key: DATABASE_URL

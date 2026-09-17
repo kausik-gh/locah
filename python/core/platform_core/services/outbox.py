@@ -3,6 +3,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from platform_core.events.catalogue import assert_known_event_type
 from platform_core.models import PlatformOutboxEvent
 
 
@@ -18,6 +19,12 @@ class OutboxService:
         causation_id: uuid.UUID | None = None,
         skip_notifications: bool = False,
     ) -> PlatformOutboxEvent:
+        # Validate the type here, inside the emitting transaction, where a typo
+        # is attributable to the code that made it. The worker used to catch
+        # this instead, which meant a misspelled event type surfaced much later
+        # as a dead letter blamed on the worker.
+        assert_known_event_type(event_type)
+
         event = PlatformOutboxEvent(
             business_id=business_id,
             event_type=event_type,

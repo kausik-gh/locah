@@ -80,11 +80,16 @@ def test_tenant_isolation_wrong_business_returns_404_or_403(
     auth_headers: dict[str, str], monkeypatch: Any
 ) -> None:
     monkeypatch.setenv("SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
+    # Business slugs are globally unique among non-deleted businesses, so a
+    # hardcoded display_name makes the test pass exactly once against a
+    # persistent database and collide on every run after that. Suffix it, the
+    # way apps/worker/tests/test_outbox.py already does.
+    suffix = uuid.uuid4().hex[:8]
     with TestClient(app) as client:
         # Create business A
         create_a = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Business A"},
+            json={"display_name": f"Business A {suffix}"},
             headers=auth_headers,
         )
         assert create_a.status_code == 200
@@ -120,10 +125,12 @@ def test_primary_owner_can_access_own_business(
     auth_headers: dict[str, str], monkeypatch: Any
 ) -> None:
     monkeypatch.setenv("SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
+    # Unique per run — see the note in test_tenant_isolation_wrong_business.
+    shop_name = f"My Shop {uuid.uuid4().hex[:8]}"
     with TestClient(app) as client:
         create_resp = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "My Shop"},
+            json={"display_name": shop_name},
             headers=auth_headers,
         )
         assert create_resp.status_code == 200
@@ -132,7 +139,7 @@ def test_primary_owner_can_access_own_business(
         get_resp = client.get(f"/v1/b/{business_id}", headers=auth_headers)
         assert get_resp.status_code == 200
         body = get_resp.json()["data"]
-        assert body["display_name"] == "My Shop"
+        assert body["display_name"] == shop_name
         # All three independent axes are exposed (Doc 03 §1.6). `status` in
         # particular is what the Workspace Home reads to render the commercial
         # recovery state — without it the UI cannot distinguish a suspended
@@ -177,7 +184,7 @@ def test_member_without_permission_denied(auth_headers: dict[str, str], monkeypa
     with TestClient(app) as client:
         create_resp = client.post(
             "/v1/platform/businesses",
-            json={"display_name": "Team Shop"},
+            json={"display_name": f"Team Shop {uuid.uuid4().hex[:8]}"},
             headers=auth_headers,
         )
         business_id = create_resp.json()["data"]["business"]["id"]

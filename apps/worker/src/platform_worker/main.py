@@ -12,7 +12,7 @@ from platform_core.logging import bind_request_context, clear_request_context
 from platform_core.logging import configure as configure_logging
 from platform_core.logging import get_logger
 from platform_worker.job_runner import poll_and_execute_jobs
-from platform_worker.outbox_consumer import poll_and_dispatch_outbox
+from platform_worker.outbox_consumer import poll_and_dispatch_outbox, poll_and_run_deliveries
 from platform_worker.scheduler import materialize_due_schedules
 
 # Global flag for graceful shutdown
@@ -34,11 +34,18 @@ async def shutdown_tasks(sig: Any) -> None:
 
 
 async def _poll_lanes(session_factory: Any, worker_id: str) -> None:
-    """Run the three worker lanes sequentially with separate sessions."""
+    """Run the worker lanes sequentially with separate sessions."""
     async with session_factory() as session:
         outbox_count = await poll_and_dispatch_outbox(session, worker_id)
         if outbox_count:
             logger.info("worker.outbox_processed", count=outbox_count)
+
+    # Separate session and separate lane from the fan-out above: a handler that
+    # raises must not roll back the delivery rows that were just created for it.
+    async with session_factory() as session:
+        delivery_count = await poll_and_run_deliveries(session, worker_id)
+        if delivery_count:
+            logger.info("worker.deliveries_processed", count=delivery_count)
 
     async with session_factory() as session:
         schedule_count = await materialize_due_schedules(session, worker_id)
