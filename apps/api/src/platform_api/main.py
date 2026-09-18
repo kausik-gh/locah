@@ -29,6 +29,7 @@ from platform_api.routers import (
     v1_platform_offerings,
     v1_platform_inventory,
     v1_platform_orders,
+    v1_platform_booking_resources,
     v1_platform_bookings,
     v1_platform_payments,
     webhooks_payments,
@@ -159,6 +160,7 @@ app.include_router(v1_platform_customers.router)
 app.include_router(v1_platform_offerings.router)
 app.include_router(v1_platform_inventory.router)
 app.include_router(v1_platform_orders.router)
+app.include_router(v1_platform_booking_resources.router)
 app.include_router(v1_platform_bookings.router)
 app.include_router(v1_workforce.router)
 app.include_router(v1_platform_payments.router)

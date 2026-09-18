@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -47,6 +47,42 @@ class OperationalDefaults:
 
 
 @dataclass(frozen=True)
+class ResourceSemantics:
+    """How a business type talks about, and defaults, its bookable resources.
+
+    The booking engine is deliberately ignorant of verticals: it knows only
+    exclusive and pooled subjects over intervals. This is where a hotel learns
+    to say "Room" and sell by the night while a gym says "Class" and sells
+    seats, without either becoming a branch in the allocator.
+
+    `kinds` is what a business of this type is offered when configuring supply.
+    It is a suggestion, not a whitelist - resource_type is free text, so a
+    business with something unusual is never blocked.
+    """
+
+    noun: str = "Resource"
+    noun_plural: str = "Resources"
+    kinds: tuple[str, ...] = ()
+    default_allocation_mode: str = "exclusive"
+    default_granularity: str = "slot"
+    # Whether this type books a person, a thing, or both. Drives what the
+    # Workspace asks for, not what the engine permits.
+    books_providers: bool = True
+    books_resources: bool = False
+
+    def serialize(self) -> dict[str, Any]:
+        return {
+            "noun": self.noun,
+            "noun_plural": self.noun_plural,
+            "kinds": list(self.kinds),
+            "default_allocation_mode": self.default_allocation_mode,
+            "default_granularity": self.default_granularity,
+            "books_providers": self.books_providers,
+            "books_resources": self.books_resources,
+        }
+
+
+@dataclass(frozen=True)
 class BusinessTypeProfile:
     """Immutable versioned Business-Type Configuration Profile."""
 
@@ -61,6 +97,7 @@ class BusinessTypeProfile:
     terminology: dict[str, str]
     dashboard: DashboardSeed
     operational_defaults: OperationalDefaults
+    resource_semantics: ResourceSemantics = field(default_factory=ResourceSemantics)
     status: str = "active"
 
     def serialize(self) -> dict[str, Any]:
@@ -88,6 +125,7 @@ class BusinessTypeProfile:
             },
             "terminology": dict(self.terminology),
             "dashboard": {"emphasis": list(self.dashboard.emphasis)},
+            "resource_semantics": self.resource_semantics.serialize(),
             "operational_defaults": {
                 "booking_enabled": self.operational_defaults.booking_enabled,
                 "inventory_enabled": self.operational_defaults.inventory_enabled,

@@ -187,9 +187,19 @@ async def _mark_dead_letter(session: AsyncSession, job: dict[str, Any], error: s
     )
 
 
-async def poll_and_execute_jobs(session: AsyncSession, worker_id: str) -> int:
-    """Claim and process a batch of async jobs. Returns jobs transitioned this poll."""
-    jobs = await claim_job_batch(session, worker_id)
+async def poll_and_execute_jobs(
+    session: AsyncSession, worker_id: str, job_type: str | None = None
+) -> int:
+    """Claim and process a batch of async jobs. Returns jobs transitioned this poll.
+
+    `job_type` is optional isolation for tests, passed straight through to
+    claim_job_batch which has carried it for the same reason. Production omits
+    it so a worker drains the whole lane. A test that omits it claims the
+    oldest-due jobs across the entire shared database, so under `pytest -n` it
+    competes with every other worker for the batch, and asserting on its own
+    job becomes a race it usually but not always wins.
+    """
+    jobs = await claim_job_batch(session, worker_id, job_type=job_type)
     if not jobs:
         return 0
 

@@ -314,6 +314,126 @@ class BookingAllocationService:
         raise exc
 
     @staticmethod
+    async def load_many(
+        session: AsyncSession, *, business_id: uuid.UUID, resource_ids: list[uuid.UUID]
+    ) -> list[BookingResource]:
+        """Load every requested resource in one query, preserving request order.
+
+        One round trip rather than one per resource: a booking that consumes a
+        room and its equipment should not cost two lookups, and the availability
+        read path below asks for many at once.
+        """
+        if not resource_ids:
+            return []
+        result = await session.execute(
+            select(BookingResource).where(
+                BookingResource.id.in_(resource_ids),
+                BookingResource.business_id == business_id,
+                BookingResource.deleted_at.is_(None),
+            )
+        )
+        found = {r.id: r for r in result.scalars().all()}
+        missing = [rid for rid in resource_ids if rid not in found]
+        if missing:
+            # Naming them would confirm which ids exist in other tenants.
+            raise ResourceNotFound("Bookable resource")
+        return [found[rid] for rid in resource_ids]
+
+    @staticmethod
+    def effective_capacity(
+        resources: list[BookingResource], *, fallback: int | None = None
+    ) -> int | None:
+        """The capacity to record against a booking.
+
+        Taken from configuration whenever any resource is involved, never from
+        the request. With several pooled resources the smallest is the binding
+        one, since that is what runs out first.
+        """
+        pooled = [int(r.capacity) for r in resources if r.allocation_mode == "pooled"]
+        if pooled:
+            return min(pooled)
+        if resources:
+            return 1
+        return fallback
+
+    @staticmethod
+    def requests_for(
+        *,
+        resources: list[BookingResource],
+        provider_id: uuid.UUID | None,
+        party_size: int = 1,
+    ) -> list[AllocationRequest]:
+        """Turn a booking's subjects into allocation requests.
+
+        A pooled resource consumes one place per person; an exclusive one is
+        taken whole however many people arrive.
+        """
+        requests = [
+            AllocationRequest(
+                resource_id=resource.id,
+                quantity=party_size if resource.allocation_mode == "pooled" else 1,
+            )
+            for resource in resources
+        ]
+        if provider_id is not None:
+            requests.append(AllocationRequest(provider_id=provider_id))
+        return requests
+
+    @staticmethod
+    async def reallocate_for_booking(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        booking_id: uuid.UUID,
+        starts_at: datetime,
+        ends_at: datetime,
+        party_size: int = 1,
+    ) -> list[BookingAllocation]:
+        """Move a booking's existing claims to a new interval.
+
+        Releasing first is what makes a reschedule into an overlapping slot work
+        — a booking moved from 10:00 to 10:30 would otherwise collide with
+        itself. The release is inside the same transaction, so a conflict on the
+        new interval rolls the old claim back rather than losing it.
+        """
+        existing = (
+            (
+                await session.execute(
+                    select(BookingAllocation).where(
+                        BookingAllocation.business_id == business_id,
+                        BookingAllocation.booking_id == booking_id,
+                        BookingAllocation.released_at.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        subjects = [
+            AllocationRequest(
+                resource_id=a.resource_id, provider_id=a.provider_id, quantity=a.quantity
+            )
+            for a in existing
+        ]
+        if not subjects:
+            return []
+
+        for allocation in existing:
+            allocation.released_at = datetime.now(timezone.utc)
+        await session.flush()
+
+        return await BookingAllocationService.allocate(
+            session,
+            business_id=business_id,
+            booking_id=booking_id,
+            requests=subjects,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            party_size=party_size,
+        )
+
+    @staticmethod
     async def release_for_booking(
         session: AsyncSession, *, business_id: uuid.UUID, booking_id: uuid.UUID
     ) -> int:
@@ -334,6 +454,138 @@ class BookingAllocationService:
             allocation.released_at = datetime.now(timezone.utc)
         await session.flush()
         return len(allocations)
+
+    @staticmethod
+    async def has_resources(
+        session: AsyncSession, *, business_id: uuid.UUID, location_id: uuid.UUID | None = None
+    ) -> bool:
+        """Whether this business sells time on anything at all.
+
+        Distinguishes "nothing is free" from "nothing is configured", which
+        read very differently to a guest: the first means try another slot, the
+        second means this business simply does not allocate resources.
+        """
+        query = select(BookingResource.id).where(
+            BookingResource.business_id == business_id,
+            BookingResource.deleted_at.is_(None),
+            BookingResource.is_active.is_(True),
+        )
+        if location_id is not None:
+            query = query.where(BookingResource.location_id == location_id)
+        return (await session.execute(query.limit(1))).scalars().first() is not None
+
+    @staticmethod
+    async def free_resources(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        location_id: uuid.UUID | None,
+        resource_type: str | None,
+        starts_at: datetime,
+        ends_at: datetime,
+        party_size: int = 1,
+        exclude_booking_id: uuid.UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        """Which resources can take this booking, answered in two queries.
+
+        The obvious shape - list the resources, then ask about each one - is the
+        N+1 that made Marketplace search take ten seconds. Instead: one query
+        for the candidates, one aggregate for what is already committed against
+        all of them, then the arithmetic in Python. Query count does not grow
+        with the number of rooms a hotel has.
+
+        Buffers are applied per resource, so a chair with fifteen minutes of
+        cleanup is judged on the window it really occupies. The answer is
+        advisory: it can go stale between being read and being acted on, which
+        is exactly why allocation re-checks under a lock rather than trusting it.
+        """
+        if ends_at <= starts_at:
+            raise ValidationError("Booking must end after it starts")
+
+        candidates = select(BookingResource).where(
+            BookingResource.business_id == business_id,
+            BookingResource.deleted_at.is_(None),
+            BookingResource.is_active.is_(True),
+        )
+        if location_id is not None:
+            candidates = candidates.where(BookingResource.location_id == location_id)
+        if resource_type:
+            candidates = candidates.where(
+                BookingResource.resource_type == resource_type.strip().lower()
+            )
+        resources = list((await session.execute(candidates)).scalars().all())
+        if not resources:
+            return []
+
+        # Widen the probe window to the largest buffer in play, so one aggregate
+        # can answer for resources with different turnarounds.
+        widest_before = max((r.buffer_before_minutes for r in resources), default=0)
+        widest_after = max((r.buffer_after_minutes for r in resources), default=0)
+        probe_start = starts_at - timedelta(minutes=widest_before)
+        probe_end = ends_at + timedelta(minutes=widest_after)
+
+        usage_query = (
+            select(
+                BookingAllocation.resource_id,
+                func.sum(BookingAllocation.quantity).label("committed"),
+                func.bool_or(BookingAllocation.is_exclusive).label("has_exclusive"),
+                func.min(func.lower(BookingAllocation.occupies)).label("first_start"),
+                func.max(func.upper(BookingAllocation.occupies)).label("last_end"),
+            )
+            .where(
+                BookingAllocation.resource_id.in_([r.id for r in resources]),
+                BookingAllocation.released_at.is_(None),
+                func.upper(BookingAllocation.occupies) > probe_start,
+                func.lower(BookingAllocation.occupies) < probe_end,
+            )
+            .group_by(BookingAllocation.resource_id)
+        )
+        if exclude_booking_id is not None:
+            usage_query = usage_query.where(
+                (BookingAllocation.booking_id.is_(None))
+                | (BookingAllocation.booking_id != exclude_booking_id)
+            )
+        usage = {row[0]: row for row in (await session.execute(usage_query)).all()}
+
+        free: list[dict[str, Any]] = []
+        for resource in resources:
+            window_start, window_end = BookingAllocationService.occupancy_window(
+                resource, starts_at, ends_at
+            )
+            row = usage.get(resource.id)
+            # The aggregate used the widest window, so re-check that anything
+            # found actually lands inside this resource's own one.
+            touches = bool(
+                row is not None and row.last_end > window_start and row.first_start < window_end
+            )
+
+            if resource.max_party_size is not None and party_size > resource.max_party_size:
+                continue
+            if resource.min_party_size is not None and party_size < resource.min_party_size:
+                continue
+
+            if resource.allocation_mode == "exclusive":
+                if touches:
+                    continue
+                remaining = 1
+            else:
+                committed = int(row.committed) if touches and row is not None else 0
+                remaining = max(resource.capacity - committed, 0)
+                if remaining < party_size:
+                    continue
+
+            free.append(
+                {
+                    "resource_id": str(resource.id),
+                    "name": resource.name,
+                    "code": resource.code,
+                    "resource_type": resource.resource_type,
+                    "allocation_mode": resource.allocation_mode,
+                    "capacity": resource.capacity,
+                    "remaining": remaining,
+                }
+            )
+        return free
 
     @staticmethod
     async def list_for_booking(

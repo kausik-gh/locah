@@ -30,6 +30,7 @@ from platform_core.services.booking_lifecycle import BookingLifecycleService
 from platform_core.services.business import BusinessService
 from platform_core.services.customer import CustomerService
 from platform_core.services.location import LocationService
+from platform_core.services.booking_allocation import BookingAllocationService
 from platform_core.validation.booking import validate_availability_query
 
 ACTIVE_MODULE_STATES = frozenset({"enabled", "ready", "active"})
@@ -47,13 +48,17 @@ class PublicBookingService:
     @staticmethod
     async def _bookings_active(session: AsyncSession, business_id: uuid.UUID) -> bool:
         state = (
-            await session.execute(
-                select(BusinessModuleState).where(
-                    BusinessModuleState.business_id == business_id,
-                    BusinessModuleState.module_id == "bookings",
+            (
+                await session.execute(
+                    select(BusinessModuleState).where(
+                        BusinessModuleState.business_id == business_id,
+                        BusinessModuleState.module_id == "bookings",
+                    )
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         return state is not None and state.activation_state in ACTIVE_MODULE_STATES
 
     @staticmethod
@@ -64,43 +69,61 @@ class PublicBookingService:
                 "Bookings are not enabled for this Business",
                 details={"code": "bookings_disabled"},
             )
-        locations = await LocationService.list_for_business(
-            session, business.id, status="active"
-        )
+        locations = await LocationService.list_for_business(session, business.id, status="active")
         offerings = (
-            await session.execute(
-                select(Offering).where(
-                    Offering.business_id == business.id,
-                    Offering.deleted_at.is_(None),
-                    Offering.status == "active",
-                    Offering.visibility == "public",
-                    Offering.offering_type.in_(("service", "experience", "rental")),
-                ).order_by(Offering.title.asc())
+            (
+                await session.execute(
+                    select(Offering)
+                    .where(
+                        Offering.business_id == business.id,
+                        Offering.deleted_at.is_(None),
+                        Offering.status == "active",
+                        Offering.visibility == "public",
+                        Offering.offering_type.in_(("service", "experience", "rental")),
+                    )
+                    .order_by(Offering.title.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         members = (
-            await session.execute(
-                select(WorkforceMember).where(
-                    WorkforceMember.business_id == business.id,
-                    WorkforceMember.deleted_at.is_(None),
-                    WorkforceMember.status == "active",
-                ).order_by(WorkforceMember.display_name.asc())
+            (
+                await session.execute(
+                    select(WorkforceMember)
+                    .where(
+                        WorkforceMember.business_id == business.id,
+                        WorkforceMember.deleted_at.is_(None),
+                        WorkforceMember.status == "active",
+                    )
+                    .order_by(WorkforceMember.display_name.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assignments = (
-            await session.execute(
-                select(WorkforceLocationAssignment).where(
-                    WorkforceLocationAssignment.business_id == business.id
+            (
+                await session.execute(
+                    select(WorkforceLocationAssignment).where(
+                        WorkforceLocationAssignment.business_id == business.id
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         associations = (
-            await session.execute(
-                select(WorkforceServiceAssociation).where(
-                    WorkforceServiceAssociation.business_id == business.id
+            (
+                await session.execute(
+                    select(WorkforceServiceAssociation).where(
+                        WorkforceServiceAssociation.business_id == business.id
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         loc_map: dict[str, list[str]] = {}
         for a in assignments:
             loc_map.setdefault(str(a.member_id), []).append(str(a.location_id))
@@ -164,9 +187,7 @@ class PublicBookingService:
     ) -> dict[str, Any]:
         business = await PublicBookingService._resolve_business(session, slug)
         params = validate_availability_query(payload)
-        location = await LocationService.get_by_id(
-            session, business.id, params["location_id"]
-        )
+        location = await LocationService.get_by_id(session, business.id, params["location_id"])
         if location is None or location.status != "active":
             return {
                 "available": False,
@@ -178,6 +199,39 @@ class PublicBookingService:
         )
         if not result["available"]:
             result["code"] = "slot_conflict"
+
+        # Which specific resources a guest could pick. Same service the staff
+        # endpoint and booking creation use, so a table offered here is one the
+        # allocator will accept. Only the fields a guest may see - capacity and
+        # remaining are the business's operational detail, not the public's.
+        free = await BookingAllocationService.free_resources(
+            session,
+            business_id=business.id,
+            location_id=params["location_id"],
+            resource_type=None,
+            starts_at=params["starts_at"],
+            ends_at=params["ends_at"],
+            party_size=params["party_size"],
+            exclude_booking_id=params.get("exclude_booking_id"),
+        )
+        result["resources"] = [
+            {
+                "resource_id": r["resource_id"],
+                "name": r["name"],
+                "resource_type": r["resource_type"],
+            }
+            for r in free
+        ]
+        # If the business allocates resources and none is free, the slot is not
+        # available however the legacy check read it - that check only knows
+        # about providers and the offering-level pool.
+        if result["available"] and not free:
+            if await BookingAllocationService.has_resources(
+                session, business_id=business.id, location_id=params["location_id"]
+            ):
+                result["available"] = False
+                result["code"] = "slot_conflict"
+                result["reason"] = "No resource is free for this time"
         return result
 
     @staticmethod
@@ -244,10 +298,14 @@ class PublicBookingService:
                 "ends_at": payload["ends_at"],
                 "party_size": payload.get("party_size") or 1,
                 "guest_count": payload.get("guest_count"),
-                "capacity": payload.get("capacity"),
+                # Deliberately not payload.get("capacity"). Capacity is the
+                # limit availability is checked against; taking it from an
+                # anonymous request made the check decorative.
+                "resource_ids": payload.get("resource_ids"),
                 "payment_method": payload.get("payment_method") or "cod",
                 "idempotency_key": payload.get("idempotency_key"),
             },
+            allow_capacity_override=False,
         )
         data = BookingResolver.serialize_booking(booking)
         data["management_token"] = booking.management_token
@@ -263,13 +321,17 @@ class PublicBookingService:
         session: AsyncSession, *, booking_id: uuid.UUID, token: str
     ) -> Booking:
         booking = (
-            await session.execute(
-                select(Booking).where(
-                    Booking.id == booking_id,
-                    Booking.deleted_at.is_(None),
+            (
+                await session.execute(
+                    select(Booking).where(
+                        Booking.id == booking_id,
+                        Booking.deleted_at.is_(None),
+                    )
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if booking is None:
             raise ResourceNotFound("Booking")
         if not booking.management_token or booking.management_token != token:
@@ -324,12 +386,16 @@ class PublicBookingService:
             from platform_core.models import CustomerContact
 
             contact = (
-                await session.execute(
-                    select(CustomerContact).where(
-                        CustomerContact.id == booking.customer_contact_id
+                (
+                    await session.execute(
+                        select(CustomerContact).where(
+                            CustomerContact.id == booking.customer_contact_id
+                        )
                     )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             if contact and contact.identity_id:
                 guest_actor = contact.identity_id
         updated = await BookingLifecycleService.transition_status(
@@ -369,12 +435,16 @@ class PublicBookingService:
             from platform_core.models import CustomerContact
 
             contact = (
-                await session.execute(
-                    select(CustomerContact).where(
-                        CustomerContact.id == booking.customer_contact_id
+                (
+                    await session.execute(
+                        select(CustomerContact).where(
+                            CustomerContact.id == booking.customer_contact_id
+                        )
                     )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             if contact and contact.identity_id:
                 actor_id = contact.identity_id
         updated = await BookingLifecycleService.reschedule(

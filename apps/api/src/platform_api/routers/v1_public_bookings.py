@@ -34,7 +34,7 @@ class AvailabilityRequest(BaseModel):
     starts_at: str
     ends_at: str
     party_size: int = Field(default=1, ge=1)
-    capacity: int | None = Field(default=None, ge=1)
+    resource_ids: list[UUID] = Field(default_factory=list, max_length=8)
 
 
 class CreatePublicBookingRequest(BaseModel):
@@ -49,7 +49,10 @@ class CreatePublicBookingRequest(BaseModel):
     ends_at: str
     party_size: int = Field(default=1, ge=1)
     guest_count: int | None = None
-    capacity: int | None = Field(default=None, ge=1)
+    # No `capacity`. It is the limit availability is checked against, so an
+    # anonymous caller supplying it made the check decorative. Capacity comes
+    # from resource configuration; this picks which resources to consume.
+    resource_ids: list[UUID] = Field(default_factory=list, max_length=8)
     payment_method: str = "cod"
     guest: GuestPayload
     idempotency_key: str | None = None

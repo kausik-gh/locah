@@ -165,7 +165,7 @@ def test_reconcile_repairs_stale_projection(owner: tuple[dict[str, str], uuid.UU
             )
             await session.commit()
             result = await MarketplaceIndexingService.reconcile_all(
-                session, correlation_id=str(uuid.uuid4()), limit=200
+                session, correlation_id=str(uuid.uuid4()), limit=200, business_ids=[bid]
             )
             await session.commit()
             proj = (

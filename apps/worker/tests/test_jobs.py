@@ -108,15 +108,18 @@ async def _drain_backlog(session: AsyncSession, worker_id: str, max_polls: int =
 @pytest.mark.asyncio
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 async def test_async_job_claim_and_completion(db_session: AsyncSession) -> None:
-    job_id = await _insert_async_job(db_session, job_type="platform.noop", payload={"ok": True})
+    # A job_type nothing else uses, so the poll below can be scoped to it.
+    # Unscoped, a poll claims the oldest-due jobs across the whole shared
+    # database and this test races every other xdist worker for its own job;
+    # the drain that used to paper over that was global work with the same
+    # problem. Unknown job types acknowledge without side effects, so a unique
+    # one runs the same path platform.noop did.
+    isolated_type = f"platform.noop.{uuid.uuid4().hex[:12]}"
+    job_id = await _insert_async_job(db_session, job_type=isolated_type, payload={"ok": True})
 
-    # A single poll's batch (LIMIT 10, oldest-due first) can be entirely
-    # consumed by backlog left over from earlier runs against this shared
-    # database before it ever reaches this job — see _drain_backlog. Poll
-    # until this specific job clears rather than assuming one pass suffices.
     status = "pending"
     for _ in range(25):
-        count = await poll_and_execute_jobs(db_session, "test-job-worker")
+        count = await poll_and_execute_jobs(db_session, "test-job-worker", job_type=isolated_type)
         status, attempt_count, last_error = await _job_status(db_session, job_id)
         if status == "completed" or count == 0:
             break
@@ -127,9 +130,9 @@ async def test_async_job_claim_and_completion(db_session: AsyncSession) -> None:
     processed = await db_session.execute(
         text("""
             SELECT handler FROM platform_processed_events
-            WHERE event_id = :id AND handler = 'job_runner.platform.noop'
+            WHERE event_id = :id AND handler = :handler
         """),
-        {"id": str(job_id)},
+        {"id": str(job_id), "handler": f"job_runner.{isolated_type}"},
     )
     assert processed.first() is not None
 
@@ -138,19 +141,22 @@ async def test_async_job_claim_and_completion(db_session: AsyncSession) -> None:
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 async def test_async_job_retry_on_failure(db_session: AsyncSession) -> None:
     # This test asserts poll_and_execute_jobs's exact return count for a
-    # single poll, which also counts any unrelated backlog job the same
-    # batch happens to complete successfully — drain it first (see
-    # _drain_backlog) so the one poll below reflects only this job.
-    await _drain_backlog(db_session, "test-job-retry-drain")
-
+    # single poll, so the batch must contain nothing but this job.
+    # A job_type nothing else uses, so the poll below can be scoped to it.
+    # Unscoped, a poll claims the oldest-due jobs across the whole shared
+    # database and this test races every other xdist worker for its own job;
+    # the drain that used to paper over that was global work with the same
+    # problem. Unknown job types acknowledge without side effects, so a unique
+    # one runs the same path platform.noop did.
+    isolated_type = f"platform.noop.{uuid.uuid4().hex[:12]}"
     job_id = await _insert_async_job(
         db_session,
-        job_type="platform.noop",
+        job_type=isolated_type,
         payload={"__force_fail": True, "__force_fail_message": "transient failure"},
         max_attempts=5,
     )
 
-    count = await poll_and_execute_jobs(db_session, "test-job-retry")
+    count = await poll_and_execute_jobs(db_session, "test-job-retry", job_type=isolated_type)
     assert count == 0
 
     status, attempt_count, last_error = await _job_status(db_session, job_id)
@@ -173,7 +179,7 @@ async def test_async_job_retry_on_failure(db_session: AsyncSession) -> None:
     await db_session.commit()
 
     # Still forced to fail — second attempt
-    await poll_and_execute_jobs(db_session, "test-job-retry-3")
+    await poll_and_execute_jobs(db_session, "test-job-retry-3", job_type=isolated_type)
     status, attempt_count, _ = await _job_status(db_session, job_id)
     assert status == "failed"
     assert attempt_count == 2
@@ -185,16 +191,21 @@ async def test_async_job_dead_letter_on_max_attempts(db_session: AsyncSession) -
     # Same backlog concern as test_async_job_retry_on_failure — this job's own
     # dead-letter row is self-contained regardless of backlog, but draining
     # first keeps the single poll below deterministic.
-    await _drain_backlog(db_session, "test-job-dlq-drain")
-
+    # A job_type nothing else uses, so the poll below can be scoped to it.
+    # Unscoped, a poll claims the oldest-due jobs across the whole shared
+    # database and this test races every other xdist worker for its own job;
+    # the drain that used to paper over that was global work with the same
+    # problem. Unknown job types acknowledge without side effects, so a unique
+    # one runs the same path platform.noop did.
+    isolated_type = f"platform.noop.{uuid.uuid4().hex[:12]}"
     job_id = await _insert_async_job(
         db_session,
-        job_type="platform.noop",
+        job_type=isolated_type,
         payload={"__force_fail": True, "__force_fail_message": "terminal failure"},
         max_attempts=1,
     )
 
-    await poll_and_execute_jobs(db_session, "test-job-dlq")
+    await poll_and_execute_jobs(db_session, "test-job-dlq", job_type=isolated_type)
     status, attempt_count, last_error = await _job_status(db_session, job_id)
     assert status == "dead_letter"
     assert attempt_count == 1
@@ -212,7 +223,7 @@ async def test_async_job_dead_letter_on_max_attempts(db_session: AsyncSession) -
     )
     row = dlq.one()
     assert row.source_table == "platform_async_jobs"
-    assert row.event_type == "platform.noop"
+    assert row.event_type == isolated_type
     assert "terminal failure" in row.final_error
     assert int(row.attempt_count) == 1
 
@@ -293,12 +304,13 @@ async def test_scheduled_job_materialization(db_session: AsyncSession) -> None:
     assert str(again_row.materialized_job_id) == str(srow.materialized_job_id)
     assert again >= 0
 
-    # Execute the materialized job. Same backlog concern as
-    # test_async_job_claim_and_completion — poll until this specific job
-    # clears rather than assuming the first batch reaches it.
+    # Scoped to the schedule's own job type for the same reason as the tests
+    # above: an unscoped poll competes for the batch with every other worker.
     status = "pending"
     for _ in range(25):
-        count = await poll_and_execute_jobs(db_session, "test-scheduler-exec")
+        count = await poll_and_execute_jobs(
+            db_session, "test-scheduler-exec", job_type=str(jrow.job_type)
+        )
         status, _, _ = await _job_status(db_session, srow.materialized_job_id)
         if status == "completed" or count == 0:
             break
@@ -308,10 +320,11 @@ async def test_scheduled_job_materialization(db_session: AsyncSession) -> None:
 @pytest.mark.asyncio
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 async def test_concurrent_job_claim_safety(db_session: AsyncSession) -> None:
-    # Drain backlog first (see _drain_backlog) so this job is guaranteed a
-    # slot in the LIMIT-10 batch each concurrent claim below draws from.
-    await _drain_backlog(db_session, "test-concurrent-drain")
-
+    # No drain here. Both claims below are scoped to a job_type nothing else
+    # uses, so this job is the only row either can match and a LIMIT-10 batch
+    # cannot crowd it out. Draining would add nothing, and it is global work:
+    # under `pytest -n` it competes with every other worker, which is how this
+    # test came to fail in parallel while passing on its own.
     isolated_type = f"platform.noop.{uuid.uuid4().hex[:12]}"
     job_id = await _insert_async_job(db_session, job_type=isolated_type)
 

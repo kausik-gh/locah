@@ -152,6 +152,9 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "booking.note.created",
             "booking.deposit_collected",
             "booking.policy_updated",
+            "bookings.resource.created",
+            "bookings.resource.updated",
+            "bookings.resource.archived",
         }
     ),
     "workforce": frozenset(

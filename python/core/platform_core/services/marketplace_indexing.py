@@ -257,18 +257,27 @@ class MarketplaceIndexingService:
 
     @staticmethod
     async def reconcile_all(
-        session: AsyncSession, *, correlation_id: str, limit: int = 100
+        session: AsyncSession,
+        *,
+        correlation_id: str,
+        limit: int = 100,
+        business_ids: list[uuid.UUID] | None = None,
     ) -> dict[str, Any]:
-        """Periodic reconciliation — catches drift (Doc 11 §17.3 stale-index exit)."""
+        """Periodic reconciliation — catches drift (Doc 11 §17.3 stale-index exit).
+
+        `business_ids` is optional isolation for tests, the same role event_ids
+        plays for the outbox consumer. Unscoped, this takes the most recently
+        updated `limit` businesses across the whole database, so a test that
+        reconciles and then checks its own business is racing every other writer
+        — under `pytest -n` its business is simply pushed out of the window.
+        """
         from platform_core.models import Business
 
+        query = select(Business.id).where(Business.deleted_at.is_(None))
+        if business_ids:
+            query = query.where(Business.id.in_(business_ids))
         businesses = (
-            await session.execute(
-                select(Business.id)
-                .where(Business.deleted_at.is_(None))
-                .order_by(Business.updated_at.desc())
-                .limit(limit)
-            )
+            await session.execute(query.order_by(Business.updated_at.desc()).limit(limit))
         ).all()
         indexed = deindexed = failed = 0
         for (business_id,) in businesses:

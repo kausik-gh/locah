@@ -122,6 +122,37 @@ def validate_patch_payload(raw: dict[str, Any]) -> dict[str, Any]:
     return patch
 
 
+RESOURCE_IDS_MAX = 8
+
+
+def _parse_resource_ids(raw: Any) -> list[UUID]:
+    """Bookable resources this reservation should consume.
+
+    A booking may need more than one - a treatment room plus the equipment in
+    it, a court plus its floodlights - so this is a list. Bounded because each
+    entry costs a lock and a conflict check, and an unbounded list on a public
+    endpoint is a cheap way to hold locks on someone else's calendar.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, (list, tuple)):
+        raise ValidationError(
+            "Invalid resource selection",
+            details={"errors": [_field_error("resource_ids", "Expected a list")]},
+        )
+    if len(raw) > RESOURCE_IDS_MAX:
+        raise ValidationError(
+            "Too many resources requested",
+            details={"errors": [_field_error("resource_ids", f"At most {RESOURCE_IDS_MAX}")]},
+        )
+    seen: list[UUID] = []
+    for index, value in enumerate(raw):
+        parsed = validate_uuid(value, field=f"resource_ids[{index}]")
+        if parsed not in seen:
+            seen.append(parsed)
+    return seen
+
+
 def validate_create_payload(raw: dict[str, Any]) -> dict[str, Any]:
     mode = str(raw.get("reservation_mode") or "appointment").strip().lower()
     if mode not in RESERVATION_MODES:
@@ -142,6 +173,7 @@ def validate_create_payload(raw: dict[str, Any]) -> dict[str, Any]:
     parsed_guest: int | None = int(guest_count) if guest_count is not None else None
     capacity = raw.get("capacity")
     parsed_capacity: int | None = int(capacity) if capacity is not None else None
+    resource_ids = _parse_resource_ids(raw.get("resource_ids"))
     payment_method = str(raw.get("payment_method") or "cod").strip().lower()
     if payment_method not in PAYMENT_METHODS:
         raise ValidationError(
@@ -169,6 +201,7 @@ def validate_create_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "party_size": party_size,
         "guest_count": parsed_guest,
         "capacity": parsed_capacity,
+        "resource_ids": resource_ids,
         "payment_method": payment_method,
         "title": title,
         "internal_reference": (

@@ -20,6 +20,7 @@ from platform_core.resolvers.offering_resolver import OfferingResolver
 from platform_core.resolvers.booking_resolver import BookingResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.availability import AvailabilityService
+from platform_core.services.booking_allocation import BookingAllocationService
 from platform_core.services.business import BusinessService
 from platform_core.services.consumer_activity import ConsumerActivityService
 from platform_core.services.customer_timeline import CustomerTimelineService
@@ -84,7 +85,16 @@ class BookingService:
         actor_id: uuid.UUID,
         correlation_id: str,
         payload: dict[str, Any],
+        allow_capacity_override: bool = True,
     ) -> Booking:
+        """Create a booking and claim whatever it consumes.
+
+        `allow_capacity_override` is False on the public path. Capacity is the
+        limit availability is checked against, so letting an anonymous caller
+        supply it makes the check decorative. Staff may still set it for a
+        business that has configured no resources, where nothing else knows the
+        number; once resources exist, they win regardless.
+        """
         business = await BusinessService.get_by_id(session, business_id)
         assert_business_mutable(business.state, action="create booking")
         # Doc 04 §6.1: a suspended Business cannot receive orders. Standing
@@ -115,8 +125,21 @@ class BookingService:
             )
 
         title = validated["title"]
-        capacity = validated["capacity"]
         offering_price: float | None = None
+
+        # Resource configuration is authoritative for capacity. The request may
+        # say which resources to consume; it may not say how many places they
+        # hold. Previously `capacity` came straight off the payload and was then
+        # used as the limit to check against, so a caller could send a large one
+        # and the check could never fail.
+        resources = await BookingAllocationService.load_many(
+            session,
+            business_id=business_id,
+            resource_ids=validated["resource_ids"],
+        )
+        capacity = BookingAllocationService.effective_capacity(
+            resources, fallback=validated["capacity"] if allow_capacity_override else None
+        )
         if validated["offering_id"]:
             offering = await OfferingResolver.resolve(
                 session,
@@ -178,18 +201,23 @@ class BookingService:
                 details={"field": "title"},
             )
 
-        await AvailabilityService.assert_available(
-            session,
-            business_id=business_id,
-            location_id=validated["location_id"],
-            provider_id=validated["provider_id"],
-            offering_id=validated["offering_id"],
-            reservation_mode=validated["reservation_mode"],
-            starts_at=validated["starts_at"],
-            ends_at=validated["ends_at"],
-            party_size=validated["party_size"],
-            capacity=capacity,
-        )
+        # The legacy path stays for bookings that name no resource: a business
+        # that has not configured any still gets provider exclusivity and the
+        # offering-level pool it has always had. Where resources exist they are
+        # the authority, and allocating them below is what enforces supply.
+        if not resources:
+            await AvailabilityService.assert_available(
+                session,
+                business_id=business_id,
+                location_id=validated["location_id"],
+                provider_id=validated["provider_id"],
+                offering_id=validated["offering_id"],
+                reservation_mode=validated["reservation_mode"],
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
+                party_size=validated["party_size"],
+                capacity=capacity,
+            )
 
         policy = await BookingService.get_or_create_policy(session, business_id)
         deposit_required = bool(policy.require_deposit)
@@ -228,6 +256,23 @@ class BookingService:
         )
         session.add(booking)
         await session.flush()
+
+        # Claim the subjects. Raises ConflictError if any is taken, which rolls
+        # the whole request back - the booking row never survives without its
+        # allocations, so a calendar entry cannot exist holding nothing.
+        await BookingAllocationService.allocate(
+            session,
+            business_id=business_id,
+            booking_id=booking.id,
+            requests=BookingAllocationService.requests_for(
+                resources=resources,
+                provider_id=validated["provider_id"],
+                party_size=validated["party_size"],
+            ),
+            starts_at=validated["starts_at"],
+            ends_at=validated["ends_at"],
+            party_size=validated["party_size"],
+        )
 
         history = BookingStatusHistory(
             business_id=business_id,
@@ -358,14 +403,16 @@ class BookingService:
         return booking
 
     @staticmethod
-    async def get_or_create_policy(
-        session: AsyncSession, business_id: uuid.UUID
-    ) -> BookingsPolicy:
+    async def get_or_create_policy(session: AsyncSession, business_id: uuid.UUID) -> BookingsPolicy:
         policy = (
-            await session.execute(
-                select(BookingsPolicy).where(BookingsPolicy.business_id == business_id)
+            (
+                await session.execute(
+                    select(BookingsPolicy).where(BookingsPolicy.business_id == business_id)
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if policy is None:
             policy = BookingsPolicy(business_id=business_id)
             session.add(policy)
@@ -373,9 +420,7 @@ class BookingService:
         return policy
 
     @staticmethod
-    def _compute_deposit_amount(
-        policy: BookingsPolicy, *, offering_price: float | None
-    ) -> Decimal:
+    def _compute_deposit_amount(policy: BookingsPolicy, *, offering_price: float | None) -> Decimal:
         if policy.deposit_amount is not None:
             return Decimal(str(policy.deposit_amount))
         if policy.deposit_percent is not None and offering_price is not None:

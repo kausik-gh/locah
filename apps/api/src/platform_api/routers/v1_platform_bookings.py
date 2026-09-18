@@ -48,7 +48,11 @@ class CreateBookingRequest(BaseModel):
     ends_at: str
     party_size: int = Field(default=1, ge=1)
     guest_count: int | None = None
+    # Accepted from staff only, and only for a business with no resources
+    # configured. Once resources exist their capacity wins; see
+    # BookingService.create_booking.
     capacity: int | None = Field(default=None, ge=1)
+    resource_ids: list[UUID] = Field(default_factory=list, max_length=8)
     payment_method: str = "cod"
     internal_reference: str | None = None
     idempotency_key: str | None = None

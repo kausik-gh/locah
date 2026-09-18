@@ -9,6 +9,7 @@ from platform_core.business_type_profiles.models import (
     ModuleSeed,
     NavigationSeed,
     OperationalDefaults,
+    ResourceSemantics,
 )
 from platform_core.business_types import DEFAULT_BUSINESS_TYPE, SUPPORTED_BUSINESS_TYPES
 
@@ -16,9 +17,98 @@ from platform_core.business_types import DEFAULT_BUSINESS_TYPE, SUPPORTED_BUSINE
 def _nav(*groups: tuple[str, str, tuple[str, ...]]) -> NavigationSeed:
     return NavigationSeed(
         groups=tuple(
-            {"id": gid, "label": label, "emphasis_modules": list(mods)} for gid, label, mods in groups
+            {"id": gid, "label": label, "emphasis_modules": list(mods)}
+            for gid, label, mods in groups
         )
     )
+
+
+# What each type calls its bookable supply. Everything absent falls back to the
+# generic default, which books people and not things - correct for a consultant
+# or a lawyer, who have no rooms to sell.
+_RESOURCE_SEMANTICS: dict[str, ResourceSemantics] = {
+    "restaurant": ResourceSemantics(
+        noun="Table",
+        noun_plural="Tables",
+        kinds=("table", "counter_seat", "private_room"),
+        default_allocation_mode="exclusive",
+        books_providers=False,
+        books_resources=True,
+    ),
+    "cafe": ResourceSemantics(
+        noun="Table",
+        noun_plural="Tables",
+        kinds=("table", "counter_seat"),
+        default_allocation_mode="exclusive",
+        books_providers=False,
+        books_resources=True,
+    ),
+    "hotel": ResourceSemantics(
+        noun="Room",
+        noun_plural="Rooms",
+        kinds=("room", "suite", "dorm_bed"),
+        default_allocation_mode="exclusive",
+        default_granularity="date_range",
+        books_providers=False,
+        books_resources=True,
+    ),
+    "homestay": ResourceSemantics(
+        noun="Room",
+        noun_plural="Rooms",
+        kinds=("room", "cottage", "whole_property"),
+        default_allocation_mode="exclusive",
+        default_granularity="date_range",
+        books_providers=False,
+        books_resources=True,
+    ),
+    "gym": ResourceSemantics(
+        noun="Class",
+        noun_plural="Classes",
+        kinds=("class_pool", "court", "equipment"),
+        # A class sells seats, so pooled is the sensible starting point - the
+        # one type where the default is not exclusive.
+        default_allocation_mode="pooled",
+        books_providers=True,
+        books_resources=True,
+    ),
+    "studio": ResourceSemantics(
+        noun="Studio",
+        noun_plural="Studios",
+        kinds=("class_pool", "studio_room", "equipment"),
+        default_allocation_mode="pooled",
+        books_providers=True,
+        books_resources=True,
+    ),
+    "salon": ResourceSemantics(
+        noun="Station",
+        noun_plural="Stations",
+        kinds=("chair", "treatment_room", "basin"),
+        books_providers=True,
+        books_resources=True,
+    ),
+    "spa": ResourceSemantics(
+        noun="Treatment room",
+        noun_plural="Treatment rooms",
+        kinds=("treatment_room", "suite", "equipment"),
+        books_providers=True,
+        books_resources=True,
+    ),
+    "clinic": ResourceSemantics(
+        noun="Consulting room",
+        noun_plural="Consulting rooms",
+        kinds=("consulting_room", "equipment", "procedure_room"),
+        books_providers=True,
+        books_resources=True,
+    ),
+    "education": ResourceSemantics(
+        noun="Batch",
+        noun_plural="Batches",
+        kinds=("class_pool", "classroom", "lab"),
+        default_allocation_mode="pooled",
+        books_providers=True,
+        books_resources=True,
+    ),
+}
 
 
 def _profile(
@@ -52,6 +142,7 @@ def _profile(
         terminology=terminology,
         dashboard=DashboardSeed(emphasis=dashboard),
         operational_defaults=operational,
+        resource_semantics=_RESOURCE_SEMANTICS.get(type_id, ResourceSemantics()),
     )
 
 

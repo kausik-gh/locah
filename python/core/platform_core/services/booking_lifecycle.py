@@ -13,11 +13,17 @@ from platform_core.models import Booking, BookingStatusHistory
 from platform_core.resolvers.booking_resolver import BookingResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.availability import AvailabilityService
+from platform_core.services.booking_allocation import BookingAllocationService
 from platform_core.services.business import BusinessService
 from platform_core.services.consumer_activity import ConsumerActivityService
 from platform_core.services.customer_timeline import CustomerTimelineService
 from platform_core.services.outbox import OutboxService
-from platform_core.validation.booking import STATUS_EVENT_MAP, validate_reschedule_payload, validate_status_transition_payload
+from platform_core.validation.booking import (
+    STATUS_EVENT_MAP,
+    TERMINAL_STATUSES,
+    validate_reschedule_payload,
+    validate_status_transition_payload,
+)
 
 
 class BookingLifecycleService:
@@ -163,7 +169,9 @@ class BookingLifecycleService:
     ) -> Booking:
         business = await BusinessService.get_by_id(session, business_id)
         assert_business_mutable(business.state, action="update booking status")
-        booking = await BookingResolver.resolve(session, business_id=business_id, booking_id=booking_id)
+        booking = await BookingResolver.resolve(
+            session, business_id=business_id, booking_id=booking_id
+        )
         BookingLifecycleService._check_version(booking, expected_version)
         validated = validate_status_transition_payload(payload, current_status=booking.status)
         target = validated["status"]
@@ -175,13 +183,27 @@ class BookingLifecycleService:
             booking.cancellation_reason = reason
             booking.cancelled_by = actor_id
 
-        if target == "confirmed" and booking.payment_method in {"cod", "pay_at_business", "pay_later"}:
+        if target == "confirmed" and booking.payment_method in {
+            "cod",
+            "pay_at_business",
+            "pay_later",
+        }:
             if booking.payment_status == "pending":
                 booking.payment_status = "pending_offline"
 
         booking.status = target
         booking.version += 1
         await session.flush()
+
+        # A booking that is no longer going to happen must stop holding its
+        # room, table or stylist. Released rows leave the exclusion
+        # constraint's partial index, so the slot reopens at once while the
+        # record of who held it survives for the calendar history.
+        if target in TERMINAL_STATUSES:
+            await BookingAllocationService.release_for_booking(
+                session, business_id=business_id, booking_id=booking.id
+            )
+
         await BookingLifecycleService._record_history(
             session,
             business_id=business_id,
@@ -220,26 +242,44 @@ class BookingLifecycleService:
     ) -> Booking:
         business = await BusinessService.get_by_id(session, business_id)
         assert_business_mutable(business.state, action="reschedule booking")
-        booking = await BookingResolver.resolve(session, business_id=business_id, booking_id=booking_id)
+        booking = await BookingResolver.resolve(
+            session, business_id=business_id, booking_id=booking_id
+        )
         BookingLifecycleService._check_version(booking, expected_version)
         validated = validate_reschedule_payload(payload, current_status=booking.status)
         before = BookingResolver.serialize_booking(booking)
         old_starts = booking.starts_at.isoformat()
         old_ends = booking.ends_at.isoformat()
 
-        await AvailabilityService.assert_available(
+        # Move the claims first. reallocate_for_booking releases the old
+        # interval before taking the new one, which is what lets a booking slide
+        # from 10:00 to 10:30 without colliding with itself, and it runs in this
+        # transaction so a conflict on the new slot puts the old one back.
+        moved = await BookingAllocationService.reallocate_for_booking(
             session,
             business_id=business_id,
-            location_id=booking.location_id,
-            provider_id=booking.provider_id,
-            offering_id=booking.offering_id,
-            reservation_mode=booking.reservation_mode,
+            booking_id=booking.id,
             starts_at=validated["starts_at"],
             ends_at=validated["ends_at"],
             party_size=booking.party_size,
-            capacity=booking.capacity,
-            exclude_booking_id=booking.id,
         )
+        if not moved:
+            # Nothing allocated: a booking from before resources existed, or one
+            # that names neither a resource nor a provider. The legacy check is
+            # still the only thing guarding it.
+            await AvailabilityService.assert_available(
+                session,
+                business_id=business_id,
+                location_id=booking.location_id,
+                provider_id=booking.provider_id,
+                offering_id=booking.offering_id,
+                reservation_mode=booking.reservation_mode,
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
+                party_size=booking.party_size,
+                capacity=booking.capacity,
+                exclude_booking_id=booking.id,
+            )
 
         booking.starts_at = validated["starts_at"]
         booking.ends_at = validated["ends_at"]
