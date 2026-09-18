@@ -12,8 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from platform_core.events.registry import EventContext, subscribe
 
 # What the Marketplace card actually renders: the business itself, its
-# published website, its offerings and its locations. Anything that changes
-# one of those changes the card.
+# published website, its offerings, its locations — and which capability
+# buttons it offers.
+#
+# The module events matter more than they look. Search reads capability_flags
+# straight off the projection rather than re-deriving them per result, so
+# without these a business that switched Bookings off keeps showing a "Book"
+# button that leads nowhere until something unrelated happens to reindex it.
 _TRIGGERS = (
     "website.published",
     "business.profile.updated",
@@ -26,6 +31,9 @@ _TRIGGERS = (
     "location.created",
     "location.updated",
     "location.archived",
+    "module.enabled",
+    "module.disabled",
+    "module.deactivated",
 )
 
 

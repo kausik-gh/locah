@@ -138,9 +138,9 @@ def test_search_relevance_and_profile(owner: tuple[dict[str, str], uuid.UUID]) -
     assert pdata["business"]["slug"] == business["slug"]
     assert any(a["action"] == "visit_website" for a in pdata["actions"])
     assert pdata["website_handoff"]["destination_intent"] == "visit_website"
-    assert "intent=" in pdata["website_handoff"]["href"] or pdata["website_handoff"]["href"].startswith(
-        "/"
-    )
+    assert "intent=" in pdata["website_handoff"]["href"] or pdata["website_handoff"][
+        "href"
+    ].startswith("/")
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
@@ -223,9 +223,9 @@ def test_location_refinement(owner: tuple[dict[str, str], uuid.UUID]) -> None:
     assert dup_primary.status_code == 409, dup_primary.text
 
     # Refine the existing primary location with the city under test.
-    locations = client.get(
-        f"/v1/platform/businesses/{bid}/locations", headers=headers
-    ).json()["data"]
+    locations = client.get(f"/v1/platform/businesses/{bid}/locations", headers=headers).json()[
+        "data"
+    ]
     primary_loc_id = next(loc["id"] for loc in locations if loc["is_primary"])
     refined = client.patch(
         f"/v1/platform/businesses/{bid}/locations/{primary_loc_id}",
@@ -274,3 +274,105 @@ def test_sparse_market_state_when_empty_index() -> None:
     resp = client.get("/v1/public/search?q=utterly-impossible-term-xyz-000")
     assert resp.status_code == 200
     assert resp.json()["data"]["state"] in {"sparse_market", "no_results"}
+
+
+def _drift(bid: uuid.UUID, **live_state: Any) -> None:
+    """Change live business state while leaving the projection saying otherwise.
+
+    The projection is what search reads for the card's contents, so forcing it
+    to stay discoverable is what makes these tests meaningful: anything still
+    filtering the business out has to be doing a live check.
+    """
+
+    async def _run() -> None:
+        url = get_database_url()
+        assert url
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        engine = create_async_engine(url, echo=False, poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as session:
+            await session.execute(update(Business).where(Business.id == bid).values(**live_state))
+            await session.execute(
+                update(MarketplaceBusinessProjection)
+                .where(MarketplaceBusinessProjection.business_id == bid)
+                .values(is_discoverable=True)
+            )
+            await session.commit()
+        await engine.dispose()
+
+    asyncio.run(_run())
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+@pytest.mark.parametrize(
+    ("label", "live_state"),
+    [
+        ("suspended", {"status": "suspended"}),
+        ("deactivated", {"state": "closed"}),
+        ("soft_deleted", {"deleted_at": datetime.now(timezone.utc)}),
+        ("private", {"visibility": "private"}),
+        # `unlisted` passes the public arm of the businesses RLS policy, so it
+        # is the case a bulk read is most likely to get wrong: reachable by
+        # direct link, but never by browsing.
+        ("unlisted", {"visibility": "unlisted"}),
+    ],
+)
+def test_live_state_removes_business_from_search_despite_stale_projection(
+    owner: tuple[dict[str, str], uuid.UUID],
+    label: str,
+    live_state: dict[str, Any],
+) -> None:
+    """Every live-state fact must still hide a business with a stale projection.
+
+    Search stopped re-reading four tables per result to kill an N+1, and reads
+    capability_flags and the blurb off the projection instead. What it must not
+    stop doing is the live check on `businesses` — these are the facts where
+    being wrong means listing a business that asked not to be listed.
+    """
+    headers, _ = owner
+    client = TestClient(app)
+    unique = f"LiveGate{label.title().replace('_', '')}-{uuid.uuid4().hex[:6]}"
+    business = _create_discoverable(client, headers, name=unique)
+    bid = uuid.UUID(business["id"])
+
+    # Visible to begin with, otherwise the assertion below proves nothing.
+    before = client.get(f"/v1/public/search?q={unique}")
+    assert before.status_code == 200, before.text
+    assert any(b["business_id"] == str(bid) for b in before.json()["data"]["businesses"]), (
+        f"{label}: business was not discoverable before the drift, so the test is vacuous"
+    )
+
+    _drift(bid, **live_state)
+
+    after = client.get(f"/v1/public/search?q={unique}")
+    assert after.status_code == 200, after.text
+    assert not any(b["business_id"] == str(bid) for b in after.json()["data"]["businesses"]), (
+        f"{label}: still listed in search after live state changed"
+    )
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+def test_bulk_eligibility_does_not_leak_another_tenants_rows(
+    owner: tuple[dict[str, str], uuid.UUID],
+) -> None:
+    """The bulk read must answer per business, not leak one verdict across many.
+
+    `evaluate_live_eligibility_bulk` takes a list of ids and returns a map. A
+    plausible way to get that wrong is to let one row satisfy the whole batch,
+    which would make a suspended business ride along beside a healthy one.
+    """
+    headers, _ = owner
+    client = TestClient(app)
+    tag = uuid.uuid4().hex[:6]
+    good = _create_discoverable(client, headers, name=f"PairOk-{tag}")
+    bad = _create_discoverable(client, headers, name=f"PairGone-{tag}")
+
+    _drift(uuid.UUID(bad["id"]), status="suspended")
+
+    # Both share the tag, so a single query returns them as one batch.
+    search = client.get(f"/v1/public/search?q={tag}")
+    assert search.status_code == 200, search.text
+    listed = {b["business_id"] for b in search.json()["data"]["businesses"]}
+    assert good["id"] in listed, "healthy business was filtered out alongside the suspended one"
+    assert bad["id"] not in listed, "suspended business rode along with a healthy one in the batch"

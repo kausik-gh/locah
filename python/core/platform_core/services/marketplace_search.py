@@ -10,7 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.context_resolver import bind_public_context
 from platform_core.exceptions import ResourceNotFound
-from platform_core.marketplace.eligibility import evaluate_eligibility
+from platform_core.marketplace.eligibility import (
+    evaluate_eligibility,
+    evaluate_live_eligibility_bulk,
+)
 from platform_core.marketplace.search_provider import get_search_provider
 from platform_core.models import (
     MarketplaceBusinessProjection,
@@ -46,32 +49,25 @@ class MarketplaceSearchService:
             limit=limit,
         )
 
-        filtered_businesses: list[dict[str, Any]] = []
-        for item in businesses:
-            business_id = uuid.UUID(item["business_id"])
-            # evaluate_eligibility reads business_profiles/websites, whose RLS
-            # policies are business_id = current_business_id() only — unlike
-            # businesses/marketplace_business_projections, neither has a
-            # public/discoverable arm. This is a public, multi-candidate
-            # request (no single business to bind once up front, the way
-            # get_marketplace_profile does), so bind per-candidate before
-            # each check — same bind_public_context used everywhere else for
-            # guest-facing reads, not a policy change.
-            await bind_public_context(session, business_id)
-            eligibility = await evaluate_eligibility(session, business_id)
-            if eligibility.eligible:
-                item["capability_flags"] = eligibility.capability_flags or item.get(
-                    "capability_flags", {}
-                )
-                filtered_businesses.append(item)
+        # One live check for every candidate on the page, businesses and
+        # offerings together. The previous version bound tenant context and
+        # re-read four tables per result, which is where 243 queries for a page
+        # of twenty came from; see evaluate_live_eligibility_bulk for why the
+        # security-relevant half of the check is the half that stays live.
+        candidate_ids = {
+            uuid.UUID(item["business_id"]) for item in (*businesses, *offerings)
+        }
+        verdicts = await evaluate_live_eligibility_bulk(session, sorted(candidate_ids))
 
-        filtered_offerings: list[dict[str, Any]] = []
-        for item in offerings:
-            business_id = uuid.UUID(item["business_id"])
-            await bind_public_context(session, business_id)
-            eligibility = await evaluate_eligibility(session, business_id)
-            if eligibility.eligible:
-                filtered_offerings.append(item)
+        def _is_eligible(item: dict[str, Any]) -> bool:
+            verdict = verdicts.get(uuid.UUID(item["business_id"]))
+            return verdict is not None and verdict.eligible
+
+        # capability_flags stay as the projection recorded them. They are
+        # refreshed by the marketplace.index subscriber, which module.enabled /
+        # module.disabled / module.deactivated now trigger.
+        filtered_businesses = [item for item in businesses if _is_eligible(item)]
+        filtered_offerings = [item for item in offerings if _is_eligible(item)]
 
         total = len(filtered_businesses) + len(filtered_offerings)
         market_count = (
