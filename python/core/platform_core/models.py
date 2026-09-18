@@ -3,7 +3,14 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, Numeric, Text, Time, text
-from sqlalchemy.dialects.postgresql import ARRAY, INET, JSONB, TSVECTOR, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import (
+    ARRAY,
+    INET,
+    JSONB,
+    TSTZRANGE,
+    TSVECTOR,
+    UUID as PG_UUID,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -998,6 +1005,81 @@ class BookingStatusHistory(Base):
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
     )
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BookingResource(Base):
+    """A bookable asset — a room, table, court, vehicle, or a pool of seats.
+
+    Deliberately not a person. A workforce member has employment, skills and
+    pay; the two meet only in an allocation, which is the thing that collides.
+    """
+
+    __tablename__ = "bookings_resources"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("business_locations.id")
+    )
+    resource_type: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    allocation_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'exclusive'")
+    )
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    min_party_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_party_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    buffer_before_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    buffer_after_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    granularity: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'slot'"))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    resource_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class BookingAllocation(Base):
+    """One claim on one subject for one interval — the only thing that collides.
+
+    `occupies` is half-open and already includes the resource's buffers, so
+    turnaround and the difference between nights and slots both fall out of
+    range arithmetic rather than needing their own branches.
+    """
+
+    __tablename__ = "bookings_booking_allocations"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'booking'"))
+    booking_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("bookings_bookings.id", ondelete="CASCADE"), nullable=True
+    )
+    resource_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("bookings_resources.id"), nullable=True
+    )
+    provider_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("workforce_members.id"), nullable=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    is_exclusive: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    occupies: Mapped[Any] = mapped_column(TSTZRANGE, nullable=False)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
