@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { resolveDestinationIntent } from '@platform/auth'
+import { resolveDestinationIntent, siteUrl } from '@platform/auth'
 import { createClient } from '@/lib/supabase/client'
 import { Wordmark } from '@/components/public/Wordmark'
 
@@ -42,14 +42,20 @@ export function LoginForm() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      // Not window.location.origin: that is whatever host this browser is on,
+      // so signing up from a dev machine mails a localhost link to a real
+      // inbox. Supabase only honours this if it matches the project's Redirect
+      // URLs allowlist — otherwise it silently substitutes Site URL.
+      options: { emailRedirectTo: siteUrl('/auth/callback') },
     })
     setBusy(false)
 
     if (error) {
       setError(error.message)
     } else {
-      setNotice('Check your email for the confirmation link, then sign in.')
+      setNotice(
+        `We sent a confirmation link to ${email}. Open it to finish setting up your account — it expires shortly.`
+      )
     }
   }
 
