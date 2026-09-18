@@ -119,9 +119,14 @@ async def test_async_job_claim_and_completion(db_session: AsyncSession) -> None:
 
     status = "pending"
     for _ in range(25):
-        count = await poll_and_execute_jobs(db_session, "test-job-worker", job_type=isolated_type)
+        await poll_and_execute_jobs(db_session, "test-job-worker", job_type=isolated_type)
         status, attempt_count, last_error = await _job_status(db_session, job_id)
-        if status == "completed" or count == 0:
+        # Only the status ends the loop. A poll returning zero now means the job
+        # was not claimable this instant, not that there is nothing to do - the
+        # claim is scoped to a job_type nothing else uses, so the only row it can
+        # ever return is this one. Breaking on zero made a slow first poll under
+        # load look like a failure.
+        if status == "completed":
             break
     assert status == "completed"
     assert attempt_count == 0
@@ -308,11 +313,11 @@ async def test_scheduled_job_materialization(db_session: AsyncSession) -> None:
     # above: an unscoped poll competes for the batch with every other worker.
     status = "pending"
     for _ in range(25):
-        count = await poll_and_execute_jobs(
+        await poll_and_execute_jobs(
             db_session, "test-scheduler-exec", job_type=str(jrow.job_type)
         )
         status, _, _ = await _job_status(db_session, srow.materialized_job_id)
-        if status == "completed" or count == 0:
+        if status == "completed":
             break
     assert status == "completed"
 

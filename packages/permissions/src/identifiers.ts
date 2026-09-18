@@ -79,6 +79,13 @@ export const PERMISSIONS = {
   BOOKINGS_CANCEL: 'bookings.cancel',
   BOOKINGS_MANAGE_AVAILABILITY: 'bookings.manage_availability',
 
+  // Module: quotes
+  QUOTES_READ: 'quotes.read',
+  QUOTES_CREATE: 'quotes.create',
+  QUOTES_UPDATE: 'quotes.update',
+  // Issuing binds the business to a price, so it is separate from editing.
+  QUOTES_ISSUE: 'quotes.issue',
+
   // Module: payments
   PAYMENTS_READ: 'payments.read',
   PAYMENTS_REFUND: 'payments.refund',

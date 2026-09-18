@@ -16,6 +16,11 @@ dependencies = [
     "platform-core",
     "platform-domain-events",
     "pyjwt[crypto]>=2.13.0",
+    # Form posts. The customer accepts or declines a quote from the document
+    # itself, and that has to be a POST: a GET accept-link is fetched by
+    # WhatsApp and email link-preview bots, which would silently accept quotes
+    # nobody clicked.
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

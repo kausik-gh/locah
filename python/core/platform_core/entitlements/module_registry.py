@@ -77,6 +77,14 @@ _OPTIONAL_MODULES: dict[str, ModuleDefinition] = {
         ("core-business-identity",),
         features=("customer-relationships.core", "customer-relationships.timeline"),
     ),
+    "quotes": _mod(
+        "quotes",
+        "Quotations",
+        "optional",
+        "Commercial proposals with versioning, validity and acceptance",
+        ("core-business-profile",),
+        features=("quotes.core", "quotes.revisions", "quotes.sharing"),
+    ),
     "leads": _mod(
         "leads",
         "Leads",

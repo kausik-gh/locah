@@ -65,6 +65,12 @@ BOOKINGS_UPDATE = "bookings.update"
 BOOKINGS_CANCEL = "bookings.cancel"
 BOOKINGS_MANAGE_AVAILABILITY = "bookings.manage_availability"
 
+QUOTES_READ = "quotes.read"
+QUOTES_CREATE = "quotes.create"
+QUOTES_UPDATE = "quotes.update"
+# Issuing binds the business to a price, so it is separate from editing a draft.
+QUOTES_ISSUE = "quotes.issue"
+
 PAYMENTS_READ = "payments.read"
 PAYMENTS_REFUND = "payments.refund"
 PAYMENTS_MANAGE_CONNECTION = "payments.manage_connection"
@@ -125,6 +131,10 @@ TEMPLATES: dict[str, frozenset[str]] = {
             BOOKINGS_UPDATE,
             BOOKINGS_CANCEL,
             BOOKINGS_MANAGE_AVAILABILITY,
+            QUOTES_READ,
+            QUOTES_CREATE,
+            QUOTES_UPDATE,
+            QUOTES_ISSUE,
             CUSTOMERS_READ,
             CUSTOMERS_UPDATE,
             CUSTOMERS_MANAGE_NOTES,

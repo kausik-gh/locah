@@ -124,6 +124,19 @@ async def bind_public_context(session: AsyncSession, business_id: uuid.UUID) -> 
     await session.execute(text("SELECT set_config('app.current_identity_id', '', false)"))
 
 
+async def bind_quote_share_token(session: AsyncSession, token: str) -> None:
+    """Present a quote share token as this transaction's credential.
+
+    Transaction-local (`set_config(..., true)`) rather than session-level: the
+    connection goes back to a pool afterwards, and a token left bound on it
+    would be offered on somebody else's next request.
+    """
+    await session.execute(
+        text("SELECT set_config('app.current_quote_token', :token, true)"),
+        {"token": token},
+    )
+
+
 def _empty_personal_context(
     *,
     identity: PlatformIdentity,

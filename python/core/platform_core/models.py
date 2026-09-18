@@ -1389,6 +1389,143 @@ class PlatformOutboxEvent(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class Quote(Base):
+    """A commercial proposal. Immutable once issued — see QuoteItem."""
+
+    __tablename__ = "quotes_quotes"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("business_locations.id"), nullable=True
+    )
+    customer_contact_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("customer_relationships_contacts.id"),
+        nullable=True,
+    )
+    quote_number: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    supersedes_quote_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("quotes_quotes.id"), nullable=True
+    )
+    root_quote_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    internal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    currency: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'INR'"))
+    subtotal: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    discount_amount: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    tax_amount: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    charges_amount: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    total: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    discount_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    discount_value: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    deposit_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deposit_value: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    deposit_amount: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    converted_to_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    converted_to_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    converted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class QuoteItem(Base):
+    """One line, holding its own copy of what the customer was shown.
+
+    Nothing here is derived from the offering at read time. A catalogue price
+    change must not alter a quote that has already been sent.
+    """
+
+    __tablename__ = "quotes_quote_items"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    quote_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("quotes_quotes.id", ondelete="CASCADE")
+    )
+    offering_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantity: Mapped[float] = mapped_column(Numeric(12, 3), nullable=False, server_default=text("1"))
+    unit_price: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    tax_rate: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, server_default=text("0"))
+    discount_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    discount_value: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    line_subtotal: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    line_discount: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    line_tax: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    line_total: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    item_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class QuoteCharge(Base):
+    """An itemised charge beside the lines — delivery, installation, a premium."""
+
+    __tablename__ = "quotes_quote_charges"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    quote_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("quotes_quotes.id", ondelete="CASCADE")
+    )
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    taxable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    tax_rate: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, server_default=text("0"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class PlatformEventDelivery(Base):
     """One subscriber's delivery of one outbox event.
 

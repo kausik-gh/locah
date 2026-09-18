@@ -217,6 +217,19 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "lead.note.created",
         }
     ),
+    "quote": frozenset(
+        {
+            "quote.created",
+            "quote.updated",
+            "quote.issued",
+            "quote.accepted",
+            "quote.rejected",
+            "quote.expired",
+            "quote.cancelled",
+            "quote.revised",
+            "quote.converted",
+        }
+    ),
     "membership_plan": frozenset(
         {
             "membership.plan.created",

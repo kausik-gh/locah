@@ -89,8 +89,13 @@ def test_every_registry_module_is_seeded() -> None:
     missing = registry_ids - set(db_modules)
     assert not missing, f"registry modules absent from module_definitions: {sorted(missing)}"
 
+    # Doc 11 §18.2 fixes the canonical First Launch set at 21 optional modules.
+    # `quotes` is a deliberate 22nd, added on the founder's direction: Doc 11
+    # §10.2 lists a "quotation/proposal suite" as out of First Launch scope, and
+    # that position has been overridden rather than met. The count is asserted
+    # rather than loosened so the next addition is also a conscious decision.
     optional = {mid for mid, m in _MODULES.items() if m.module_class == "optional"}
-    assert len(optional) == 21, f"expected 21 optional modules, registry has {len(optional)}"
+    assert len(optional) == 22, f"expected 22 optional modules, registry has {len(optional)}"
 
     for mid, m in _MODULES.items():
         assert db_modules[mid] == m.module_class, (
