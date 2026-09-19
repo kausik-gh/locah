@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
+import { platformUrl } from '@platform/config'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +45,7 @@ export default async function WebsiteOverviewPage({
   const { website, draft } = res.data.data
   const business = bizRes.ok ? bizRes.data.data : null
   const base = `/b/${params.businessId}/website`
-  const webUrl = process.env.NEXT_PUBLIC_WEB_URL || 'http://localhost:3000'
+  const webUrl = platformUrl('web')
   const isPublished = website.status === 'published'
   const pages = draft?.pages || []
 

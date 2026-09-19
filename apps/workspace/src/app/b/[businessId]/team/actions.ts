@@ -2,8 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { getAccessToken } from '@/lib/supabase/access-token'
+import { platformUrl } from '@platform/config'
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+const apiUrl = platformUrl('api')
 
 async function send(path: string, method: string, body?: unknown) {
   const token = await getAccessToken()

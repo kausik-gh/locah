@@ -4,10 +4,11 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/platform-api'
 import { OnboardingShell, Steps } from '@/components/onboarding/Shell'
 import { HandOff } from './HandOff'
+import { platformUrl } from '@platform/config'
 
 export const dynamic = 'force-dynamic'
 
-const WORKSPACE_URL = process.env.NEXT_PUBLIC_WORKSPACE_URL || 'http://localhost:3001'
+const WORKSPACE_URL = platformUrl('workspace')
 
 type Business = { id: string; slug: string; display_name: string }
 type CatalogModule = { module_id: string; display_name: string; module_class: string }

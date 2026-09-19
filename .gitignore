@@ -55,3 +55,4 @@ Thumbs.db
 
 # Vercel project link files (per-machine; never commit)
 .vercel/
+infra/supabase/email-templates/dist/

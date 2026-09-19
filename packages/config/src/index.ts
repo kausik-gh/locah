@@ -19,3 +19,5 @@ export function validateEnv(config: Record<string, unknown>): Env {
   }
   return result.data
 }
+
+export * from './platform-origins'

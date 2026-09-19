@@ -4,10 +4,11 @@ import { listMyBusinesses, type BusinessSummary } from '@/lib/platform-api'
 import { fetchSearch, type SearchResponse } from '@/lib/marketplace-api'
 import { PublicNav } from '@/components/public/PublicNav'
 import { PublicFooter } from '@/components/public/PublicFooter'
+import { businessSiteUrl, platformUrl } from '@platform/config'
 
 export const dynamic = 'force-dynamic'
 
-const WORKSPACE_URL = process.env.NEXT_PUBLIC_WORKSPACE_URL || 'http://localhost:3001'
+const WORKSPACE_URL = platformUrl('workspace')
 
 function money(amount?: number | null, currency?: string | null) {
   if (amount === null || amount === undefined) return null
@@ -22,13 +23,35 @@ function money(amount?: number | null, currency?: string | null) {
   }
 }
 
+/**
+ * How a Business's website address reads, without the scheme.
+ *
+ * `locah.app/...` used to be written in by hand here. It is not a domain LOCAH
+ * owns, and it contradicts the address the platform actually issues, so it is
+ * derived from the same place every other link is.
+ */
+function siteAddress(slug: string): string {
+  return businessSiteUrl(slug).replace(/^https?:\/\//, '')
+}
+
 /* ---------------------------------------------------------------- hero ---- */
 
 /** A real business's real website, drawn small. Never mock copy: if the
  *  Marketplace is empty this falls back to the generic frame below. */
 function SitePreview({ live }: { live: SearchResponse | null }) {
-  const business = live?.businesses?.[0]
-  const items = (live?.offerings || []).slice(0, 3)
+  // The business and the offerings are two separate lists on one search
+  // response, so taking the head of each put someone else's prices under this
+  // business's name — a music school advertising balayage. Prefer the first
+  // business that has offerings of its own in the same response, and show only
+  // those; the claim this frame is making is that the site is real.
+  const offerings = live?.offerings || []
+  const businesses = live?.businesses || []
+  const business =
+    businesses.find((b) => offerings.some((o) => o.business_id === b.business_id)) ??
+    businesses[0]
+  const items = business
+    ? offerings.filter((o) => o.business_id === business.business_id).slice(0, 3)
+    : []
 
   return (
     <div className="lc-frame" aria-hidden="true">
@@ -37,7 +60,7 @@ function SitePreview({ live }: { live: SearchResponse | null }) {
         <span className="lc-frame__dot" />
         <span className="lc-frame__dot" />
         <span className="lc-frame__addr">
-          locah.app/{business?.slug || 'your-business'}
+          {business?.slug ? siteAddress(business.slug) : siteAddress('your-business')}
         </span>
       </div>
       <div className="lc-frame__body">

@@ -136,6 +136,7 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
             section={section}
             businessSlug={slug}
             index={i}
+            capabilities={data.capabilities}
           />
         ))}
       </main>

@@ -91,7 +91,14 @@ export default async function ModuleCatalogPage({ params }: { params: { business
                   <Link href={`/b/${params.businessId}/modules/${item.module_id}`}>
                     <strong>{item.display_name}</strong>
                   </Link>
-                  <div style={{ opacity: 0.7, fontSize: '0.85rem' }}>{item.module_id}</div>
+                  {/*
+                    The raw module id used to be printed here. It is a developer
+                    identifier — `offerings-catalog`, `customer-relationships` —
+                    and this page was the one place an owner saw the platform's
+                    internal vocabulary instead of its own. The display name is
+                    the whole of what they need; the id still addresses the
+                    detail page through the link above.
+                  */}
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                   {state ? (

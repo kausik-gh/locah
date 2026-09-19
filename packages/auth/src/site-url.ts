@@ -7,8 +7,9 @@
  * Server-side, `new URL(request.url).origin` is equally unreliable behind a
  * proxy, where it can be the internal host rather than the public one.
  *
- * `NEXT_PUBLIC_WEB_URL` is the one value that names the public origin in both
- * places, so it is the source of truth here.
+ * `resolvePlatformOrigins()` is the one place that names the public origin for
+ * both, so it is the source of truth here: an explicit `NEXT_PUBLIC_WEB_URL`
+ * where one is set, otherwise the platform domain, otherwise localhost.
  *
  * Note that Supabase has the final say regardless. It validates `emailRedirectTo`
  * against the project's Redirect URLs allowlist and silently substitutes Site URL
@@ -16,19 +17,10 @@
  * allowlist entry, or the link in the email will point somewhere else entirely.
  */
 
-const DEV_FALLBACK = 'http://localhost:3000'
-
-function normalize(raw: string): string {
-  const trimmed = raw.trim().replace(/\/+$/, '')
-  return trimmed
-}
+import { resolvePlatformOrigins } from '@platform/config'
 
 export function resolveSiteUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_WEB_URL
-  if (configured && configured.trim()) {
-    return normalize(configured)
-  }
-  return DEV_FALLBACK
+  return resolvePlatformOrigins().web
 }
 
 /** Absolute URL for a platform-owned path, e.g. `/auth/callback`. */

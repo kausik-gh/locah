@@ -1,7 +1,11 @@
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+import { platformUrl } from '@platform/config'
+const apiUrl = platformUrl('api')
 
 export type PublicWebsitePayload = {
   business: { id: string; slug: string; display_name: string; business_type?: string | null }
+  /** What a visitor can actually do here, from the business's live modules.
+   *  Sections read this instead of assuming from their own type. */
+  capabilities?: Record<string, boolean>
   website: { status: string }
   page: {
     title: string

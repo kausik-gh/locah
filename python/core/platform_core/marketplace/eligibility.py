@@ -48,6 +48,20 @@ async def _capability_flags(
     }
 
 
+async def capability_flags(
+    session: AsyncSession, business_id: uuid.UUID
+) -> dict[str, bool]:
+    """What a visitor can actually do with this Business, right now.
+
+    The same answer the Marketplace listing is built from, exposed because a
+    Business's own website needs it too: a published site was offering "Add to
+    basket" on a business with Orders switched off, and the basket link then led
+    nowhere. The website and the listing must agree about what is possible, so
+    they read it from one place.
+    """
+    return await _capability_flags(session, business_id)
+
+
 async def evaluate_eligibility(
     session: AsyncSession, business_id: uuid.UUID
 ) -> EligibilityResult:

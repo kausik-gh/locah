@@ -291,6 +291,14 @@ class WebsitePublishService:
         await MediaService.attach_section_asset_urls(
             session, serialized_page.get("sections") or [], business_id=business.id
         )
+        from platform_core.marketplace.eligibility import capability_flags
+
+        # A section renders a "buy" or "book" control only where the module
+        # behind it is actually on. Without this the renderer decided from the
+        # section type alone, which is a guess about the business rather than a
+        # fact about it.
+        capabilities = await capability_flags(session, business.id)
+
         return {
             "business": {
                 "id": str(business.id),
@@ -298,6 +306,7 @@ class WebsitePublishService:
                 "display_name": business.display_name,
                 "business_type": business.business_type,
             },
+            "capabilities": capabilities,
             "website": WebsiteResolver.serialize_website(website),
             "version": WebsiteResolver.serialize_version(version),
             "page": serialized_page,

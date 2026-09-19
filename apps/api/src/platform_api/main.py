@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Any, AsyncIterator
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -131,6 +132,13 @@ if os.getenv("RATE_LIMIT_ENABLED", "1") != "0":
 app.add_middleware(RequestLogMiddleware)
 
 # Standard CORS. Credentials cannot be used with wildcard origins.
+#
+# The allowlist is assembled rather than merely read, because the set of origins
+# that legitimately call this API is a consequence of the platform domain
+# (Document 10 SS12): the public site, Workspace, Admin, and every Business
+# website on `{slug}.<domain>`. An explicit CORS_ALLOWED_ORIGINS is still
+# honoured and is added to, so a staging or preview origin can be named without
+# giving up the derived ones.
 _cors_origins = [
     origin.strip()
     for origin in os.getenv(
@@ -139,9 +147,29 @@ _cors_origins = [
     ).split(",")
     if origin.strip()
 ]
+
+_platform_domain = (os.getenv("PLATFORM_DOMAIN") or "").strip().lower().lstrip(".")
+# Business websites are one subdomain each, so they cannot be enumerated ahead
+# of time. A regex bounded to the platform domain is narrower than a wildcard
+# and still admits exactly the hosts the platform itself issues.
+_cors_origin_regex: str | None = None
+if _platform_domain and _platform_domain != "localhost":
+    for _host in (
+        _platform_domain,
+        f"www.{_platform_domain}",
+        f"app.{_platform_domain}",
+        f"admin.{_platform_domain}",
+    ):
+        _origin = f"https://{_host}"
+        if _origin not in _cors_origins:
+            _cors_origins.append(_origin)
+    _escaped = re.escape(_platform_domain)
+    _cors_origin_regex = rf"^https://[a-z0-9](?:[a-z0-9-]{{0,61}}[a-z0-9])?\.{_escaped}$"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

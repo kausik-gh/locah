@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { resolveSessionCookieOptions } from './cookie-options'
 
 export interface CookieStore {
   getAll: () => any[]
@@ -11,6 +12,7 @@ export function createSupabaseServerClientInstance(
   cookieStore: CookieStore
 ) {
   return createServerClient(url, anonKey, {
+    cookieOptions: resolveSessionCookieOptions(),
     cookies: {
       getAll() {
         return cookieStore.getAll()

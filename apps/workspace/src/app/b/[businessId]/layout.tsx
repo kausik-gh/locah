@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { ReactNode } from 'react'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry, businessHeaders } from '@/lib/api'
@@ -23,7 +23,12 @@ export default async function WorkspaceBusinessLayout({
   params: { businessId: string }
 }) {
   const token = await getAccessToken()
-  if (!token) redirect('/login')
+  if (!token) {
+    // Carry the business through the sign-in hand-off. Without it, someone
+    // whose session expired mid-task signs in and lands on the Workspace root,
+    // having to re-find the business they were already in.
+    redirect(`/login?destination=${encodeURIComponent(`/b/${params.businessId}`)}`)
+  }
 
   const bh = businessHeaders(params.businessId)
   const [businessesRes, contextRes, unreadRes] = await Promise.all([
@@ -36,6 +41,21 @@ export default async function WorkspaceBusinessLayout({
   ])
 
   const businesses = businessesRes.ok ? businessesRes.data.data : []
+
+  // Someone with a good session but no membership of THIS business used to get
+  // the full Workspace shell — real headings, empty tables — for a business
+  // that is not theirs. No data leaked (every endpoint refuses separately), but
+  // the page confirmed the id exists and read as a broken Workspace rather than
+  // a refusal. `notFound` is the honest answer and reveals nothing.
+  //
+  // The list is the server's own answer to "which businesses is this identity an
+  // active member of", so this is a rendering consequence of server-side
+  // authorization, not a second opinion about it. It is deliberately skipped
+  // when the list could not be loaded: an API outage must not lock an owner out
+  // of their own Workspace.
+  if (businessesRes.ok && !businesses.some((b) => b.id === params.businessId)) {
+    notFound()
+  }
   const moduleStates = contextRes.ok ? contextRes.data.data.module_states ?? {} : {}
   const unreadCount = unreadRes.ok ? unreadRes.data.data.unread_count : 0
 

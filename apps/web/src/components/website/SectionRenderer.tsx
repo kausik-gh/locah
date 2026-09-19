@@ -57,11 +57,15 @@ export function SectionRenderer({
   section,
   businessSlug,
   index = 0,
+  capabilities,
 }: {
   section: Section
   businessSlug: string
   /** Position on the page — used only to alternate section grounds. */
   index?: number
+  /** The business's live capabilities, so a section never offers an action the
+   *  business cannot fulfil. Absent means "unknown", which is treated as off. */
+  capabilities?: Record<string, boolean>
 }) {
   const c = section.content || {}
   const v = str(section.layout_variant) || undefined
@@ -353,6 +357,7 @@ export function SectionRenderer({
     case 'offerings_list':
       return (
         <LiveItemsSection
+          capabilities={capabilities}
           businessSlug={businessSlug}
           kind="offerings"
           title={str(c.title) || 'What we offer'}
@@ -367,6 +372,7 @@ export function SectionRenderer({
     case 'menu_section':
       return (
         <LiveItemsSection
+          capabilities={capabilities}
           businessSlug={businessSlug}
           kind="menu"
           title={str(c.title) || 'Menu'}
@@ -380,6 +386,7 @@ export function SectionRenderer({
     case 'plans_section':
       return (
         <LiveItemsSection
+          capabilities={capabilities}
           businessSlug={businessSlug}
           kind="plans"
           title={str(c.title) || 'Membership plans'}
@@ -392,6 +399,7 @@ export function SectionRenderer({
     case 'rooms_section':
       return (
         <LiveItemsSection
+          capabilities={capabilities}
           businessSlug={businessSlug}
           kind="rooms"
           title={str(c.title) || 'Rooms & suites'}
@@ -405,6 +413,7 @@ export function SectionRenderer({
     case 'classes_section':
       return (
         <LiveItemsSection
+          capabilities={capabilities}
           businessSlug={businessSlug}
           kind="classes"
           title={str(c.title) || 'Classes'}

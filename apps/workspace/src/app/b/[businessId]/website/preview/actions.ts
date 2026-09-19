@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getAccessToken } from '@/lib/supabase/access-token'
+import { platformUrl } from '@platform/config'
 
 /**
  * Inline click-to-edit (Doc 09 §9.1.1) — additive UI over the EXISTING
@@ -20,7 +21,7 @@ export async function saveSectionContent(
   const token = await getAccessToken()
   if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+  const apiUrl = platformUrl('api')
   const res = await fetch(`${apiUrl}/v1/b/${businessId}/website/sections/${sectionId}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -58,7 +59,7 @@ export async function requestImageUpload(
   const token = await getAccessToken()
   if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+  const apiUrl = platformUrl('api')
   const res = await fetch(`${apiUrl}/v1/b/${businessId}/media/upload-url`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -94,7 +95,7 @@ export async function completeImageUpload(
   const token = await getAccessToken()
   if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+  const apiUrl = platformUrl('api')
   const res = await fetch(
     `${apiUrl}/v1/b/${businessId}/media/${assetId}/complete`,
     {
@@ -125,7 +126,7 @@ export async function generateSectionImage(
   const token = await getAccessToken()
   if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+  const apiUrl = platformUrl('api')
   const res = await fetch(
     `${apiUrl}/v1/b/${businessId}/website/sections/${sectionId}/generate-image`,
     {
@@ -168,7 +169,7 @@ export async function refreshPreviewToken(
   const token = await getAccessToken()
   if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+  const apiUrl = platformUrl('api')
   const res = await fetch(`${apiUrl}/v1/b/${businessId}/website/preview-token`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getAccessToken } from '@/lib/supabase/access-token'
+import { platformUrl } from '@platform/config'
 
 export async function saveThemeNav(formData: FormData) {
   const token = await getAccessToken()
@@ -15,7 +16,7 @@ export async function saveThemeNav(formData: FormData) {
   } catch {
     navigation = []
   }
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+  const apiUrl = platformUrl('api')
   await fetch(`${apiUrl}/v1/b/${businessId}/website/theme`, {
     method: 'PATCH',
     headers: {

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getAccessToken } from '@/lib/supabase/access-token'
+import { platformUrl } from '@platform/config'
 
 // Returns void: this is passed straight to <form action>, which discards any
 // return value. It previously returned {ok,error} objects that nothing could
@@ -32,7 +33,7 @@ export async function saveSectionContent(formData: FormData): Promise<void> {
     content.body = body
   }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+  const apiUrl = platformUrl('api')
   const res = await fetch(`${apiUrl}/v1/b/${businessId}/website/sections/${sectionId}`, {
     method: 'PATCH',
     headers: {

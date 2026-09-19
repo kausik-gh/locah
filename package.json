@@ -18,7 +18,8 @@
     "db:stop": "cd infra && npx supabase stop",
     "db:status": "cd infra && npx supabase status",
     "db:reset": "cd infra && npx supabase db reset",
-    "db:migration": "cd infra && npx supabase migration new"
+    "db:migration": "cd infra && npx supabase migration new",
+    "email:templates": "node tools/render-email-templates.mjs"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.2.0",

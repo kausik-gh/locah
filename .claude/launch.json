@@ -4,7 +4,10 @@
     {
       "name": "dev",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000
     },
     {
@@ -22,6 +25,19 @@
         "8000"
       ],
       "port": 8000
+    },
+    {
+      "name": "worker",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "--env-file",
+        ".env",
+        "python",
+        "-m",
+        "platform_worker.main"
+      ],
+      "port": 8099
     }
   ]
 }

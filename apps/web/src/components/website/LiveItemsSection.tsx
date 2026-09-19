@@ -45,11 +45,28 @@ function money(amount?: number | null, currency?: string) {
   }
 }
 
-/** Action a visitor can take on an item, decided by section kind. */
-function actionFor(kind: ItemKind): 'cart' | 'book' | 'enquire' | 'none' {
-  if (kind === 'menu' || kind === 'offerings') return 'cart'
-  if (kind === 'rooms' || kind === 'classes') return 'book'
-  if (kind === 'plans') return 'enquire'
+/**
+ * Action a visitor can take on an item.
+ *
+ * The section kind proposes; the business's live capabilities dispose. A salon
+ * whose Orders module is off was still being given "Add" and "View basket" on
+ * its own site, and the basket link led to a 404 — the section type had decided
+ * on its own what the business could do. Where the proposed action is not backed
+ * by a live module the item is simply shown, which is the honest outcome: the
+ * price and description are real even when there is nothing to click.
+ *
+ * `capabilities` absent means unknown, and unknown is treated as unavailable
+ * rather than assumed — an action that silently fails is worse than one that is
+ * not offered.
+ */
+function actionFor(
+  kind: ItemKind,
+  capabilities?: Record<string, boolean>
+): 'cart' | 'book' | 'enquire' | 'none' {
+  const can = (flag: string) => Boolean(capabilities?.[flag])
+  if (kind === 'menu' || kind === 'offerings') return can('order') ? 'cart' : 'none'
+  if (kind === 'rooms' || kind === 'classes') return can('book') ? 'book' : 'none'
+  if (kind === 'plans') return can('enquire') ? 'enquire' : 'none'
   return 'none'
 }
 
@@ -64,6 +81,7 @@ export function LiveItemsSection({
   showPrices = true,
   sectionClass,
   altGround,
+  capabilities,
 }: {
   businessSlug: string
   kind: ItemKind
@@ -75,6 +93,7 @@ export function LiveItemsSection({
   showPrices?: boolean
   sectionClass?: string
   altGround?: boolean
+  capabilities?: Record<string, boolean>
 }) {
   const [items, setItems] = useState<Offering[]>([])
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -126,7 +145,7 @@ export function LiveItemsSection({
       : items
   ).slice(0, maxItems && maxItems > 0 ? maxItems : undefined)
 
-  const action = actionFor(kind)
+  const action = actionFor(kind, capabilities)
 
   // A visitor must never see an empty shelf. If the business has no records
   // for this section yet, the section renders nothing at all rather than an
@@ -148,11 +167,11 @@ export function LiveItemsSection({
         ) : state === 'error' ? null : kind === 'menu' && variant !== 'simple' ? (
           <MenuCategorized items={filtered} showPrices={showPrices} onAdd={addToCart} action={action} />
         ) : kind === 'plans' ? (
-          <Plans items={filtered} variant={variant} slug={businessSlug} />
+          <Plans items={filtered} variant={variant} slug={businessSlug} action={action} />
         ) : kind === 'rooms' && variant !== 'cards' ? (
-          <RoomRows items={filtered} slug={businessSlug} />
+          <RoomRows items={filtered} slug={businessSlug} action={action} />
         ) : kind === 'classes' && variant !== 'cards' ? (
-          <ClassSchedule items={filtered} slug={businessSlug} />
+          <ClassSchedule items={filtered} slug={businessSlug} action={action} />
         ) : (
           <ItemGrid
             items={filtered}
@@ -324,7 +343,17 @@ function MenuCategorized({
   )
 }
 
-function Plans({ items, variant, slug }: { items: Offering[]; variant?: string; slug: string }) {
+function Plans({
+  items,
+  variant,
+  slug,
+  action,
+}: {
+  items: Offering[]
+  variant?: string
+  slug: string
+  action: 'cart' | 'book' | 'enquire' | 'none'
+}) {
   if (variant === 'comparison') {
     return (
       <div className="ls-plans--comparison">
@@ -346,9 +375,13 @@ function Plans({ items, variant, slug }: { items: Offering[]; variant?: string; 
                 <td className="ls-meta">{p.description || '—'}</td>
                 <td data-num="">{money(p.price_amount, p.currency) || '—'}</td>
                 <td>
-                  <Link className="ls-btn ls-btn--outline" href={`/${slug}/enquire?offering_id=${p.id}`}>
-                    Choose
-                  </Link>
+                  {action === 'enquire' ? (
+
+                    <Link className="ls-btn ls-btn--outline" href={`/${slug}/enquire?offering_id=${p.id}`}>
+                      Choose
+                    </Link>
+
+                  ) : null}
                 </td>
               </tr>
             ))}
@@ -371,9 +404,13 @@ function Plans({ items, variant, slug }: { items: Offering[]; variant?: string; 
           </div>
           {p.description ? <p className="ls-plan__desc">{p.description}</p> : null}
           <div className="ls-plan__cta">
-            <Link className="ls-btn" href={`/${slug}/enquire?offering_id=${p.id}`}>
-              Get started
-            </Link>
+            {action === 'enquire' ? (
+
+              <Link className="ls-btn" href={`/${slug}/enquire?offering_id=${p.id}`}>
+                Get started
+              </Link>
+
+            ) : null}
           </div>
         </div>
       ))}
@@ -381,7 +418,15 @@ function Plans({ items, variant, slug }: { items: Offering[]; variant?: string; 
   )
 }
 
-function RoomRows({ items, slug }: { items: Offering[]; slug: string }) {
+function RoomRows({
+  items,
+  slug,
+  action,
+}: {
+  items: Offering[]
+  slug: string
+  action: 'cart' | 'book' | 'enquire' | 'none'
+}) {
   return (
     <div>
       {items.map((r) => (
@@ -401,9 +446,11 @@ function RoomRows({ items, slug }: { items: Offering[]; slug: string }) {
               <span className="ls-price" style={{ fontSize: '1.15rem' }}>
                 {money(r.price_amount, r.currency) || 'On request'}
               </span>
-              <Link className="ls-btn" href={`/${slug}/book?offering_id=${r.id}`}>
-                Check availability
-              </Link>
+              {action === 'book' ? (
+                <Link className="ls-btn" href={`/${slug}/book?offering_id=${r.id}`}>
+                  Check availability
+                </Link>
+              ) : null}
             </div>
           </div>
         </article>
@@ -412,7 +459,15 @@ function RoomRows({ items, slug }: { items: Offering[]; slug: string }) {
   )
 }
 
-function ClassSchedule({ items, slug }: { items: Offering[]; slug: string }) {
+function ClassSchedule({
+  items,
+  slug,
+  action,
+}: {
+  items: Offering[]
+  slug: string
+  action: 'cart' | 'book' | 'enquire' | 'none'
+}) {
   // Without per-session scheduling exposed publicly, a class list is grouped
   // by its category (e.g. "Strength", "Yoga") rather than inventing days.
   const groups = new Map<string, Offering[]>()
@@ -437,9 +492,11 @@ function ClassSchedule({ items, slug }: { items: Offering[]; slug: string }) {
                 <span className="ls-sched__name">{c.title}</span>
                 {c.description ? <div className="ls-sched__who">{c.description}</div> : null}
               </span>
-              <Link className="ls-btn ls-btn--outline" href={`/${slug}/book?offering_id=${c.id}`}>
-                Book
-              </Link>
+              {action === 'book' ? (
+                <Link className="ls-btn ls-btn--outline" href={`/${slug}/book?offering_id=${c.id}`}>
+                  Book
+                </Link>
+              ) : null}
             </div>
           ))}
         </div>

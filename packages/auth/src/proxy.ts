@@ -5,6 +5,7 @@
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { resolveSessionCookieOptions } from './cookie-options'
 
 type AuthWithOptionalClaims = {
   getClaims?: () => Promise<unknown>
@@ -27,6 +28,10 @@ export async function updateSession(
   })
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    // The refresh happens here, so this is also where a refreshed session gets
+    // its Domain. Omitting it would let middleware quietly re-scope the cookie
+    // to one host and undo the shared session on the next token rotation.
+    cookieOptions: resolveSessionCookieOptions(),
     cookies: {
       getAll() {
         return request.cookies.getAll()

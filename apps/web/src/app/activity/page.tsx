@@ -3,10 +3,11 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { PublicNav } from '@/components/public/PublicNav'
 import { PublicFooter } from '@/components/public/PublicFooter'
+import { platformUrl } from '@platform/config'
 
 export const dynamic = 'force-dynamic'
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+const apiUrl = platformUrl('api')
 
 type Activity = {
   id: string

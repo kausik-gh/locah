@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { businessSiteUrl } from '@platform/config'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
@@ -14,6 +15,14 @@ type WebsiteResponse = {
   }
 }
 
+type BusinessSummary = {
+  id: string
+  slug: string
+  display_name: string
+  state?: string | null
+  visibility?: string | null
+}
+
 export default async function WebsitePublishPage({
   params,
 }: {
@@ -21,7 +30,12 @@ export default async function WebsitePublishPage({
 }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
-  const res = await apiTry<WebsiteResponse>(`/v1/b/${params.businessId}/website`, token)
+
+  const [res, bizRes] = await Promise.all([
+    apiTry<WebsiteResponse>(`/v1/b/${params.businessId}/website`, token),
+    apiTry<{ data: BusinessSummary[] }>('/v1/platform/businesses', token),
+  ])
+
   if (!res.ok) {
     return (
       <div>
@@ -30,6 +44,22 @@ export default async function WebsitePublishPage({
       </div>
     )
   }
+
+  const published = res.data.data.website.status === 'published'
+  const business = bizRes.ok
+    ? (bizRes.data.data || []).find((b) => b.id === params.businessId)
+    : undefined
+
+  // Publishing the website and the business being reachable are two different
+  // things, and conflating them is how someone publishes, is told "Published",
+  // and still finds their address returning nothing. A business that is still a
+  // draft, or set to private, is not served to the public whatever its website
+  // says — so that is stated here rather than discovered.
+  const businessIsLive = business?.state === 'active'
+  const publiclyVisible =
+    business?.visibility === 'discoverable' || business?.visibility === 'unlisted'
+  const reachable = published && businessIsLive && publiclyVisible
+  const liveUrl = business ? businessSiteUrl(business.slug) : undefined
 
   return (
     <div>
@@ -40,10 +70,45 @@ export default async function WebsitePublishPage({
       </p>
       <p>
         Current status:{' '}
-        <strong>
-          {res.data.data.website.status === 'published' ? 'Published' : 'Draft — not yet live'}
-        </strong>
+        <strong>{published ? 'Published' : 'Draft — not yet live'}</strong>
       </p>
+
+      {published && !reachable ? (
+        <div
+          role="status"
+          style={{
+            marginTop: '0.9rem',
+            padding: '0.9rem 1.1rem',
+            border: '1px solid var(--color-border)',
+            borderRadius: '10px',
+            background: 'var(--color-surface)',
+            maxWidth: '42rem',
+            lineHeight: 1.55,
+          }}
+        >
+          <strong>Your site is published, but nobody can reach it yet.</strong>
+          <p style={{ margin: '0.4rem 0 0' }}>
+            {!businessIsLive
+              ? 'This business is still a draft. Until it goes live, its address returns nothing to the public.'
+              : 'This business is set to private, so its address is not served to the public.'}
+          </p>
+          <p style={{ margin: '0.6rem 0 0' }}>
+            <Link href={`/b/${params.businessId}/marketplace`}>
+              Open Marketplace Presence to change this →
+            </Link>
+          </p>
+        </div>
+      ) : null}
+
+      {reachable && liveUrl ? (
+        <p style={{ marginTop: '0.9rem' }}>
+          Live at{' '}
+          <a href={liveUrl} target="_blank" rel="noreferrer">
+            {liveUrl.replace(/^https?:\/\//, '')}
+          </a>
+        </p>
+      ) : null}
+
       <ul>
         {res.data.data.draft.pages.map((p) => (
           <li key={p.slug}>
@@ -58,7 +123,7 @@ export default async function WebsitePublishPage({
         </form>
         <form action={publishWebsite}>
           <input type="hidden" name="businessId" value={params.businessId} />
-          <button type="submit">Publish</button>
+          <button type="submit">{published ? 'Publish latest draft' : 'Publish'}</button>
         </form>
         <Link href={`/b/${params.businessId}/website`}>Back to overview</Link>
       </div>

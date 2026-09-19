@@ -14,6 +14,41 @@ type MarketplaceSettings = {
   index_health?: { last_status: string; last_reason?: string | null } | null
 }
 
+/**
+ * Eligibility reasons in the owner's language.
+ *
+ * The API answers with codes — `business_not_active`, `profile_public_facts_missing`
+ * — which are the right shape for a contract and the wrong thing to print on a
+ * page. Anything unmapped falls back to the code rather than disappearing, so a
+ * new reason is visible rather than silently swallowed.
+ */
+const VISIBILITY_TEXT: Record<string, string> = {
+  private: 'Private — only you and your team',
+  unlisted: 'Unlisted — reachable by link, not in search',
+  discoverable: 'Discoverable — can appear in Marketplace search',
+}
+
+const STATE_TEXT: Record<string, string> = {
+  draft: 'Draft — not live yet',
+  onboarding: 'Being set up',
+  active: 'Live',
+  suspended: 'Suspended',
+  closed: 'Closed',
+}
+
+const REASON_TEXT: Record<string, string> = {
+  business_not_active: 'This business has not gone live yet',
+  business_status_blocked: 'This business is on hold and cannot be listed',
+  visibility_not_discoverable: 'You have not chosen to be discoverable',
+  profile_missing: 'Your business profile has not been filled in',
+  profile_public_facts_missing: 'Your profile is missing details customers need, such as how to reach you',
+  website_not_published: 'Your website has not been published',
+}
+
+function reasonText(code: string): string {
+  return REASON_TEXT[code] ?? code
+}
+
 export default async function MarketplacePresencePage({
   params,
 }: {
@@ -48,14 +83,14 @@ export default async function MarketplacePresencePage({
       </p>
       <dl style={{ marginTop: '1rem', lineHeight: 1.6 }}>
         <dt style={{ fontWeight: 700 }}>Current visibility</dt>
-        <dd>{data.visibility}</dd>
+        <dd>{VISIBILITY_TEXT[data.visibility] ?? data.visibility}</dd>
         <dt style={{ fontWeight: 700 }}>Business state</dt>
-        <dd>{data.state}</dd>
+        <dd>{STATE_TEXT[data.state] ?? data.state}</dd>
         <dt style={{ fontWeight: 700 }}>Eligible to index?</dt>
         <dd>
           {data.eligibility.eligible
             ? 'Yes'
-            : `No — ${data.eligibility.reasons.join(', ')}`}
+            : `No — ${data.eligibility.reasons.map(reasonText).join('; ')}`}
         </dd>
         <dt style={{ fontWeight: 700 }}>Index health</dt>
         <dd>

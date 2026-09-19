@@ -2,8 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { getAccessToken } from '@/lib/supabase/access-token'
+import { platformUrl } from '@platform/config'
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+const apiUrl = platformUrl('api')
 
 export async function updateJobStatus(formData: FormData) {
   const token = await getAccessToken()

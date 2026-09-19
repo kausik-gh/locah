@@ -3,6 +3,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
 import { SiteEditor, type EditorPage } from './SiteEditor'
+import { platformUrl } from '@platform/config'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,7 +52,7 @@ export default async function WebsiteEditorPage({
 
   const draft = siteRes.data.data.draft
   const base = `/b/${params.businessId}/website`
-  const webUrl = process.env.NEXT_PUBLIC_WEB_URL || 'http://localhost:3000'
+  const webUrl = platformUrl('web')
 
   if (!draft || draft.pages.length === 0) {
     return (

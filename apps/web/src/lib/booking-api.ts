@@ -1,4 +1,5 @@
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+import { platformUrl } from '@platform/config'
+const apiUrl = platformUrl('api')
 
 export async function fetchBookingOptions(slug: string) {
   const res = await fetch(`${apiUrl}/v1/public/websites/${slug}/booking/options`, {
