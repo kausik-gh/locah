@@ -312,40 +312,46 @@ def test_reordering_needs_the_whole_page(owner: dict[str, str]) -> None:
 
 
 def test_a_page_cannot_grow_without_limit(owner: dict[str, str]) -> None:
-    """The cap holds, even though the draft underneath may legitimately change.
+    """Forty sections to a page, and the forty-first is refused.
 
-    Business creation writes a draft, and generation can replace it with a new
-    version moments later — at which point the page being appended to belongs to
-    a superseded version and the API correctly answers `not_draft`. That is the
-    platform behaving properly, not the cap failing, so the test re-resolves the
-    live draft page and carries on rather than asserting on a race it does not
-    control.
+    Filling a page over HTTP has to cope with the platform legitimately
+    re-drafting underneath it: business creation writes a draft and generation
+    replaces it moments later, at which point the page being appended to belongs
+    to a superseded version, the API correctly answers `not_draft`, and every
+    section added so far is gone with the old draft. That is the platform
+    working, so the test follows the live draft and counts what actually landed
+    rather than how many times it asked.
     """
     client = TestClient(app)
     business_id = _business(client, owner)
     page = _home_page(client, owner, business_id)
     base = f"/v1/b/{business_id}/website"
 
-    redrafts = 0
-    last: Any = None
-    for i in range(60):
-        last = client.post(
+    added = len(_sections(client, owner, business_id))
+    refusal: Any = None
+
+    # Enough budget to refill from scratch twice over and still hit the cap.
+    for i in range(160):
+        resp = client.post(
             f"{base}/pages/{page['id']}/sections",
             json={"section_type_id": "text_block", "content": {"body": f"b{i}"}},
             headers=owner,
         )
-        if last.status_code == 200:
+        if resp.status_code == 200:
+            added += 1
             continue
-        code = last.json().get("error", {}).get("details", {}).get("code")
-        if code == "not_draft" and redrafts < 2:
-            # The draft was replaced under us; re-resolve and keep filling.
-            redrafts += 1
+        code = resp.json().get("error", {}).get("details", {}).get("code")
+        if code == "not_draft":
+            # A new draft; the old sections went with the old version.
             page = _home_page(client, owner, business_id)
+            added = len(_sections(client, owner, business_id))
             continue
+        refusal = resp
         break
 
-    assert last is not None and last.status_code == 422, "expected the page to fill up"
-    assert last.json()["error"]["details"]["code"] == "page_full"
+    assert refusal is not None, f"page never filled up (reached {added} sections)"
+    assert refusal.status_code == 422, refusal.text
+    assert refusal.json()["error"]["details"]["code"] == "page_full"
     assert len(_sections(client, owner, business_id)) == 40
 
 
