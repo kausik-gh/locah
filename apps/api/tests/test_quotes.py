@@ -498,3 +498,100 @@ def test_share_page_hides_internal_notes(owner: dict[str, str]) -> None:
     data = client.get(f"/v1/public/quotes/{token}/data").json()["data"]
     assert secret not in str(data)
     assert "internal_notes" not in data
+
+
+def test_share_link_can_be_recovered_after_issuing(owner: dict[str, str]) -> None:
+    """The link survives closing the tab.
+
+    `issue` hands back the token once, which is right for a credential and wrong
+    as the only chance to see it: an owner sending the quote on a week later had
+    no way to the address their customer needs.
+    """
+    client = TestClient(app)
+    business_id = _business(client, owner)
+    quote = _quote(client, owner, business_id)
+
+    # Before issuing there is no link to recover.
+    early = client.get(
+        f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/share-link",
+        headers=owner,
+    )
+    assert early.status_code == 200, early.text
+    assert early.json()["data"]["token"] is None
+
+    issued = client.post(
+        f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/issue",
+        json={"valid_days": 30},
+        headers=owner,
+    )
+    assert issued.status_code == 200, issued.text
+    issued_token = issued.json()["data"]["share_token"]
+
+    recovered = client.get(
+        f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/share-link",
+        headers=owner,
+    )
+    assert recovered.status_code == 200, recovered.text
+    data = recovered.json()["data"]
+    assert data["token"] == issued_token
+    assert data["status"] == "issued"
+    assert data["expires_at"]
+
+    # And it still opens the document it belongs to.
+    page = client.get(f"/v1/public/quotes/{data['token']}")
+    assert page.status_code == 200
+
+
+def test_share_link_is_not_in_the_ordinary_quote_payload(owner: dict[str, str]) -> None:
+    """A live credential must not ride along on every read.
+
+    The list and the detail views are fetched constantly by the Workspace; if
+    the token were in either, it would end up in logs, caches and screenshots.
+    """
+    client = TestClient(app)
+    business_id = _business(client, owner)
+    quote = _quote(client, owner, business_id)
+    client.post(
+        f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/issue",
+        json={},
+        headers=owner,
+    )
+
+    detail = client.get(
+        f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}", headers=owner
+    )
+    assert detail.status_code == 200
+    assert "access_token" not in detail.text
+    assert "share_token" not in detail.json()["data"]
+
+    listing = client.get(f"/v1/platform/businesses/{business_id}/quotes", headers=owner)
+    assert listing.status_code == 200
+    assert "access_token" not in listing.text
+
+
+def test_share_link_is_tenant_isolated(owner: dict[str, str], stranger: dict[str, str]) -> None:
+    """Another business's owner cannot lift the credential."""
+    client = TestClient(app)
+    business_id = _business(client, owner)
+    quote = _quote(client, owner, business_id)
+    client.post(
+        f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/issue",
+        json={},
+        headers=owner,
+    )
+
+    resp = client.get(
+        f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/share-link",
+        headers=stranger,
+    )
+    assert resp.status_code in (403, 404), resp.text
+
+
+def test_share_link_requires_authentication(owner: dict[str, str]) -> None:
+    client = TestClient(app)
+    business_id = _business(client, owner)
+    quote = _quote(client, owner, business_id)
+    resp = client.get(
+        f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/share-link"
+    )
+    assert resp.status_code == 401

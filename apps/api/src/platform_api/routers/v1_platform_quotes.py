@@ -288,3 +288,34 @@ async def revise_quote(
         session, business_id=business_id, quote_id=revision.id
     )
     return {"data": detail, "meta": _meta(actor)}
+
+
+@router.get("/{business_id}/quotes/{quote_id}/share-link")
+async def get_share_link(
+    business_id: UUID,
+    quote_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(QUOTES_ISSUE, "quotes")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Recover the share credential for a quote that is already issued.
+
+    `issue` returns the token once, which is right for a credential but wrong as
+    the only time it can ever be seen: an owner who closed the tab, or who is
+    sending the quote again a week later, had no way back to the link their
+    customer needs. It stays out of the ordinary quote payload — every list and
+    detail read would otherwise carry a live credential — and is fetched
+    deliberately, by someone holding the same authority that issued it.
+    """
+    quote = await QuoteService.resolve(session, business_id=business_id, quote_id=quote_id)
+    return {
+        "data": {
+            "token": quote.access_token,
+            "expires_at": (
+                quote.access_token_expires_at.isoformat()
+                if quote.access_token_expires_at
+                else None
+            ),
+            "status": QuoteService.effective_status(quote),
+        },
+        "meta": _meta(actor),
+    }
