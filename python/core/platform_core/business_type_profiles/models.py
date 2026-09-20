@@ -83,6 +83,35 @@ class ResourceSemantics:
 
 
 @dataclass(frozen=True)
+class ProjectSemantics:
+    """How a business type talks about, and starts, a piece of committed work.
+
+    The projects engine knows only a unit of work with ordered stages, tasks and
+    assignees. This is where an interior designer learns to say "Project" and
+    start at Discovery, while an electrician says "Work order" and starts at
+    Site visit — without either becoming a branch in the service.
+
+    `default_phases` seeds a new project and is editable immediately afterwards;
+    it is a starting point, not a workflow the business is held to. `typical`
+    says whether this type is usually sold work of this shape at all, which
+    drives whether Workspace suggests the module — never whether it is allowed.
+    """
+
+    noun: str = "Project"
+    noun_plural: str = "Projects"
+    default_phases: tuple[str, ...] = ()
+    typical: bool = False
+
+    def serialize(self) -> dict[str, Any]:
+        return {
+            "noun": self.noun,
+            "noun_plural": self.noun_plural,
+            "default_phases": list(self.default_phases),
+            "typical": self.typical,
+        }
+
+
+@dataclass(frozen=True)
 class BusinessTypeProfile:
     """Immutable versioned Business-Type Configuration Profile."""
 
@@ -98,6 +127,7 @@ class BusinessTypeProfile:
     dashboard: DashboardSeed
     operational_defaults: OperationalDefaults
     resource_semantics: ResourceSemantics = field(default_factory=ResourceSemantics)
+    project_semantics: ProjectSemantics = field(default_factory=ProjectSemantics)
     status: str = "active"
 
     def serialize(self) -> dict[str, Any]:
@@ -126,6 +156,7 @@ class BusinessTypeProfile:
             "terminology": dict(self.terminology),
             "dashboard": {"emphasis": list(self.dashboard.emphasis)},
             "resource_semantics": self.resource_semantics.serialize(),
+            "project_semantics": self.project_semantics.serialize(),
             "operational_defaults": {
                 "booking_enabled": self.operational_defaults.booking_enabled,
                 "inventory_enabled": self.operational_defaults.inventory_enabled,

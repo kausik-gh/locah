@@ -38,6 +38,7 @@ const MODULE_NAV: { module: string; href: string; label: string }[] = [
   { module: 'customer-relationships', href: '/customers', label: 'Customers' },
   { module: 'leads', href: '/leads', label: 'Leads' },
   { module: 'quotes', href: '/quotes', label: 'Quotes' },
+  { module: 'projects', href: '/projects', label: 'Projects' },
   { module: 'memberships', href: '/memberships', label: 'Memberships' },
   { module: 'payments', href: '/payments', label: 'Payments' },
 ]

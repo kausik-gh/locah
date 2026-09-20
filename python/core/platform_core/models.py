@@ -1813,5 +1813,112 @@ class PlatformNotificationPreference(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
+class Project(Base):
+    """A unit of committed work for a customer, steered to completion.
+
+    One table for what different trades call a project, a job, a case or a work
+    order: the difference between them is vocabulary and length, not structure.
+    The noun and the starting phases come from the Business-Type Profile, so no
+    vertical appears as a branch here.
+    """
+
+    __tablename__ = "projects_projects"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("business_locations.id"), nullable=True
+    )
+    customer_contact_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("customer_relationships_contacts.id"),
+        nullable=True,
+    )
+    reference: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    internal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
+    priority: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'normal'"))
+    starts_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    due_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    on_hold_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_quote_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("quotes_quotes.id"), nullable=True
+    )
+    agreed_value: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'INR'"))
+    lead_member_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("workforce_members.id"), nullable=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    created_by: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProjectPhase(Base):
+    """A named stage of a project, ordered."""
+
+    __tablename__ = "projects_phases"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    project_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("projects_projects.id")
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
+    is_milestone: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    due_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProjectTask(Base):
+    """A piece of work inside a project, optionally within a phase.
+
+    `assignee_member_id` points at the workforce module. A project does not keep
+    its own idea of who works here.
+    """
+
+    __tablename__ = "projects_tasks"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    project_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("projects_projects.id")
+    )
+    phase_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("projects_phases.id"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'todo'"))
+    assignee_member_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("workforce_members.id"), nullable=True
+    )
+    due_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    blocked_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
 
 PlatformProfile = PlatformIdentity

@@ -9,6 +9,7 @@ from platform_core.business_type_profiles.models import (
     ModuleSeed,
     NavigationSeed,
     OperationalDefaults,
+    ProjectSemantics,
     ResourceSemantics,
 )
 from platform_core.business_types import DEFAULT_BUSINESS_TYPE, SUPPORTED_BUSINESS_TYPES
@@ -111,6 +112,89 @@ _RESOURCE_SEMANTICS: dict[str, ResourceSemantics] = {
 }
 
 
+# What each type calls a piece of committed work, and where that work usually
+# starts. Absent types fall back to the generic default, which is a "Project"
+# with no seeded stages — correct for a business that does this occasionally and
+# would rather write its own.
+#
+# `typical` is what makes the module a suggestion rather than clutter: a salon
+# can still run a project, it is just not how a salon spends its day.
+_PROJECT_SEMANTICS: dict[str, ProjectSemantics] = {
+    "professional_service": ProjectSemantics(
+        noun="Project",
+        noun_plural="Projects",
+        default_phases=("Discovery", "Proposal", "Delivery", "Handover"),
+        typical=True,
+    ),
+    "studio": ProjectSemantics(
+        noun="Project",
+        noun_plural="Projects",
+        default_phases=("Brief", "Shoot", "Edit", "Delivery"),
+        typical=True,
+    ),
+    "clinic": ProjectSemantics(
+        noun="Case",
+        noun_plural="Cases",
+        default_phases=("Assessment", "Treatment", "Review"),
+        typical=True,
+    ),
+    "education": ProjectSemantics(
+        noun="Programme",
+        noun_plural="Programmes",
+        default_phases=("Enrolment", "Teaching", "Assessment", "Certification"),
+        typical=True,
+    ),
+    "retail": ProjectSemantics(
+        noun="Work order",
+        noun_plural="Work orders",
+        default_phases=("Received", "In progress", "Ready"),
+        typical=False,
+    ),
+    "restaurant": ProjectSemantics(
+        noun="Event",
+        noun_plural="Events",
+        default_phases=("Enquiry", "Menu agreed", "Service", "Settled"),
+        typical=False,
+    ),
+    "cafe": ProjectSemantics(
+        noun="Event",
+        noun_plural="Events",
+        default_phases=("Enquiry", "Menu agreed", "Service", "Settled"),
+        typical=False,
+    ),
+    "hotel": ProjectSemantics(
+        noun="Work order",
+        noun_plural="Work orders",
+        default_phases=("Reported", "In progress", "Verified"),
+        typical=False,
+    ),
+    "homestay": ProjectSemantics(
+        noun="Work order",
+        noun_plural="Work orders",
+        default_phases=("Reported", "In progress", "Verified"),
+        typical=False,
+    ),
+    "gym": ProjectSemantics(
+        noun="Programme",
+        noun_plural="Programmes",
+        default_phases=("Assessment", "Plan", "Review"),
+        typical=False,
+    ),
+    "spa": ProjectSemantics(
+        noun="Plan",
+        noun_plural="Plans",
+        default_phases=("Consultation", "Course of treatment", "Review"),
+        typical=False,
+    ),
+    "salon": ProjectSemantics(
+        noun="Plan",
+        noun_plural="Plans",
+        default_phases=("Consultation", "Course of treatment", "Review"),
+        typical=False,
+    ),
+}
+
+
 def _profile(
     type_id: str,
     *,
@@ -143,6 +227,7 @@ def _profile(
         dashboard=DashboardSeed(emphasis=dashboard),
         operational_defaults=operational,
         resource_semantics=_RESOURCE_SEMANTICS.get(type_id, ResourceSemantics()),
+        project_semantics=_PROJECT_SEMANTICS.get(type_id, ProjectSemantics()),
     )
 
 

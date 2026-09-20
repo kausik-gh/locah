@@ -6,6 +6,7 @@ import { apiTry } from '@/lib/api'
 import { Card, GateNotice, PageHeader, StatusPill } from '@/components/ui'
 import { LocalTime } from '@/components/LocalTime'
 import { QuoteEditor } from '../QuoteEditor'
+import { convertQuoteToProject } from '../../projects/actions'
 import { ShareLink as ShareLinkPanel } from './ShareLink'
 import {
   cancelQuote,
@@ -137,6 +138,14 @@ export default async function QuoteDetailPage({
           </p>
           <ShareLinkPanel url={shareUrl} expiresAt={shareRes.ok ? shareRes.data.data?.expires_at : null} />
         </Card>
+      ) : null}
+
+      {quote.status === 'accepted' ? (
+        <ConvertPanel
+          businessId={params.businessId}
+          quoteId={quote.id}
+          convertedToId={quote.converted_to_type === 'project' ? quote.converted_to_id : null}
+        />
       ) : null}
 
       <LifecyclePanel businessId={params.businessId} quote={quote} />
@@ -426,6 +435,54 @@ function LifecyclePanel({ businessId, quote }: { businessId: string; quote: Quot
           </form>
         ) : null}
       </div>
+    </Card>
+  )
+}
+
+/* ----------------------------------------------------------------- convert */
+
+/**
+ * An accepted quote is agreed work that nobody has started yet.
+ *
+ * Converting it opens a project with the customer, the title and the agreed
+ * value already filled in, so the commercial record and the operational one are
+ * linked rather than retyped. Converting twice is safe — the API returns the
+ * project that already exists — but once one exists the panel links to it
+ * instead of offering the button again.
+ */
+function ConvertPanel({
+  businessId,
+  quoteId,
+  convertedToId,
+}: {
+  businessId: string
+  quoteId: string
+  convertedToId: string | null
+}) {
+  if (convertedToId) {
+    return (
+      <Card style={{ marginTop: '1.5rem', display: 'grid', gap: '0.5rem' }}>
+        <h2 style={{ fontSize: '1.05rem', margin: 0 }}>The work</h2>
+        <p style={{ margin: 0 }}>
+          This quote became{' '}
+          <Link href={`/b/${businessId}/projects/${convertedToId}`}>a project</Link>.
+        </p>
+      </Card>
+    )
+  }
+  return (
+    <Card style={{ marginTop: '1.5rem', display: 'grid', gap: '0.6rem' }}>
+      <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Start the work</h2>
+      <p style={{ color: 'var(--color-muted)', margin: 0 }}>
+        Open a project from this quote. The customer, the title and the agreed value carry over.
+      </p>
+      <form action={convertQuoteToProject}>
+        <input type="hidden" name="businessId" value={businessId} />
+        <input type="hidden" name="quoteId" value={quoteId} />
+        <button type="submit" className="btn">
+          Create the project
+        </button>
+      </form>
     </Card>
   )
 }

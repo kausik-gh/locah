@@ -107,6 +107,17 @@ WORKFORCE_UPDATE = "workforce.update"
 WORKFORCE_MANAGE_AVAILABILITY = "workforce.manage_availability"
 WORKFORCE_DEACTIVATE = "workforce.deactivate"
 
+PROJECTS_READ = "projects.read"
+PROJECTS_CREATE = "projects.create"
+PROJECTS_UPDATE = "projects.update"
+# Moving a project between draft, active, on hold, completed and cancelled is
+# separate from editing its contents: committing the business to the work, and
+# declaring it finished, are decisions a coordinator may not own.
+PROJECTS_MANAGE_LIFECYCLE = "projects.manage_lifecycle"
+# Putting a named person against a task is how work actually gets allocated, so
+# it is grantable on its own to someone who schedules but does not scope.
+PROJECTS_ASSIGN = "projects.assign"
+
 ALL_PERMISSIONS: frozenset[str] = frozenset(
     str(v) for k, v in globals().items() if k.isupper() and isinstance(v, str) and "." in v
 )
@@ -144,6 +155,11 @@ TEMPLATES: dict[str, frozenset[str]] = {
             LEADS_UPDATE_STATUS,
             LEADS_ASSIGN,
             LEADS_DELETE,
+            PROJECTS_READ,
+            PROJECTS_CREATE,
+            PROJECTS_UPDATE,
+            PROJECTS_MANAGE_LIFECYCLE,
+            PROJECTS_ASSIGN,
             INVENTORY_READ,
             INVENTORY_ADJUST,
             INVENTORY_EXPORT,
@@ -181,6 +197,16 @@ TEMPLATES: dict[str, frozenset[str]] = {
             CUSTOMERS_READ,
             WORKFORCE_READ,
             NOTIFICATIONS_READ,
+        }
+    ),
+    # Allocates work; cannot scope a project or declare it finished.
+    "tmpl_project_coordinator": frozenset(
+        {
+            PROJECTS_READ,
+            PROJECTS_UPDATE,
+            PROJECTS_ASSIGN,
+            CUSTOMERS_READ,
+            WORKFORCE_READ,
         }
     ),
     "tmpl_workforce_manager": frozenset(

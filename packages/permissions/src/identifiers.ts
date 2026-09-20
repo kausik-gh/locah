@@ -86,6 +86,17 @@ export const PERMISSIONS = {
   // Issuing binds the business to a price, so it is separate from editing.
   QUOTES_ISSUE: 'quotes.issue',
 
+  // Module: projects
+  PROJECTS_READ: 'projects.read',
+  PROJECTS_CREATE: 'projects.create',
+  PROJECTS_UPDATE: 'projects.update',
+  // Committing to the work, and declaring it finished, are decisions a
+  // coordinator may not own — so they are separate from editing the contents.
+  PROJECTS_MANAGE_LIFECYCLE: 'projects.manage_lifecycle',
+  // Putting a named person against a task is grantable on its own, to someone
+  // who schedules but does not scope.
+  PROJECTS_ASSIGN: 'projects.assign',
+
   // Module: payments
   PAYMENTS_READ: 'payments.read',
   PAYMENTS_REFUND: 'payments.refund',

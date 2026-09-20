@@ -33,6 +33,7 @@ from platform_api.routers import (
     v1_platform_booking_resources,
     v1_platform_bookings,
     v1_platform_payments,
+    v1_platform_projects,
     v1_platform_quotes,
     webhooks_payments,
     v1_website,
@@ -194,6 +195,7 @@ app.include_router(v1_platform_booking_resources.router)
 app.include_router(v1_platform_bookings.router)
 app.include_router(v1_workforce.router)
 app.include_router(v1_platform_payments.router)
+app.include_router(v1_platform_projects.router)
 app.include_router(v1_platform_quotes.router)
 app.include_router(webhooks_payments.router)
 app.include_router(v1_website.router)

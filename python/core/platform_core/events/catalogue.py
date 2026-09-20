@@ -230,6 +230,22 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "quote.converted",
         }
     ),
+    # Projects and work orders. `project.completed` is the one anything
+    # downstream is likely to care about — invoicing, a review request, a
+    # follow-up — so it is distinct from the generic status change rather than
+    # something a subscriber has to infer from a payload.
+    "project": frozenset(
+        {
+            "project.created",
+            "project.updated",
+            "project.status.changed",
+            "project.completed",
+            "project.cancelled",
+            "project.task.assigned",
+            "project.task.completed",
+            "project.phase.completed",
+        }
+    ),
     "membership_plan": frozenset(
         {
             "membership.plan.created",
