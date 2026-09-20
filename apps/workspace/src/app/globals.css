@@ -275,6 +275,19 @@ a .ws-card {
   display: block;
 }
 
+/* A wide table scrolls itself, not the page.
+   Workspace tables sat directly in the page column, so on a phone the whole
+   Workspace slid sideways — sidebar, heading and all — to reveal one more
+   column. `min-width: 0` is the half that actually matters: without it a flex
+   or grid child refuses to shrink below its content and the overflow never
+   reaches this container. */
+.ws-tablewrap {
+  overflow-x: auto;
+  min-width: 0;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* --- Layout primitives --- */
 .ws-page {
   padding: 2rem 2.25rem;
@@ -283,6 +296,13 @@ a .ws-card {
 @media (max-width: 1320px) {
   .ws-page {
     padding: 1.5rem 1.75rem;
+  }
+}
+/* A phone has no room for page gutters this wide once the sidebar rail is
+   beside it — Workspace scrolled sideways on every route. */
+@media (max-width: 720px) {
+  .ws-page {
+    padding: 1.1rem 0.9rem;
   }
 }
 

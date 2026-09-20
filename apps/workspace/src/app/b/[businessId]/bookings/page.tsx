@@ -4,6 +4,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { DataTable, EmptyState, FilterTabs, GateNotice, PageHeader, Section, StatusPill } from '@/components/ui'
 import { updateBookingsPolicy } from './actions'
+import { LocalTime } from '@/components/LocalTime'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,7 +79,12 @@ export default async function BookingsPage({
               </div>
             ),
           },
-          { key: 'when', header: 'When', align: 'num', render: (b) => String(b.starts_at) },
+          {
+            key: 'when',
+            header: 'When',
+            align: 'num',
+            render: (b) => <LocalTime value={b.starts_at as string | null} />,
+          },
           {
             key: 'mode',
             header: 'Mode',

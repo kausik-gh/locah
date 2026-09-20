@@ -53,33 +53,35 @@ export default async function LocationsPage({ params }: { params: { businessId: 
         subtitle="Where this Business operates. One is always primary."
       />
 
-      <table style={TABLE}>
-        <thead>
-          <tr>
-            <th style={TH}>Name</th>
-            <th style={TH}>Timezone</th>
-            <th style={TH}>Contact</th>
-            <th style={TH}>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {locations.map((location) => (
-            <tr key={location.id} style={ROW}>
-              <td style={TD}>
-                <Link href={`${base}/${location.id}`}>{location.name}</Link>
-                {location.is_primary ? (
-                  <span style={{ opacity: 0.65, fontSize: '0.85rem' }}> · primary</span>
-                ) : null}
-              </td>
-              <td style={TD}>{location.timezone}</td>
-              <td style={TD}>{location.phone || location.email || '—'}</td>
-              <td style={TD}>
-                <StatusPill value={location.status} />
-              </td>
+      <div className="ws-tablewrap">
+        <table style={TABLE}>
+          <thead>
+            <tr>
+              <th style={TH}>Name</th>
+              <th style={TH}>Timezone</th>
+              <th style={TH}>Contact</th>
+              <th style={TH}>Status</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {locations.map((location) => (
+              <tr key={location.id} style={ROW}>
+                <td style={TD}>
+                  <Link href={`${base}/${location.id}`}>{location.name}</Link>
+                  {location.is_primary ? (
+                    <span style={{ opacity: 0.65, fontSize: '0.85rem' }}> · primary</span>
+                  ) : null}
+                </td>
+                <td style={TD}>{location.timezone}</td>
+                <td style={TD}>{location.phone || location.email || '—'}</td>
+                <td style={TD}>
+                  <StatusPill value={location.status} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {locations.length === 0 ? (
         <EmptyState>No locations yet. Add the first one below.</EmptyState>
       ) : null}

@@ -51,55 +51,57 @@ export default async function InvitationsPage({ params }: { params: { businessId
       <Link href={`/b/${params.businessId}/team`}>← Team</Link>
       <PageHeader title="Invitations" subtitle="People invited to join, and where each stands." />
 
-      <table style={TABLE}>
-        <thead>
-          <tr>
-            <th style={TH}>Email</th>
-            <th style={TH}>Role</th>
-            <th style={TH}>Status</th>
-            <th style={TH}>Expires</th>
-            <th style={TH}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {invitations.map((invitation) => {
-            const expired =
-              invitation.status === 'pending' && new Date(invitation.expires_at).getTime() < now
-            return (
-              <tr key={invitation.id} style={ROW}>
-                <td style={TD}>{invitation.invited_email}</td>
-                <td style={TD}>{invitation.invited_role}</td>
-                <td style={TD}>
-                  <StatusPill value={expired ? 'expired' : invitation.status} />
-                </td>
-                <td style={TD}>{new Date(invitation.expires_at).toLocaleDateString()}</td>
-                <td style={{ ...TD, display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  {invitation.status === 'pending' ? (
-                    <>
-                      <form action={invitationLifecycle}>
-                        <input type="hidden" name="businessId" value={params.businessId} />
-                        <input type="hidden" name="invitationId" value={invitation.id} />
-                        <input type="hidden" name="action" value="resend" />
-                        <button type="submit" style={LINK_BUTTON}>
-                          Resend
-                        </button>
-                      </form>
-                      <form action={invitationLifecycle}>
-                        <input type="hidden" name="businessId" value={params.businessId} />
-                        <input type="hidden" name="invitationId" value={invitation.id} />
-                        <input type="hidden" name="action" value="revoke" />
-                        <button type="submit" style={LINK_BUTTON}>
-                          Revoke
-                        </button>
-                      </form>
-                    </>
-                  ) : null}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <div className="ws-tablewrap">
+        <table style={TABLE}>
+          <thead>
+            <tr>
+              <th style={TH}>Email</th>
+              <th style={TH}>Role</th>
+              <th style={TH}>Status</th>
+              <th style={TH}>Expires</th>
+              <th style={TH}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {invitations.map((invitation) => {
+              const expired =
+                invitation.status === 'pending' && new Date(invitation.expires_at).getTime() < now
+              return (
+                <tr key={invitation.id} style={ROW}>
+                  <td style={TD}>{invitation.invited_email}</td>
+                  <td style={TD}>{invitation.invited_role}</td>
+                  <td style={TD}>
+                    <StatusPill value={expired ? 'expired' : invitation.status} />
+                  </td>
+                  <td style={TD}>{new Date(invitation.expires_at).toLocaleDateString()}</td>
+                  <td style={{ ...TD, display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    {invitation.status === 'pending' ? (
+                      <>
+                        <form action={invitationLifecycle}>
+                          <input type="hidden" name="businessId" value={params.businessId} />
+                          <input type="hidden" name="invitationId" value={invitation.id} />
+                          <input type="hidden" name="action" value="resend" />
+                          <button type="submit" style={LINK_BUTTON}>
+                            Resend
+                          </button>
+                        </form>
+                        <form action={invitationLifecycle}>
+                          <input type="hidden" name="businessId" value={params.businessId} />
+                          <input type="hidden" name="invitationId" value={invitation.id} />
+                          <input type="hidden" name="action" value="revoke" />
+                          <button type="submit" style={LINK_BUTTON}>
+                            Revoke
+                          </button>
+                        </form>
+                      </>
+                    ) : null}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
       {invitations.length === 0 ? (
         <EmptyState>Nobody has been invited yet. Send the first invitation below.</EmptyState>
       ) : null}

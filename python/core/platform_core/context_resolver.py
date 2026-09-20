@@ -124,6 +124,21 @@ async def bind_public_context(session: AsyncSession, business_id: uuid.UUID) -> 
     await session.execute(text("SELECT set_config('app.current_identity_id', '', false)"))
 
 
+async def bind_booking_management_token(session: AsyncSession, token: str) -> None:
+    """Present a booking management token as this transaction's credential.
+
+    The guest who made the booking has no account and no business context, and
+    the token is what says which booking — and so which tenant — they are
+    allowed to see. Transaction-local (`set_config(..., true)`) for the same
+    reason as the quote token: the connection returns to a pool afterwards, and
+    a token left bound on it would be offered on somebody else's next request.
+    """
+    await session.execute(
+        text("SELECT set_config('app.current_booking_token', :token, true)"),
+        {"token": token},
+    )
+
+
 async def bind_quote_share_token(session: AsyncSession, token: str) -> None:
     """Present a quote share token as this transaction's credential.
 

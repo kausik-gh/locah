@@ -7,6 +7,27 @@ import {
   rescheduleManagedBooking,
 } from '@/lib/booking-api'
 
+/**
+ * The appointment as the customer reads it.
+ *
+ * This page was showing `2026-09-22T05:30:00+00:00` to a guest — the wire
+ * format, in UTC, for an appointment they made at 11am. Formatted in the
+ * browser so it lands in their own zone; the raw value is kept as a fallback
+ * rather than showing nothing if it cannot be parsed.
+ */
+function when(value: unknown): string {
+  const raw = typeof value === 'string' ? value : String(value ?? '')
+  const d = new Date(raw)
+  if (!raw || Number.isNaN(d.getTime())) return raw || '—'
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 export default function ManageBookingClient({
   slug,
   bookingId,
@@ -119,7 +140,7 @@ export default function ManageBookingClient({
         {String(b.booking_number)}
       </h1>
       <p>
-        {String(b.title)} · {String(b.status)} · {String(b.starts_at)} → {String(b.ends_at)}
+        {String(b.title)} · {String(b.status)} · {when(b.starts_at)} → {when(b.ends_at)}
       </p>
       {message ? <p role="status">{message}</p> : null}
 

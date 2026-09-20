@@ -135,30 +135,32 @@ export default async function PaymentDetailPage({
       {refunds.length > 0 ? (
         <section style={{ marginTop: '1.75rem' }}>
           <h2 >Refund history</h2>
-          <table style={TABLE}>
-            <thead>
-              <tr>
-                <th style={TH}>Amount</th>
-                <th style={TH}>Reason</th>
-                <th style={TH}>Status</th>
-                <th style={TH}>When</th>
-              </tr>
-            </thead>
-            <tbody>
-              {refunds.map((refund) => (
-                <tr key={refund.id} style={ROW}>
-                  <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
-                    {payment.currency} {refund.amount}
-                  </td>
-                  <td style={TD}>{refund.reason || '—'}</td>
-                  <td style={TD}>
-                    <StatusPill value={refund.status} />
-                  </td>
-                  <td style={TD}>{new Date(refund.created_at).toLocaleString()}</td>
+          <div className="ws-tablewrap">
+            <table style={TABLE}>
+              <thead>
+                <tr>
+                  <th style={TH}>Amount</th>
+                  <th style={TH}>Reason</th>
+                  <th style={TH}>Status</th>
+                  <th style={TH}>When</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {refunds.map((refund) => (
+                  <tr key={refund.id} style={ROW}>
+                    <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
+                      {payment.currency} {refund.amount}
+                    </td>
+                    <td style={TD}>{refund.reason || '—'}</td>
+                    <td style={TD}>
+                      <StatusPill value={refund.status} />
+                    </td>
+                    <td style={TD}>{new Date(refund.created_at).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
     </div>

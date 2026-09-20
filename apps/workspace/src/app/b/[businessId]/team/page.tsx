@@ -67,73 +67,75 @@ export default async function TeamPage({ params }: { params: { businessId: strin
         permissions are decided, use the grant box on each member below to give them access.
       </p>
 
-      <table style={TABLE}>
-        <thead>
-          <tr>
-            <th style={TH}>Member</th>
-            <th style={TH}>Role</th>
-            <th style={TH}>Status</th>
-            <th style={TH}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {members.map((member) => (
-            <tr key={member.id} style={ROW}>
-              <td style={{ ...TD, fontFamily: 'ui-monospace, monospace', fontSize: '0.82rem' }}>
-                {member.identity_id}
-              </td>
-              <td style={TD}>
-                {member.role === 'primary_owner' ? (
-                  member.role
-                ) : (
-                  <form action={changeMemberRole} style={{ display: 'flex', gap: '0.35rem' }}>
-                    <input type="hidden" name="businessId" value={params.businessId} />
-                    <input type="hidden" name="membershipId" value={member.id} />
-                    <select name="role" defaultValue={member.role} style={SELECT}>
-                      {ROLES.filter((r) => r !== 'primary_owner').map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
-                    <button type="submit" style={LINK_BUTTON}>
-                      Save
-                    </button>
-                  </form>
-                )}
-              </td>
-              <td style={TD}>
-                <StatusPill value={member.status} />
-              </td>
-              <td style={{ ...TD, display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                {member.role !== 'primary_owner' ? (
-                  <>
-                    <form action={memberLifecycle}>
-                      <input type="hidden" name="businessId" value={params.businessId} />
-                      <input type="hidden" name="membershipId" value={member.id} />
-                      <input
-                        type="hidden"
-                        name="action"
-                        value={member.status === 'active' ? 'suspend' : 'reactivate'}
-                      />
-                      <button type="submit" style={LINK_BUTTON}>
-                        {member.status === 'active' ? 'Suspend' : 'Reactivate'}
-                      </button>
-                    </form>
-                    <form action={removeMember}>
-                      <input type="hidden" name="businessId" value={params.businessId} />
-                      <input type="hidden" name="membershipId" value={member.id} />
-                      <button type="submit" style={LINK_BUTTON}>
-                        Remove
-                      </button>
-                    </form>
-                  </>
-                ) : null}
-              </td>
+      <div className="ws-tablewrap">
+        <table style={TABLE}>
+          <thead>
+            <tr>
+              <th style={TH}>Member</th>
+              <th style={TH}>Role</th>
+              <th style={TH}>Status</th>
+              <th style={TH}>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {members.map((member) => (
+              <tr key={member.id} style={ROW}>
+                <td style={{ ...TD, fontFamily: 'ui-monospace, monospace', fontSize: '0.82rem' }}>
+                  {member.identity_id}
+                </td>
+                <td style={TD}>
+                  {member.role === 'primary_owner' ? (
+                    member.role
+                  ) : (
+                    <form action={changeMemberRole} style={{ display: 'flex', gap: '0.35rem' }}>
+                      <input type="hidden" name="businessId" value={params.businessId} />
+                      <input type="hidden" name="membershipId" value={member.id} />
+                      <select name="role" defaultValue={member.role} style={SELECT}>
+                        {ROLES.filter((r) => r !== 'primary_owner').map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="submit" style={LINK_BUTTON}>
+                        Save
+                      </button>
+                    </form>
+                  )}
+                </td>
+                <td style={TD}>
+                  <StatusPill value={member.status} />
+                </td>
+                <td style={{ ...TD, display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  {member.role !== 'primary_owner' ? (
+                    <>
+                      <form action={memberLifecycle}>
+                        <input type="hidden" name="businessId" value={params.businessId} />
+                        <input type="hidden" name="membershipId" value={member.id} />
+                        <input
+                          type="hidden"
+                          name="action"
+                          value={member.status === 'active' ? 'suspend' : 'reactivate'}
+                        />
+                        <button type="submit" style={LINK_BUTTON}>
+                          {member.status === 'active' ? 'Suspend' : 'Reactivate'}
+                        </button>
+                      </form>
+                      <form action={removeMember}>
+                        <input type="hidden" name="businessId" value={params.businessId} />
+                        <input type="hidden" name="membershipId" value={member.id} />
+                        <button type="submit" style={LINK_BUTTON}>
+                          Remove
+                        </button>
+                      </form>
+                    </>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {members.length === 0 ? <EmptyState>No team members yet.</EmptyState> : null}
 
       <section style={{ marginTop: '2rem' }}>

@@ -79,44 +79,46 @@ export default async function MembershipsPage({ params }: { params: { businessId
 
       <section>
         <h2 >Plans</h2>
-        <table style={TABLE}>
-          <thead>
-            <tr>
-              <th style={TH}>Plan</th>
-              <th style={TH}>Price</th>
-              <th style={TH}>Duration</th>
-              <th style={TH}>Status</th>
-              <th style={TH}>Visibility</th>
-              <th style={TH} />
-            </tr>
-          </thead>
-          <tbody>
-            {plans.map((plan) => (
-              <tr key={plan.id} style={ROW}>
-                <td style={TD}>{plan.name}</td>
-                <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
-                  {plan.price_amount > 0 ? `${plan.currency} ${plan.price_amount}` : 'Free'}
-                </td>
-                <td style={TD}>{plan.duration_days ? `${plan.duration_days} days` : '—'}</td>
-                <td style={TD}>
-                  <StatusPill value={plan.status} />
-                </td>
-                <td style={TD}>{plan.visibility}</td>
-                <td style={TD}>
-                  {plan.status !== 'archived' ? (
-                    <form action={archivePlan}>
-                      <input type="hidden" name="businessId" value={params.businessId} />
-                      <input type="hidden" name="planId" value={plan.id} />
-                      <button type="submit" style={LINK_BUTTON}>
-                        Archive
-                      </button>
-                    </form>
-                  ) : null}
-                </td>
+        <div className="ws-tablewrap">
+          <table style={TABLE}>
+            <thead>
+              <tr>
+                <th style={TH}>Plan</th>
+                <th style={TH}>Price</th>
+                <th style={TH}>Duration</th>
+                <th style={TH}>Status</th>
+                <th style={TH}>Visibility</th>
+                <th style={TH} />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {plans.map((plan) => (
+                <tr key={plan.id} style={ROW}>
+                  <td style={TD}>{plan.name}</td>
+                  <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
+                    {plan.price_amount > 0 ? `${plan.currency} ${plan.price_amount}` : 'Free'}
+                  </td>
+                  <td style={TD}>{plan.duration_days ? `${plan.duration_days} days` : '—'}</td>
+                  <td style={TD}>
+                    <StatusPill value={plan.status} />
+                  </td>
+                  <td style={TD}>{plan.visibility}</td>
+                  <td style={TD}>
+                    {plan.status !== 'archived' ? (
+                      <form action={archivePlan}>
+                        <input type="hidden" name="businessId" value={params.businessId} />
+                        <input type="hidden" name="planId" value={plan.id} />
+                        <button type="submit" style={LINK_BUTTON}>
+                          Archive
+                        </button>
+                      </form>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {plans.length === 0 ? (
           <EmptyState>No plans yet. Create one below to start enrolling members.</EmptyState>
         ) : null}
@@ -124,46 +126,48 @@ export default async function MembershipsPage({ params }: { params: { businessId
 
       <section style={{ marginTop: '2.25rem' }}>
         <h2 >Enrolments</h2>
-        <table style={TABLE}>
-          <thead>
-            <tr>
-              <th style={TH}>Plan</th>
-              <th style={TH}>Status</th>
-              <th style={TH}>Payment</th>
-              <th style={TH}>Ends</th>
-              <th style={TH} />
-            </tr>
-          </thead>
-          <tbody>
-            {enrolments.map((enrolment) => (
-              <tr key={enrolment.id} style={ROW}>
-                <td style={TD}>{planName.get(enrolment.plan_id) || enrolment.plan_id}</td>
-                <td style={TD}>
-                  <StatusPill value={enrolment.status} />
-                </td>
-                <td style={TD}>{enrolment.payment_status || '—'}</td>
-                <td style={TD}>
-                  {enrolment.ends_at ? new Date(enrolment.ends_at).toLocaleDateString() : '—'}
-                </td>
-                <td style={{ ...TD, display: 'flex', gap: '0.5rem' }}>
-                  {(ENROLMENT_ACTIONS[enrolment.status] || []).map((item) => (
-                    <form key={item.action} action={transitionEnrolment}>
-                      <input type="hidden" name="businessId" value={params.businessId} />
-                      <input type="hidden" name="enrolmentId" value={enrolment.id} />
-                      <input type="hidden" name="action" value={item.action} />
-                      {item.action === 'cancel' ? (
-                        <input type="hidden" name="reason" value="Cancelled by Business" />
-                      ) : null}
-                      <button type="submit" style={LINK_BUTTON}>
-                        {item.label}
-                      </button>
-                    </form>
-                  ))}
-                </td>
+        <div className="ws-tablewrap">
+          <table style={TABLE}>
+            <thead>
+              <tr>
+                <th style={TH}>Plan</th>
+                <th style={TH}>Status</th>
+                <th style={TH}>Payment</th>
+                <th style={TH}>Ends</th>
+                <th style={TH} />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {enrolments.map((enrolment) => (
+                <tr key={enrolment.id} style={ROW}>
+                  <td style={TD}>{planName.get(enrolment.plan_id) || enrolment.plan_id}</td>
+                  <td style={TD}>
+                    <StatusPill value={enrolment.status} />
+                  </td>
+                  <td style={TD}>{enrolment.payment_status || '—'}</td>
+                  <td style={TD}>
+                    {enrolment.ends_at ? new Date(enrolment.ends_at).toLocaleDateString() : '—'}
+                  </td>
+                  <td style={{ ...TD, display: 'flex', gap: '0.5rem' }}>
+                    {(ENROLMENT_ACTIONS[enrolment.status] || []).map((item) => (
+                      <form key={item.action} action={transitionEnrolment}>
+                        <input type="hidden" name="businessId" value={params.businessId} />
+                        <input type="hidden" name="enrolmentId" value={enrolment.id} />
+                        <input type="hidden" name="action" value={item.action} />
+                        {item.action === 'cancel' ? (
+                          <input type="hidden" name="reason" value="Cancelled by Business" />
+                        ) : null}
+                        <button type="submit" style={LINK_BUTTON}>
+                          {item.label}
+                        </button>
+                      </form>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {enrolments.length === 0 ? <EmptyState>Nobody is enrolled yet.</EmptyState> : null}
       </section>
 

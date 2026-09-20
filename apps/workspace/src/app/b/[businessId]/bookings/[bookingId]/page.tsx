@@ -4,6 +4,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
 import { transitionBooking } from '../actions'
+import { LocalTime } from '@/components/LocalTime'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,7 +65,8 @@ export default async function BookingDetailPage({
         {String(b.title)} · {String(b.reservation_mode)} · {String(b.status)}
       </p>
       <p>
-        {String(b.starts_at)} → {String(b.ends_at)}
+        <LocalTime value={b.starts_at as string | null} /> →{' '}
+        <LocalTime value={b.ends_at as string | null} />
       </p>
       <p>
         Provider: {String(b.provider_id || '—')} · Payment: {String(b.payment_status)}
@@ -85,7 +87,8 @@ export default async function BookingDetailPage({
       <ul>
         {history.map((h) => (
           <li key={String(h.id)}>
-            {String(h.from_status || '—')} → {String(h.to_status)} ({String(h.created_at)})
+            {String(h.from_status || '—')} → {String(h.to_status)} (
+            <LocalTime value={h.created_at as string | null} />)
           </li>
         ))}
       </ul>

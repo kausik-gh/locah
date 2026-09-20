@@ -139,6 +139,10 @@ export function AppSidebar({
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
+  // Narrow screens are not a preference the owner expressed, so they are
+  // tracked separately from `collapsed`: a phone gets the rail whatever the
+  // stored choice was, and that choice is still there on a wide screen later.
+  const [narrow, setNarrow] = useState(false)
 
   useEffect(() => {
     try {
@@ -147,6 +151,19 @@ export function AppSidebar({
       /* private mode — default expanded */
     }
   }, [])
+
+  useEffect(() => {
+    // A 248px sidebar beside the page pushed Workspace to ~530px of content in
+    // a 375px viewport, so every page scrolled sideways on a phone. Below this
+    // width the sidebar becomes the icon rail it already knows how to be.
+    const mq = window.matchMedia('(max-width: 720px)')
+    const apply = () => setNarrow(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+
+  const railed = collapsed || narrow
 
   const toggle = () => {
     setCollapsed((c) => {
@@ -172,9 +189,9 @@ export function AppSidebar({
 
   return (
     <aside
-      data-collapsed={collapsed || undefined}
+      data-collapsed={railed || undefined}
       style={{
-        width: collapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)',
+        width: railed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)',
         flex: 'none',
         borderRight: '1px solid var(--color-border)',
         background: 'var(--color-surface)',
@@ -186,8 +203,8 @@ export function AppSidebar({
       }}
     >
       {/* Business switcher */}
-      <div style={{ padding: collapsed ? '0.75rem 0.5rem' : '0.85rem 0.75rem', borderBottom: '1px solid var(--color-border)' }}>
-        {collapsed ? (
+      <div style={{ padding: railed ? '0.75rem 0.5rem' : '0.85rem 0.75rem', borderBottom: '1px solid var(--color-border)' }}>
+        {railed ? (
           <div
             title={current?.display_name}
             style={{
@@ -232,45 +249,45 @@ export function AppSidebar({
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: 'auto', padding: '0.4rem 0.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-        <GroupLabel collapsed={collapsed}>Core</GroupLabel>
+        <GroupLabel collapsed={railed}>Core</GroupLabel>
         {CORE.map((item) => (
           <NavLink
             key={item.href || 'home'}
             href={`${base}${item.href}`}
             label={item.label}
             active={isActive(item.href)}
-            collapsed={collapsed}
+            collapsed={railed}
           />
         ))}
 
         {activeModules.length > 0 ? (
           <>
-            <GroupLabel collapsed={collapsed}>Modules</GroupLabel>
+            <GroupLabel collapsed={railed}>Modules</GroupLabel>
             {activeModules.map((m) => (
               <NavLink
                 key={m.href}
                 href={`${base}${m.href}`}
                 label={m.label}
                 active={isActive(m.href)}
-                collapsed={collapsed}
+                collapsed={railed}
               />
             ))}
           </>
         ) : null}
 
-        <GroupLabel collapsed={collapsed}>Alerts</GroupLabel>
+        <GroupLabel collapsed={railed}>Alerts</GroupLabel>
         <NavLink
           href={`${base}/notifications`}
           label="Notifications"
           active={isActive('/notifications')}
-          collapsed={collapsed}
+          collapsed={railed}
           badge={unreadCount}
         />
         <NavLink
           href={`${base}/modules`}
           label="All modules"
           active={isActive('/modules')}
-          collapsed={collapsed}
+          collapsed={railed}
         />
       </nav>
 
@@ -278,7 +295,7 @@ export function AppSidebar({
       <button
         type="button"
         onClick={toggle}
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-label={railed ? 'Expand sidebar' : 'Collapse sidebar'}
         className="btn-ghost"
         style={{
           margin: '0.5rem',
@@ -287,7 +304,7 @@ export function AppSidebar({
           fontSize: '0.8rem',
         }}
       >
-        {collapsed ? '»' : '« Collapse'}
+        {railed ? '»' : '« Collapse'}
       </button>
     </aside>
   )

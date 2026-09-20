@@ -98,26 +98,28 @@ export default async function OrderDetailPage({
             background: 'var(--color-surface)',
           }}
         >
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th data-num>Qty</th>
-                <th data-num>Line total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(order.items || []).map((item, idx) => (
-                <tr key={idx}>
-                  <td>{item.title}</td>
-                  <td data-num>{item.quantity}</td>
-                  <td data-num>
-                    {order.currency} {item.line_total}
-                  </td>
+          <div className="ws-tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th data-num>Qty</th>
+                  <th data-num>Line total</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(order.items || []).map((item, idx) => (
+                  <tr key={idx}>
+                    <td>{item.title}</td>
+                    <td data-num>{item.quantity}</td>
+                    <td data-num>
+                      {order.currency} {item.line_total}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {(order.items || []).length === 0 ? (
             <p style={{ padding: '1rem', color: 'var(--color-muted)', margin: 0 }}>
               No line items on this order.

@@ -13,7 +13,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from platform_core.context_resolver import bind_public_context
+from platform_core.context_resolver import bind_booking_management_token, bind_public_context
 from platform_core.exceptions import ResourceNotFound, ValidationError
 from platform_core.models import (
     Booking,
@@ -320,6 +320,10 @@ class PublicBookingService:
     async def _resolve_by_token(
         session: AsyncSession, *, booking_id: uuid.UUID, token: str
     ) -> Booking:
+        # The token is the credential, and RLS needs it bound before the row it
+        # points at becomes visible — there is no business context yet to bind,
+        # because the token is what determines the tenant.
+        await bind_booking_management_token(session, token)
         booking = (
             (
                 await session.execute(
@@ -344,6 +348,10 @@ class PublicBookingService:
                 "Management link has expired",
                 details={"code": "expired_link"},
             )
+        # Now that the tenant is known, bind it so everything the caller reads or
+        # writes next (policy, customer contact, the update itself) passes its
+        # own policies the ordinary way.
+        await bind_public_context(session, booking.business_id)
         return booking
 
     @staticmethod

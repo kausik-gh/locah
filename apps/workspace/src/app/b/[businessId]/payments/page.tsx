@@ -125,41 +125,43 @@ export default async function PaymentsPage({
         ))}
       </div>
 
-      <table style={TABLE}>
-        <thead>
-          <tr>
-            <th style={TH}>For</th>
-            <th style={TH}>Amount</th>
-            <th style={TH}>Method</th>
-            <th style={TH}>Status</th>
-            <th style={TH}>Refunded</th>
-            <th style={TH}>When</th>
-          </tr>
-        </thead>
-        <tbody>
-          {payments.map((payment) => (
-            <tr key={payment.id} style={ROW}>
-              <td style={TD}>
-                <Link href={`${pageBase}/${payment.id}`}>{payment.source_type}</Link>
-              </td>
-              <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
-                {payment.currency} {payment.amount}
-              </td>
-              <td style={TD}>{payment.payment_method}</td>
-              <td style={TD}>
-                <StatusPill value={payment.status} />
-                {payment.failure_reason ? (
-                  <span style={{ opacity: 0.7 }}> — {payment.failure_reason}</span>
-                ) : null}
-              </td>
-              <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
-                {payment.refunded_amount > 0 ? payment.refunded_amount : '—'}
-              </td>
-              <td style={TD}>{new Date(payment.created_at).toLocaleDateString()}</td>
+      <div className="ws-tablewrap">
+        <table style={TABLE}>
+          <thead>
+            <tr>
+              <th style={TH}>For</th>
+              <th style={TH}>Amount</th>
+              <th style={TH}>Method</th>
+              <th style={TH}>Status</th>
+              <th style={TH}>Refunded</th>
+              <th style={TH}>When</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {payments.map((payment) => (
+              <tr key={payment.id} style={ROW}>
+                <td style={TD}>
+                  <Link href={`${pageBase}/${payment.id}`}>{payment.source_type}</Link>
+                </td>
+                <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
+                  {payment.currency} {payment.amount}
+                </td>
+                <td style={TD}>{payment.payment_method}</td>
+                <td style={TD}>
+                  <StatusPill value={payment.status} />
+                  {payment.failure_reason ? (
+                    <span style={{ opacity: 0.7 }}> — {payment.failure_reason}</span>
+                  ) : null}
+                </td>
+                <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
+                  {payment.refunded_amount > 0 ? payment.refunded_amount : '—'}
+                </td>
+                <td style={TD}>{new Date(payment.created_at).toLocaleDateString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {payments.length === 0 ? (
         <EmptyState>
           No payments yet. They appear here as soon as an order, booking, or membership is paid

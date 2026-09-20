@@ -62,7 +62,7 @@ export async function middleware(request: NextRequest) {
   const url = request.nextUrl.clone()
   url.pathname = pathname === '/' ? `/${slug}` : `/${slug}${pathname}`
 
-  const rewritten = NextResponse.rewrite(url, { request })
+  const rewritten = NextResponse.rewrite(url, { request: { headers: request.headers } })
   // Carry over anything the session refresh just issued; dropping these would
   // silently sign the visitor out one request later.
   sessionResponse.cookies.getAll().forEach((cookie) => {
