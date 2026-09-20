@@ -68,7 +68,7 @@ async def main() -> None:
     if sys.platform != "win32":
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_tasks(sig)))
+            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown_tasks(s)))
     else:
         signal.signal(signal.SIGINT, handle_shutdown_signal)
         signal.signal(signal.SIGTERM, handle_shutdown_signal)
