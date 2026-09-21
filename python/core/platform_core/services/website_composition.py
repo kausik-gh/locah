@@ -74,6 +74,16 @@ class WebsiteCompositionService:
         return {row[0] for row in rows.all() if row[1] in ACTIVE_MODULE_STATES}
 
     @staticmethod
+    async def active_modules(session: AsyncSession, *, business_id: uuid.UUID) -> set[str]:
+        """What this business has switched on.
+
+        Public because generation needs the same answer this service gives when
+        it refuses a hand-added section. Two rules that must agree are best
+        served by one rule.
+        """
+        return await WebsiteCompositionService._active_modules(session, business_id)
+
+    @staticmethod
     async def available_section_types(
         session: AsyncSession, *, business_id: uuid.UUID
     ) -> list[dict[str, Any]]:
@@ -416,15 +426,19 @@ class WebsiteTemplateService:
     async def list_for_business(
         session: AsyncSession, *, business_id: uuid.UUID
     ) -> dict[str, Any]:
-        from platform_core.website.template_registry import (
-            default_template_for_business_type,
-            templates_for_business_type,
-        )
+        from platform_core.website.generation_plan import select_template
+        from platform_core.website.template_registry import templates_for_business_type
 
         business = await BusinessService.get_by_id(session, business_id)
         active = await WebsiteCompositionService._active_modules(session, business_id)
         ranked = templates_for_business_type(business.business_type)
-        recommended = default_template_for_business_type(business.business_type)
+        # The same choice generation makes, so the picker's "suits your
+        # business" and the site the AI actually builds never disagree. It also
+        # stops the card that says "suits your business" being the same card
+        # that says "needs Offerings turned on first".
+        recommended, _reason = select_template(
+            business_type=business.business_type, active_modules=active
+        )
 
         out: list[dict[str, Any]] = []
         for template in ranked:
@@ -492,6 +506,17 @@ class WebsiteTemplateService:
             description = profile.description or profile.tagline
 
         website = await WebsiteResolver.resolve_website(session, business_id=business_id)
+        # Deliberately NOT put through the capability fence that generation
+        # uses. A template whose own `required_modules` are missing was already
+        # refused above; what remains is a composition the owner looked at in
+        # the picker and chose. Dropping a section from it would break that
+        # preview's promise, and would cost the owner something for nothing: a
+        # list section with no records renders as nothing at all on the public
+        # site, and fills itself in the moment the module is switched on.
+        #
+        # Generation is the opposite case and is fenced, because there the
+        # model picks the sections, nobody previewed them, and it writes hero
+        # and CTA copy that refers to them.
         payload = validate_generation_payload(
             template_to_generation_payload(
                 template,

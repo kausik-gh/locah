@@ -12,12 +12,18 @@ import { applyTemplate } from './actions'
  * published has nothing to lose and is told so; one that has published is told
  * its live site is untouched until it publishes again, because that is the
  * thing they would actually worry about.
+ *
+ * A generated site names the template it was personalised from, and that is a
+ * different situation again: the shape came from here, but every word in it was
+ * written for this business. Re-applying the template would swap that back for
+ * the plain starting copy, which is a loss worth spelling out — it is the one
+ * case where choosing "the one you are already on" is destructive.
  */
 export function ApplyTemplate({
   businessId,
   templateId,
   templateName,
-  isCurrent,
+  relationship,
   hasDraftWork,
   disabled,
   disabledReason,
@@ -25,7 +31,7 @@ export function ApplyTemplate({
   businessId: string
   templateId: string
   templateName: string
-  isCurrent: boolean
+  relationship: 'applied' | 'generated-from' | 'none'
   hasDraftWork: boolean
   disabled?: boolean
   disabledReason?: string
@@ -41,7 +47,7 @@ export function ApplyTemplate({
     )
   }
 
-  if (isCurrent) {
+  if (relationship === 'applied') {
     return (
       <p className="tpl-current" role="status">
         You are using this one
@@ -52,7 +58,7 @@ export function ApplyTemplate({
   if (!confirming) {
     return (
       <button type="button" className="btn btn-ghost" onClick={() => setConfirming(true)}>
-        Use this template
+        {relationship === 'generated-from' ? 'Reset to the plain layout' : 'Use this template'}
       </button>
     )
   }
@@ -62,13 +68,19 @@ export function ApplyTemplate({
       <input type="hidden" name="businessId" value={businessId} />
       <input type="hidden" name="templateId" value={templateId} />
       <p className="tpl-confirm__text">
-        {hasDraftWork
-          ? `This replaces your current draft with ${templateName}. Anything you have edited but not published will be lost. Your live site does not change until you publish.`
-          : `Start from ${templateName}? You can change everything on it afterwards.`}
+        {relationship === 'generated-from'
+          ? `Your draft was written for your business using this layout. Resetting keeps the layout but replaces that writing with ${templateName}'s starting text. Your live site does not change until you publish.`
+          : hasDraftWork
+            ? `This replaces your current draft with ${templateName}. Anything you have edited but not published will be lost. Your live site does not change until you publish.`
+            : `Start from ${templateName}? You can change everything on it afterwards.`}
       </p>
       <div className="tpl-confirm__row">
         <button type="submit" className="btn" disabled={busy}>
-          {busy ? 'Applying…' : `Use ${templateName}`}
+          {busy
+            ? 'Applying…'
+            : relationship === 'generated-from'
+              ? 'Reset to the plain layout'
+              : `Use ${templateName}`}
         </button>
         <button
           type="button"

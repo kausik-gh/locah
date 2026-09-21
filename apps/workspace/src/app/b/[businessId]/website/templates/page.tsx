@@ -37,7 +37,11 @@ type TemplatesResponse = {
 type WebsiteResponse = {
   data: {
     website: { status: string }
-    draft: { generated_by?: string | null; pages: unknown[] } | null
+    draft: {
+      generated_by?: string | null
+      theme?: { template_id?: string | null } | null
+      pages: unknown[]
+    } | null
   }
 }
 
@@ -93,12 +97,16 @@ export default async function WebsiteTemplatesPage({
   const { templates, recommended_template_id: recommendedId } = res.data.data
   const draft = siteRes.ok ? siteRes.data.data.draft : null
   const generatedBy = draft?.generated_by ?? null
-  const currentTemplateId = generatedBy?.startsWith('template:')
+  // Two different relationships a draft can have with a template, and they
+  // carry different consequences. An applied template is the plain starting
+  // composition: replacing it loses nothing. A generated draft names the
+  // template it was personalised from, but the copy in it was written for this
+  // business, so re-applying that same template would throw that away.
+  const appliedTemplateId = generatedBy?.startsWith('template:')
     ? generatedBy.slice('template:'.length)
     : null
-  // Work worth warning about: a draft that came from somewhere other than a
-  // template is either generated or hand-edited, and either way it is theirs.
-  const hasDraftWork = Boolean(draft) && !currentTemplateId
+  const sourceTemplateId = draft?.theme?.template_id ?? null
+  const hasDraftWork = Boolean(draft) && !appliedTemplateId
 
   return (
     <div>
@@ -112,7 +120,12 @@ export default async function WebsiteTemplatesPage({
         {templates.map((template) => {
           const home = template.pages[0]
           const isRecommended = template.id === recommendedId
-          const isCurrent = template.id === currentTemplateId
+          const relationship: 'applied' | 'generated-from' | 'none' =
+            template.id === appliedTemplateId
+              ? 'applied'
+              : template.id === sourceTemplateId
+                ? 'generated-from'
+                : 'none'
           const missing = template.missing_modules.map(moduleName).join(' and ')
 
           return (
@@ -135,7 +148,9 @@ export default async function WebsiteTemplatesPage({
               <div className="tpl-card__body">
                 <div className="tpl-card__head">
                   <h2 className="tpl-card__name">{template.name}</h2>
-                  {isRecommended ? (
+                  {relationship === 'generated-from' ? (
+                    <span className="tpl-badge">Your site was built from this</span>
+                  ) : isRecommended ? (
                     <span className="tpl-badge">Suits your business</span>
                   ) : null}
                 </div>
@@ -166,7 +181,7 @@ export default async function WebsiteTemplatesPage({
                     businessId={params.businessId}
                     templateId={template.id}
                     templateName={template.name}
-                    isCurrent={isCurrent}
+                    relationship={relationship}
                     hasDraftWork={hasDraftWork}
                     disabled={!template.available}
                     disabledReason={

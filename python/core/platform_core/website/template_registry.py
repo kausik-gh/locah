@@ -424,13 +424,11 @@ def templates_for_business_type(business_type: str | None) -> list[WebsiteTempla
     return suited + rest
 
 
-def default_template_for_business_type(business_type: str | None) -> WebsiteTemplate:
-    ranked = templates_for_business_type(business_type)
-    btype = (business_type or "").strip().lower()
-    for template in ranked:
-        if btype and btype in template.suits:
-            return template
-    return TEMPLATES_BY_ID[DEFAULT_TEMPLATE_ID]
+# Recommending a template from the business type alone lived here and is gone:
+# it could name a template the business cannot use, so the picker offered the
+# one card that said both "suits your business" and "needs Offerings turned on
+# first". `generation_plan.select_template` answers the same question with the
+# capability inventory in hand, and both the picker and generation now ask it.
 
 
 def template_to_generation_payload(

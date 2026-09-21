@@ -136,6 +136,10 @@ def test_generation_fallback_always_produces_draft(owner: tuple[dict[str, str], 
     slugs = {p["slug"] for p in draft["pages"]}
     assert "home" in slugs
     assert "menu" in slugs  # restaurant page set
+    # A fallback draft is built from the business type and never sees a
+    # template, so it must not claim one — the picker shows "your site was
+    # built from this" on the strength of exactly this field.
+    assert "template_id" not in (draft.get("theme") or {}), draft.get("theme")
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
@@ -337,3 +341,170 @@ def test_questionnaire_endpoint_is_business_type_aware(
     for q in essentials["questions"]:
         assert q["optional"] is True
         assert q.get("example")
+
+
+class _OverreachingProvider:
+    """A model that answers with sections this business may not be entitled to.
+
+    Not a straw man: the section types are real, the schema accepts them, and a
+    model reading "you are a gym" has every reason to reach for a plans
+    comparison. Whether the business has that module switched on is a fact only
+    the platform holds, which is exactly why the check cannot live in the
+    prompt.
+    """
+
+    provider_name = "xai"
+    model_name = "test-grok"
+
+    last_prompt: str = ""
+
+    async def generate_structured(self, prompt, schema, model_config, timeout_seconds):  # type: ignore[no-untyped-def]
+        _OverreachingProvider.last_prompt = prompt
+        return {
+            "pages": [
+                {
+                    "slug": "home",
+                    "title": "Home",
+                    "page_type": "home",
+                    "sections": [
+                        {
+                            "section_type_id": "hero",
+                            "layout_variant": "full_width",
+                            "content": {"headline": "Lift"},
+                            "is_visible": True,
+                        },
+                        {
+                            "section_type_id": "plans_section",
+                            "layout_variant": "comparison",
+                            "content": {"title": "Membership"},
+                            "is_visible": True,
+                        },
+                        {
+                            "section_type_id": "enquiry_form",
+                            "layout_variant": "default",
+                            "content": {"title": "Ask us"},
+                            "is_visible": True,
+                        },
+                    ],
+                }
+            ],
+            "navigation": [{"label": "Home", "path": "/"}],
+            # A personality the stylesheet does not implement, and a colour
+            # that is not a colour. Both reach the DOM unchallenged unless
+            # something clamps them.
+            "theme_hints": {"primary_color": "industrial grey", "personality": "brutalist"},
+        }
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+def test_generated_draft_cannot_contain_sections_the_business_lacks(
+    owner: tuple[dict[str, str], uuid.UUID], monkeypatch: Any
+) -> None:
+    """The capability fence, proved on the persisted draft rather than in a unit.
+
+    This is the claim that matters in production: whatever the model returns,
+    what lands in `website_sections` is a subset of what this business could
+    have added by hand. The same run also checks the two halves that make
+    generation a personalisation rather than an invention — the prompt carried
+    a named reference composition, and the theme that survived is one the
+    stylesheet can actually render.
+    """
+    import platform_core.services.website_generation as gen_mod
+    from platform_core.models import WebsitePage, WebsiteSection, WebsiteVersion
+    from platform_core.services.website_composition import WebsiteCompositionService
+    from platform_core.website.generation_plan import PERSONALITIES
+
+    monkeypatch.setattr(gen_mod, "get_ai_provider", lambda: _OverreachingProvider())
+
+    headers, _ = owner
+    client = TestClient(app)
+    business_id = _create_business(client, headers)
+    biz_uuid = uuid.UUID(business_id)
+
+    async def _run() -> dict[str, Any]:
+        url = get_database_url()
+        assert url
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        engine = create_async_engine(url, echo=False, poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as session:
+            triggered_by = (
+                await session.execute(
+                    select(WGJ.triggered_by).where(WGJ.business_id == biz_uuid).limit(1)
+                )
+            ).scalar_one()
+            job = WGJ(
+                business_id=biz_uuid,
+                status="pending",
+                prompt_version="v2",
+                triggered_by=triggered_by,
+            )
+            session.add(job)
+            await session.flush()
+            await session.commit()
+
+            # What this business could add by hand — the standard the draft is
+            # held to, read from the same service the editor uses.
+            capabilities = await WebsiteCompositionService.available_section_types(
+                session, business_id=biz_uuid
+            )
+            allowed = {row["id"] for row in capabilities if row["available"]}
+
+            await gen_mod.WebsiteGenerationService.execute_job(
+                session, generation_job_id=job.id, correlation_id=str(uuid.uuid4())
+            )
+            await session.commit()
+
+            draft = (
+                await session.execute(
+                    select(WebsiteVersion).where(
+                        WebsiteVersion.business_id == biz_uuid,
+                        WebsiteVersion.version_type == "draft",
+                        WebsiteVersion.superseded_at.is_(None),
+                    )
+                )
+            ).scalars().one()
+            section_types = (
+                (
+                    await session.execute(
+                        select(WebsiteSection.section_type_id)
+                        .join(WebsitePage, WebsiteSection.page_id == WebsitePage.id)
+                        .where(WebsitePage.website_version_id == draft.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            result = {
+                "allowed": allowed,
+                "section_types": set(section_types),
+                "theme": dict(draft.theme or {}),
+            }
+        await engine.dispose()
+        return result
+
+    out = asyncio.run(_run())
+
+    assert out["section_types"], "generation must still produce a draft"
+    unentitled = out["section_types"] - out["allowed"]
+    assert not unentitled, f"draft contains sections this business cannot have: {unentitled}"
+
+    # Guard against the assertion above going quietly vacuous. A business is
+    # created with the core modules only, so the two sections the stub reached
+    # for are genuinely out of reach and the fence really did have work to do.
+    assert "plans_section" not in out["allowed"], "fixture no longer exercises the fence"
+    assert "plans_section" not in out["section_types"]
+    assert "enquiry_form" not in out["allowed"], "fixture no longer exercises the fence"
+    assert "enquiry_form" not in out["section_types"]
+    assert "hero" in out["section_types"], "the entitled section must survive"
+
+    # The reference composition reached the model.
+    assert "REFERENCE COMPOSITION" in _OverreachingProvider.last_prompt
+    assert "AVAILABLE SECTION TYPES" in _OverreachingProvider.last_prompt
+
+    # A theme the renderer can use, and a record of where the draft came from.
+    theme = out["theme"]
+    assert theme["personality"] in PERSONALITIES, theme
+    assert str(theme["primary_color"]).startswith("#"), theme
+    assert theme.get("template_id"), "a generated draft must name its reference"

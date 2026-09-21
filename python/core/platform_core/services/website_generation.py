@@ -27,6 +27,12 @@ from platform_core.website.generation_brief import (
     build_generation_prompt,
     default_theme_for_type,
 )
+from platform_core.website.generation_plan import (
+    GenerationPlan,
+    build_plan,
+    enforce_capabilities,
+    normalise_theme,
+)
 from platform_core.website.questionnaire import validate_intake
 from platform_core.website.section_registry import WEBSITE_GENERATION_SCHEMA, catalogue_section_for_page
 
@@ -124,8 +130,27 @@ class WebsiteGenerationService:
         }
 
     @staticmethod
+    async def _build_plan(
+        session: AsyncSession, business_id: uuid.UUID, business_type: str | None
+    ) -> GenerationPlan:
+        """The capability inventory and reference composition for this business."""
+        from platform_core.services.website_composition import WebsiteCompositionService
+
+        active = await WebsiteCompositionService.active_modules(session, business_id=business_id)
+        capability_rows = await WebsiteCompositionService.available_section_types(
+            session, business_id=business_id
+        )
+        return build_plan(
+            business_type=business_type,
+            active_modules=active,
+            capability_rows=capability_rows,
+        )
+
+    @staticmethod
     async def _try_ai(
-        context: dict[str, Any], intake: dict[str, Any] | None = None
+        context: dict[str, Any],
+        intake: dict[str, Any] | None = None,
+        plan: GenerationPlan | None = None,
     ) -> tuple[dict[str, Any], str, str, dict[str, Any] | None]:
         from platform_core.website.ai_provider import UnavailableAIProvider
 
@@ -135,7 +160,7 @@ class WebsiteGenerationService:
             raise RuntimeError(
                 "AI provider not configured (no XAI_API_KEY); use deterministic fallback"
             )
-        prompt = build_generation_prompt(context, intake)
+        prompt = build_generation_prompt(context, intake, plan)
         from platform_core.website.ai_provider import AIProviderPermanentError
 
         last_error: Exception | None = None
@@ -227,19 +252,48 @@ class WebsiteGenerationService:
         payload: dict[str, Any],
         context: dict[str, Any],
         intake: dict[str, Any] | None = None,
+        plan: GenerationPlan | None = None,
+        used_template: bool = False,
     ) -> dict[str, Any]:
         """Guarantee catalogue structure and type-appropriate theme defaults.
 
         The AI supplies voice and copy. It is not trusted to remember that a
         Menu page needs a menu, or that theme_hints must carry a personality.
+
+        Completion is itself bounded by the capability inventory. This pass used
+        to append the section a page *type* implies without asking whether the
+        business has that module — so a Rooms page got a rooms list whether or
+        not bookings existed, and the page rendered empty. Adding a section here
+        is still adding a section, and the same rule applies.
         """
         name = context.get("display_name") or "this business"
         btype = context.get("business_type")
+        # A template's palette is the baseline only when the template was
+        # genuinely the reference. The deterministic fallback builds from the
+        # business type and never sees a template, so it keeps the business-type
+        # palette and is not stamped with a template it did not use.
+        from_template = plan is not None and used_template
+        baseline = (
+            plan.theme_baseline()
+            if from_template and plan is not None
+            else default_theme_for_type(btype)
+        )
         theme = apply_intake_theme(
-            {**default_theme_for_type(btype), **(payload.get("theme_hints") or {})},
+            {**baseline, **(payload.get("theme_hints") or {})},
             intake,
         )
-        payload["theme_hints"] = theme
+        payload["theme_hints"] = normalise_theme(
+            theme,
+            baseline=baseline,
+            template_id=plan.template.id if from_template and plan is not None else None,
+        )
+
+        allowed = plan.available_ids if plan is not None else None
+
+        def _permitted(section: dict[str, Any] | None) -> dict[str, Any] | None:
+            if section is None or allowed is None:
+                return section
+            return section if section.get("section_type_id") in allowed else None
 
         for page in payload.get("pages") or []:
             sections = page.get("sections")
@@ -251,10 +305,12 @@ class WebsiteGenerationService:
             title = str(page.get("title") or "What we offer")
 
             if not has_list:
-                typed = catalogue_section_for_page(page_type, slug, title, name)
+                typed = _permitted(catalogue_section_for_page(page_type, slug, title, name))
                 if typed is not None:
                     sections.append(typed)
-                elif page_type == "home" or slug in {"", "home", "index"}:
+                elif (page_type == "home" or slug in {"", "home", "index"}) and (
+                    allowed is None or "offerings_list" in allowed
+                ):
                     preview = WebsiteGenerationService._offerings_section("What we offer", name)
                     preview["content"]["max_items"] = 6
                     cta_at = next(
@@ -266,8 +322,10 @@ class WebsiteGenerationService:
                         len(sections),
                     )
                     sections.insert(cta_at, preview)
-            if page_type == "enquire" and not any(
-                s.get("section_type_id") == "enquiry_form" for s in sections
+            if (
+                page_type == "enquire"
+                and (allowed is None or "enquiry_form" in allowed)
+                and not any(s.get("section_type_id") == "enquiry_form" for s in sections)
             ):
                 sections.append(
                     {
@@ -394,6 +452,10 @@ class WebsiteGenerationService:
         website = await WebsiteResolver.resolve_website(session, business_id=job.business_id)
         context = await WebsiteGenerationService._load_context(session, job.business_id)
         intake = job.intake if isinstance(job.intake, dict) else None
+        plan = await WebsiteGenerationService._build_plan(
+            session, job.business_id, context.get("business_type")
+        )
+
         def _deterministic() -> dict[str, Any]:
             return validate_generation_payload(
                 build_deterministic_draft(
@@ -408,7 +470,7 @@ class WebsiteGenerationService:
         fallback_reason: str | None = None
         try:
             payload, provider_name, model_name, usage = await WebsiteGenerationService._try_ai(
-                context, intake
+                context, intake, plan
             )
             job.ai_provider = provider_name
             job.model_name = model_name
@@ -421,8 +483,34 @@ class WebsiteGenerationService:
             job.ai_provider = None
             job.model_name = None
 
+        def _finalise(candidate: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+            """Completion, then the capability fence, then the schema — in that order.
+
+            Every draft leaves through here, whichever way it arrived. The fence
+            is applied to the answer rather than merely asked for in the prompt,
+            and it runs on the deterministic fallback too: that generator builds
+            from the business type alone and knows nothing about which modules
+            are on, so it is no more entitled to emit a menu than the model is.
+
+            Re-validating last matters because completion and the stitched asset
+            id have not been through the schema and content-safety pass that
+            `_try_ai` and the fallback already applied to what they produced.
+            """
+            candidate = WebsiteGenerationService._complete_structure(
+                candidate,
+                context,
+                intake,
+                plan,
+                # Read at call time, so the recovery path below — which reaches
+                # here after `generated_by` has been switched — is correctly
+                # treated as a draft that did not come from the template.
+                used_template=generated_by == "ai_generation",
+            )
+            candidate, removed = enforce_capabilities(candidate, plan)
+            return validate_generation_payload(candidate), removed
+
         payload = WebsiteGenerationService._apply_intake_assets(payload, intake)
-        payload = WebsiteGenerationService._complete_structure(payload, context, intake)
+        payload, dropped = _finalise(payload)
         await WebsiteGenerationService._seed_offerings_from_intake(
             session,
             business_id=job.business_id,
@@ -431,11 +519,6 @@ class WebsiteGenerationService:
             business_type=context.get("business_type"),
             intake=intake,
         )
-        # Re-validate: the stitched asset id and the completion pass have not
-        # been through the schema + content-safety pass that _try_ai / the
-        # fallback already applied.
-        payload = validate_generation_payload(payload)
-
         # Re-read the live draft from the database. The owner may have edited
         # it on another connection while this job was talking to the model;
         # replacing it now would throw those edits away.
@@ -492,7 +575,11 @@ class WebsiteGenerationService:
                 fallback_reason = f"AI draft rejected on write: {exc}"
                 job.ai_provider = None
                 job.model_name = None
-                draft = await _write(_deterministic(), generated_by)
+                # Through the same finalisation as everything else. A draft that
+                # arrives by the recovery path is still a draft this business
+                # has to be entitled to.
+                recovered, dropped = _finalise(_deterministic())
+                draft = await _write(recovered, generated_by)
         else:
             draft = await _write(payload, generated_by)
 
@@ -511,6 +598,7 @@ class WebsiteGenerationService:
                 "version_id": str(draft.id),
                 "generated_by": generated_by,
                 "generation_job_id": str(job.id),
+                "template_id": plan.template.id if generated_by == "ai_generation" else None,
             },
             business_id=job.business_id,
             correlation_id=correlation_id,
@@ -528,6 +616,17 @@ class WebsiteGenerationService:
                 "generated_by": generated_by,
                 "fallback_reason": fallback_reason,
                 "job_status": job.status,
+                # Which reference was chosen and why, whether it was actually
+                # used, and anything the capability fence removed. "Why does my
+                # site look like this" and "where did my menu go" are both
+                # support questions with an answer only if it was written down
+                # at the time. The template is selected before the model is
+                # called, so a fallback draft still records which one it would
+                # have personalised.
+                "template_id": plan.template.id,
+                "template_used": generated_by == "ai_generation",
+                "template_reason": plan.template_reason,
+                "dropped_sections": dropped or None,
             },
         )
         if generated_by == "deterministic_fallback":

@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from platform_core.website.fallback_generator import _FAMILY, _THEME_BY_FAMILY, _VOICE
+from platform_core.website.generation_plan import GenerationPlan, describe_plan_for_prompt
 from platform_core.website.questionnaire import PALETTE_PRESETS, build_intake_brief
 from platform_core.website.section_registry import (
     DEFAULT_PAGES,
@@ -109,14 +110,22 @@ def recommended_pages(business_type: str | None) -> list[tuple[str, str, str]]:
 
 
 def build_generation_prompt(
-    context: dict[str, Any], intake: dict[str, Any] | None = None
+    context: dict[str, Any],
+    intake: dict[str, Any] | None = None,
+    plan: GenerationPlan | None = None,
 ) -> str:
+    """The mega-prompt, with a reference composition when one has been chosen.
+
+    A plan replaces the two weakest parts of the original brief — a page list
+    derived from the business type alone, and a one-line layout hint — with a
+    real template composition and this business's actual capability inventory.
+    The tone direction stays either way: what a food business should sound like
+    does not change because it started from a different layout.
+    """
     name = str(context.get("display_name") or "this business").strip()
     btype = str(context.get("business_type") or "other").strip().lower()
     family = _FAMILY.get(btype, "general")
     voice = _VOICE.get(family, _VOICE["general"])
-    pages = recommended_pages(btype)
-    page_lines = ", ".join(f"{title} (/{slug}, page_type={ptype})" for slug, title, ptype in pages)
     theme = default_theme_for_type(btype)
 
     prompt = (
@@ -127,21 +136,34 @@ def build_generation_prompt(
         "phrasing, never fake addresses, phone numbers, prices, awards, or "
         "reviews. No lorem ipsum, no placeholders, no bracketed instructions.\n\n"
         f"BUSINESS TYPE DIRECTION:\n{_CATALOGUE_INTENT[family]}\n"
-        f"Layout hint: {_LAYOUT_BY_FAMILY[family]}.\n"
-        f"Default CTA verb: {voice['cta']}.\n\n"
-        f"RECOMMENDED PAGES (use this set unless the facts demand one extra "
-        f"custom page): {page_lines}.\n"
-        "Every page needs a hero plus at least one more section. Catalogue "
+        f"Default CTA verb: {voice['cta']}.\n"
+    )
+
+    if plan is not None:
+        prompt += describe_plan_for_prompt(plan) + "\n"
+    else:
+        pages = recommended_pages(btype)
+        page_lines = ", ".join(
+            f"{title} (/{slug}, page_type={ptype})" for slug, title, ptype in pages
+        )
+        prompt += (
+            f"Layout hint: {_LAYOUT_BY_FAMILY[family]}.\n\n"
+            f"RECOMMENDED PAGES (use this set unless the facts demand one extra "
+            f"custom page): {page_lines}.\n"
+            f"theme_hints MUST include: primary_color {theme['primary_color']}, "
+            f"accent_color {theme['accent_color']}, personality "
+            f"\"{theme['personality']}\" "
+            "(unless the intake specifies a palette — then use that palette).\n"
+        )
+
+    prompt += (
+        "\nEvery page needs a hero plus at least one more section. Catalogue "
         "pages must include the matching list SectionType (menu_section, "
         "rooms_section, plans_section, classes_section, or offerings_list) "
         "and must NOT invent individual items — those render from the live "
         "catalogue.\n"
         "Do not invent navigation chrome, cart, checkout, or booking widgets. "
         "Content only. CTA urls must be relative paths on this site.\n\n"
-        f"theme_hints MUST include: primary_color {theme['primary_color']}, "
-        f"accent_color {theme['accent_color']}, personality "
-        f"\"{theme['personality']}\" "
-        "(unless the intake specifies a palette — then use that palette).\n\n"
         f"{SECTION_CATALOGUE_PROMPT}"
     )
     if context.get("tagline"):
