@@ -99,7 +99,18 @@ class WebsiteTemplate:
                 {
                     "slug": p.slug,
                     "title": p.title,
-                    "sections": [s.section_type_id for s in p.sections],
+                    # Type and variant together, because the variant is half of
+                    # what makes two templates look different — a hero that runs
+                    # full-bleed and one that sits left-aligned are the same
+                    # section type and not remotely the same page. A picker that
+                    # showed only the type would be describing the wrong thing.
+                    "sections": [
+                        {
+                            "section_type_id": s.section_type_id,
+                            "layout_variant": s.layout_variant,
+                        }
+                        for s in p.sections
+                    ],
                 }
                 for p in self.pages
             ],

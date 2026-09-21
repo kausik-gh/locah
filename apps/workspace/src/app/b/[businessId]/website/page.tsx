@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
-import { platformUrl } from '@platform/config'
+import { businessSiteUrl, platformUrl } from '@platform/config'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,7 +76,7 @@ export default async function WebsiteOverviewPage({
           {business && isPublished ? (
             <p className="ws-stat__note">
               <a href={`${webUrl}/${business.slug}`} target="_blank" rel="noreferrer">
-                {`locah.app/${business.slug}`} ↗
+                {businessSiteUrl(business.slug).replace(/^https?:\/\//, '')} ↗
               </a>
             </p>
           ) : (
@@ -110,6 +110,12 @@ export default async function WebsiteOverviewPage({
       ) : null}
 
       <div className="ws-actions">
+        <Link className="ws-action" href={`${base}/templates`}>
+          <span className="ws-action__title">Starting point</span>
+          <span className="ws-action__body">
+            Pick the layout your site is built on. See what each one looks like before you choose.
+          </span>
+        </Link>
         <Link className="ws-action" href={`${base}/preview`}>
           <span className="ws-action__title">Edit your website</span>
           <span className="ws-action__body">

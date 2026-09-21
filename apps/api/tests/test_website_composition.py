@@ -531,3 +531,29 @@ def test_templates_are_tenant_isolated(owner: dict[str, str], stranger: dict[str
         ),
     ):
         assert resp.status_code in (403, 404), resp.text
+
+def test_template_pages_carry_the_variant_not_just_the_type() -> None:
+    """The picker draws variants, so the payload has to contain them.
+
+    A hero that runs full-bleed and one that sits left-aligned are the same
+    section type and a completely different page. Serialising only the type
+    would make every template preview draw the same opening.
+    """
+    from platform_core.website.template_registry import TEMPLATES_BY_ID
+
+    menu_first = TEMPLATES_BY_ID["menu-first"].serialize()
+    home = menu_first["pages"][0]
+    first = home["sections"][0]
+    assert first["section_type_id"] == "hero"
+    assert first["layout_variant"] == "full_width"
+
+    editorial = TEMPLATES_BY_ID["quiet-authority"].serialize()
+    assert editorial["pages"][0]["sections"][0]["layout_variant"] == "left_aligned"
+
+    # And every section everywhere carries both keys, so the preview never has
+    # to guess what it is drawing.
+    for template in TEMPLATES_BY_ID.values():
+        for page in template.serialize()["pages"]:
+            for section in page["sections"]:
+                assert set(section) == {"section_type_id", "layout_variant"}
+

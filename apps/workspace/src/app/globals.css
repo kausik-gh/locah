@@ -665,3 +665,377 @@ a .ws-card {
   line-height: 1.5;
   color: var(--color-muted);
 }
+
+/* --- Template preview -------------------------------------------------
+   A wireframe of what a template actually builds: real sections, real order,
+   real variants, real palette. Everything here is greyscale except the two
+   colours the template itself carries, so the eye reads composition first and
+   colour second — which is the order in which these actually differ. */
+
+.tplp {
+  --tplp-ink: color-mix(in srgb, var(--color-foreground) 58%, transparent);
+  --tplp-faint: color-mix(in srgb, var(--color-foreground) 13%, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #fff;
+  container-type: inline-size;
+}
+
+.tplp-chrome {
+  display: flex;
+  gap: 4px;
+  padding: 7px 9px;
+  background: color-mix(in srgb, var(--color-foreground) 5%, #fff);
+  border-bottom: 1px solid var(--tplp-faint);
+}
+.tplp-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tplp-faint);
+}
+
+.tplp-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--tplp-faint);
+}
+.tplp-brand {
+  width: 34px;
+  height: 7px;
+  border-radius: 2px;
+}
+.tplp-navlinks {
+  display: flex;
+  gap: 7px;
+}
+.tplp-navlinks span {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--tplp-faint);
+}
+
+/* The page itself. Capped and scroll-free: this is a silhouette, not a site. */
+.tplp-body {
+  display: grid;
+  gap: 1px;
+  background: var(--tplp-faint);
+  max-height: 260px;
+  overflow: hidden;
+}
+.tplp-body > * {
+  background: #fff;
+}
+
+.tplp-lines {
+  display: grid;
+  gap: 4px;
+}
+.tplp-lines[data-align='center'] {
+  justify-items: center;
+}
+.tplp-line {
+  height: 5px;
+  border-radius: 2px;
+  background: var(--tplp-faint);
+  display: block;
+}
+.tplp-line[data-tone='ink'] {
+  background: var(--tplp-ink);
+}
+.tplp-line[data-tone='onDark'] {
+  background: rgba(255, 255, 255, 0.72);
+}
+.tplp-line--big {
+  height: 9px;
+}
+
+.tplp-rule {
+  display: block;
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  margin-bottom: 7px;
+}
+
+.tplp-btn {
+  display: block;
+  width: 46px;
+  height: 11px;
+  border-radius: var(--tplp-radius);
+  margin-top: 8px;
+}
+
+.tplp-hero {
+  padding: 18px 14px 16px;
+  border-left: 3px solid transparent;
+}
+.tplp-hero--bleed {
+  padding: 26px 14px 24px;
+  text-align: center;
+  border-left: 0;
+}
+
+.tplp-band {
+  padding: 14px;
+}
+.tplp-band[data-highlight] {
+  background: color-mix(in srgb, var(--tplp-primary) 5%, #fff);
+}
+
+.tplp-cta {
+  padding: 16px 14px;
+}
+
+.tplp-split {
+  display: grid;
+  grid-template-columns: 1fr 0.8fr;
+  gap: 10px;
+  padding: 14px;
+  align-items: center;
+}
+.tplp-split[data-flip] .tplp-pane {
+  order: 2;
+}
+.tplp-pane {
+  min-width: 0;
+}
+.tplp-img {
+  display: block;
+  background: color-mix(in srgb, var(--tplp-primary) 16%, var(--tplp-faint));
+  border-radius: var(--tplp-radius);
+  aspect-ratio: 4 / 3;
+}
+.tplp-img--card {
+  aspect-ratio: 3 / 2;
+  margin-bottom: 6px;
+}
+.tplp-img--map {
+  aspect-ratio: 3 / 2;
+  background: repeating-linear-gradient(
+      45deg,
+      var(--tplp-faint) 0 6px,
+      transparent 6px 12px
+    ),
+    color-mix(in srgb, var(--tplp-primary) 10%, #fff);
+}
+
+.tplp-tiles,
+.tplp-mosaic {
+  display: grid;
+  gap: 5px;
+}
+.tplp-mosaic {
+  grid-template-columns: repeat(4, 1fr);
+}
+.tplp-mosaic[data-masonry] {
+  grid-template-columns: repeat(3, 1fr);
+}
+.tplp-mosaic[data-masonry] > :first-child {
+  grid-row: span 2;
+  aspect-ratio: auto;
+}
+.tplp-tile {
+  display: block;
+  aspect-ratio: 1;
+  border-radius: var(--tplp-radius);
+  background: color-mix(in srgb, var(--tplp-primary) 13%, var(--tplp-faint));
+}
+
+.tplp-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+.tplp-card {
+  border: 1px solid var(--tplp-faint);
+  padding: 7px;
+  display: grid;
+  gap: 4px;
+}
+.tplp-card--plan {
+  padding: 9px 7px;
+}
+.tplp-card--plan[data-featured] {
+  border-width: 2px;
+  transform: translateY(-3px);
+}
+
+.tplp-group {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 9px;
+}
+.tplp-group:last-child {
+  margin-bottom: 0;
+}
+.tplp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tplp-row--ruled {
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--tplp-faint);
+}
+.tplp-row--ruled:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.tplp-price {
+  width: 22px;
+  height: 5px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.tplp-field {
+  display: block;
+  height: 13px;
+  border: 1px solid var(--tplp-faint);
+  margin-bottom: 6px;
+}
+
+/* --- Template gallery -------------------------------------------------- */
+
+.tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+  gap: 1.25rem;
+}
+
+.tpl-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+/* The recommendation is stated once, quietly, with a rule rather than a glow.
+   A card that shouts is a card that stops being a preview. */
+.tpl-card[data-recommended] {
+  border-color: var(--color-border-strong);
+  box-shadow: inset 0 3px 0 0 var(--color-primary);
+}
+.tpl-card[data-unavailable] .tpl-card__preview {
+  opacity: 0.55;
+  filter: saturate(0.5);
+}
+
+.tpl-card__preview {
+  padding: 1rem 1rem 0;
+}
+
+.tpl-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 1.1rem 1.1rem;
+  flex: 1;
+}
+
+.tpl-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.tpl-card__name {
+  font-size: 1.1rem;
+  margin: 0;
+}
+.tpl-badge {
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  white-space: nowrap;
+}
+
+.tpl-card__tagline {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.tpl-card__desc {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.tpl-facts {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.35rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--color-border);
+}
+.tpl-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+}
+.tpl-facts dt {
+  color: var(--color-muted);
+  flex: none;
+}
+.tpl-facts dd {
+  margin: 0;
+  text-align: right;
+}
+
+.tpl-card__foot {
+  margin-top: auto;
+  padding-top: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.tpl-current,
+.tpl-locked {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--color-muted);
+}
+.tpl-current {
+  font-weight: 500;
+  color: var(--color-foreground);
+}
+.tpl-link {
+  font-size: 0.85rem;
+}
+
+.tpl-confirm {
+  display: grid;
+  gap: 0.6rem;
+  width: 100%;
+}
+.tpl-confirm__text {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+.tpl-confirm__row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .tpl-grid {
+    grid-template-columns: 1fr;
+  }
+}
