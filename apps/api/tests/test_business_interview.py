@@ -276,6 +276,23 @@ def test_live_tracking_detected_without_provider():
 
 
 @pytest.mark.asyncio
+async def test_unsupported_followup_does_not_replace_existing_offerings():
+    bp = confirmed()
+    original = bp.known_facts["offerings"].value
+    text = "I also want live GPS tracking of ambulances."
+    bp = await Engine.turn(
+        bp,
+        text,
+        provider=MockProvider({"facts": [{"field": "offerings", "quote": text}]}),
+    )
+    resolve_recommendations(bp, entitlements())
+    assert bp.known_facts["offerings"].value == original
+    assert "offerings" not in bp.unconfirmed_facts
+    assert bp.unsupported_requests[0].normalized_intent == "live_courier_tracking"
+    assert bp.messages[-2].text == text
+
+
+@pytest.mark.asyncio
 async def test_fabricated_operational_facts_rejected_even_from_schema_valid_model():
     bp = await Engine.turn(
         blueprint(),

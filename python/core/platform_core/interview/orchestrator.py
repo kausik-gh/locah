@@ -232,6 +232,16 @@ class BusinessInterviewOrchestrator:
             for item in extraction.facts:
                 if item.quote not in text:
                     continue
+                # A model can misfile an unsupported workflow as an offering or
+                # visitor action. Keep the owner's words in the conversation for
+                # capability-gap evidence, but never replace a real business fact
+                # or put the unsupported workflow into website content.
+                if re.search(
+                    r"\b(?:gps|live\s+(?:\w+\s+)?track\w*|track\w*\s+live|courier.{0,40}\bmap)\b",
+                    item.quote,
+                    re.I,
+                ):
+                    continue
                 if bp.known_facts.get(item.field) and bp.known_facts[item.field].value == item.quote:
                     continue
                 previous = bp.unconfirmed_facts.get(item.field) or bp.known_facts.get(item.field)
