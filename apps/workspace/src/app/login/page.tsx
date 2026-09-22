@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation'
-import { platformUrl } from '@platform/config'
+import { platformUrl, resolvePlatformOrigins } from '@platform/config'
+import { getAccessToken } from '@/lib/supabase/access-token'
+import { WorkspaceLoginForm } from './WorkspaceLoginForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +12,7 @@ export const dynamic = 'force-dynamic'
  * land on the public home page, having to find their way back into Workspace by
  * hand — which reads as a failed sign-in even though it succeeded.
  */
-export default function WorkspaceLoginRedirect({
+export default async function WorkspaceLoginRedirect({
   searchParams,
 }: {
   searchParams: { destination?: string | string[] }
@@ -19,11 +21,25 @@ export default function WorkspaceLoginRedirect({
     ? searchParams.destination[0]
     : searchParams.destination
 
+  const destination =
+    raw && raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/login')
+      ? raw
+      : '/'
+  const origins = resolvePlatformOrigins()
+  // Separate railway.app hosts cannot share a cookie. Let this host establish
+  // its own Supabase session; a shared-domain deployment still uses the single
+  // public sign-in ceremony below.
+  const sameHost = new URL(origins.web).hostname === new URL(origins.workspace).hostname
+  if (!origins.sessionCookieDomain && !sameHost) {
+    if (await getAccessToken()) redirect(destination)
+    return <WorkspaceLoginForm destination={destination} />
+  }
+
   // `/workspace/...` is the relative form apps/web accepts and resolves back to
   // this origin; a Workspace path is turned into it rather than sent as-is.
   const intent =
-    raw && raw.startsWith('/') && !raw.startsWith('//')
-      ? `/workspace${raw === '/' ? '' : raw}`
+    destination !== '/'
+      ? `/workspace${destination}`
       : '/workspace'
 
   redirect(`${platformUrl('web', '/login')}?destination=${encodeURIComponent(intent)}`)
