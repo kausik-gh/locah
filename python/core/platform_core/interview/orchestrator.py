@@ -102,6 +102,22 @@ def _remove_superseded_location_echoes(bp: BusinessBlueprint, old_location: str)
                         }
                     )
                     continue
+            location_suffix = re.search(
+                r"(?:,\s*)?(?:and\s+)?(?:we\s+are\s+)?(?:located|based)\s+in\s+"
+                + re.escape(old_location.strip())
+                + r"[.!?]?\s*$|\s+in\s+"
+                + re.escape(old_location.strip())
+                + r"[.!?]?\s*$",
+                fact.value,
+                re.I,
+            )
+            if location_suffix:
+                survivor = fact.value[: location_suffix.start()].strip().rstrip(",")
+                if survivor:
+                    facts[key] = fact.model_copy(
+                        update={"value": survivor, "evidence": survivor, "confirmation": "unconfirmed"}
+                    )
+                    continue
             sentences = [
                 sentence.strip()
                 for sentence in re.findall(r"[^.!?]+[.!?]?", fact.value)
@@ -229,9 +245,33 @@ class BusinessInterviewOrchestrator:
         ))
         accepted = 0
         if not off_topic:
+            # A clear spoken "Coimbatore, not Chennai" is a location
+            # correction even when the extractor filed the sentence as a new
+            # description and the old city lived only inside that description.
+            # Both city names are direct substrings of the owner's message.
+            correction = re.search(
+                r"\b(?P<new>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*,\s*not\s+"
+                r"(?P<old>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
+                text,
+            )
+            if correction:
+                _remove_superseded_location_echoes(bp, correction.group("old"))
+                extraction.facts = [
+                    item for item in extraction.facts
+                    if item.field != "locations"
+                ]
+                extraction.facts.append(
+                    ExtractedFact(field="locations", quote=correction.group("new"))
+                )
             for item in extraction.facts:
                 if item.quote not in text:
                     continue
+                if correction and item.field == "description" and correction.group(0) in item.quote:
+                    prefix = item.quote.split(", not " + correction.group("old"), 1)[0]
+                    prefix = re.sub(r"^(?:Correction,\s*|Actually\s+)", "", prefix, flags=re.I)
+                    if " is in " not in prefix or prefix not in text:
+                        continue
+                    item = ExtractedFact(field="description", quote=prefix)
                 # A model can misfile an unsupported workflow as an offering or
                 # visitor action. Keep the owner's words in the conversation for
                 # capability-gap evidence, but never replace a real business fact

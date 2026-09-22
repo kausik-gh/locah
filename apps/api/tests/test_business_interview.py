@@ -293,6 +293,29 @@ async def test_unsupported_followup_does_not_replace_existing_offerings():
 
 
 @pytest.mark.asyncio
+async def test_spoken_city_correction_keeps_city_neutral_business_description():
+    bp = blueprint()
+    original = "I run BrightCare Clinic, and we are located in Chennai."
+    bp.known_facts["description"] = Fact(
+        value=original, source="USER_STATEMENT", confirmation="confirmed"
+    )
+    Engine.project(bp)
+    text = "Correction, BrightCare Clinic is in Coimbatore, not Chennai."
+    bp = await Engine.turn(
+        bp,
+        text,
+        provider=MockProvider({"facts": [{"field": "description", "quote": text}]}),
+    )
+    assert bp.unconfirmed_facts["locations"].value == "Coimbatore"
+    assert bp.known_facts["description"].value == "I run BrightCare Clinic"
+    assert bp.unconfirmed_facts["description"].value == "BrightCare Clinic is in Coimbatore"
+    assert "Chennai" not in " ".join(
+        fact.value for fact in {**bp.known_facts, **bp.unconfirmed_facts}.values()
+    )
+    assert bp.remaining_questions[0].field == "offerings"
+
+
+@pytest.mark.asyncio
 async def test_fabricated_operational_facts_rejected_even_from_schema_valid_model():
     bp = await Engine.turn(
         blueprint(),
