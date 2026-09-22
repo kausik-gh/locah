@@ -16,6 +16,7 @@ from platform_core.entitlements.models import FeatureState, ModuleState, Resolve
 from platform_core.entitlements.module_registry import ModuleRegistry
 from platform_core.exceptions import ConflictError, PermissionDenied, ValidationError
 from platform_core.interview.capabilities import (
+    available_modules,
     classification_seed,
     resolve_recommendations,
     surface_new_unsupported_requests,
@@ -245,6 +246,25 @@ def test_unsupported_requests_are_evidence_not_mechanics(intent):
     assert not bp.recommended_modules
     assert bp.unsupported_requests[0].normalized_intent == intent
     assert bp.unsupported_requests[0].session_reference == bp.session_id
+
+
+def test_available_tools_are_entitled_not_automatically_recommended_or_approved():
+    bp = confirmed()
+    bp.requested_capabilities = [
+        CapabilityIntent(intent="bookings", original_request="patients book appointments")
+    ]
+    entitlement = entitlements()
+    resolve_recommendations(bp, entitlement)
+    available = available_modules(bp, entitlement)
+    assert "bookings" in {item.module_id for item in bp.recommended_modules}
+    assert "bookings" not in {item.module_id for item in available}
+    assert "orders" in {item.module_id for item in available}
+    assert all(item.choice == "pending" for item in available)
+    assert not bp.approved_modules
+    entitlement.module_states["orders"] = ModuleState(
+        "orders", False, "inactive", False, False, "test"
+    )
+    assert "orders" not in {item.module_id for item in available_modules(bp, entitlement)}
 
 
 def test_live_tracking_detected_without_provider():

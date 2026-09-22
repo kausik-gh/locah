@@ -479,10 +479,66 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
               {gap.why_unsupported}
             </p>
           ))}
+          <section aria-label="Tools available for your business">
+            <h3>Tools available for your business</h3>
+            <p>
+              These are options included in your current access. The recommendations below are
+              available too. Nothing turns on unless you choose it, and some tools need setup.
+            </p>
+            {data.available_modules.length > 0 ? (
+              <div className="bi-tool-grid">
+                {data.available_modules.map((module) => (
+                  <article className="bi-tool" key={module.module_id}>
+                    <h4>{module.label}</h4>
+                    <p>{module.reason}</p>
+                    <p className="ob-help">{module.availability_reason}</p>
+                    {module.dependencies.some((id) => !id.startsWith('core-')) ? (
+                      <p className="ob-help">
+                        May also need: {module.dependencies.filter((id) => !id.startsWith('core-')).join(', ')}.
+                      </p>
+                    ) : null}
+                    <div className="bi-choices">
+                      <button
+                        className="lc-btn"
+                        disabled={busy}
+                        aria-pressed={module.choice === 'approved'}
+                        onClick={() =>
+                          void send({
+                            action: 'choices',
+                            choices: { [module.module_id]: 'approved' },
+                          })
+                        }
+                      >
+                        Use this
+                      </button>
+                      <button
+                        className="lc-btn"
+                        disabled={busy}
+                        aria-pressed={module.choice === 'declined'}
+                        onClick={() =>
+                          void send({
+                            action: 'choices',
+                            choices: { [module.module_id]: 'declined' },
+                          })
+                        }
+                      >
+                        Not now
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p>All currently available tools are shown in your recommendations below.</p>
+            )}
+          </section>
           {bp.recommended_modules.length > 0 && (
             <>
-              <h3>Useful tools for what you want to do</h3>
-              <p>Only the tools you approve will be considered. Some still need a plan or setup.</p>
+              <h3>Recommended for you</h3>
+              <p>
+                Based on what you told Locah, these tools may help now. Review each reason and
+                approve only what you want.
+              </p>
               <div className="bi-tool-grid">
                 {bp.recommended_modules.map((module) => (
                   <article className="bi-tool" key={module.module_id}>

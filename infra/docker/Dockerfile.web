@@ -1,0 +1,23 @@
+FROM node:20-slim
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9.1.0 --activate
+
+COPY . .
+RUN pnpm install --frozen-lockfile
+
+# Next inlines only these intentionally public values into the browser bundle.
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WEB_URL
+ARG NEXT_PUBLIC_WORKSPACE_URL
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_WEB_URL=$NEXT_PUBLIC_WEB_URL \
+    NEXT_PUBLIC_WORKSPACE_URL=$NEXT_PUBLIC_WORKSPACE_URL \
+    NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+RUN pnpm --filter @platform/web... build
+ENV NODE_ENV=production
+CMD ["sh", "-c", "pnpm --filter @platform/web exec next start -H 0.0.0.0 -p ${PORT:-3000}"]

@@ -22,6 +22,7 @@ from platform_core.entitlements.resolver import BusinessEntitlementResolver
 from platform_core.exceptions import ConflictError, ResourceNotFound, ValidationError
 from platform_core.gates import assert_business_mutable
 from platform_core.interview.capabilities import (
+    available_modules,
     classification_seed,
     operational_modules,
     resolve_recommendations,
@@ -158,6 +159,9 @@ class BusinessInterviewService:
         active = operational_modules(entitlement)
         return {
             "blueprint": bp.model_dump(mode="json"),
+            "available_modules": [
+                item.model_dump(mode="json") for item in available_modules(bp, entitlement)
+            ],
             "classification_seed": classification_seed(bp),
             "templates": [
                 t.serialize(
@@ -245,8 +249,9 @@ class BusinessInterviewService:
             BusinessInterviewOrchestrator.confirm(bp)
         elif command.action == "choices":
             allowed = {item.module_id for item in bp.recommended_modules}
+            allowed.update(item.module_id for item in available_modules(bp, entitlement))
             if not set(command.choices) <= allowed:
-                raise ValidationError("Choose only tools recommended by the platform")
+                raise ValidationError("Choose only tools available for this business")
             for module, choice in command.choices.items():
                 bp.approved_modules = [m for m in bp.approved_modules if m != module]
                 bp.declined_modules = [m for m in bp.declined_modules if m != module]

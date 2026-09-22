@@ -196,6 +196,63 @@ def resolve_recommendations(bp: BusinessBlueprint, entitlement: ResolvedEntitlem
     bp.unsupported_requests = list(gaps.values())[:40]
 
 
+def available_modules(
+    bp: BusinessBlueprint, entitlement: ResolvedEntitlement
+) -> list[ModuleRecommendation]:
+    """Owner-selectable, entitled tools not inferred from the conversation.
+
+    This is a catalogue for an explicit choice, not another recommendation or
+    an activation. Keep its vocabulary within the supported interview intents.
+    """
+    recommended = {item.module_id for item in bp.recommended_modules}
+    snapshot = PlatformCapabilityResolver.resolve_from_entitlement(entitlement)
+    result: list[ModuleRecommendation] = []
+    for module, label, _ in INTENTS.values():
+        if module in recommended:
+            continue
+        definition = ModuleRegistry.get(module)
+        state = entitlement.module_states.get(module)
+        if not definition or not state or not state.entitled:
+            continue
+        if definition.features and not all(
+            entitlement.feature_states.get(feature)
+            and entitlement.feature_states[feature].enabled
+            for feature in definition.features[:1]
+        ):
+            continue
+        caps = [key for key, cap in CAPABILITIES.items() if cap.required_module_id == module]
+        if state.activation_state != "active":
+            status = "SUPPORTED_NOT_ENABLED"
+            why = "Available with your current access. Your approval is needed before it can be enabled."
+        elif (
+            not state.configuration_ready
+            or not state.dependency_satisfied
+            or any(not snapshot.capabilities.get(cap, False) for cap in caps)
+        ):
+            status = "SUPPORTED_REQUIRES_CONFIGURATION"
+            why = "Available with your current access, but setup or a prerequisite is still needed."
+        else:
+            status = "SUPPORTED"
+            why = "Available with your current access."
+        result.append(
+            ModuleRecommendation(
+                module_id=module,
+                label=label,
+                reason="An option for your business; not recommended from what you have told us so far.",
+                capability_ids=caps,
+                dependencies=list(definition.dependencies),
+                status=status,
+                availability_reason=why,
+                choice="declined"
+                if module in bp.declined_modules
+                else "approved"
+                if module in bp.approved_modules
+                else "pending",
+            )
+        )
+    return result
+
+
 def surface_new_unsupported_requests(
     bp: BusinessBlueprint, previous_intents: set[str]
 ) -> None:

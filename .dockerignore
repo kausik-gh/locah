@@ -1,0 +1,16 @@
+.git
+.agents
+.codex
+**/.env
+**/.env.*
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+test-results
+full-suite-run.txt
+TECHNOVA2026

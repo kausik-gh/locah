@@ -432,6 +432,11 @@ export function SiteEditor({
           <span className="ed-help" style={{ margin: 0 }}>
             Your draft, exactly as visitors will see it
           </span>
+          {previewSrc ? (
+            <a href={previewSrc} target="_blank" rel="noreferrer" className="ed__full-preview">
+              Open full-size preview ↗
+            </a>
+          ) : null}
           <div className="ed__devices" role="group" aria-label="Preview size">
             <button
               type="button"

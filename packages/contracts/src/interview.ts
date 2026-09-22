@@ -43,6 +43,7 @@ export type BusinessBlueprint = {
 }
 export type BusinessInterviewData = {
   blueprint: BusinessBlueprint; classification_seed: string
+  available_modules: InterviewModule[]
   templates: { id: string; name: string; description: string; primary_color: string; accent_color: string
     available: boolean; look: string[]; page_count: number }[]
   voice: { available: boolean; reason: string }
