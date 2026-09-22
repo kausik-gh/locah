@@ -280,7 +280,9 @@ def test_there_is_no_parallel_voice_blueprint_or_orchestrator():
 def test_server_vad_and_transcription_are_on_so_the_owner_can_interrupt():
     config = voice.session_config(blueprint())
     assert config["turn_detection"]["type"] == "server_vad"
-    assert config["input_audio_transcription"]["model"]
+    assert config["audio"]["input"]["transcription"]["model"] == "grok-transcribe"
+    assert config["audio"]["input"]["format"] == {"type": "audio/pcm", "rate": 24000}
+    assert config["audio"]["output"]["format"] == {"type": "audio/pcm", "rate": 24000}
     assert "audio" in config["modalities"] and "text" in config["modalities"]
 
 

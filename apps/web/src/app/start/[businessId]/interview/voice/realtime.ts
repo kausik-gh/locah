@@ -25,7 +25,14 @@ export type VoiceState =
   | 'ended'
   | 'failed'
 
-export type VoiceTranscriptLine = { role: 'user' | 'assistant'; text: string; at: number }
+export type VoiceTranscriptLine = {
+  role: 'user' | 'assistant'
+  text: string
+  at: number
+  /** Stable realtime item id, used to replace live captions instead of duplicating them. */
+  id?: string
+  final?: boolean
+}
 
 export type RealtimeSession = {
   client_secret: string
@@ -74,7 +81,14 @@ export class VoiceConnection {
   private muted = false
   private closedByUs = false
   private speechStartedAt = 0
+  private speechStoppedAt = 0
   private toolStartedAt = 0
+  private toolResultAt = 0
+  private firstAudioAfterTool = false
+  private activeResponse = false
+  private activeAssistantItemId: string | null = null
+  private assistantPlaybackStartedAt = 0
+  private finalTranscriptItems = new Set<string>()
 
   constructor(private readonly cb: VoiceCallbacks) {}
 
@@ -103,10 +117,7 @@ export class VoiceConnection {
       // The secret travels as a subprotocol because browsers cannot set headers
       // on a WebSocket. It is short-lived and single-use; the account key never
       // leaves the server.
-      const ws = new WebSocket(session.url, [
-        'realtime',
-        `openai-insecure-api-key.${session.client_secret}`,
-      ])
+      const ws = new WebSocket(session.url, [`xai-client-secret.${session.client_secret}`])
       this.ws = ws
       ws.onopen = () => {
         this.cb.onMetric('time_to_connect_ms', Math.round(performance.now() - openedAt))
@@ -123,7 +134,9 @@ export class VoiceConnection {
         this.stopCapture()
         if (!this.closedByUs) {
           this.cb.onState('failed')
-          this.cb.onError('The voice connection dropped. Your answers are saved — carry on in chat.')
+          this.cb.onError(
+            'The voice connection dropped. Your answers are saved — carry on in chat.'
+          )
         }
         resolve()
       }
@@ -169,7 +182,8 @@ export class VoiceConnection {
   }
 
   /** Cut playback dead. Used when the owner talks over Locah. */
-  private stopPlayback(): void {
+  private stopPlayback(): boolean {
+    const hadPlayback = this.queue.length > 0
     this.queue.forEach((source) => {
       try {
         source.stop()
@@ -179,6 +193,7 @@ export class VoiceConnection {
     })
     this.queue = []
     this.playHead = 0
+    return hadPlayback
   }
 
   private play(bytes: Uint8Array): void {
@@ -197,6 +212,10 @@ export class VoiceConnection {
     this.queue.push(source)
     source.onended = () => {
       this.queue = this.queue.filter((item) => item !== source)
+      if (this.queue.length === 0 && !this.activeResponse) {
+        this.activeAssistantItemId = null
+        this.assistantPlaybackStartedAt = 0
+      }
     }
   }
 
@@ -206,28 +225,70 @@ export class VoiceConnection {
 
   private async handle(event: Record<string, any>): Promise<void> {
     switch (event.type) {
-      case 'input_audio_buffer.speech_started':
+      case 'input_audio_buffer.speech_started': {
         // Barge-in: the owner started talking, so Locah stops immediately and
-        // the audio already queued is dropped rather than played out.
+        // the audio already queued is dropped rather than played out. Only
+        // cancel when a response exists: cancelling the first user turn is a
+        // protocol error and used to show a false failure in the UI.
         this.speechStartedAt = performance.now()
-        this.stopPlayback()
-        this.send({ type: 'response.cancel' })
+        this.speechStoppedAt = 0
+        const interruptionStartedAt = performance.now()
+        const interruptedPlayback = this.stopPlayback()
+        if (this.activeResponse) this.send({ type: 'response.cancel' })
+        if (interruptedPlayback && this.activeAssistantItemId) {
+          const playedMs = this.assistantPlaybackStartedAt
+            ? Math.max(0, Math.round(performance.now() - this.assistantPlaybackStartedAt))
+            : 0
+          this.send({
+            type: 'conversation.item.truncate',
+            item_id: this.activeAssistantItemId,
+            content_index: 0,
+            audio_end_ms: playedMs,
+          })
+          this.cb.onMetric(
+            'interruption_latency_ms',
+            Math.round(performance.now() - interruptionStartedAt)
+          )
+        }
         this.cb.onState('user-speaking')
         break
+      }
 
       case 'input_audio_buffer.speech_stopped':
+        this.speechStoppedAt = performance.now()
         this.cb.onState('thinking')
         break
+
+      case 'conversation.item.input_audio_transcription.updated': {
+        const text = String(event.transcript || '').trim()
+        if (text) {
+          this.cb.onTranscript({
+            role: 'user',
+            text,
+            at: Date.now(),
+            id: String(event.item_id || `speech-${this.speechStartedAt}`),
+            final: false,
+          })
+        }
+        break
+      }
 
       case 'conversation.item.input_audio_transcription.completed':
       case 'conversation.item.input_audio_transcription.done': {
         const text = String(event.transcript || '').trim()
-        if (text) {
-          this.cb.onTranscript({ role: 'user', text, at: Date.now() })
-          if (this.speechStartedAt) {
+        const id = String(event.item_id || `speech-${this.speechStartedAt}`)
+        if (text && !this.finalTranscriptItems.has(id)) {
+          // Despite its name, xAI currently emits cumulative `completed`
+          // events while speech is still arriving. Treat them as captions
+          // until VAD has ended the turn; the event after `speech_stopped` is
+          // the authoritative transcript and latency boundary.
+          const final = this.speechStoppedAt > 0
+          this.cb.onTranscript({ role: 'user', text, at: Date.now(), id, final })
+          if (final) {
+            this.finalTranscriptItems.add(id)
             this.cb.onMetric(
-              'time_to_transcript_ms',
-              Math.round(performance.now() - this.speechStartedAt)
+              'speech_end_to_final_transcript_ms',
+              Math.round(performance.now() - this.speechStoppedAt)
             )
           }
         }
@@ -242,6 +303,14 @@ export class VoiceConnection {
       case 'response.output_audio.delta':
       case 'response.audio.delta':
         if (typeof event.delta === 'string') {
+          if (!this.assistantPlaybackStartedAt) this.assistantPlaybackStartedAt = performance.now()
+          if (this.toolResultAt && !this.firstAudioAfterTool) {
+            this.firstAudioAfterTool = true
+            this.cb.onMetric(
+              'tool_result_to_first_audio_ms',
+              Math.round(performance.now() - this.toolResultAt)
+            )
+          }
           this.cb.onState('speaking')
           this.play(decodeBase64(event.delta))
         }
@@ -276,7 +345,10 @@ export class VoiceConnection {
             }
           }
         }
-        this.cb.onMetric('tool_latency_ms', Math.round(performance.now() - this.toolStartedAt))
+        this.cb.onMetric(
+          'transcript_to_interview_result_ms',
+          Math.round(performance.now() - this.toolStartedAt)
+        )
         this.send({
           type: 'conversation.item.create',
           item: {
@@ -285,11 +357,26 @@ export class VoiceConnection {
             output: JSON.stringify(result),
           },
         })
+        this.toolResultAt = performance.now()
+        this.firstAudioAfterTool = false
         this.send({ type: 'response.create' })
         break
       }
 
+      case 'response.created':
+        this.activeResponse = true
+        this.activeAssistantItemId = null
+        this.assistantPlaybackStartedAt = 0
+        break
+
+      case 'response.output_item.added':
+        if (event.item?.type === 'message' && event.item?.id) {
+          this.activeAssistantItemId = String(event.item.id)
+        }
+        break
+
       case 'response.done':
+        this.activeResponse = false
         if (this.ws?.readyState === WebSocket.OPEN) this.cb.onState('listening')
         break
 

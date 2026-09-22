@@ -13,6 +13,7 @@ from platform_core.interview.models import (
     BusinessBlueprint,
     CapabilityGapProposal,
     CapabilityIntent,
+    Message,
     ModuleRecommendation,
 )
 
@@ -193,6 +194,36 @@ def resolve_recommendations(bp: BusinessBlueprint, entitlement: ResolvedEntitlem
         )
     bp.recommended_modules = recommendations
     bp.unsupported_requests = list(gaps.values())[:40]
+
+
+def surface_new_unsupported_requests(
+    bp: BusinessBlueprint, previous_intents: set[str]
+) -> None:
+    """Put a newly detected capability gap into the authoritative reply.
+
+    Capability resolution happens after extraction, so the orchestrator's next
+    question cannot mention a gap that did not exist yet. Leaving it only in
+    the final build-review section means an early voice turn sounds like Locah
+    silently accepted the request. Keep the next question, but lead with the
+    deterministic platform answer the owner needs to hear now.
+    """
+    new_gaps = [
+        gap for gap in bp.unsupported_requests if gap.normalized_intent not in previous_intents
+    ]
+    if not new_gaps:
+        return
+    for index in range(len(bp.messages) - 1, -1, -1):
+        message = bp.messages[index]
+        if message.role != "assistant":
+            continue
+        notice = (
+            "That request is not supported today and will not be added to your website. "
+        )
+        if not message.text.startswith(notice):
+            bp.messages[index] = Message(
+                role="assistant", text=notice + message.text, at=message.at
+            )
+        return
 
 
 def operational_modules(entitlement: ResolvedEntitlement) -> set[str]:

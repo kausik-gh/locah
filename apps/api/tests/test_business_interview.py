@@ -15,7 +15,11 @@ from pydantic import ValidationError as SchemaError
 from platform_core.entitlements.models import FeatureState, ModuleState, ResolvedEntitlement
 from platform_core.entitlements.module_registry import ModuleRegistry
 from platform_core.exceptions import ConflictError, PermissionDenied, ValidationError
-from platform_core.interview.capabilities import classification_seed, resolve_recommendations
+from platform_core.interview.capabilities import (
+    classification_seed,
+    resolve_recommendations,
+    surface_new_unsupported_requests,
+)
 from platform_core.interview.design_strategy import (
     DesignStrategy,
     derive_strategy,
@@ -744,6 +748,101 @@ async def test_the_turn_sends_the_fast_model_and_no_registry_dump():
     # Capability resolution is deterministic and stays out of the prompt.
     assert "offerings-catalog" not in provider.prompts[0]
     assert "module" not in provider.prompts[0].lower()
+    assert "multilingual or code-switched" in captured["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_tamil_booking_action_is_retained_when_model_omits_it():
+    text = (
+        "நான் சென்னையில் அன்பு சலூன் நடத்துறேன். "
+        "ஹேர் கட், பிரைடல் மேக்கப், ஃபேஷியல் எல்லாம் பண்றோம். "
+        "கஸ்டமர்ஸ்ல அபாயிண்ட்மென்ட் புக் பண்ணனும்."
+    )
+    provider = MockProvider(
+        {
+            "facts": [
+                {
+                    "field": "description",
+                    "quote": "நான் சென்னையில் அன்பு சலூன் நடத்துறேன்.",
+                },
+                {
+                    "field": "offerings",
+                    "quote": "ஹேர் கட், பிரைடல் மேக்கப், ஃபேஷியல் எல்லாம் பண்றோம்.",
+                },
+            ]
+        }
+    )
+
+    result = await Engine.turn(blueprint(), text, provider=provider)
+
+    assert result.unconfirmed_facts["customer_actions"].value == (
+        "கஸ்டமர்ஸ்ல அபாயிண்ட்மென்ட் புக் பண்ணனும்."
+    )
+    assert result.completion_state.sufficient is True
+
+
+@pytest.mark.asyncio
+async def test_location_correction_removes_old_city_from_duplicated_description():
+    bp = blueprint()
+    bp.unconfirmed_facts = {
+        "description": Fact(
+            value="I run North Star Bakery in Chennai. We sell bread and celebration cakes.",
+            evidence="I run North Star Bakery in Chennai. We sell bread and celebration cakes.",
+            source="AI_EXTRACTION",
+        ),
+        "locations": Fact(value="Chennai", source="AI_EXTRACTION"),
+        "offerings": Fact(value="bread and celebration cakes", source="AI_EXTRACTION"),
+    }
+    Engine.project(bp)
+    provider = MockProvider(
+        {"facts": [{"field": "locations", "quote": "Coimbatore"}]}
+    )
+
+    result = await Engine.turn(
+        bp,
+        "Correction: North Star Bakery is in Coimbatore, not Chennai.",
+        provider=provider,
+    )
+
+    assert result.unconfirmed_facts["locations"].value == "Coimbatore"
+    assert result.unconfirmed_facts["description"].value == (
+        "We sell bread and celebration cakes."
+    )
+    assert "Chennai" not in " ".join(
+        fact.value for fact in result.unconfirmed_facts.values()
+    )
+
+
+@pytest.mark.asyncio
+async def test_location_correction_keeps_the_current_business_summary_prefix():
+    bp = blueprint()
+    bp.unconfirmed_facts = {
+        "description": Fact(
+            value="I run North Star Bakery in Chennai.", source="AI_EXTRACTION"
+        ),
+        "locations": Fact(value="Chennai", source="AI_EXTRACTION"),
+    }
+    Engine.project(bp)
+    provider = MockProvider(
+        {
+            "facts": [
+                {
+                    "field": "description",
+                    "quote": "North Star Bakery is in Coimbatore, not Chennai.",
+                },
+                {"field": "locations", "quote": "Coimbatore"},
+            ]
+        }
+    )
+
+    result = await Engine.turn(
+        bp, "North Star Bakery is in Coimbatore, not Chennai.", provider=provider
+    )
+
+    assert result.unconfirmed_facts["description"].value == (
+        "North Star Bakery is in Coimbatore"
+    )
+    assert result.unconfirmed_facts["locations"].value == "Coimbatore"
 
 
 @pytest.mark.parametrize("template", list(TEMPLATES_BY_ID))
@@ -801,6 +900,36 @@ def test_unsupported_ask_is_raised_even_when_extraction_dropped_the_sentence():
     # The quote is the sentence asked, not the whole paragraph.
     quoted = bp.unsupported_requests[0].original_request
     assert "GPS" in quoted and "200-bed" not in quoted
+
+
+def test_a_new_unsupported_ask_is_surfaced_in_the_authoritative_reply():
+    from platform_core.interview.models import Message
+
+    bp = confirmed()
+    bp.messages = [
+        Message(role="user", text="I want live GPS tracking for our riders."),
+        Message(role="assistant", text="What do you mainly sell?"),
+    ]
+    resolve_recommendations(bp, entitlements())
+    surface_new_unsupported_requests(bp, set())
+
+    reply = bp.messages[-1].text
+    assert reply.startswith("That request is not supported today")
+    assert reply.endswith("What do you mainly sell?")
+
+
+def test_an_already_surfaced_gap_does_not_repeat_in_later_replies():
+    from platform_core.interview.models import Message
+
+    bp = confirmed()
+    bp.messages = [
+        Message(role="user", text="I want live GPS tracking for our riders."),
+        Message(role="assistant", text="What do you mainly sell?"),
+    ]
+    resolve_recommendations(bp, entitlements())
+    previous = {gap.normalized_intent for gap in bp.unsupported_requests}
+    surface_new_unsupported_requests(bp, previous)
+    assert bp.messages[-1].text == "What do you mainly sell?"
 
 
 def test_an_ordinary_delivery_business_raises_no_false_gap():

@@ -9,7 +9,15 @@ import time
 from typing import Protocol
 
 from platform_core.interview.models import (
-    BusinessBlueprint, Extraction, Fact, FactKey, Message, Question, TurnTelemetry, now,
+    BusinessBlueprint,
+    ExtractedFact,
+    Extraction,
+    Fact,
+    FactKey,
+    Message,
+    Question,
+    TurnTelemetry,
+    now,
 )
 from platform_core.logging import get_logger
 from platform_core.website.ai_provider import AIModelProvider, get_ai_provider
@@ -37,6 +45,79 @@ QUESTIONS = (
     Question(field="customer_actions", text="What should visitors do next: learn about you, contact you, order, or book? Just learning about you is fine too.",
              reason="Recommend only the tools needed for your chosen customer journey."),
 )
+
+
+def _retain_explicit_multilingual_actions(extraction: Extraction, text: str) -> None:
+    """Keep an exact Tamil booking sentence when the extractor overlooks it.
+
+    This is deliberately narrow and quotation-only. It does not translate,
+    infer a capability or invent an action; it preserves a sentence that
+    explicitly contains both the Tamil-script appointment and booking terms.
+    """
+    if any(
+        item.field == "customer_actions" and item.quote in text
+        for item in extraction.facts
+    ):
+        return
+    for sentence in re.findall(r"[^.!?]+[.!?]?", text):
+        quote = sentence.strip()
+        if re.search(r"அப்பாயிண்ட்மென்ட்|அபாயிண்ட்மென்ட்|முன்பதிவு", quote) and re.search(
+            r"புக்|பண்ண|செய்ய", quote
+        ):
+            extraction.facts.append(
+                ExtractedFact(field="customer_actions", quote=quote)
+            )
+            return
+
+
+def _remove_superseded_location_echoes(bp: BusinessBlueprint, old_location: str) -> None:
+    """Remove an old place from duplicated summary facts after a correction.
+
+    Extractors often quote a rich opening answer both as `description` and as
+    dedicated fields. Updating `locations` must not leave the old city visible
+    inside that copied description. We retain only an unchanged sentence from
+    the owner's earlier evidence; if none survives, the stale summary fact is
+    removed and can be asked again.
+    """
+    if not old_location.strip():
+        return
+    pattern = re.compile(r"\b" + re.escape(old_location.strip()) + r"\b", re.I)
+    for facts in (bp.unconfirmed_facts, bp.known_facts):
+        for key, fact in list(facts.items()):
+            if key == "locations" or not pattern.search(fact.value):
+                continue
+            negated_old = re.search(
+                r"(?:,\s*)?\bnot\s+" + re.escape(old_location.strip()) + r"\b[.!?]?\s*$",
+                fact.value,
+                re.I,
+            )
+            if negated_old:
+                survivor = fact.value[: negated_old.start()].strip()
+                if survivor:
+                    facts[key] = fact.model_copy(
+                        update={
+                            "value": survivor,
+                            "evidence": survivor,
+                            "confirmation": "unconfirmed",
+                        }
+                    )
+                    continue
+            sentences = [
+                sentence.strip()
+                for sentence in re.findall(r"[^.!?]+[.!?]?", fact.value)
+                if sentence.strip() and not pattern.search(sentence)
+            ]
+            if sentences:
+                survivor = max(sentences, key=len)
+                facts[key] = fact.model_copy(
+                    update={
+                        "value": survivor,
+                        "evidence": survivor,
+                        "confirmation": "unconfirmed",
+                    }
+                )
+            else:
+                del facts[key]
 
 
 class VoiceAdapter(Protocol):
@@ -106,6 +187,14 @@ class BusinessInterviewOrchestrator:
                         "routes or mechanics. Infer only intent labels: catalog, orders, bookings, enquiries, "
                         "memberships, payments, inventory, delivery, or an unsupported plain-language intent. "
                         "Use original_request as an exact quote. Off-topic: no facts or intents. "
+                        "Input may be multilingual or code-switched. Understand it in its original "
+                        "language and keep every extracted quote in that original script; do not "
+                        "translate or discard facts merely because they are not English. "
+                        "For example, Tamil text that says a salon does haircuts, bridal makeup and "
+                        "facials must yield that exact Tamil service phrase as offerings; text saying "
+                        "customers should book appointments must yield that exact phrase as "
+                        "customer_actions (for example, ‘கஸ்டமர்ஸ்ல அப்பாயிண்ட்மென்ட் புக் "
+                        "பண்ணனும்.’). These facts are separate even when description contains them. "
                         "A single message may answer several fields. Description and offerings may share a quote. "
                         # A long answer contains many true sentences and only one of
                         # them says what the business IS. Picking a side detail there
@@ -128,6 +217,7 @@ class BusinessInterviewOrchestrator:
                     Extraction.model_json_schema(), config, timeout_seconds=12,
                 ), timeout=13)
                 extraction = Extraction.model_validate(raw)
+                _retain_explicit_multilingual_actions(extraction, text)
             except Exception as exc:
                 # Do not log raw provider errors or the owner's private business narrative.
                 fallback = type(exc).__name__
@@ -144,6 +234,13 @@ class BusinessInterviewOrchestrator:
                     continue
                 if bp.known_facts.get(item.field) and bp.known_facts[item.field].value == item.quote:
                     continue
+                previous = bp.unconfirmed_facts.get(item.field) or bp.known_facts.get(item.field)
+                if (
+                    item.field == "locations"
+                    and previous
+                    and previous.value.casefold() != item.quote.casefold()
+                ):
+                    _remove_superseded_location_echoes(bp, previous.value)
                 bp.unconfirmed_facts[item.field] = Fact(
                     value=item.quote, evidence=item.quote,
                     source="USER_STATEMENT" if field else "AI_EXTRACTION",

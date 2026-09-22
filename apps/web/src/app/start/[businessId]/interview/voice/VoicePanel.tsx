@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BusinessInterviewData } from '@platform/contracts'
 import { startVoiceSession } from '../actions'
-import { VoiceConnection, type RealtimeSession, type VoiceState, type VoiceTranscriptLine } from './realtime'
+import {
+  VoiceConnection,
+  type RealtimeSession,
+  type VoiceState,
+  type VoiceTranscriptLine,
+} from './realtime'
 
 const LABEL: Record<VoiceState, string> = {
   idle: 'Ready when you are',
@@ -68,7 +73,18 @@ export function VoicePanel({
     }
     const conn = new VoiceConnection({
       onState: setState,
-      onTranscript: (line) => setLines((prev) => [...prev.slice(-40), line]),
+      onTranscript: (line) =>
+        setLines((prev) => {
+          if (line.id) {
+            const existing = prev.findIndex((item) => item.id === line.id)
+            if (existing >= 0) {
+              const next = [...prev]
+              next[existing] = line
+              return next
+            }
+          }
+          return [...prev.slice(-40), line]
+        }),
       onTurn: (transcript) => turnRef.current(transcript),
       onError: setError,
       onMetric: (name, ms) => {
@@ -103,7 +119,9 @@ export function VoicePanel({
           </p>
         ) : null}
         {sufficient && live ? (
-          <p className="vp-prompt">That’s enough to build with. Review what Locah understood below.</p>
+          <p className="vp-prompt">
+            That’s enough to build with. Review what Locah understood below.
+          </p>
         ) : null}
       </div>
 
@@ -145,7 +163,7 @@ export function VoicePanel({
         <div className="vp-transcript" ref={stream} role="log" aria-live="polite">
           <p className="bi-eyebrow">WHAT LOCAH HEARD</p>
           {lines.map((line, i) => (
-            <p className={`vp-line vp-line--${line.role}`} key={`${line.at}-${i}`}>
+            <p className={`vp-line vp-line--${line.role}`} key={line.id || `${line.at}-${i}`}>
               <span>{line.role === 'assistant' ? 'LOCAH' : 'YOU'}</span> {line.text}
             </p>
           ))}

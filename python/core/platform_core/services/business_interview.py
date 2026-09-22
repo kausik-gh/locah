@@ -25,6 +25,7 @@ from platform_core.interview.capabilities import (
     classification_seed,
     operational_modules,
     resolve_recommendations,
+    surface_new_unsupported_requests,
 )
 from platform_core.interview.design_strategy import (
     DESIGN_STRATEGY_VERSION,
@@ -234,7 +235,12 @@ class BusinessInterviewService:
         entitlement = await BusinessEntitlementResolver.resolve(
             session, business_id, business=business
         )
+        previous_unsupported = {
+            gap.normalized_intent for gap in initial.unsupported_requests
+        }
         resolve_recommendations(bp, entitlement)
+        if proposed is not None:
+            surface_new_unsupported_requests(bp, previous_unsupported)
         if command.action == "confirm":
             BusinessInterviewOrchestrator.confirm(bp)
         elif command.action == "choices":

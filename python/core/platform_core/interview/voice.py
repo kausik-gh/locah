@@ -166,16 +166,23 @@ def session_config(bp: BusinessBlueprint) -> dict[str, Any]:
         "instructions": build_session_instructions(bp),
         "voice": VOICE_NAME,
         "modalities": ["audio", "text"],
-        "input_audio_format": "pcm16",
-        "output_audio_format": "pcm16",
-        "input_audio_transcription": {"model": "whisper-1"},
+        "audio": {
+            "input": {
+                "format": {"type": "audio/pcm", "rate": 24000},
+                # xAI emits one cumulative `updated` stream followed by one
+                # authoritative `completed` event for this model. The legacy
+                # flat `whisper-1` setting emitted repeated partial
+                # `completed` events, which made one utterance look like many.
+                "transcription": {"model": "grok-transcribe"},
+            },
+            "output": {"format": {"type": "audio/pcm", "rate": 24000}},
+        },
         "turn_detection": {
             "type": "server_vad",
             "threshold": 0.5,
             "prefix_padding_ms": 300,
             "silence_duration_ms": 700,
         },
-        "enable_noise_suppression": True,
         "tools": VOICE_TOOLS,
         "tool_choice": "auto",
     }
