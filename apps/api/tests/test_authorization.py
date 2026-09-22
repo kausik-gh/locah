@@ -58,6 +58,7 @@ def test_unauthenticated_business_endpoint_returns_401() -> None:
         assert body["error"]["code"] == "AUTHENTICATION_REQUIRED"
 
 
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 def test_business_endpoint_without_membership_returns_403_or_404(
     auth_headers: dict[str, str],
 ) -> None:

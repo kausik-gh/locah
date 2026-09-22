@@ -1,0 +1,34 @@
+.ob-shell__body--wide { max-width: 1280px; }
+
+.lp-title { font-size: clamp(1.9rem, 4vw, 2.6rem); letter-spacing: -0.03em; margin: 0 0 0.5rem; }
+.lp-lede { color: #3c4855; line-height: 1.7; max-width: 38rem; margin: 0; }
+.lp-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+.lp-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.lp { border: 1px solid #d9d8d2; border-radius: 18px; background: #fff; overflow: hidden; }
+.lp-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid #e9e6e0; background: #faf9f6; }
+.lp-note { margin: 0; font-size: 13px; line-height: 1.6; color: #4c5967; display: flex; align-items: center; gap: 8px; }
+.lp-devices { display: flex; gap: 8px; }
+.lp-devices .lc-btn { padding: 6px 14px; font-size: 13px; }
+.lp-devices .lc-btn[aria-pressed='true'] { outline: 2px solid #233647; outline-offset: 2px; }
+
+/* A real pending state for work that is genuinely still running. */
+.lp-dot { width: 8px; height: 8px; border-radius: 50%; background: #1c5f57; flex: none; animation: lp-pulse 1.6s ease-in-out infinite; }
+@keyframes lp-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lp-dot { animation: none; opacity: 0.7; } }
+
+.lp-stage { background: #eceae4; display: flex; justify-content: center; padding: 0; }
+.lp-stage iframe { width: 100%; height: 70vh; min-height: 460px; border: 0; background: #fff; display: block; }
+.lp-stage--phone { padding: 20px 0; }
+.lp-stage--phone iframe { width: 390px; max-width: 100%; height: 66vh; border-radius: 14px; box-shadow: 0 10px 30px rgba(20, 24, 30, 0.18); }
+
+.lp-pages { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 8px; }
+.lp-pages li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border: 1px solid rgba(28, 36, 48, 0.14); border-radius: 10px; background: rgba(255, 255, 255, 0.7); font-size: 14px; }
+.lp-pages code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: #4c5967; }
+.lp-pages span { margin-left: auto; font-size: 13px; color: #4c5967; }
+
+@media (max-width: 760px) {
+  .lp-head { flex-direction: column; align-items: stretch; }
+  .lp-stage iframe { height: 60vh; min-height: 380px; }
+  .lp-pages span { margin-left: 0; }
+}

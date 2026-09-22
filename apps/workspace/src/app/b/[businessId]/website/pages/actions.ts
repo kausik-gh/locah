@@ -16,6 +16,7 @@ export async function saveSectionContent(formData: FormData): Promise<void> {
   const businessId = String(formData.get('businessId') || '')
   const sectionId = String(formData.get('sectionId') || '')
   const sectionTypeId = String(formData.get('sectionTypeId') || '')
+  const layoutVariant = String(formData.get('layoutVariant') || '')
   const headline = String(formData.get('headline') || '')
   const body = String(formData.get('body') || '')
   const rawInitial = String(formData.get('initialContent') || '{}')
@@ -40,7 +41,7 @@ export async function saveSectionContent(formData: FormData): Promise<void> {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, layout_variant: layoutVariant || null }),
   })
   if (!res.ok) {
     throw new Error(`Saving the section failed: ${res.status} ${await res.text()}`)

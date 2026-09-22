@@ -53,13 +53,51 @@ function readable(hex: string): string {
   return lum > 0.6 ? '#111111' : '#ffffff'
 }
 
+function finite(value: unknown, allowed: readonly string[], fallback: string) {
+  const candidate = String(value || '')
+  return allowed.includes(candidate) ? candidate : fallback
+}
+
+type StrategyDecision = { section_type_id: string; emphasis: string; include?: boolean }
+
+/** Read the persisted design strategy defensively — it is data, not a contract. */
+function strategyDecisions(theme: Record<string, unknown>): StrategyDecision[] {
+  const strategy = theme.design_strategy
+  if (!strategy || typeof strategy !== 'object') return []
+  const variants = (strategy as Record<string, unknown>).section_variants
+  if (!Array.isArray(variants)) return []
+  return variants.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const row = item as Record<string, unknown>
+    const id = typeof row.section_type_id === 'string' ? row.section_type_id : ''
+    const emphasis = typeof row.emphasis === 'string' ? row.emphasis : 'supporting'
+    if (!id || !['primary', 'supporting', 'quiet'].includes(emphasis)) return []
+    return [{ section_type_id: id, emphasis, include: row.include !== false }]
+  })
+}
+
 export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
   const theme = data.theme || {}
   const slug = data.business.slug
   const name = data.business.display_name
   const type = (data.business.business_type || '').toLowerCase()
-  const personality =
-    String(theme.personality || '') || PERSONALITY[type] || 'clean'
+  const personality = String(theme.personality || '') || PERSONALITY[type] || 'clean'
+  const typography = finite(
+    theme.typography_direction,
+    ['editorial_serif', 'modern_sans'],
+    personality === 'warm' || personality === 'premium' || personality === 'dark'
+      ? 'editorial_serif'
+      : 'modern_sans'
+  )
+  const density = finite(theme.content_density, ['compact', 'balanced', 'spacious'], 'balanced')
+  const heroDensity = finite(theme.hero_density, ['compact', 'balanced', 'immersive'], 'balanced')
+  const motion = finite(theme.motion_preference, ['none', 'subtle'], 'subtle')
+  const mobilePriority = finite(
+    theme.mobile_priority,
+    ['content', 'conversion', 'imagery'],
+    'content'
+  )
+  const navigationStyle = finite(theme.navigation_style, ['standard', 'compact'], 'standard')
 
   const primary = String(theme.primary_color || DEFAULT_PRIMARY[personality] || '#1f3d34')
   const accent = String(theme.accent_color || primary)
@@ -77,6 +115,27 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
   // rendered in the tree lands in <body> on React 18 and duplicates the tag.
   const nav = data.navigation || []
   const sections = data.page.sections.filter((s) => s.is_visible !== false)
+  const capabilities = data.capabilities || {}
+  const canOrder = Boolean(capabilities.order)
+  const canBook = Boolean(capabilities.book)
+  const visitLinks = [
+    canOrder ? { label: 'Basket', href: `/${slug}/checkout` } : null,
+    canBook ? { label: 'Book', href: `/${slug}/book` } : null,
+    canOrder || canBook ? { label: 'Your orders & bookings', href: '/activity' } : null,
+  ].filter((item): item is { label: string; href: string } => item !== null)
+
+  // How loudly each section should speak. The design strategy decides this per
+  // section type and it was previously computed, stored and then ignored — so a
+  // menu-led restaurant and a story-led one differed only in section order.
+  // Reading it here costs no schema change: the strategy already travels in the
+  // theme the browser receives.
+  const emphasisByType = new Map<string, string>()
+  for (const decision of strategyDecisions(theme)) {
+    if (decision.include !== false) emphasisByType.set(decision.section_type_id, decision.emphasis)
+  }
+  function emphasisFor(sectionTypeId: string): string {
+    return emphasisByType.get(sectionTypeId) || 'supporting'
+  }
 
   function navHref(path: string) {
     if (!path || path === '/') return `/${slug}`
@@ -84,9 +143,20 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
   }
 
   return (
-    <div data-locah-site="" data-personality={personality} style={styleVars}>
+    <div
+      data-locah-site=""
+      data-personality={personality}
+      data-typography={typography}
+      data-density={density}
+      data-hero-density={heroDensity}
+      data-motion={motion}
+      data-mobile-priority={mobilePriority}
+      data-navigation={navigationStyle}
+      style={styleVars}
+    >
       {data.is_preview ? (
-        <div
+        <aside
+          aria-label="Preview status"
           style={{
             background: '#111827',
             color: '#fff',
@@ -97,7 +167,7 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
           }}
         >
           Preview — this is a draft. Visitors still see your published site.
-        </div>
+        </aside>
       ) : null}
 
       <header className="ls-nav">
@@ -110,34 +180,49 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
             {name}
           </Link>
           <nav className="ls-nav__links">
-            {nav.map((item) => (
-              <Link
-                key={`${item.label}-${item.path}`}
-                className="ls-nav__link"
-                href={navHref(item.path)}
-                aria-current={
-                  (item.path === '/' && data.page.slug === 'home') ||
-                  item.path.replace(/^\//, '') === data.page.slug
-                    ? 'page'
-                    : undefined
-                }
-              >
-                {item.label}
-              </Link>
-            ))}
+            {nav.map((item) => {
+              // A published tenant site must not be brought down by one
+              // malformed navigation row. Skipping the link loses a menu item;
+              // trusting the field lost the whole page.
+              const path = typeof item.path === 'string' ? item.path : ''
+              if (!path) return null
+              return (
+                <Link
+                  key={`${item.label}-${path}`}
+                  className="ls-nav__link"
+                  href={navHref(path)}
+                  aria-current={
+                    (path === '/' && data.page.slug === 'home') ||
+                    path.replace(/^\//, '') === data.page.slug
+                      ? 'page'
+                      : undefined
+                  }
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
           </nav>
         </div>
       </header>
 
       <main>
         {sections.map((section, i) => (
-          <SectionRenderer
+          // `display: contents` so the wrapper carries the strategy's emphasis
+          // for CSS without entering layout. The section element underneath is
+          // still the direct child of <main> that website.css expects.
+          <div
             key={section.id}
-            section={section}
-            businessSlug={slug}
-            index={i}
-            capabilities={data.capabilities}
-          />
+            style={{ display: 'contents' }}
+            data-emphasis={emphasisFor(section.section_type_id)}
+          >
+            <SectionRenderer
+              section={section}
+              businessSlug={slug}
+              index={i}
+              capabilities={data.capabilities}
+            />
+          </div>
         ))}
       </main>
 
@@ -153,7 +238,7 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
           </div>
           {nav.length > 0 ? (
             <div className="ls-foot__col">
-              <h4>Explore</h4>
+              <p className="ls-foot__heading">Explore</p>
               {nav.map((item) => (
                 <Link key={`f-${item.label}`} href={navHref(item.path)}>
                   {item.label}
@@ -161,11 +246,16 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
               ))}
             </div>
           ) : null}
-          <div className="ls-foot__col">
-            <h4>Your visit</h4>
-            <Link href={`/${slug}/checkout`}>Basket</Link>
-            <Link href="/activity">Your orders &amp; bookings</Link>
-          </div>
+          {visitLinks.length > 0 ? (
+            <div className="ls-foot__col">
+              <p className="ls-foot__heading">Your visit</p>
+              {visitLinks.map((item) => (
+                <Link key={item.href} href={item.href}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="ls-foot__bar">
           <span>

@@ -140,7 +140,7 @@ class WebsiteCompositionService:
         )
         website = await WebsiteResolver.resolve_website(session, business_id=business_id)
         draft = await WebsiteResolver.resolve_draft_version(
-            session, business_id=business_id, website_id=website.id
+            session, business_id=business_id, website_id=website.id, for_update=True
         )
         if page.website_version_id != draft.id:
             raise ValidationError(

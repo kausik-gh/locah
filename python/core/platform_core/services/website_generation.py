@@ -441,8 +441,12 @@ class WebsiteGenerationService:
         job = result.scalars().first()
         if job is None:
             raise ValidationError("Generation job not found")
-        if job.status in {"completed", "fallback_used"}:
+        if job.status in {"completed", "fallback_used", "superseded"}:
             return {"status": job.status, "job_id": str(job.id), "duplicate": True}
+
+        if job.prompt_version == "interview-v1":
+            from platform_core.services.business_interview import BusinessInterviewService
+            return await BusinessInterviewService.personalize_job(session, job, correlation_id)
 
         job.status = "running"
         job.started_at = datetime.now(timezone.utc)

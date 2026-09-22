@@ -5,6 +5,8 @@ type Props = {
   sectionId: string
   sectionTypeId: string
   initialContent: Record<string, unknown>
+  initialVariant?: string | null
+  allowedVariants: string[]
 }
 
 export function SectionEditor({
@@ -12,6 +14,8 @@ export function SectionEditor({
   sectionId,
   sectionTypeId,
   initialContent,
+  initialVariant,
+  allowedVariants,
 }: Props) {
   const headline = String(initialContent.headline || '')
   const body = String(initialContent.body || initialContent.subheadline || '')
@@ -26,6 +30,28 @@ export function SectionEditor({
       <input type="hidden" name="sectionTypeId" value={sectionTypeId} />
       <input type="hidden" name="initialContent" value={JSON.stringify(initialContent)} />
       <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>{sectionTypeId}</div>
+      {allowedVariants.length > 1 ? (
+        <label style={{ display: 'block', marginTop: '0.4rem' }}>
+          Layout
+          <select
+            name="layoutVariant"
+            defaultValue={initialVariant || allowedVariants[0]}
+            style={{ display: 'block', width: '100%', marginTop: '0.25rem', padding: '0.4rem' }}
+          >
+            {allowedVariants.map((variant) => (
+              <option key={variant} value={variant}>
+                {variant.replaceAll('_', ' ')}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <input
+          type="hidden"
+          name="layoutVariant"
+          value={initialVariant || allowedVariants[0] || ''}
+        />
+      )}
       {(sectionTypeId === 'hero' ||
         sectionTypeId === 'cta_band' ||
         'headline' in initialContent) && (

@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/platform-api'
 import { OnboardingError, OnboardingShell, Steps } from '@/components/onboarding/Shell'
+import { LivePreview } from './LivePreview'
+import './preview.css'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,31 +21,17 @@ type WebsiteAggregate = {
 }
 type Business = { id: string; slug: string; display_name: string }
 
-const BTN: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '0.7rem 1.4rem',
-  borderRadius: '8px',
-  background: '#1c5f57',
-  color: '#fff',
-  textDecoration: 'none',
-  fontWeight: 600,
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: '0.95rem',
-}
-const GHOST: React.CSSProperties = {
-  ...BTN,
-  background: 'transparent',
-  color: '#1c5f57',
-  border: '1px solid #1c5f57',
-}
-
 /**
- * Onboarding step 2 — the generated website, made visible.
+ * Onboarding step 2 — the website, shown rather than described.
  *
- * Generation is enqueued server-side by business creation. In practice the
- * deterministic draft is written during creation, so by the time this page
- * renders there are usually already real pages; the "still building" branch
- * exists for the case where the async job hasn't landed a draft yet.
+ * The interview's "build" writes a real deterministic draft synchronously
+ * before this page is ever requested, so by the time it renders there is an
+ * actual site to put on screen. It goes on screen. A progress screen here
+ * would be inventing a wait that the architecture already removed.
+ *
+ * The "still building" branch below is kept for the genuine case where no
+ * draft exists at all — a direct visit before building, or a generation that
+ * failed outright. It is a real empty state, not a default.
  */
 export default async function WebsiteStepPage({
   params,
@@ -62,9 +50,6 @@ export default async function WebsiteStepPage({
     ),
   ])
 
-  const genStatus = genRes.ok ? genRes.data.data?.status : undefined
-  const regenerating = genStatus === 'pending' || genStatus === 'running'
-
   if (!siteRes.ok) {
     return (
       <OnboardingShell>
@@ -74,7 +59,7 @@ export default async function WebsiteStepPage({
           code={siteRes.error.code}
           message={siteRes.error.message}
         >
-          <Link href={`/start/${params.businessId}/website`} style={GHOST}>
+          <Link href={`/start/${params.businessId}/website`} className="lc-btn">
             Try again
           </Link>
         </OnboardingError>
@@ -87,32 +72,20 @@ export default async function WebsiteStepPage({
   const business = bizRes.ok
     ? (bizRes.data.data || []).find((b) => b.id === params.businessId)
     : undefined
+  const genStatus = genRes.ok ? (genRes.data.data?.status ?? null) : null
 
-  // Still building: no draft pages yet, or a questionnaire-driven regeneration
-  // is in flight. Refresh on a timer rather than an indefinite spinner.
-  if (pages.length === 0 || regenerating) {
+  if (pages.length === 0) {
     return (
       <OnboardingShell>
-        <meta httpEquiv="refresh" content="3" />
         <Steps current={2} />
-        <h1 style={{ fontSize: '2rem', margin: '0 0 0.6rem' }}>Building your website…</h1>
-        <p style={{ color: '#3c4855', lineHeight: 1.65, maxWidth: '34rem' }}>
-          {regenerating
-            ? "We're writing your site from your answers now. This screen refreshes on its own."
-            : "We're generating your pages now. This screen refreshes every few seconds and will show your site as soon as it's ready."}
+        <h1 className="lp-title">No website yet</h1>
+        <p className="lp-lede">
+          Your website is built from your interview answers. Finish the conversation and choose
+          <strong> Build my website</strong> — the first version appears straight away.
         </p>
-        <p
-          style={{
-            fontFamily: 'system-ui, sans-serif',
-            fontSize: '0.85rem',
-            color: '#4c5967',
-            marginTop: '1.5rem',
-          }}
-        >
-          Taking too long?{' '}
-          <Link href={`/start/${params.businessId}/modules`}>Skip ahead to your tools</Link> — the
-          website will finish on its own.
-        </p>
+        <Link href={`/start/${params.businessId}/interview`} className="lc-btn lc-btn--primary">
+          Back to your interview →
+        </Link>
       </OnboardingShell>
     )
   }
@@ -129,88 +102,60 @@ export default async function WebsiteStepPage({
     business && previewToken
       ? `/${business.slug}?preview_token=${encodeURIComponent(previewToken)}`
       : undefined
+  const nextStep = site.draft?.generated_by?.startsWith('interview') ? 'done' : 'modules'
 
   return (
-    <OnboardingShell>
+    <OnboardingShell wide>
       <Steps current={2} />
-      <h1 style={{ fontSize: '2rem', margin: '0 0 0.6rem' }}>Your website is ready</h1>
-      <p style={{ color: '#3c4855', lineHeight: 1.65, margin: '0 0 2rem', maxWidth: '36rem' }}>
-        We built {pages.length} {pages.length === 1 ? 'page' : 'pages'} with {totalSections}{' '}
-        {totalSections === 1 ? 'section' : 'sections'} for{' '}
-        <strong>{business?.display_name || 'your business'}</strong>. It&apos;s a draft — only
-        you can see it until you publish.
-      </p>
-
-      <div style={{ display: 'grid', gap: '0.7rem', marginBottom: '2rem' }}>
-        {pages.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '1rem',
-              flexWrap: 'wrap',
-              padding: '0.85rem 1.1rem',
-              borderRadius: '10px',
-              border: '1px solid rgba(28,36,48,0.14)',
-              background: 'rgba(255,255,255,0.7)',
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 600 }}>{p.title}</div>
-              <div
-                style={{
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  fontSize: '0.8rem',
-                  color: '#4c5967',
-                  marginTop: '0.15rem',
-                }}
-              >
-                /{business?.slug || '…'}
-                {p.slug && p.slug !== 'home' ? `/${p.slug}` : ''}
-              </div>
-            </div>
-            <span
-              style={{
-                fontFamily: 'system-ui, sans-serif',
-                fontSize: '0.82rem',
-                color: '#4c5967',
-              }}
-            >
-              {p.sections?.length || 0} sections
-            </span>
-          </div>
-        ))}
+      <div className="lp-head">
+        <div>
+          <h1 className="lp-title">Here is your website</h1>
+          <p className="lp-lede">
+            {pages.length} {pages.length === 1 ? 'page' : 'pages'}, {totalSections}{' '}
+            {totalSections === 1 ? 'section' : 'sections'}, built from what you told us. It is a
+            draft — only you can see it until you publish.
+          </p>
+        </div>
+        <div className="lp-actions">
+          <Link href={`/start/${params.businessId}/${nextStep}`} className="lc-btn lc-btn--primary">
+            Continue →
+          </Link>
+          {previewHref ? (
+            <a href={previewHref} target="_blank" rel="noreferrer" className="lc-btn">
+              Open full size ↗
+            </a>
+          ) : null}
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <Link href={`/start/${params.businessId}/modules`} style={BTN}>
-          Next: choose your tools →
-        </Link>
-        {previewHref ? (
-          <a href={previewHref} target="_blank" rel="noreferrer" style={GHOST}>
-            Preview the live site ↗
-          </a>
-        ) : null}
-      </div>
-
-      {site.draft?.generated_by === 'deterministic_fallback' ? (
-        <p
-          style={{
-            marginTop: '2rem',
-            fontFamily: 'system-ui, sans-serif',
-            fontSize: '0.85rem',
-            color: '#4c5967',
-            lineHeight: 1.6,
-            maxWidth: '36rem',
-          }}
-        >
-          Built from your business details using the standard layout for your industry — no AI
-          writing provider is configured on this environment. You can edit every page and
-          section in your Workspace.
+      {previewHref ? (
+        <LivePreview
+          businessId={params.businessId}
+          src={previewHref}
+          initialStatus={genStatus}
+        />
+      ) : (
+        <p className="lp-lede" role="status">
+          Your draft is saved with {pages.length} {pages.length === 1 ? 'page' : 'pages'}, but the
+          secure preview link could not be created just now. You can open and edit every page in
+          your Workspace.
         </p>
-      ) : null}
+      )}
+
+      <ul className="lp-pages">
+        {pages.map((p) => (
+          <li key={p.id}>
+            <strong>{p.title}</strong>
+            <code>
+              /{business?.slug || '…'}
+              {p.slug && p.slug !== 'home' ? `/${p.slug}` : ''}
+            </code>
+            <span>
+              {p.sections?.length || 0} {p.sections?.length === 1 ? 'section' : 'sections'}
+            </span>
+          </li>
+        ))}
+      </ul>
     </OnboardingShell>
   )
 }

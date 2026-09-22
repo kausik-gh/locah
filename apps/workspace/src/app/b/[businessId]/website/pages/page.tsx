@@ -16,6 +16,7 @@ type WebsiteResponse = {
         sections: {
           id: string
           section_type_id: string
+          layout_variant?: string | null
           content: Record<string, unknown>
           is_visible: boolean
         }[]
@@ -24,14 +25,22 @@ type WebsiteResponse = {
   }
 }
 
-export default async function WebsitePagesPage({
-  params,
-}: {
-  params: { businessId: string }
-}) {
+type SectionTypesResponse = {
+  data: {
+    section_types: {
+      id: string
+      allowed_variants: string[]
+    }[]
+  }
+}
+
+export default async function WebsitePagesPage({ params }: { params: { businessId: string } }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
-  const res = await apiTry<WebsiteResponse>(`/v1/b/${params.businessId}/website`, token)
+  const [res, sectionTypes] = await Promise.all([
+    apiTry<WebsiteResponse>(`/v1/b/${params.businessId}/website`, token),
+    apiTry<SectionTypesResponse>(`/v1/b/${params.businessId}/website/section-types`, token),
+  ])
   if (!res.ok) {
     return (
       <div>
@@ -40,6 +49,14 @@ export default async function WebsitePagesPage({
       </div>
     )
   }
+  const variants = new Map(
+    sectionTypes.ok
+      ? sectionTypes.data.data.section_types.map((section) => [
+          section.id,
+          section.allowed_variants,
+        ])
+      : []
+  )
 
   return (
     <div>
@@ -68,6 +85,8 @@ export default async function WebsitePagesPage({
               sectionId={section.id}
               sectionTypeId={section.section_type_id}
               initialContent={section.content}
+              initialVariant={section.layout_variant}
+              allowedVariants={variants.get(section.section_type_id) || []}
             />
           ))}
         </section>

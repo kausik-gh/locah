@@ -125,8 +125,9 @@
   /* ---- Fonts ----------------------------------------------------------
      General Sans is already self-hosted in apps/workspace. The public app
      loads the same family so LOCAH speaks with one voice.                 */
-  --font-sans: var(--font-general-sans, 'General Sans'), ui-sans-serif, system-ui,
-    -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-sans:
+    var(--font-general-sans, 'General Sans'), ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    Roboto, sans-serif;
   --font-display: var(--font-display-serif, 'Instrument Serif'), var(--font-sans);
   --font-mono: ui-monospace, 'SFMono-Regular', Menlo, monospace;
 }
@@ -189,6 +190,23 @@
   --site-bg: #121212;
   --site-bg-alt: #1b1b1b;
   --site-border: rgba(255, 255, 255, 0.14);
+}
+
+/* DesignStrategy emits only these finite, renderer-backed directions. */
+[data-locah-site][data-typography='editorial_serif'] {
+  --site-display-font: var(--font-display);
+}
+
+[data-locah-site][data-typography='modern_sans'] {
+  --site-display-font: var(--font-sans);
+}
+
+[data-locah-site][data-density='compact'] {
+  --site-section-y: clamp(2.5rem, 1.75rem + 3vw, 4.5rem);
+}
+
+[data-locah-site][data-density='spacious'] {
+  --site-section-y: clamp(4.5rem, 3rem + 6vw, 8rem);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -33,19 +33,20 @@ class WebsiteResolver:
 
     @staticmethod
     async def resolve_draft_version(
-        session: AsyncSession, *, business_id: uuid.UUID, website_id: uuid.UUID
+        session: AsyncSession, *, business_id: uuid.UUID, website_id: uuid.UUID, for_update: bool = False
     ) -> WebsiteVersion:
         # AUD-08: the live draft is the one not yet superseded. A partial unique
         # index guarantees there is at most one, so this needs no ordering and
         # cannot pick the wrong row under a created_at tie.
-        result = await session.execute(
-            select(WebsiteVersion).where(
+        statement = select(WebsiteVersion).where(
                 WebsiteVersion.website_id == website_id,
                 WebsiteVersion.business_id == business_id,
                 WebsiteVersion.version_type == "draft",
                 WebsiteVersion.superseded_at.is_(None),
             )
-        )
+        if for_update:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        result = await session.execute(statement)
         version = result.scalars().first()
         if version is None:
             raise ResourceNotFound("Website draft")

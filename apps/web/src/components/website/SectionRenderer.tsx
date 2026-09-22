@@ -275,53 +275,10 @@ export function SectionRenderer({
 
     /* ---------------------------------------------------- enquiry_form */
     case 'enquiry_form': {
-      const variant = v || 'default'
-      // Posts to the tenant's own enquiry route, which creates a Lead via the
-      // existing leads module. No fake submission handler.
-      return (
-        <section className={`ls-section ${alt ? 'ls-section--alt' : ''}`}>
-          <div className="ls-inner ls-inner--narrow">
-            <div className="ls-head ls-head--center">
-              <h2 className="ls-title">{str(c.title) || 'Get in touch'}</h2>
-              {c.subtitle ? <p className="ls-sub">{str(c.subtitle)}</p> : null}
-            </div>
-            <form className={`ls-form ${variant === 'compact' ? 'ls-form--compact' : ''}`} method="post" action={`/${businessSlug}/enquire`}>
-              <div className="ls-field">
-                <label className="ls-field__label" htmlFor={`nm-${section.id}`}>
-                  Your name
-                </label>
-                <input id={`nm-${section.id}`} name="name" required autoComplete="name" />
-              </div>
-              <div className="ls-field">
-                <label className="ls-field__label" htmlFor={`em-${section.id}`}>
-                  Email
-                </label>
-                <input id={`em-${section.id}`} name="email" type="email" required autoComplete="email" />
-              </div>
-              <div className="ls-field">
-                <label className="ls-field__label" htmlFor={`ph-${section.id}`}>
-                  Phone <span style={{ opacity: 0.6 }}>(optional)</span>
-                </label>
-                <input id={`ph-${section.id}`} name="phone" type="tel" autoComplete="tel" />
-              </div>
-              {variant !== 'compact' ? (
-                <div className="ls-field">
-                  <label className="ls-field__label" htmlFor={`ms-${section.id}`}>
-                    How can we help?
-                  </label>
-                  <textarea id={`ms-${section.id}`} name="message" />
-                </div>
-              ) : null}
-              <div className="ls-form__actions">
-                <button type="submit" className="ls-btn">
-                  Send enquiry
-                </button>
-                <span className="ls-form__note">We usually reply within a day.</span>
-              </div>
-            </form>
-          </div>
-        </section>
-      )
+      // Leads currently has no anonymous public mutation route. Rendering a
+      // form that posts to a plausible URL would promise a mechanic that does
+      // not exist, so governed generation omits it and legacy drafts fail shut.
+      return null
     }
 
     /* --------------------------------------------------------- gallery */
@@ -427,7 +384,7 @@ export function SectionRenderer({
     case 'location_list': {
       const variant = v || 'cards'
       const locations = Array.isArray((c as { locations?: unknown }).locations)
-        ? ((c as { locations: Array<Record<string, unknown>> }).locations)
+        ? (c as { locations: Array<Record<string, unknown>> }).locations
         : []
       if (locations.length === 0) return null
       return (

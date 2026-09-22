@@ -81,7 +81,7 @@ def test_generation_fallback_always_produces_draft(owner: tuple[dict[str, str], 
     locally-running worker cannot race us for it."""
     import platform_core.services.website_generation as gen_mod
 
-    headers, _ = owner
+    headers, user_id = owner
     client = TestClient(app)
     business_id = _create_business(client, headers)
     biz_uuid = uuid.UUID(business_id)
@@ -94,11 +94,11 @@ def test_generation_fallback_always_produces_draft(owner: tuple[dict[str, str], 
         engine = create_async_engine(url, echo=False, poolclass=NullPool)
         factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         async with factory() as session:
-            triggered_by = (
-                await session.execute(
-                    select(WGJ.triggered_by).where(WGJ.business_id == biz_uuid).limit(1)
-                )
-            ).scalar_one()
+            # Business creation no longer auto-enqueues generation (see
+            # test_creation_never_enqueues_or_calls_ai), so there is no existing
+            # WebsiteGenerationJob row to borrow triggered_by from. Use the owner's
+            # own identity, exactly as the real interview/manual-generate paths do.
+            triggered_by = user_id
             job = WGJ(
                 business_id=biz_uuid,
                 status="pending",
@@ -213,7 +213,7 @@ def test_generation_uses_ai_provider_and_intake(
 
     monkeypatch.setattr(gen_mod, "get_ai_provider", lambda: _StubProvider())
 
-    headers, _ = owner
+    headers, user_id = owner
     client = TestClient(app)
     business_id = _create_business(client, headers)
     biz_uuid = uuid.UUID(business_id)
@@ -233,11 +233,11 @@ def test_generation_uses_ai_provider_and_intake(
         engine = create_async_engine(url, echo=False, poolclass=NullPool)
         factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         async with factory() as session:
-            triggered_by = (
-                await session.execute(
-                    select(WGJ.triggered_by).where(WGJ.business_id == biz_uuid).limit(1)
-                )
-            ).scalar_one()
+            # Business creation no longer auto-enqueues generation (see
+            # test_creation_never_enqueues_or_calls_ai), so there is no existing
+            # WebsiteGenerationJob row to borrow triggered_by from. Use the owner's
+            # own identity, exactly as the real interview/manual-generate paths do.
+            triggered_by = user_id
             job = WGJ(
                 business_id=biz_uuid,
                 status="pending",
@@ -280,7 +280,7 @@ def test_invalid_ai_output_falls_back_to_deterministic_draft(
 
     monkeypatch.setattr(gen_mod, "get_ai_provider", lambda: _InvalidProvider())
 
-    headers, _ = owner
+    headers, user_id = owner
     client = TestClient(app)
     business_id = _create_business(client, headers)
     biz_uuid = uuid.UUID(business_id)
@@ -293,11 +293,11 @@ def test_invalid_ai_output_falls_back_to_deterministic_draft(
         engine = create_async_engine(url, echo=False, poolclass=NullPool)
         factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         async with factory() as session:
-            triggered_by = (
-                await session.execute(
-                    select(WGJ.triggered_by).where(WGJ.business_id == biz_uuid).limit(1)
-                )
-            ).scalar_one()
+            # Business creation no longer auto-enqueues generation (see
+            # test_creation_never_enqueues_or_calls_ai), so there is no existing
+            # WebsiteGenerationJob row to borrow triggered_by from. Use the owner's
+            # own identity, exactly as the real interview/manual-generate paths do.
+            triggered_by = user_id
             job = WGJ(
                 business_id=biz_uuid,
                 status="pending",
@@ -416,7 +416,7 @@ def test_generated_draft_cannot_contain_sections_the_business_lacks(
 
     monkeypatch.setattr(gen_mod, "get_ai_provider", lambda: _OverreachingProvider())
 
-    headers, _ = owner
+    headers, user_id = owner
     client = TestClient(app)
     business_id = _create_business(client, headers)
     biz_uuid = uuid.UUID(business_id)
@@ -429,11 +429,11 @@ def test_generated_draft_cannot_contain_sections_the_business_lacks(
         engine = create_async_engine(url, echo=False, poolclass=NullPool)
         factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         async with factory() as session:
-            triggered_by = (
-                await session.execute(
-                    select(WGJ.triggered_by).where(WGJ.business_id == biz_uuid).limit(1)
-                )
-            ).scalar_one()
+            # Business creation no longer auto-enqueues generation (see
+            # test_creation_never_enqueues_or_calls_ai), so there is no existing
+            # WebsiteGenerationJob row to borrow triggered_by from. Use the owner's
+            # own identity, exactly as the real interview/manual-generate paths do.
+            triggered_by = user_id
             job = WGJ(
                 business_id=biz_uuid,
                 status="pending",

@@ -110,11 +110,25 @@
   text-decoration: none;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: filter 140ms ease, transform 140ms ease;
+  transition:
+    filter 140ms ease,
+    transform 140ms ease;
 }
 .ls-btn:hover {
   filter: brightness(1.08);
   transform: translateY(-1px);
+}
+[data-locah-site][data-motion='none'] *,
+[data-locah-site][data-motion='none'] *::before,
+[data-locah-site][data-motion='none'] *::after {
+  animation: none !important;
+  scroll-behavior: auto !important;
+  transition: none !important;
+}
+[data-locah-site][data-motion='none'] .ls-btn:hover,
+[data-locah-site][data-motion='none'] .ls-item:hover,
+[data-locah-site][data-motion='none'] .ls-gallery__item:hover img {
+  transform: none;
 }
 .ls-btn--outline {
   background: transparent;
@@ -166,6 +180,17 @@
 }
 .ls-hero--full_width {
   min-height: clamp(520px, 78vh, 820px);
+}
+[data-locah-site][data-hero-density='compact'] .ls-hero--centered,
+[data-locah-site][data-hero-density='compact'] .ls-hero--left_aligned,
+[data-locah-site][data-hero-density='compact'] .ls-hero--full_width {
+  min-height: clamp(320px, 42vh, 480px);
+  padding-block: clamp(2.75rem, 2rem + 3vw, 4.5rem);
+}
+[data-locah-site][data-hero-density='immersive'] .ls-hero--centered,
+[data-locah-site][data-hero-density='immersive'] .ls-hero--left_aligned,
+[data-locah-site][data-hero-density='immersive'] .ls-hero--full_width {
+  min-height: clamp(600px, 84vh, 900px);
 }
 /* Scrim only when there is a photo — a flat colour hero needs no veil. */
 .ls-hero--hasimage::before {
@@ -448,7 +473,9 @@
   border: 1px solid var(--site-border);
   background: var(--site-bg);
   color: var(--site-ink);
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 .ls-field textarea {
   min-height: 130px;
@@ -550,7 +577,9 @@
   border: 1px solid var(--site-border);
   border-radius: var(--site-radius);
   overflow: hidden;
-  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 220ms ease;
+  transition:
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 220ms ease;
 }
 .ls-item:hover {
   transform: translateY(-3px);
@@ -1029,6 +1058,12 @@
   align-items: center;
   gap: 1.5rem;
 }
+[data-locah-site][data-navigation='compact'] .ls-nav__inner {
+  height: 58px;
+}
+[data-locah-site][data-navigation='compact'] .ls-nav__links {
+  gap: 1rem;
+}
 .ls-nav__brand {
   display: inline-flex;
   align-items: center;
@@ -1092,7 +1127,7 @@
 }
 @media (min-width: 820px) {
   .ls-foot__inner {
-    grid-template-columns: 1.4fr 1fr 1fr;
+    grid-template-columns: 1.4fr repeat(auto-fit, minmax(10rem, 1fr));
   }
 }
 .ls-foot__name {
@@ -1101,7 +1136,7 @@
   font-weight: 700;
   margin: 0 0 0.5rem;
 }
-.ls-foot__col h4 {
+.ls-foot__heading {
   font-size: 0.72rem;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -1133,10 +1168,21 @@
 }
 /* The one place LOCAH may appear on a tenant site: a quiet attribution. */
 .ls-foot__by {
-  opacity: 0.75;
+  color: var(--site-muted);
+  opacity: 1;
 }
 .ls-foot__by:hover {
   opacity: 1;
+}
+
+@media (max-width: 640px) {
+  [data-locah-site][data-mobile-priority='conversion'] .ls-hero__cta .ls-btn {
+    width: 100%;
+  }
+  [data-locah-site][data-mobile-priority='imagery'] .ls-hero--image_left .ls-hero__media,
+  [data-locah-site][data-mobile-priority='imagery'] .ls-hero--image_right .ls-hero__media {
+    order: -1;
+  }
 }
 
 /* Empty state for a list section whose module has no records yet. The owner
@@ -1148,4 +1194,44 @@
   text-align: center;
   color: var(--site-muted);
   font-size: 0.92rem;
+}
+
+/* ---------------------------------------------------------------- emphasis
+   How loudly a section speaks, decided per business by the design strategy.
+   Two businesses with the same sections in the same order still read
+   differently when one leads with its menu and the other leads with its story.
+   The wrapper uses `display: contents`, so these rules reach the section
+   itself without a layout box in between. */
+[data-locah-site] [data-emphasis='primary'] > .ls-section {
+  padding-block: calc(var(--site-section-y) * 1.28);
+}
+[data-locah-site] [data-emphasis='primary'] > .ls-section .ls-title {
+  font-size: clamp(1.9rem, 1.3rem + 2.4vw, 3rem);
+}
+[data-locah-site] [data-emphasis='primary'] > .ls-section .ls-head::after {
+  content: '';
+  display: block;
+  width: 3rem;
+  height: 3px;
+  margin-top: 0.9rem;
+  background: var(--site-accent);
+}
+[data-locah-site] [data-emphasis='quiet'] > .ls-section {
+  padding-block: calc(var(--site-section-y) * 0.62);
+}
+[data-locah-site] [data-emphasis='quiet'] > .ls-section .ls-title {
+  font-size: clamp(1.15rem, 1rem + 0.7vw, 1.5rem);
+  color: var(--site-muted);
+  letter-spacing: 0.01em;
+}
+@media (max-width: 760px) {
+  /* On a phone the quiet/primary spread compresses — vertical room is scarcer
+     than attention, and an over-tall "primary" section just pushes everything
+     below the fold. */
+  [data-locah-site] [data-emphasis='primary'] > .ls-section {
+    padding-block: calc(var(--site-section-y) * 1.1);
+  }
+  [data-locah-site] [data-emphasis='quiet'] > .ls-section {
+    padding-block: calc(var(--site-section-y) * 0.78);
+  }
 }

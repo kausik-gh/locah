@@ -1,4 +1,5 @@
 // Canonical API and Event contracts
+export type * from './interview'
 export interface EventEnvelope<T = Record<string, any>> {
   id: string
   businessId: string | null

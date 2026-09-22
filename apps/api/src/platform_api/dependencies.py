@@ -237,8 +237,8 @@ async def verify_jwt_payload(
 
 async def get_request_context(
     request: Request,
-    session: AsyncSession = Depends(get_db_session),
     jwt_payload: dict[str, Any] = Depends(verify_jwt_payload),
+    session: AsyncSession = Depends(get_db_session),
     x_correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
 ) -> RequestContext:
     return await resolve_request_context(
@@ -252,8 +252,8 @@ async def get_request_context(
 
 async def get_identity_context(
     request: Request,
-    session: AsyncSession = Depends(get_db_session),
     jwt_payload: dict[str, Any] = Depends(verify_jwt_payload),
+    session: AsyncSession = Depends(get_db_session),
     x_correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
 ) -> RequestContext:
     """Identity-only context for endpoints that precede membership creation

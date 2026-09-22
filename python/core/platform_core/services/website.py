@@ -84,10 +84,8 @@ class WebsiteService:
                 section_type_id="hero",
                 layout_variant="centered",
                 content={
-                    "headline": "Your website is being prepared",
-                    "subheadline": "A draft will appear shortly. You can edit and publish when ready.",
-                    "cta_label": "About",
-                    "cta_url": "/about",
+                    "headline": "Your website starts here",
+                    "subheadline": "Complete your business interview to create a draft, or edit this page yourself.",
                 },
                 sort_order=0,
                 is_visible=True,
@@ -254,7 +252,7 @@ class WebsiteVersionService:
         assert_business_mutable(business.state, action="edit website")
         website = await WebsiteResolver.resolve_website(session, business_id=business_id)
         draft = await WebsiteResolver.resolve_draft_version(
-            session, business_id=business_id, website_id=website.id
+            session, business_id=business_id, website_id=website.id, for_update=True
         )
         before = WebsiteResolver.serialize_version(draft)
         if navigation is not None:
@@ -303,7 +301,7 @@ class PageService:
         )
         website = await WebsiteResolver.resolve_website(session, business_id=business_id)
         draft = await WebsiteResolver.resolve_draft_version(
-            session, business_id=business_id, website_id=website.id
+            session, business_id=business_id, website_id=website.id, for_update=True
         )
         if page.website_version_id != draft.id:
             from platform_core.exceptions import ValidationError
@@ -352,7 +350,7 @@ class SectionService:
         )
         website = await WebsiteResolver.resolve_website(session, business_id=business_id)
         draft = await WebsiteResolver.resolve_draft_version(
-            session, business_id=business_id, website_id=website.id
+            session, business_id=business_id, website_id=website.id, for_update=True
         )
         if page.website_version_id != draft.id:
             from platform_core.exceptions import ValidationError
@@ -360,10 +358,23 @@ class SectionService:
             raise ValidationError("Only draft sections can be edited")
         validated = validate_section_patch(payload)
         before = WebsiteResolver.serialize_section(section)
-        if "content" in validated:
+        if "content" in validated or "layout_variant" in validated:
             section_type = await WebsiteResolver.load_section_type(
                 session, section.section_type_id
             )
+        else:
+            section_type = None
+        if "layout_variant" in validated and section_type:
+            allowed = list(section_type.allowed_variants or [])
+            variant = validated["layout_variant"]
+            if variant is not None and allowed and variant not in allowed:
+                from platform_core.exceptions import ValidationError
+
+                raise ValidationError(
+                    "That layout is not one this section offers",
+                    details={"code": "unknown_variant", "allowed": allowed},
+                )
+        if "content" in validated:
             schema = section_type.content_schema if section_type else None
             validated["content"] = validate_section_content(
                 section.section_type_id, validated["content"], content_schema=schema

@@ -37,10 +37,10 @@ export async function fetchPublicWebsite(
     ? `/v1/public/websites/${slug}/pages/${pageSlug}`
     : `/v1/public/websites/${slug}`
   const qs = previewToken ? `?preview_token=${encodeURIComponent(previewToken)}` : ''
-  const res = await fetch(`${apiUrl}${path}${qs}`, {
-    cache: previewToken ? 'no-store' : 'force-cache',
-    next: previewToken ? undefined : { revalidate: 60, tags: [`website:${slug}`] },
-  })
+  const res = await fetch(
+    `${apiUrl}${path}${qs}`,
+    previewToken ? { cache: 'no-store' } : { next: { revalidate: 60, tags: [`website:${slug}`] } }
+  )
   if (!res.ok) return null
   const json = (await res.json()) as { data: PublicWebsitePayload }
   return json.data

@@ -242,6 +242,11 @@ class MediaService:
                     wanted.add(uuid.UUID(str(raw)))
                 except ValueError:
                     continue
+            for raw in (content.get("image_asset_ids") or [])[:20]:
+                try:
+                    wanted.add(uuid.UUID(str(raw)))
+                except ValueError:
+                    continue
         if not wanted:
             return sections
 
@@ -262,6 +267,10 @@ class MediaService:
                 asset = by_id.get(str(content.get(key) or ""))
                 if asset is not None and asset.public_url:
                     resolved[key] = {"url": asset.public_url, "alt_text": asset.alt_text}
+            for index, raw in enumerate((content.get("image_asset_ids") or [])[:20]):
+                asset = by_id.get(str(raw))
+                if asset is not None and asset.public_url:
+                    resolved[f"image_asset_id_{index}"] = {"url": asset.public_url, "alt_text": asset.alt_text}
             if resolved:
                 section["assets"] = resolved
         return sections

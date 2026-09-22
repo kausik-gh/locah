@@ -110,7 +110,7 @@ class GrokProvider:
             "messages": [
                 {
                     "role": "system",
-                    "content": (
+                    "content": model_config.get("system_prompt") or (
                         "You generate structured multi-page business website drafts. "
                         "Return JSON only that matches the supplied schema. "
                         "Do not include markdown fences or commentary."

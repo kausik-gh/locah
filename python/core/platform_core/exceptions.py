@@ -37,6 +37,20 @@ class ConflictError(PlatformError):
         super().__init__(status.HTTP_409_CONFLICT, "CONFLICT", message, details)
 
 
+class ServiceUnavailable(PlatformError):
+    """An optional upstream is down, and the feature that needs it cannot start.
+
+    Distinct from a validation error, which blames the request, and from a
+    conflict, which blames state. The caller is expected to carry on without
+    the feature — voice falling back to chat is the case this exists for.
+    """
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", message, details
+        )
+
+
 class SessionExpired(PlatformError):
     def __init__(self, message: str = "Session expired"):
         super().__init__(status.HTTP_401_UNAUTHORIZED, "SESSION_EXPIRED", message)

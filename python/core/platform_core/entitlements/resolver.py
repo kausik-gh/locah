@@ -90,7 +90,11 @@ class BusinessEntitlementResolver:
                 continue
             if "max" in override:
                 max_value = override["max"]
-                merged[key] = max_value if isinstance(max_value, int) or max_value is None else merged.get(key)
+                merged[key] = (
+                    max_value
+                    if isinstance(max_value, int) or max_value is None
+                    else merged.get(key)
+                )
         return merged
 
     @staticmethod
@@ -104,7 +108,9 @@ class BusinessEntitlementResolver:
 
         configuration = BusinessConfigurationResolver.resolve_from_business(business)
         business_type = business.business_type or DEFAULT_BUSINESS_TYPE
-        plan = PlanRegistry.get_or_default(BusinessEntitlementResolver.plan_id_for_business(business))
+        plan = PlanRegistry.get_or_default(
+            BusinessEntitlementResolver.plan_id_for_business(business)
+        )
         overrides = BusinessEntitlementResolver.overrides_for_business(business)
 
         entitled_modules: set[str] = set(ModuleRegistry.platform_core_ids())
@@ -162,14 +168,18 @@ class BusinessEntitlementResolver:
                 module_id, frozenset(entitled_modules)
             )
             activation = activation_rows.get(module_id)
-            activation_state = activation.activation_state if activation else module_def.default_state
+            activation_state = (
+                activation.activation_state if activation else module_def.default_state
+            )
             module_states[module_id] = ModuleState(
                 module_id=module_id,
                 entitled=entitled,
                 activation_state=activation_state,
-                configuration_ready=bool(
-                    activation and activation.configuration and activation.activation_state in {"ready", "active"}
-                ),
+                # First Launch modules have no separate configuration schema:
+                # reaching ready/active is itself the readiness signal. Using
+                # truthiness of the JSON configuration stranded every enabled
+                # module with an empty dict outside the website capability plan.
+                configuration_ready=activation_state in {"ready", "active"},
                 dependency_satisfied=dep_ok,
                 source=module_sources.get(module_id, "unknown"),
             )

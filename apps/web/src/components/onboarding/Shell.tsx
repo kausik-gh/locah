@@ -5,7 +5,14 @@ import { Wordmark } from '@/components/public/Wordmark'
 const STEPS = ['Your business', 'Your website', 'Your tools', 'Done'] as const
 
 /** Shared chrome for the /start onboarding sequence. */
-export function OnboardingShell({ children }: { children: React.ReactNode }) {
+/** `wide` gives a step room for a real website preview rather than prose. */
+export function OnboardingShell({
+  children,
+  wide = false,
+}: {
+  children: React.ReactNode
+  wide?: boolean
+}) {
   return (
     <div className="locah-public ob-shell">
       <header className="ob-shell__head">
@@ -15,7 +22,11 @@ export function OnboardingShell({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
       </header>
-      <main className="lc-container ob-shell__body">{children}</main>
+      <main
+        className={`lc-container ob-shell__body${wide ? ' ob-shell__body--wide' : ''}`}
+      >
+        {children}
+      </main>
     </div>
   )
 }
