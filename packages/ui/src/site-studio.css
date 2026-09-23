@@ -26,7 +26,8 @@
   --site-display-tracking: -0.025em;
 }
 [data-locah-site][data-type='bold_commerce'] {
-  --site-display-font: var(--font-site-archivo, system-ui), var(--site-tamil), system-ui, sans-serif;
+  --site-display-font:
+    var(--font-site-archivo, system-ui), var(--site-tamil), system-ui, sans-serif;
   --site-heading-weight: 800;
   --site-display-tracking: -0.035em;
 }
@@ -546,12 +547,20 @@
 }
 .ls-hero--noimage.ls-hero--editorial_overlay {
   background-image:
-    radial-gradient(90% 80% at 85% 10%, color-mix(in srgb, var(--site-accent) 32%, transparent), transparent 60%),
+    radial-gradient(
+      90% 80% at 85% 10%,
+      color-mix(in srgb, var(--site-accent) 32%, transparent),
+      transparent 60%
+    ),
     linear-gradient(160deg, color-mix(in srgb, var(--site-primary) 70%, #000) 0%, #0b0b0c 100%);
 }
 .ls-hero--noimage.ls-hero--cinematic {
   background-image:
-    radial-gradient(60% 55% at 88% 12%, color-mix(in srgb, var(--site-primary) 18%, transparent), transparent 70%),
+    radial-gradient(
+      60% 55% at 88% 12%,
+      color-mix(in srgb, var(--site-primary) 18%, transparent),
+      transparent 70%
+    ),
     linear-gradient(180deg, #121214 0%, #0b0b0c 100%);
 }
 
@@ -654,7 +663,12 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.1) 60%, transparent 100%);
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.82) 0%,
+    rgba(0, 0, 0, 0.1) 60%,
+    transparent 100%
+  );
 }
 .ls-category__copy {
   position: relative;
@@ -1021,6 +1035,34 @@
   color: var(--site-muted);
   font-size: 0.85rem;
   margin-top: -0.2rem;
+}
+
+/* Items a draft has not pictured yet: a price list under the cards. */
+.ls-more {
+  margin-top: clamp(2rem, 1.5rem + 2vw, 3rem);
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--site-border);
+}
+.ls-more__title {
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--site-muted);
+  margin: 0 0 0.6rem;
+}
+.ls-more__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  column-gap: clamp(2rem, 1rem + 3vw, 4rem);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.ls-more__cat {
+  display: block;
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--site-muted);
 }
 
 /* --------------------------------------------------------- ordering strip */

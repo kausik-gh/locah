@@ -347,6 +347,12 @@ export function ProductShowcase({
 
   // Grids: menu, commerce, projects, plans, services.
   const kind = variant.replace(/_(grid|cards)$/, '')
+  // A draft pictures a few items per category, not all of them. The pictured
+  // ones are cards; the rest are a clean price list under them — never a
+  // photo card next to a letter placeholder.
+  const pictured = kind === 'plan' ? [] : shown.filter((item) => item.image)
+  const cards = pictured.length > 0 ? pictured : shown
+  const rest = pictured.length > 0 ? shown.filter((item) => !item.image) : []
   return (
     <section
       id={anchor}
@@ -355,8 +361,8 @@ export function ProductShowcase({
       <div className="ls-inner">
         {head}
         {chips}
-        <ul className={`ls-product-grid ls-product-grid--${kind}`} data-count={shown.length}>
-          {shown.map((item) => (
+        <ul className={`ls-product-grid ls-product-grid--${kind}`} data-count={cards.length}>
+          {cards.map((item) => (
             <li key={`${item.category}-${item.name}`} className="ls-card ls-card--product">
               {kind !== 'plan' ? (
                 <Picture image={item.image} name={item.name} className="ls-card__media" />
@@ -376,6 +382,28 @@ export function ProductShowcase({
             </li>
           ))}
         </ul>
+        {rest.length > 0 ? (
+          <div className="ls-more">
+            <h3 className="ls-more__title">Also available</h3>
+            <ul className="ls-more__list">
+              {rest.map((item) => (
+                <li key={`${item.category}-${item.name}`} className="ls-pricelist__row">
+                  <span className="ls-pricelist__name">
+                    {item.name}
+                    {item.category && active === 'All' ? (
+                      <small className="ls-more__cat">{item.category}</small>
+                    ) : null}
+                  </span>
+                  <span className="ls-pricelist__dots" aria-hidden="true" />
+                  <Price item={item} />
+                  {item.description ? (
+                    <small className="ls-pricelist__desc">{item.description}</small>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </section>
   )
