@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { LiveItemsSection } from './LiveItemsSection'
+import { withPreviewToken } from './preview-links'
 
 /**
  * Renders one platform website section.
@@ -181,6 +182,7 @@ export function SectionRenderer({
   capabilities,
   contact,
   businessName,
+  previewToken,
 }: {
   section: Section
   businessSlug: string
@@ -192,6 +194,7 @@ export function SectionRenderer({
   /** Direct contact the owner published. Absent means none. */
   contact?: SiteContact
   businessName?: string
+  previewToken?: string
 }) {
   const c = section.content || {}
   const v = str(section.layout_variant) || undefined
@@ -218,12 +221,16 @@ export function SectionRenderer({
             {ctaLabel && ctaPath ? (
               <Link
                 className={`ls-btn ${onMedia ? 'ls-btn--onmedia' : ''}`}
-                href={pathHref(businessSlug, ctaPath)}
+                href={withPreviewToken(pathHref(businessSlug, ctaPath), previewToken)}
               >
                 {ctaLabel}
               </Link>
             ) : null}
-            <ContactActions contact={contact} businessName={businessName} onMedia={onMedia || !split} />
+            <ContactActions
+              contact={contact}
+              businessName={businessName}
+              onMedia={onMedia || !split}
+            />
           </div>
         ) : null
       const copy = (
@@ -338,7 +345,10 @@ export function SectionRenderer({
             </div>
             <div className="ls-cta__actions">
               {ctaLabel && ctaPath ? (
-                <Link className="ls-btn ls-btn--onmedia" href={pathHref(businessSlug, ctaPath)}>
+                <Link
+                  className="ls-btn ls-btn--onmedia"
+                  href={withPreviewToken(pathHref(businessSlug, ctaPath), previewToken)}
+                >
                   {ctaLabel}
                 </Link>
               ) : null}
@@ -359,13 +369,21 @@ export function SectionRenderer({
       const showMap = bool(c.show_map) && address
 
       return (
-        <section id="contact" className={`ls-section ls-contact--${variant} ${alt ? 'ls-section--alt' : ''}`}>
+        <section
+          id="contact"
+          className={`ls-section ls-contact--${variant} ${alt ? 'ls-section--alt' : ''}`}
+        >
           <div className="ls-inner">
             <Heading eyebrow="Get in touch" title={str(c.title) || 'Visit us'} />
             <div className="ls-contact__actions">
               <ContactActions contact={contact} businessName={businessName} />
               {findable(address) ? (
-                <a className="ls-btn ls-btn--outline" href={mapsHref(address)} target="_blank" rel="noopener noreferrer">
+                <a
+                  className="ls-btn ls-btn--outline"
+                  href={mapsHref(address)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   Get directions
                 </a>
               ) : null}
@@ -446,7 +464,9 @@ export function SectionRenderer({
       const variant = v || 'cards'
       const eyebrow = variant === 'steps' ? 'How it works' : 'What we do'
       return (
-        <section className={`ls-section ls-features ls-features--${variant} ${alt ? 'ls-section--alt' : ''}`}>
+        <section
+          className={`ls-section ls-features ls-features--${variant} ${alt ? 'ls-section--alt' : ''}`}
+        >
           <div className="ls-inner">
             <Heading
               eyebrow={eyebrow}
@@ -466,7 +486,10 @@ export function SectionRenderer({
                 ))}
               </ol>
             ) : (
-              <ul className={`ls-feature-grid ls-feature-grid--${variant}`} data-count={rows.length}>
+              <ul
+                className={`ls-feature-grid ls-feature-grid--${variant}`}
+                data-count={rows.length}
+              >
                 {rows.map((row, i) => (
                   <li key={i} className="ls-feature">
                     <h3 className="ls-feature__title">{row.title}</h3>

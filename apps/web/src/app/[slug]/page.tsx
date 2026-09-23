@@ -30,11 +30,12 @@ export default async function BusinessWebsiteHome({
   searchParams?: { preview_token?: string }
 }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
-  const data = await fetchPublicWebsite(
-    params.slug,
-    undefined,
-    searchParams?.preview_token
-  )
+  const data = await fetchPublicWebsite(params.slug, undefined, searchParams?.preview_token)
   if (!data) notFound()
-  return <WebsitePageView data={data} />
+  return (
+    <WebsitePageView
+      data={data}
+      previewToken={data.is_preview ? searchParams?.preview_token : undefined}
+    />
+  )
 }

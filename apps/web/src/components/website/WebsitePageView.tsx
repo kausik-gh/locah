@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { SectionRenderer, type SiteContact } from './SectionRenderer'
 import { siteFontVariables } from './site-fonts'
+import { withPreviewToken } from './preview-links'
 import type { PublicWebsitePayload } from '@/lib/public-website'
 
 /**
@@ -77,7 +78,13 @@ function strategyDecisions(theme: Record<string, unknown>): StrategyDecision[] {
   })
 }
 
-export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
+export function WebsitePageView({
+  data,
+  previewToken,
+}: {
+  data: PublicWebsitePayload
+  previewToken?: string
+}) {
   const theme = data.theme || {}
   const slug = data.business.slug
   const name = data.business.display_name
@@ -176,7 +183,7 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
 
       <header className="ls-nav">
         <div className="ls-nav__inner">
-          <Link className="ls-nav__brand" href={`/${slug}`}>
+          <Link className="ls-nav__brand" href={withPreviewToken(`/${slug}`, previewToken)}>
             {logo ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img className="ls-nav__logo" src={logo} alt="" />
@@ -194,7 +201,7 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
                 <Link
                   key={`${item.label}-${path}`}
                   className="ls-nav__link"
-                  href={navHref(path)}
+                  href={withPreviewToken(navHref(path), previewToken)}
                   aria-current={
                     (path === '/' && data.page.slug === 'home') ||
                     path.replace(/^\//, '') === data.page.slug
@@ -227,6 +234,7 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
               capabilities={data.capabilities}
               contact={contact}
               businessName={name}
+              previewToken={previewToken}
             />
           </div>
         ))}
@@ -279,7 +287,10 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
             <div className="ls-foot__col">
               <p className="ls-foot__heading">Explore</p>
               {nav.map((item) => (
-                <Link key={`f-${item.label}`} href={navHref(item.path)}>
+                <Link
+                  key={`f-${item.label}`}
+                  href={withPreviewToken(navHref(item.path), previewToken)}
+                >
                   {item.label}
                 </Link>
               ))}
