@@ -350,3 +350,48 @@ def test_ordering_facts_say_what_the_owner_said() -> None:
     assert facts["payment"]["body"] == "UPI, before dispatch."
     assert "Sent by courier" in hero_badges(bp, "other")
     assert not any("secure" in f["body"].lower() for f in facts.values())
+
+
+def test_an_owner_message_after_the_build_keeps_every_drawn_visual() -> None:
+    """Matching on role alone kept one visual; the rebuild redrew the other seven."""
+    from platform_core.interview.models import MediaGenerationRequest
+    from platform_core.services.business_interview import _carry_media
+
+    fresh = meat()
+    for key in ("hero", "category:chicken", "category:mutton", "story"):
+        fresh.media_generation_requests.append(
+            MediaGenerationRequest(role="visual", key=key, status="ready", asset_id=uuid4()))
+    proposed = fresh.model_copy(deep=True)
+    _carry_media(fresh, proposed)
+    assert [r.key for r in proposed.media_generation_requests if r.role == "visual"] == [
+        "hero", "category:chicken", "category:mutton", "story"]
+    turn = meat()  # a turn that started before the worker finished
+    _carry_media(fresh, turn)
+    assert {r.key for r in turn.media_generation_requests} == {"hero", "category:chicken",
+                                                              "category:mutton", "story"}
+
+
+def test_places_the_owner_named_read_as_places() -> None:
+    """ "Coimbatore; our home in Saibaba Colony" leaked into the pickup line."""
+    from platform_core.interview.site_composer import _address, _pickup_line, _town
+
+    bp = home_food()
+    bp.known_facts["locations"] = Fact(value="Coimbatore; our home in Saibaba Colony",
+                                       source="USER_STATEMENT", confirmation="confirmed")
+    assert _town(bp) == "Coimbatore"
+    assert _pickup_line(bp) == "Collect your order from our home in Saibaba Colony."
+    assert _address(bp) == "Our home in Saibaba Colony, Coimbatore"
+
+
+def test_a_supported_intent_in_other_words_is_not_called_unsupported() -> None:
+    """ "pickup" was answered with "That request is not supported today"."""
+    from platform_core.interview.capabilities import _gaps, canonical_intent
+    from platform_core.interview.models import CapabilityIntent
+
+    assert canonical_intent("pickup") == "delivery" and canonical_intent("Cash on delivery") == "payments"
+    bp = home_food()
+    bp.requested_capabilities = [
+        CapabilityIntent(intent="pickup", original_request="People can also pick up from our home."),
+        CapabilityIntent(intent="drone_delivery", original_request="We want drone delivery."),
+    ]
+    assert [g.normalized_intent for g in _gaps(bp)] == ["drone_delivery"]

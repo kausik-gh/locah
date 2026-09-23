@@ -41,6 +41,7 @@ from platform_core.interview.conversation import (
 )
 from platform_core.interview.discovery import (
     TARGETS,
+    TARGETS_BY_ID,
     candidates,
     characteristics,
     choose,
@@ -337,8 +338,11 @@ class BusinessInterviewOrchestrator:
             understood += accept_answers(bp, ti.answered, text,
                                          source="USER_STATEMENT" if field else "AI_EXTRACTION")
             # Unknown intents are retained as evidence, NEVER interpreted as module IDs.
+            from platform_core.interview.capabilities import canonical_intent
+
             for intent in ti.intents:
                 if intent.original_request.strip() and intent.original_request in text:
+                    intent = intent.model_copy(update={"intent": canonical_intent(intent.intent)})
                     if intent not in bp.requested_capabilities:
                         bp.requested_capabilities.append(intent)
                         understood += 1
@@ -508,6 +512,24 @@ def _contextual_signals(bp: BusinessBlueprint, ti: TurnIntelligence, text: str) 
             ti.media_intent = "no_visuals"
     if last and _DECLINE.search(text) and len(text) < 40 and not ti.answered and ti.media_intent == "none":
         ti.answered.append(TargetAnswer(target=last, status="declined"))
+    # A real reply to the question just asked answers it, even when the model
+    # filed it elsewhere — otherwise the same question came back a few turns
+    # later ("What do people usually book with you?", asked twice).
+    words = re.findall(r"\w+", text)
+    # Only for targets that write no fact: a reply credited to "contact.phone"
+    # that was really about delivery must never become the phone number.
+    target = TARGETS_BY_ID.get(last or "")
+    if (
+        last
+        and target is not None
+        and target.fact is None
+        and last not in {"media.photos", "media.logo"}
+        and not ti.off_topic
+        and len(words) >= 3
+        and not text.rstrip().endswith("?")
+        and all(answer.target != last for answer in ti.answered)
+    ):
+        ti.answered.append(TargetAnswer(target=last, summary=text[:240], quote=text[:600]))
 
 
 def _merge_facts(bp: BusinessBlueprint, ti: TurnIntelligence, text: str, source: str) -> int:

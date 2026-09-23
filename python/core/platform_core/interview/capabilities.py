@@ -51,6 +51,34 @@ INTENTS = {
     "loyalty": ("loyalty", "Reward repeat customers", r"\b(loyalty|rewards?|points)\b"),
     "invoicing": ("invoicing", "Send invoices", r"\b(invoices?|invoicing|bills?|gst bill)\b"),
 }
+
+# The model names what an owner wants in its own words ("pickup", "courier",
+# "upi"). Those are supported intents under another name — telling an owner
+# "pickup is not supported" while putting pickup on their website is wrong.
+_ALIASES = {
+    "pickup": "delivery", "pick_up": "delivery", "store_pickup": "delivery", "takeaway": "delivery",
+    "shipping": "delivery", "courier": "delivery", "home_delivery": "delivery",
+    "local_delivery": "delivery", "fulfilment": "delivery", "fulfillment": "delivery",
+    "online_ordering": "orders", "whatsapp_orders": "orders", "ordering": "orders", "order": "orders",
+    "upi": "payments", "online_payment": "payments", "online_payments": "payments",
+    "cash_on_delivery": "payments", "payment": "payments",
+    "appointments": "bookings", "appointment": "bookings", "reservations": "bookings",
+    "booking": "bookings", "trial_booking": "bookings", "table_booking": "bookings",
+    "catalogue": "catalog", "menu": "catalog", "products": "catalog", "product_catalog": "catalog",
+    "enquiry": "enquiries", "inquiries": "enquiries", "lead": "enquiries", "leads": "enquiries",
+    "quotation": "quotes", "quotations": "quotes", "rfq": "quotes", "estimates": "quotes",
+    "membership": "memberships", "subscriptions": "memberships",
+    "stock": "inventory", "invoice": "invoicing", "billing": "invoicing",
+    "review": "reviews", "whatsapp_messaging": "messaging", "sms": "messaging",
+}
+
+
+def canonical_intent(intent: str) -> str:
+    """The supported intent an owner's wording means, or the wording itself."""
+    key = re.sub(r"[^a-z0-9]+", "_", intent.casefold()).strip("_")
+    if key in INTENTS:
+        return key
+    return _ALIASES.get(key, key)
 LABELS = {module: label for module, label, _ in INTENTS.values()}
 CUSTOMER_FACING = frozenset(
     {"offerings-catalog", "orders", "bookings", "leads", "quotes", "memberships",
@@ -219,7 +247,7 @@ def recommend(
     seen = {c for c, how in chars.items() if how == "observed"}
     facts = {**bp.known_facts, **bp.unconfirmed_facts}
     state = bp.discovery
-    intents = {i.intent for i in bp.requested_capabilities}
+    intents = {canonical_intent(i.intent) for i in bp.requested_capabilities}
     # The plain words of what customers should do ("book appointments", "view
     # products") are evidence even when the model returned no intents.
     action_text = facts["customer_actions"].value if "customer_actions" in facts else ""
@@ -413,7 +441,7 @@ def recommend(
     for intent, module in (("crm", "customer-relationships"), ("messaging", "messaging"),
                            ("reviews", "reviews"), ("loyalty", "loyalty")):
         if intent in intents and module not in out:
-            asked = next(i for i in bp.requested_capabilities if i.intent == intent)
+            asked = next(i for i in bp.requested_capabilities if canonical_intent(i.intent) == intent)
             out[module] = ("strong", WHAT[module],
                            [RecommendationEvidence(kind="owner_said", text=_quote(asked.original_request))],
                            "")
@@ -449,7 +477,7 @@ def _gaps(bp: BusinessBlueprint) -> list[CapabilityGapProposal]:
             break
     gaps: dict[str, CapabilityGapProposal] = {}
     for request in requests:
-        if request.intent in INTENTS or request.intent in gaps:
+        if canonical_intent(request.intent) in INTENTS or request.intent in gaps:
             continue
         gaps[request.intent] = CapabilityGapProposal(
             original_request=request.original_request,

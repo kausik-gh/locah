@@ -69,6 +69,7 @@ from platform_core.website.template_registry import TEMPLATES_BY_ID
 
 async def _sync_catalogue_into_draft(session: AsyncSession, business_id: UUID, bp: BusinessBlueprint) -> None:
     """Prices the owner typed appear on the draft site at once — nowhere else changes."""
+    from platform_core.interview.site_composer import money
     from platform_core.models import WebsitePage, WebsiteSection
 
     draft = (
@@ -100,13 +101,13 @@ async def _sync_catalogue_into_draft(session: AsyncSession, business_id: UUID, b
                 if key == "categories" or section.section_type_id == "category_showcase":
                     group = groups.get(str(row.get("name", "")).casefold())
                     if group and group.price:
-                        row["meta"] = f"From {group.price} {group.unit}".strip()[:60]
+                        row["meta"] = f"From {money(group.price)} {group.unit}".strip()[:60]
                 else:
                     group = groups.get(str(row.get("category", "")).casefold())
                     item = next((i for i in (group.items if group else [])
                                  if i.name.casefold() == str(row.get("name", "")).casefold()), None)
                     if item and item.price:
-                        row["price"], row["unit"] = item.price, item.unit
+                        row["price"], row["unit"] = money(item.price), item.unit
                 updated.append(row)
             content[key] = updated
         section.content = content
@@ -188,7 +189,13 @@ def _carry_media(fresh: BusinessBlueprint, proposed: BusinessBlueprint) -> None:
         if media.asset_id not in known:
             proposed.media_assets.append(media)
     for request in fresh.media_generation_requests:
-        mine = next((r for r in proposed.media_generation_requests if r.role == request.role), None)
+        # A request is its role AND its slot: every draft visual has role
+        # "visual", so matching on role alone kept only the last one — and a
+        # rebuild after the owner's next message redrew all the others.
+        def same(r: MediaGenerationRequest, request: MediaGenerationRequest = request) -> bool:
+            return bool(r.role == request.role and r.key == request.key)
+
+        mine = next((r for r in proposed.media_generation_requests if same(r)), None)
         newer = (
             mine is None
             or request.status == "ready"
@@ -198,7 +205,7 @@ def _carry_media(fresh: BusinessBlueprint, proposed: BusinessBlueprint) -> None:
         # ...but a fresh ask this turn ("try again") beats an old failure.
         if newer and not (mine is not None and mine.status == "requested"):
             proposed.media_generation_requests = [
-                r for r in proposed.media_generation_requests if r.role != request.role
+                r for r in proposed.media_generation_requests if not same(r)
             ] + [request]
     if fresh.logo_state == "generated":
         proposed.logo_state = "generated"

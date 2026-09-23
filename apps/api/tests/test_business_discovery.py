@@ -516,3 +516,20 @@ def test_food_made_in_small_batches_is_not_a_class_to_book() -> None:
     bp.known_facts["description"] = Fact(value="Morning batch and evening batch for strength classes.",
                                          source="USER_STATEMENT", confirmation="confirmed")
     assert "runs_classes" in characteristics(bp, "other")
+
+
+def test_a_reply_to_the_question_just_asked_answers_it() -> None:
+    """The gym was asked "What do people usually book with you?" twice."""
+    from platform_core.interview.models import TurnIntelligence
+    from platform_core.interview.orchestrator import _contextual_signals
+
+    bp = BusinessBlueprint(business_id=uuid4())
+    bp.last_asked_target = "bookings.format"
+    ti = TurnIntelligence()
+    _contextual_signals(bp, ti, "Trial sessions are booked on WhatsApp.")
+    assert [(a.target, a.status) for a in ti.answered] == [("bookings.format", "answered")]
+    # A target that writes a fact is never credited by position alone.
+    bp.last_asked_target = "contact.phone"
+    ti = TurnIntelligence()
+    _contextual_signals(bp, ti, "We deliver all over Chennai.")
+    assert ti.answered == []

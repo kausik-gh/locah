@@ -82,6 +82,40 @@ def _place(text: str) -> str:
     )
 
 
+def _places(bp: BusinessBlueprint) -> list[str]:
+    """Each place the owner named, in the order they said them.
+
+    Locations accumulate ("Coimbatore; our home in Saibaba Colony"): the town
+    for the eyebrow, the most specific place for pickup and the address.
+    """
+    raw = _facts(bp).get("locations", "")
+    return [" ".join(part.split()).strip(" .,") for part in raw.split(";") if part.strip(" .,")]
+
+
+def _town(bp: BusinessBlueprint) -> str:
+    parts = [p for p in _places(bp) if not re.match(r"(?:our|my)\b", p, re.I)]
+    return _place(parts[0]) if parts else ""
+
+
+def _pickup_line(bp: BusinessBlueprint) -> str:
+    parts = _places(bp)
+    if not parts:
+        return "Collect your order from the shop."
+    spot = parts[-1]
+    if re.match(r"(?:our|my)\b", spot, re.I):
+        return f"Collect your order from {spot[0].lower() + spot[1:]}."
+    return f"Collect your order at {_place(spot) or spot}."
+
+
+def _address(bp: BusinessBlueprint) -> str:
+    parts = _places(bp)
+    if len(parts) > 1:
+        # Most specific first: "Our home in Saibaba Colony, Coimbatore".
+        text = ", ".join(reversed(parts))
+        return text[0].upper() + text[1:]
+    return parts[0] if parts else ""
+
+
 def _join(names: list[str], word: str = "and") -> str:
     names = [n for n in names if n]
     if len(names) <= 1:
@@ -105,7 +139,6 @@ def ordering_facts(bp: BusinessBlueprint, business_type: str | None) -> list[dic
     mode = _answer(bp, "fulfilment.mode").lower()
     area_state = bp.discovery.get("fulfilment.area")
     payment = _answer(bp, "commerce.payment").lower()
-    location = _place(_facts(bp).get("locations", ""))
     items: list[dict[str, str]] = []
     if re.search(r"\b(kg|kilo|weight|gram)", units):
         items.append({"kind": "weight", "title": "Choose your weight",
@@ -126,8 +159,7 @@ def ordering_facts(bp: BusinessBlueprint, business_type: str | None) -> list[dic
             items.append({"kind": "delivery", "title": "Home delivery",
                           "body": f"Delivered around {where}." if where else "Brought to your door."})
     if pickup:
-        items.append({"kind": "pickup", "title": "Store pickup",
-                      "body": f"Collect your order at {location}." if location else "Collect your order from the shop."})
+        items.append({"kind": "pickup", "title": "Pickup", "body": _pickup_line(bp)})
     if payment:
         # Only the ways the owner named, in their order — no "securely", no "instant".
         named = [label for pattern, label in (
@@ -158,7 +190,9 @@ def hero_badges(bp: BusinessBlueprint, business_type: str | None) -> list[str]:
     """Short true chips under the headline — never a rating, a count or an award."""
     badges: list[str] = []
     for item in ordering_facts(bp, business_type):
-        label = {"weight": "Sold by the kg", "delivery": item["title"], "pickup": "Store pickup",
+        home = "from our home" in item["body"] or "from my home" in item["body"]
+        label = {"weight": "Sold by the kg", "delivery": item["title"],
+                 "pickup": "Pickup available" if home else "Store pickup",
                  "payment": item["body"].rstrip(".")}.get(item["kind"])
         if label and label not in badges:
             badges.append(label[:40])
@@ -332,7 +366,7 @@ def compose_site(
     }
     if copy.headline and copy.headline_accent and copy.headline_accent in copy.headline:
         hero["headline_accent"] = copy.headline_accent[:60]
-    place = _place(facts.get("locations", ""))
+    place = _town(bp)
     if place:
         hero["eyebrow"] = place[:60]
     if primary[0] and primary[1]:
@@ -395,8 +429,8 @@ def compose_site(
     display = _display_phone(facts.get("phone", ""))
     if display:
         contact_section["phone"] = display
-    if facts.get("locations"):
-        contact_section["address"] = facts["locations"][:500]
+    if _address(bp):
+        contact_section["address"] = _address(bp)[:500]
     if facts.get("email"):
         contact_section["email"] = facts["email"][:200]
     if facts.get("opening_hours"):
