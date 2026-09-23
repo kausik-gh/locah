@@ -403,3 +403,30 @@ async def test_create_business_transaction_rollback_on_outbox_failure(
         )
         assert memberships.scalar_one() == 0
     await engine.dispose()
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+def test_two_owners_can_give_their_businesses_the_same_name(monkeypatch: Any) -> None:
+    """Slug allocation runs under the owner's row-level security, which cannot
+    see anyone else's business. A second "Ishant Proteins" was a 500 on the
+    unique index; it must get the next free address instead."""
+    monkeypatch.setenv("SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
+    # The suite's database role bypasses row-level security; production's does
+    # not. Make the pre-check as blind as it is in production.
+    async def invisible(session: Any, slug: str) -> None:
+        return None
+
+    monkeypatch.setattr(BusinessService, "get_by_slug", staticmethod(invisible))
+    name = _unique("Same Name Meats")
+    slugs = []
+    with TestClient(app) as client:
+        for _ in range(2):
+            headers = auth_headers.__wrapped__(monkeypatch)  # a fresh owner each time
+            response = client.post(
+                "/v1/platform/businesses",
+                json={"display_name": name, "business_type": "retail"},
+                headers=headers,
+            )
+            assert response.status_code == 200, response.text
+            slugs.append(response.json()["data"]["business"]["slug"])
+    assert slugs[0] != slugs[1] and slugs[1].startswith(slugs[0])

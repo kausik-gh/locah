@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.business_types import (
@@ -204,17 +205,36 @@ class BusinessService:
         settings = _default_settings(input_data)
         metadata = _default_metadata(input_data)
 
-        business = Business(
-            slug=slug,
-            display_name=input_data.display_name,
-            state="draft",
-            primary_owner_identity_id=identity_id,
-            business_type=input_data.business_type,
-            settings=settings,
-            metadata_=metadata,
-        )
-        session.add(business)
-        await session.flush()
+        # The slug check above runs under the owner's row-level security and
+        # cannot see anyone else's business, so two owners who both call theirs
+        # "Ishant Proteins" used to end in a 500 on the unique index. The index
+        # is the authority: on a collision, take the next free address.
+        base_slug = slug
+        for attempt in range(1, 26):
+            business = Business(
+                slug=slug,
+                display_name=input_data.display_name,
+                state="draft",
+                primary_owner_identity_id=identity_id,
+                business_type=input_data.business_type,
+                settings=settings,
+                metadata_=metadata,
+            )
+            try:
+                async with session.begin_nested():
+                    session.add(business)
+                    await session.flush()
+                break
+            except IntegrityError as exc:
+                if "businesses_slug_active_key" not in str(exc.orig):
+                    raise
+                if input_data.slug is not None:
+                    raise ConflictError(
+                        "Slug already in use", details={"field": "slug", "slug": input_data.slug}
+                    ) from exc
+                slug = f"{base_slug}-{attempt}" if attempt < 6 else f"{base_slug}-{uuid.uuid4().hex[:4]}"
+        else:
+            raise ConflictError("Unable to allocate a unique slug")
 
         # RLS (AUD-02): bind the tenant GUC now, before creating the child rows
         # (location, membership, profile, modules, website, ...). Their write
