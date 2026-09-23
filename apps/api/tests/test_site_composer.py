@@ -393,6 +393,7 @@ def test_a_supported_intent_in_other_words_is_not_called_unsupported() -> None:
     bp.requested_capabilities = [
         CapabilityIntent(intent="pickup", original_request="People can also pick up from our home."),
         CapabilityIntent(intent="drone_delivery", original_request="We want drone delivery."),
+        CapabilityIntent(intent="build_website", original_request="Looks good, please build it."),
     ]
     assert [g.normalized_intent for g in _gaps(bp)] == ["drone_delivery"]
 

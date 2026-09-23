@@ -73,6 +73,17 @@ _ALIASES = {
 }
 
 
+# The website itself — building, previewing, publishing it — is what the
+# interview is for, never a missing capability ("please build it" was answered
+# with "That request is not supported today").
+_THE_PLATFORM = frozenset({
+    "website", "site", "web_site", "build", "build_website", "website_build", "build_site",
+    "create_website", "make_website", "generate_website", "website_generation", "preview",
+    "preview_website", "publish", "publish_website", "launch", "launch_website", "go_live",
+    "update_website", "edit_website", "redesign", "rebuild",
+})
+
+
 def canonical_intent(intent: str) -> str:
     """The supported intent an owner's wording means, or the wording itself."""
     key = re.sub(r"[^a-z0-9]+", "_", intent.casefold()).strip("_")
@@ -477,7 +488,8 @@ def _gaps(bp: BusinessBlueprint) -> list[CapabilityGapProposal]:
             break
     gaps: dict[str, CapabilityGapProposal] = {}
     for request in requests:
-        if canonical_intent(request.intent) in INTENTS or request.intent in gaps:
+        intent = canonical_intent(request.intent)
+        if intent in INTENTS or intent in _THE_PLATFORM or request.intent in gaps:
             continue
         gaps[request.intent] = CapabilityGapProposal(
             original_request=request.original_request,
