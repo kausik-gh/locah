@@ -181,8 +181,8 @@ export function WebsitePageView({
   const capabilities = data.capabilities || {}
   const canOrder = Boolean(capabilities.order)
   const canBook = Boolean(capabilities.book)
+  // The basket link is added in the footer only once something can be bought.
   const visitLinks = [
-    canOrder ? { label: 'Basket', href: `/${slug}/checkout` } : null,
     canBook ? { label: 'Book', href: `/${slug}/book` } : null,
     canOrder || canBook ? { label: 'Your orders & bookings', href: '/activity' } : null,
   ].filter((item): item is { label: string; href: string } => item !== null)
@@ -393,6 +393,7 @@ export function WebsitePageView({
           {visitLinks.length > 0 ? (
             <div className="ls-foot__col">
               <p className="ls-foot__heading">Your visit</p>
+              {canOrder ? <CommerceCart slug={slug} variant="footer" /> : null}
               {visitLinks.map((item) => (
                 <Link key={item.href} href={item.href}>
                   {item.label}

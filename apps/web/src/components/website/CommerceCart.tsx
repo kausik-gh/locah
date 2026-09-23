@@ -12,7 +12,13 @@ import { cartStorageKey, fetchPublicOfferings, type CartItem } from '@/lib/check
  * hold anything. So this asks for the live, priced items first and renders
  * nothing until there is at least one.
  */
-export function CommerceCart({ slug }: { slug: string }) {
+export function CommerceCart({
+  slug,
+  variant = 'nav',
+}: {
+  slug: string
+  variant?: 'nav' | 'footer'
+}) {
   const [ready, setReady] = useState(false)
   const [count, setCount] = useState(0)
 
@@ -43,6 +49,7 @@ export function CommerceCart({ slug }: { slug: string }) {
   }, [slug])
 
   if (!ready) return null
+  if (variant === 'footer') return <Link href={`/${slug}/checkout`}>Basket</Link>
   return (
     <Link className="ls-nav__cart" href={`/${slug}/checkout`}>
       Basket{count ? <span className="ls-nav__count">{count}</span> : null}

@@ -307,3 +307,20 @@ def test_a_claim_the_owner_made_survives_in_another_word_form() -> None:
     assert _grounded("Delivery around Nookampalayam.", said)
     assert not _grounded("Fresh daily.", said)  # "every morning" is not "daily"
     assert not _grounded("The best cuts in town.", said)
+
+
+def test_prices_read_as_rupees_and_boards_show_the_lowest_price_given() -> None:
+    from platform_core.interview.site_composer import money
+
+    assert money("240") == "₹240" and money("Rs. 1,200") == "₹1,200" and money("₹99") == "₹99"
+    assert money("1.2 crore") == "1.2 crore"  # words the owner used stay theirs
+    bp = meat()
+    bp.taxonomy.groups[0] = CatalogueGroup(name="Chicken", items=[
+        CatalogueItem(name="Curry cut", price="240", unit="per kg"),
+        CatalogueItem(name="Boneless", price="380", unit="per kg")])
+    payload = compose_site(bp, direct(bp, "other"), with_draft(bp, None), business_type="other",
+                           contact={"phone": "8754722026"}, active_modules=ACTIVE)
+    show = next(s for p in payload["pages"] for s in p["sections"] if s["section_type_id"] == "product_showcase")
+    chicken = next(c for c in show["content"]["categories"] if c["name"] == "Chicken")
+    assert chicken["meta"] == "From ₹240 per kg"
+    assert {i["price"] for i in show["content"]["items"] if i["category"] == "Chicken"} == {"₹240", "₹380"}

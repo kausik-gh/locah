@@ -154,9 +154,30 @@ def hero_badges(bp: BusinessBlueprint, business_type: str | None) -> list[str]:
 # ------------------------------------------------------------- sections
 
 
+def money(price: str) -> str:
+    """The owner's price as a visitor reads it: bare digits are rupees ("240" -> "₹240")."""
+    price = " ".join(price.split())
+    if re.fullmatch(r"\d[\d,]*(?:\.\d+)?", price):
+        return f"₹{price}"
+    return re.sub(r"^(?:rs\.?|inr)\s*", "₹", price, flags=re.I)
+
+
+def _amount(price: str) -> float:
+    digits = re.sub(r"[^\d.]", "", price)
+    try:
+        return float(digits)
+    except ValueError:
+        return float("inf")
+
+
 def _group_meta(group: CatalogueGroup) -> str:
     if group.price:
-        return f"From {group.price} {group.unit}".strip()[:60]
+        return f"From {money(group.price)} {group.unit}".strip()[:60]
+    priced = [i for i in group.items if i.price]
+    if priced:
+        low = min(priced, key=lambda i: _amount(i.price))
+        prefix = "From " if len(priced) > 1 else ""
+        return f"{prefix}{money(low.price)} {low.unit or group.unit}".strip()[:60]
     if re.search(r"\b(kg|kilo|weight)", group.sold_by, re.I):
         return "Sold by the kg"
     return ""
@@ -193,7 +214,7 @@ def browse_sections(
             if description:
                 entry["description"] = description[:200]
             if item.price:
-                entry["price"] = item.price[:40]
+                entry["price"] = money(item.price)[:40]
                 if item.unit:
                     entry["unit"] = item.unit[:40]
             picture = picture_for(bp, f"item:{slug(name)}") or picture_for(bp, f"project:{slug(name)}")
@@ -329,7 +350,8 @@ def compose_site(
                                  "eyebrow": "Our story", "anchor": "story"}
         if claims:
             story["quote"] = claims[0][:200]
-        picture = picture_for(bp, "category:" + slug(bp.taxonomy.groups[-1].name)) if bp.taxonomy.groups else None
+        # The first category's picture: the last one was just shown above.
+        picture = picture_for(bp, "category:" + slug(bp.taxonomy.groups[0].name)) if bp.taxonomy.groups else None
         picture = picture or hero_picture
         if picture:
             story["image_asset_id"] = picture
