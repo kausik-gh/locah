@@ -1751,7 +1751,9 @@
     border-top: 1px solid var(--site-border);
     box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
   }
-  [data-locah-site] .ls-mobile-bar a {
+  /* nav + [href] outrank the site-wide link rule (0,3,1), which otherwise gave
+     the Call button the page's ink on the primary colour. */
+  [data-locah-site] nav.ls-mobile-bar a[href] {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1763,7 +1765,7 @@
     background: var(--site-primary);
     color: var(--site-primary-fg);
   }
-  [data-locah-site] .ls-mobile-bar a[href^='https://wa.me'] {
+  [data-locah-site] nav.ls-mobile-bar a[href^='https://wa.me'] {
     background: #25d366;
     color: #ffffff;
   }
