@@ -184,7 +184,7 @@ export function WebsitePageView({
   // The basket link is added in the footer only once something can be bought.
   const visitLinks = [
     canBook ? { label: 'Book', href: `/${slug}/book` } : null,
-    canOrder || canBook ? { label: 'Your orders & bookings', href: '/activity' } : null,
+    canBook ? { label: 'Your orders & bookings', href: '/activity' } : null,
   ].filter((item): item is { label: string; href: string } => item !== null)
 
   // How loudly each section should speak. The design strategy decides this per
@@ -390,10 +390,11 @@ export function WebsitePageView({
               ))}
             </div>
           ) : null}
+          {canOrder && !canBook ? <CommerceCart slug={slug} variant="footer" /> : null}
           {visitLinks.length > 0 ? (
             <div className="ls-foot__col">
               <p className="ls-foot__heading">Your visit</p>
-              {canOrder ? <CommerceCart slug={slug} variant="footer" /> : null}
+              {canOrder ? <CommerceCart slug={slug} variant="footer-link" /> : null}
               {visitLinks.map((item) => (
                 <Link key={item.href} href={item.href}>
                   {item.label}
