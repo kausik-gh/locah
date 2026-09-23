@@ -37,7 +37,7 @@ CHARACTERISTICS = frozenset({
     "sells_products", "provides_services", "accepts_appointments", "accepts_orders",
     "has_physical_locations", "delivers", "pickup", "has_team", "has_memberships",
     "runs_classes", "online_only", "serves_businesses", "quote_led", "made_to_order",
-    "stock_based", "walk_in", "enquiry_led",
+    "stock_based", "walk_in", "enquiry_led", "sells_property",
 })
 
 CHARACTERISTICS_BY_PATTERN: dict[str, tuple[str, ...]] = {
@@ -96,8 +96,15 @@ _SIGNALS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("made_to_order", re.compile(
         r"\b(custom|custom[- ]made|customi[sz]\w*|made[- ]to[- ]order|bespoke|tailor[- ]made)\b", re.I)),
     ("enquiry_led", re.compile(r"\b(enquir|inquir|whatsapp us|send (?:us )?(?:an? )?requirement)\w*\b", re.I)),
+    # A developer, builder or plot seller: what visitors choose between are projects.
+    ("sells_property", re.compile(
+        r"\b(real estate|villas?|apartments?|flats|plots?|plotted|bhk|properties|developer|"
+        r"builders?|gated communit\w*|residential projects?)\b", re.I)),
     ("sells_products", re.compile(r"\b(we sell|we are selling|we're selling|selling|our shop|our store)\b", re.I)),
 )
+_TRACK_RECORD = re.compile(
+    r"\b(projects?|homes?|houses?|flats?|villas?|apartments?|units?|buildings?|sites?|towers?)"
+    r"(?:\s+\w+){0,2}\s+delivered\b", re.I)
 _NEGATED = re.compile(r"\b(no|not|don't|dont|do not|never|without)\b[^.]*$", re.I)
 
 
@@ -136,6 +143,8 @@ def characteristics(
                 before = text[max(0, match.start() - 25): match.start()]
                 if _NEGATED.search(before):
                     continue  # "we don't deliver" is not delivery
+                if name == "delivers" and _TRACK_RECORD.search(text[max(0, match.start() - 40): match.end()]):
+                    continue  # "14 projects delivered" is a track record, not delivery
                 found[name] = "observed"
                 break
     # Owners who sell things name products; owners who serve name services.
@@ -245,14 +254,15 @@ TARGETS: tuple[Target, ...] = (
                  "ta": "வெப்சைட்ல விலை போடலாமா? ஒரு பொருளுக்கா, கிலோவுக்கா?"}),
     _t("offerings.customisation", "What can be customised",
        "what customers can customise and how custom work is agreed", 45,
-       requires=("made_to_order",), after=("offerings.main",), once=True,
+       requires=("made_to_order",), unless=("sells_property",), after=("offerings.main",),
+       once=True,
        fallback={"en": "What can customers customise when they order from you?",
                  "ta_en": "Customers enna customise panna mudiyum?",
                  "ta": "கஸ்டமர்ஸ் என்ன மாற்றி ஆர்டர் பண்ண முடியும்?"}),
     _t("services.providers", "Who provides the service",
        "who serves customers (doctors, stylists, trainers) and whether customers pick a person",
        42, requires=("provides_services",), relevant=("accepts_appointments", "has_team"),
-       after=("offerings.main",), once=True,
+       unless=("sells_property",), after=("offerings.main",), once=True,
        fallback={"en": "Do customers choose a particular person, or whoever is available?",
                  "ta_en": "Customers oru specific aala select pannuvaangalaa, illa yaar free-o avangalaa?",
                  "ta": "கஸ்டமர்ஸ் ஒருத்தரை தேர்ந்தெடுப்பாங்களா, இல்ல யார் ஃப்ரீயோ அவங்களா?"}),

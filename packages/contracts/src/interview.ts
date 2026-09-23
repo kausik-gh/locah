@@ -50,7 +50,7 @@ export type InterviewReadiness = {
   /** Can the first website be designed well: content, conversion, visuals, story, structure. */
   website?: Record<string, boolean>
 }
-export type CatalogueNeed = 'varieties' | 'cuts' | 'sizes' | 'price' | 'photo'
+export type CatalogueNeed = 'varieties' | 'cuts' | 'sizes' | 'projects' | 'price' | 'photo'
 /** What the business sells, as a structure — groups and the items inside them. */
 export type CatalogueGroup = {
   name: string

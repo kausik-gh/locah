@@ -67,7 +67,7 @@ MediaIntent = Literal[
 # only after an explicit yes, marked as drafts, and always lose to a real photo.
 VisualConsent = Literal["unknown", "draft_visuals", "own_photos", "none"]
 # What a catalogue group still needs before it can be sold or shown well.
-CatalogueNeed = Literal["varieties", "cuts", "sizes", "price", "photo"]
+CatalogueNeed = Literal["varieties", "cuts", "sizes", "projects", "price", "photo"]
 DraftProvenance = Literal["ai_suggestion", "owner_claim", "owner_edited", "owner_approved"]
 
 # Optional things worth asking about once, after the essentials. None of them

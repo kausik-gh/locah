@@ -9,6 +9,7 @@ const NEED_LABEL: Record<string, string> = {
   varieties: 'varieties',
   cuts: 'cuts',
   sizes: 'sizes',
+  projects: 'project names',
   price: 'price',
   photo: 'photo',
 }
@@ -110,7 +111,7 @@ export function SetupOfferings({ data }: { data: BusinessInterviewData }) {
             const set = (patch: Partial<typeof value>) =>
               setEdits((all) => ({ ...all, [line.name]: { ...value, ...patch } }))
             const wantsItems = line.needs.some(
-              (n) => n === 'varieties' || n === 'cuts' || n === 'sizes'
+              (n) => n === 'varieties' || n === 'cuts' || n === 'sizes' || n === 'projects'
             )
             return (
               <fieldset key={line.name} disabled={busy}>
@@ -134,7 +135,12 @@ export function SetupOfferings({ data }: { data: BusinessInterviewData }) {
                 </label>
                 {wantsItems ? (
                   <label className="lp-setup__wide">
-                    {line.needs.includes('cuts') ? 'Cuts' : 'Varieties'} (comma separated)
+                    {line.needs.includes('cuts')
+                      ? 'Cuts'
+                      : line.needs.includes('projects')
+                        ? 'Projects'
+                        : 'Varieties'}{' '}
+                    (comma separated)
                     <input
                       placeholder="Seer fish, Pomfret, Sardine"
                       value={value.add}

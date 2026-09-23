@@ -533,3 +533,35 @@ def test_a_reply_to_the_question_just_asked_answers_it() -> None:
     ti = TurnIntelligence()
     _contextual_signals(bp, ti, "We deliver all over Chennai.")
     assert ti.answered == []
+
+
+def test_a_developer_is_asked_for_its_projects_not_for_customisation() -> None:
+    """Aranya Homes was never asked which projects it sells, but was asked what
+    customers customise, whether they choose a person, and where it delivers
+    ("14 projects delivered" read as delivery)."""
+    from platform_core.interview.discovery import characteristics
+    from platform_core.interview.models import CatalogueGroup, PatternEvidence
+    from platform_core.interview.taxonomy import refresh_needs, structure_question
+
+    bp = BusinessBlueprint(business_id=uuid4())
+    bp.known_facts["description"] = Fact(
+        value="We are a real estate developer in Chennai building villas, apartments and plotted developments.",
+        source="USER_STATEMENT", confirmation="confirmed")
+    bp.discovery["brand.story"] = TargetState(status="answered", summary="Since 2009",
+                                              quote="Building homes in Chennai since 2009, 14 projects delivered.")
+    bp.discovery["business.identity"] = TargetState(status="answered", summary="A developer",
+                                                    quote="real estate developer in Chennai")
+    bp.discovery["offerings.main"] = TargetState(status="answered", summary="Villas, apartments, plots",
+                                                 quote="villas, apartments and plotted developments")
+    bp.operating_patterns = [PatternEvidence(pattern="project_based", quote="building villas"),
+                             PatternEvidence(pattern="appointment_led", quote="book a site visit")]
+    bp.taxonomy.groups = [CatalogueGroup(name="Villas"), CatalogueGroup(name="Apartments")]
+    refresh_needs(bp)
+    chars = characteristics(bp, "other")
+    assert "delivers" not in chars and "sells_property" in chars
+    assert all("projects" in g.needs for g in bp.taxonomy.groups)
+    targets = [r.target.id for r in rank(bp, "other")]
+    assert targets[0] == "offerings.structure"
+    assert "offerings.customisation" not in targets and "services.providers" not in targets
+    assert "fulfilment.area" not in targets
+    assert structure_question(bp) == "Which projects are selling now — their names and where they are?"

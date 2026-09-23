@@ -222,12 +222,25 @@ def apply_edits(bp: BusinessBlueprint, edits: list[CatalogueEdit]) -> list[str]:
 
 
 def refresh_needs(bp: BusinessBlueprint) -> None:
-    """Price is needed where nothing in a group has one; structure needs stay as read."""
+    """Price is needed where nothing in a group has one; structure needs stay as read.
+
+    A property seller's category ("Villas") is not what a buyer chooses — a
+    named project is. Until a category has projects under it, it needs them.
+    """
+    property_led = _property_led(bp)
     for group in bp.taxonomy.groups:
-        needs = [n for n in group.needs if n != "price"]
+        needs = [n for n in group.needs if n not in {"price", "projects"}]
+        if property_led and not group.items:
+            needs.insert(0, "projects")
         if not group.price and not any(i.price for i in group.items):
             needs.append("price")
         group.needs = needs[:5]
+
+
+def _property_led(bp: BusinessBlueprint) -> bool:
+    from platform_core.interview.creative_director import _PROPERTY
+
+    return bool(_PROPERTY.search(owner_corpus(bp)))
 
 
 def ensure_taxonomy(bp: BusinessBlueprint) -> None:
@@ -242,7 +255,7 @@ def ensure_taxonomy(bp: BusinessBlueprint) -> None:
 
 def open_structure(bp: BusinessBlueprint) -> list[CatalogueGroup]:
     """Groups whose shape is still unknown — varieties, cuts or sizes."""
-    return [g for g in bp.taxonomy.groups if {"varieties", "cuts", "sizes"} & set(g.needs)]
+    return [g for g in bp.taxonomy.groups if {"varieties", "cuts", "sizes", "projects"} & set(g.needs)]
 
 
 def _names(groups: list[CatalogueGroup]) -> str:
@@ -256,7 +269,14 @@ def structure_question(bp: BusinessBlueprint, style: str = "en") -> str:
     varieties = [g for g in pending if "varieties" in g.needs]
     cuts = [g for g in pending if "cuts" in g.needs]
     sizes = [g for g in pending if "sizes" in g.needs and g not in cuts]
+    projects = [g for g in pending if "projects" in g.needs]
     tamil = style.startswith("ta")
+    if projects:
+        # One question: the names and places buyers will look for.
+        return (
+            "Ippo endha projects sale-la irukku — peru, edam sollunga?" if tamil
+            else "Which projects are selling now — their names and where they are?"
+        )
     parts: list[str] = []
     if cuts:
         parts.append(
@@ -304,7 +324,8 @@ def _price_line(group: CatalogueGroup) -> str:
 
 def catalogue_lines(bp: BusinessBlueprint) -> list[dict[str, object]]:
     """The structure as the owner reads it in the panel."""
-    labels = {"varieties": "varieties", "cuts": "cuts", "sizes": "sizes", "price": "price", "photo": "photo"}
+    labels = {"varieties": "varieties", "cuts": "cuts", "sizes": "sizes", "projects": "projects",
+              "price": "price", "photo": "photo"}
     out: list[dict[str, object]] = []
     for group in bp.taxonomy.groups:
         out.append({
