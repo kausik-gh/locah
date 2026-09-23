@@ -28,6 +28,7 @@ from platform_core.interview.design_strategy import (
     select_contextual_template,
     validate_strategy,
 )
+from platform_core.interview.discovery import TARGETS
 from platform_core.interview.models import (
     BusinessBlueprint,
     CapabilityIntent,
@@ -35,6 +36,7 @@ from platform_core.interview.models import (
     Fact,
     InterviewCommand,
     MediaReference,
+    TargetState,
     now,
 )
 from platform_core.interview.orchestrator import BusinessInterviewOrchestrator as Engine, QUESTIONS
@@ -88,6 +90,50 @@ def confirmed():
     }
     Engine.project(bp)
     return bp
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_phone", [False, True])
+async def test_build_accepts_discovery_without_legacy_description(monkeypatch, with_phone):
+    """A confirmed discovery interview can build without a description fact."""
+    import platform_core.services.business_interview as service_module
+    from platform_core.services.business_settings import BusinessSettingsService
+
+    bp = blueprint()
+    bp.discovery = {target.id: TargetState(status="answered") for target in TARGETS}
+    if with_phone:
+        bp.known_facts["phone"] = Fact(
+            value="9876543210", source="USER_STATEMENT", confirmation="confirmed"
+        )
+    Engine.project(bp, "other")
+    assert bp.completion_state.confirmed
+    assert "description" not in bp.known_facts
+
+    business = Business(id=bp.business_id, business_type="other")
+    session = AsyncMock()
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = None
+    session.execute.return_value = query_result
+    monkeypatch.setattr(
+        service_module.BusinessEntitlementResolver,
+        "resolve",
+        AsyncMock(return_value=entitlements()),
+    )
+    patch_profile = AsyncMock()
+    monkeypatch.setattr(BusinessSettingsService, "patch_profile", patch_profile)
+    marker = RuntimeError("past profile update")
+    monkeypatch.setattr(Service, "plan", AsyncMock(side_effect=marker))
+
+    with pytest.raises(RuntimeError, match="past profile update"):
+        await Service.build(
+            session, business, bp, actor_id=uuid4(), correlation_id=str(uuid4())
+        )
+    if with_phone:
+        assert patch_profile.await_args.kwargs["raw"] == {
+            "contact": {"phone": "+919876543210"}
+        }
+    else:
+        patch_profile.assert_not_awaited()
 
 
 def entitlements():

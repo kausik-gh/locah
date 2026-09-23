@@ -541,17 +541,22 @@ class BusinessInterviewService:
         from platform_core.services.business_settings import BusinessSettingsService
         from platform_core.services.business_configuration import BusinessConfigurationService
 
-        profile: dict[str, Any] = {"description": bp.known_facts["description"].value}
+        # Discovery can confirm the business from structured answers without
+        # producing the legacy free-text description fact. Do not fabricate a
+        # profile description or fail the entire website build in that case.
+        description = bp.known_facts.get("description")
+        profile: dict[str, Any] = {"description": description.value} if description else {}
         contact = public_contact(bp)
         if contact:
             profile["contact"] = contact
-        await BusinessSettingsService.patch_profile(
-            session,
-            business_id=business.id,
-            raw=profile,
-            actor_id=actor_id,
-            correlation_id=correlation_id,
-        )
+        if profile:
+            await BusinessSettingsService.patch_profile(
+                session,
+                business_id=business.id,
+                raw=profile,
+                actor_id=actor_id,
+                correlation_id=correlation_id,
+            )
         seed = classification_seed(bp)
         if seed != business.business_type:
             await BusinessConfigurationService.patch_business_type(
