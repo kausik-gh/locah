@@ -22,7 +22,18 @@ type Asset = { url: string; alt_text?: string | null }
 /** How a visitor reaches the owner directly — only what the owner published. */
 export type SiteContact = { phone?: string; whatsapp?: string; email?: string }
 
-function whatsappHref(number: string, businessName?: string) {
+/**
+ * A section path as a visitor's link. "whatsapp:" is stored instead of a wa.me
+ * URL (stored content never holds external URLs) and resolves here, from the
+ * number the business published — or to nothing when there is none.
+ */
+export function resolvePath(path: string, contact?: SiteContact, businessName?: string) {
+  if (path === 'whatsapp:')
+    return contact?.whatsapp ? whatsappHref(contact.whatsapp, businessName) : ''
+  return path
+}
+
+export function whatsappHref(number: string, businessName?: string) {
   const digits = number.replace(/\D/g, '')
   const text = businessName ? `?text=${encodeURIComponent(`Hi ${businessName}, `)}` : ''
   return `https://wa.me/${digits}${text}`
@@ -299,7 +310,7 @@ export function SectionRenderer({
       const eyebrow = str(c.eyebrow)
       const sub = str(c.subheadline)
       const ctaLabel = str(c.cta_label)
-      const ctaPath = str(c.cta_url || c.cta_path)
+      const ctaPath = resolvePath(str(c.cta_url || c.cta_path), contact, businessName)
       const onMedia = !split && Boolean(image)
       const actions =
         (ctaLabel && ctaPath) || contact?.phone || contact?.whatsapp ? (
@@ -458,7 +469,7 @@ export function SectionRenderer({
     case 'cta_band': {
       const variant = v || 'centered'
       const ctaLabel = str(c.cta_label)
-      const ctaPath = str(c.cta_url || c.cta_path)
+      const ctaPath = resolvePath(str(c.cta_url || c.cta_path), contact, businessName)
       // A band with nothing to press is a banner with no point.
       if (!(ctaLabel && ctaPath) && !contact?.phone && !contact?.whatsapp) return null
       return (

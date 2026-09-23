@@ -395,3 +395,17 @@ def test_a_supported_intent_in_other_words_is_not_called_unsupported() -> None:
         CapabilityIntent(intent="drone_delivery", original_request="We want drone delivery."),
     ]
     assert [g.normalized_intent for g in _gaps(bp)] == ["drone_delivery"]
+
+
+def test_a_whatsapp_label_never_scrolls_to_the_menu() -> None:
+    """The hero read "Order on WhatsApp" but went to #shop, beside a second WhatsApp button."""
+    from platform_core.interview.models import DraftText
+
+    bp = home_food()
+    bp.website_draft.cta_label = DraftText(text="Order on WhatsApp")
+    payload = compose_site(bp, direct(bp, "other"), with_draft(bp, None), business_type="other",
+                           contact={"phone": "+919840012345", "whatsapp": "+919840012345"},
+                           active_modules=ACTIVE)
+    hero = sections(payload)["hero"]["content"]
+    assert hero["cta_url"] == "#shop" and "whatsapp" not in hero["cta_label"].lower()
+    assert payload["theme_hints"]["nav_cta"] == {"label": "Order on WhatsApp", "href": "whatsapp:"}

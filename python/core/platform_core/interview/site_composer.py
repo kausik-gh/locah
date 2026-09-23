@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from urllib.parse import quote
 
 from platform_core.interview.creative_director import CreativeDirection
 from platform_core.interview.media_director import picture_for, slug
@@ -337,7 +336,9 @@ def compose_site(
     arche = direction.archetype
     phone = contact.get("phone", "")
     whatsapp = contact.get("whatsapp", "")
-    wa_link = (f"https://wa.me/{re.sub(r'\D', '', whatsapp)}?text=" + quote(f"Hi {name}, ")) if whatsapp else ""
+    # Stored content never holds an external URL: "whatsapp:" is resolved when
+    # the page renders, from the number the business published.
+    wa_link = WHATSAPP if whatsapp else ""
 
     # What a visitor can actually do. A cart only where ordering is switched on
     # AND there are live items to put in it — decided at render time.
@@ -353,7 +354,12 @@ def compose_site(
     elif browse:
         default = {"menu_commerce": "See the menu", "real_estate_projects": "View projects",
                    "membership_fitness": "See programmes"}.get(arche, "Shop now")
-        primary = (copy_cta(bp) or default, "#shop")
+        label = copy_cta(bp)
+        # A label that names a channel ("Order on WhatsApp") must not scroll to
+        # the menu: that button is the browse one; Call and WhatsApp sit beside it.
+        if _CHANNEL.search(label):
+            label = ""
+        primary = (label or default, "#shop")
     elif wa_link:
         primary = ("Message on WhatsApp", wa_link)
     else:
@@ -476,7 +482,10 @@ def compose_site(
         "composer_version": COMPOSER_VERSION,
         "generation": meta or {},
     }
-    if primary[0] and primary[1]:
+    if arche in _COMMERCE and wa_link and primary[1] == "#shop":
+        # The one button always in view is the one that orders.
+        theme["nav_cta"] = {"label": "Order on WhatsApp", "href": wa_link}
+    elif primary[0] and primary[1]:
         theme["nav_cta"] = {"label": primary[0][:40], "href": primary[1][:500]}
     utility: list[str] = []
     for item in ordering:
@@ -498,6 +507,10 @@ def compose_site(
     issues = quality_issues(payload, arche)
     payload["theme_hints"]["quality"] = {"valid": not issues, "issues": issues, "repair_count": 0}
     return payload
+
+
+WHATSAPP = "whatsapp:"
+_CHANNEL = re.compile(r"\b(whats\s?app|call|phone|ring|message|dm)\b", re.I)
 
 
 def copy_cta(bp: BusinessBlueprint) -> str:

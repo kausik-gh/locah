@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { CommerceCart } from './CommerceCart'
-import { SectionRenderer, type SiteContact } from './SectionRenderer'
+import { SectionRenderer, resolvePath, type SiteContact } from './SectionRenderer'
 import { siteFontVariables } from './site-fonts'
 import { withPreviewToken } from './preview-links'
 import type { PublicWebsitePayload } from '@/lib/public-website'
@@ -209,7 +209,7 @@ export function WebsitePageView({
     return `/${slug}${path.startsWith('/') ? path : `/${path}`}`
   }
   const ctaLabel = navCta ? String(navCta.label || '') : ''
-  const ctaHref = navCta ? String(navCta.href || '') : ''
+  const ctaHref = navCta ? resolvePath(String(navCta.href || ''), contact, name) : ''
   const ctaTarget = ctaHref.startsWith('#')
     ? data.page.slug === 'home'
       ? ctaHref
