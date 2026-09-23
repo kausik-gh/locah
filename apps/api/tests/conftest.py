@@ -16,6 +16,10 @@ imported by pytest before test collection, so it does.
 
 import os
 
+from platform_testing.database_guard import configure_test_database
+
+configure_test_database(os.environ)
+
 os.environ.setdefault("RATE_LIMIT_ENABLED", "0")
 
 # The suite mints its own HS256 tokens; nothing here exercises the ES256 / JWKS
