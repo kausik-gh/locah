@@ -186,17 +186,22 @@ def _quote(text: str) -> str:
 
 
 def _evidence_quote(bp: BusinessBlueprint, pattern: str) -> str:
-    """The owner's own sentence that shows this, wherever they said it."""
+    """The owner's own sentence that shows this, wherever they said it.
+
+    What the owner typed comes first: a model's quotation can be one word
+    ("sell"), and a fact built up over several answers is several sentences
+    joined with ";" — neither reads as something the owner said.
+    """
     facts = {**bp.known_facts, **bp.unconfirmed_facts}
-    haystack = [facts[k].value for k in ("customer_actions", "operational_characteristics",
-                                         "operating_model", "description", "offerings") if k in facts]
+    haystack = [m.text for m in bp.messages if m.role == "user"]
+    haystack += [facts[k].value for k in ("customer_actions", "operational_characteristics",
+                                          "operating_model", "description", "offerings") if k in facts]
     haystack += [s.quote for s in bp.discovery.values() if s.quote]
     haystack += [e.quote for e in bp.operating_patterns]
-    haystack += [m.text for m in bp.messages if m.role == "user"]
     rx = re.compile(pattern, re.I)
     for text in haystack:
-        for sentence in re.split(r"(?<=[.!?])\s+", text):
-            if rx.search(sentence):
+        for sentence in re.split(r"(?<=[.!?])\s+|\s*;\s*", text):
+            if len(sentence.split()) >= 3 and rx.search(sentence):
                 return _quote(sentence)
     return ""
 
@@ -325,14 +330,17 @@ def recommend(
     delivers = "delivers" in seen or re.search(r"\bdeliver|\bship", fulfil_text)
     pickup = "pickup" in seen or re.search(r"pick ?up|collect", fulfil_text)
     if (delivers or pickup) and orders:
+        # The model's summaries are written to the owner ("Delivery covers ...");
+        # spliced into a sentence they read as nonsense, so they stay evidence.
         area = state.get("fulfilment.area")
-        where = f" to {area.summary.rstrip('.')}" if area and area.summary else ""
-        mode = "delivery" + where + (" and pickup" if pickup else "") if delivers else "pickup"
+        mode = ("delivery and pickup" if pickup else "delivery") if delivers else "pickup"
         out["fulfilment"] = (
             "useful" if quote_b2b else "strong",
             f"You offer {mode} — manage it order by order.",
             said(r"\b(deliver\w*|pick ?up|ship\w*|take ?away|collect\w*)\b",
-                 (fulfil.summary if fulfil and fulfil.summary else f"You offer {mode}.")),
+                 (fulfil.summary if fulfil and fulfil.summary else f"You offer {mode}."))
+            + ([RecommendationEvidence(kind="answer", text=area.summary)]
+               if delivers and area and area.status == "answered" and area.summary else []),
             "Set your delivery area and charges." if delivers else "Set pickup times.",
         )
     if "accepts_appointments" in seen or "bookings" in intents:

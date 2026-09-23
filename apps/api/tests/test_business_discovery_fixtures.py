@@ -443,3 +443,55 @@ def test_characteristics_do_not_come_from_the_word_customers():
     assert "offerings.customisation" not in {r.target.id for r in rank(bp, "retail")}
     bp.known_facts["description"] = Fact(value="We also do custom cuts on request", source="USER_STATEMENT")
     assert characteristics(bp, "retail")["made_to_order"] == "observed"
+
+
+# ----------------------------------------------- found on the live Railway run
+
+
+@pytest.mark.asyncio
+async def test_evidence_is_a_sentence_the_owner_said_not_one_word():
+    """Live: the catalogue said `You said: "sell"` — the model's one-word quote."""
+    bp = blueprint("Ishant Proteins")
+    one_word = {"facts": [fact("offerings", "all types of meat")],
+                "answered": [ans("offerings.main", "All kinds of meat.", "all types of meat", "partial")],
+                "operating_patterns": [pat("product_led", "sell")],
+                "acknowledgement": "Understood.", "next_target": "offerings.main",
+                "next_question": "Which meats should customers see first?"}
+    bp = await Engine.turn(bp, "We sell all types of meat", provider=Model(one_word), business_type="other")
+    resolve_recommendations(bp, entitlements(), "other")
+    catalogue = next(r for r in bp.recommended_modules if r.module_id == "offerings-catalog")
+    assert catalogue.evidence[0].text == "We sell all types of meat"
+
+
+def test_delivery_reason_never_splices_a_summary_into_a_sentence():
+    """Live: "You offer delivery to Delivery covers Nookampalayam and Perumbakkam"."""
+    from platform_core.interview.models import TargetState
+
+    bp = blueprint("Ishant Proteins")
+    bp.known_facts["customer_actions"] = Fact(value="Select meat, select kg and order", source="USER_STATEMENT")
+    bp.discovery["fulfilment.mode"] = TargetState(
+        status="answered", summary="You offer both home delivery and store pickup",
+        quote="We deliver ourselves around Nookampalayam and Perumbakkam, people can pick up too")
+    bp.discovery["fulfilment.area"] = TargetState(
+        status="answered", summary="Delivery covers Nookampalayam and Perumbakkam",
+        quote="around Nookampalayam and Perumbakkam")
+    Engine.project(bp, "other")
+    resolve_recommendations(bp, entitlements(), "other")
+    fulfilment = next(r for r in bp.recommended_modules if r.module_id == "fulfilment")
+    assert fulfilment.reason == "You offer delivery and pickup — manage it order by order."
+    assert "Delivery covers Nookampalayam and Perumbakkam" in [e.text for e in fulfilment.evidence]
+
+
+@pytest.mark.asyncio
+async def test_a_delivery_area_never_becomes_the_address():
+    """Live: the site's address read "In nookampalayam road; Nookampalayam and Perumbakkam"."""
+    bp = blueprint("Ishant Proteins")
+    bp.unconfirmed_facts["locations"] = Fact(value="In nookampalayam road", source="USER_STATEMENT")
+    text = "We deliver ourselves around Nookampalayam and Perumbakkam, people can pick up too"
+    answer = {"facts": [{"field": "locations", "quote": "Nookampalayam and Perumbakkam", "mode": "add"}],
+              "answered": [ans("fulfilment.area", "Delivery covers Nookampalayam and Perumbakkam",
+                               "around Nookampalayam and Perumbakkam")],
+              "acknowledgement": "Both covered.", "next_target": "commerce.payment",
+              "next_question": "How do customers pay?"}
+    bp = await Engine.turn(bp, text, provider=Model(answer), business_type="other")
+    assert bp.unconfirmed_facts["locations"].value == "In nookampalayam road"

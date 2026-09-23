@@ -121,7 +121,7 @@ export default async function WebsiteStepPage({
             Continue →
           </Link>
           {previewHref ? (
-            <a href={previewHref} target="_blank" rel="noreferrer" className="lc-btn">
+            <a href={previewHref} target="_blank" rel="noreferrer" className="lc-btn lc-btn--ghost">
               Open full size ↗
             </a>
           ) : null}

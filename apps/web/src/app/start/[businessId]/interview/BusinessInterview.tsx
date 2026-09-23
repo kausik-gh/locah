@@ -44,14 +44,19 @@ function ToolCard({
   module,
   busy,
   compact = false,
+  labels,
   onChoose,
 }: {
   module: InterviewModule
   busy: boolean
   compact?: boolean
+  /** Owner-facing names by module id, so a dependency never shows as an id. */
+  labels: Record<string, string>
   onChoose: (choice: 'approved' | 'declined') => void
 }) {
-  const extra = module.dependencies.filter((id) => !id.startsWith('core-'))
+  const extra = module.dependencies
+    .filter((id) => !id.startsWith('core-'))
+    .map((id) => labels[id] ?? id.replaceAll('-', ' '))
   const said = module.evidence?.find((e) => e.kind === 'owner_said')
   return (
     <article className={`bi-tool${compact ? ' bi-tool--compact' : ''}`}>
@@ -134,6 +139,9 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
   const others = data.available_modules.filter((m) => !recommendedIds.has(m.module_id))
   const forCustomers = others.filter((m) => (m.group ?? 'customer') === 'customer')
   const forRunning = others.filter((m) => m.group === 'operations')
+  const toolLabels = Object.fromEntries(
+    [...bp.recommended_modules, ...data.available_modules].map((m) => [m.module_id, m.label])
+  )
   const choose = (moduleId: string, choice: 'approved' | 'declined') =>
     void send({ action: 'choices', choices: { [moduleId]: choice } })
 
@@ -556,6 +564,7 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
                     key={module.module_id}
                     module={module}
                     busy={busy}
+                    labels={toolLabels}
                     onChoose={(choice) => choose(module.module_id, choice)}
                   />
                 ))}
@@ -604,6 +613,7 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
                           module={module}
                           busy={busy}
                           compact
+                          labels={toolLabels}
                           onChoose={(choice) => choose(module.module_id, choice)}
                         />
                       ))}

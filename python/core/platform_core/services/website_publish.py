@@ -314,10 +314,46 @@ class WebsitePublishService:
             "version": WebsiteResolver.serialize_version(version),
             "page": serialized_page,
             "navigation": version.navigation,
-            "theme": version.theme,
+            "theme": await _theme_with_logo(session, business.id, version.theme),
             "is_preview": is_preview,
             "cache_control": "no-store" if is_preview else "public",
         }
+
+
+async def _theme_with_logo(session: Any, business_id: Any, theme: Any) -> dict[str, Any]:
+    """The business's own logo in the site header.
+
+    The page renderer shows `theme.logo_url`, but nothing put it there: a logo
+    the owner uploaded or asked Locah to draw lived on the Business Profile and
+    never reached the site. It is resolved at render time, so a logo that
+    arrives after the build appears without rebuilding. The business's own
+    brand only — never a LOCAH mark.
+    """
+    from platform_core.models import MediaAsset
+
+    result: dict[str, Any] = dict(theme or {})
+    if result.get("logo_url"):
+        return result
+    logo_id = (
+        await session.execute(
+            select(BusinessProfile.logo_asset_id).where(BusinessProfile.business_id == business_id)
+        )
+    ).scalar()
+    if not logo_id:
+        return result
+    asset = (
+        await session.execute(
+            select(MediaAsset).where(
+                MediaAsset.id == logo_id,
+                MediaAsset.business_id == business_id,
+                MediaAsset.status == "ready",
+                MediaAsset.deleted_at.is_(None),
+            )
+        )
+    ).scalars().first()
+    if asset is not None and asset.public_url:
+        result["logo_url"] = asset.public_url
+    return result
 
 
 async def _public_contact(session: Any, business_id: Any) -> dict[str, str]:

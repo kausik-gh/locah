@@ -507,6 +507,14 @@ def _merge_facts(bp: BusinessBlueprint, ti: TurnIntelligence, text: str, source:
             item.quote, re.I,
         ):
             continue
+        # Where the business delivers is not where it is: "we deliver around
+        # Nookampalayam and Perumbakkam" once became part of the shop's address.
+        if item.field == "locations" and (
+            any(a.target == "fulfilment.area" and item.quote.casefold() in (a.quote or "").casefold()
+                for a in ti.answered)
+            or re.search(r"\b(?:deliver\w*|ship\w*)\b[^.]{0,60}" + re.escape(item.quote), text, re.I)
+        ):
+            continue
         previous = bp.unconfirmed_facts.get(item.field) or bp.known_facts.get(item.field)
         if (
             item.field == "locations" and item.mode == "replace" and previous

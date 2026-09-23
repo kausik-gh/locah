@@ -673,6 +673,10 @@ async def test_creation_never_enqueues_or_calls_ai(monkeypatch):
     monkeypatch.setattr(WebsiteGenerationService, "enqueue_generation", enqueue)
     session = AsyncMock()
     session.add = MagicMock(side_effect=lambda obj: setattr(obj, "id", uuid4()))
+    savepoint = MagicMock()  # the business row is inserted inside a savepoint
+    savepoint.__aenter__ = AsyncMock(return_value=None)
+    savepoint.__aexit__ = AsyncMock(return_value=False)
+    session.begin_nested = MagicMock(return_value=savepoint)
     business, _, _, _ = await BusinessService.create_business(
         session,
         identity_id=uuid4(),

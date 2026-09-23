@@ -213,3 +213,43 @@ async def test_the_owner_can_ask_for_a_logo_but_not_over_their_own(monkeypatch):
         await Service.execute(AsyncMock(), bp.business_id, InterviewCommand(
             action="image", image_role="logo", revision=0, request_id=uuid4()),
             actor_id=uuid4(), correlation_id="c")
+
+
+class _Rows:
+    def __init__(self, value):
+        self.value = value
+
+    def scalar(self):
+        return self.value
+
+    def scalars(self):
+        return self
+
+    def first(self):
+        return self.value
+
+
+class _Session:
+    """Answers the two reads `_theme_with_logo` makes: the profile's logo id, then the asset."""
+
+    def __init__(self, logo_id, asset):
+        self.answers = [logo_id, asset]
+
+    async def execute(self, _stmt):
+        return _Rows(self.answers.pop(0))
+
+
+async def test_the_business_logo_reaches_the_site_header():
+    """Live: a drawn logo sat on the profile and never reached the site."""
+    from types import SimpleNamespace
+
+    from platform_core.services.website_publish import _theme_with_logo
+
+    logo = uuid4()
+    asset = SimpleNamespace(public_url="https://cdn.example/logo.png")
+    theme = await _theme_with_logo(_Session(logo, asset), uuid4(), {"primary_color": "#123"})
+    assert theme == {"primary_color": "#123", "logo_url": "https://cdn.example/logo.png"}
+    # A logo already chosen for the site is left alone; no logo, no key.
+    kept = await _theme_with_logo(_Session(None, None), uuid4(), {"logo_url": "https://x/own.png"})
+    assert kept["logo_url"] == "https://x/own.png"
+    assert "logo_url" not in await _theme_with_logo(_Session(None, None), uuid4(), {})
