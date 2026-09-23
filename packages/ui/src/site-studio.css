@@ -507,10 +507,25 @@
   );
 }
 .ls-hero--cinematic .ls-hero__headline {
-  font-size: clamp(3.2rem, 1.5rem + 8vw, 8.6rem);
+  /* As large as the reference wordmark — but never wider than the column:
+     the longest word, at ~0.82em a letter in stretched caps, must fit. */
+  font-size: min(
+    clamp(3.2rem, 1.5rem + 8vw, 8.6rem),
+    calc(
+      (min(100vw, 1200px) - 2 * clamp(1.25rem, 0.5rem + 3vw, 3rem)) /
+        (var(--hero-longest, 8) * 0.82)
+    )
+  );
   line-height: 0.9;
-  max-width: 11ch;
+  /* Stacked like a wordmark: each line about as wide as the longest word. */
+  max-width: max(6.5em, calc(var(--hero-longest, 8) * 0.86em));
   color: #fff;
+}
+.ls-hero__inner {
+  min-width: 0;
+}
+.ls-hero__headline {
+  overflow-wrap: break-word;
 }
 .ls-hero--cinematic .ls-accent {
   color: var(--site-primary);

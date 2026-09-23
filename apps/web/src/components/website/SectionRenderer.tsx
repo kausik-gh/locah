@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 import { LiveItemsSection } from './LiveItemsSection'
 import { ProductShowcase } from './ProductShowcase'
 import { withPreviewToken } from './preview-links'
@@ -373,10 +374,18 @@ export function SectionRenderer({
         )
       }
 
+      // The longest word decides how large a wordmark headline may be: at 9rem
+      // "CONDITIONING" is wider than a phone, and pushed the buttons off-screen.
+      const longest = Math.max(4, ...headline.split(/\s+/).map((word) => word.length))
       return (
         <section
           className={`ls-hero ls-hero--${variant} ${image ? 'ls-hero--hasimage' : 'ls-hero--noimage'}`}
-          style={image ? { backgroundImage: `url(${image.url})` } : undefined}
+          style={
+            {
+              ...(image ? { backgroundImage: `url(${image.url})` } : {}),
+              '--hero-longest': longest,
+            } as CSSProperties
+          }
         >
           <div className="ls-hero__inner">{copy}</div>
         </section>

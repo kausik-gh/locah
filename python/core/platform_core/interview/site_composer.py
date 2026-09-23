@@ -382,6 +382,11 @@ def compose_site(
     if primary[0] and primary[1]:
         hero["cta_label"], hero["cta_url"] = primary[0][:60], primary[1][:500]
     badges = hero_badges(bp, business_type)
+    if arche not in _COMMERCE:
+        # "UPI or cash" under a gym's hero reads as filler; how a shop takes
+        # money is part of buying, how a gym does is a detail for later.
+        paying = {f["body"].rstrip(".") for f in ordering_facts(bp, business_type) if f["kind"] == "payment"}
+        badges = [b for b in badges if b not in paying]
     if badges:
         hero["badges"] = badges
     hero_picture = picture_for(bp, "hero")
