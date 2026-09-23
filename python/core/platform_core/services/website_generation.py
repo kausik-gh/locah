@@ -37,6 +37,22 @@ from platform_core.website.questionnaire import validate_intake
 from platform_core.website.section_registry import WEBSITE_GENERATION_SCHEMA, catalogue_section_for_page
 
 
+def is_interview_job(job: WebsiteGenerationJob) -> bool:
+    """Whether this job personalises a Business Interview build.
+
+    Recognised by what the job carries — the interview's own Blueprint snapshot
+    — not by a version label. The label changed ("interview-v1" became
+    "interview-composition-v1") while this check still compared the old one,
+    so every interview build on a worker was handed to the generic generator,
+    which overwrote the owner's composed site with template copy and actions
+    the business could not fulfil.
+    """
+    intake = job.intake if isinstance(job.intake, dict) else {}
+    return isinstance(intake.get("blueprint"), dict) or str(job.prompt_version or "").startswith(
+        "interview"
+    )
+
+
 class WebsiteGenerationService:
     @staticmethod
     async def enqueue_generation(
@@ -444,7 +460,7 @@ class WebsiteGenerationService:
         if job.status in {"completed", "fallback_used", "superseded"}:
             return {"status": job.status, "job_id": str(job.id), "duplicate": True}
 
-        if job.prompt_version == "interview-v1":
+        if is_interview_job(job):
             from platform_core.services.business_interview import BusinessInterviewService
             return await BusinessInterviewService.personalize_job(session, job, correlation_id)
 

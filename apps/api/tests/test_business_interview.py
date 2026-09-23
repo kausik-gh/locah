@@ -1060,3 +1060,44 @@ def test_every_strategy_field_reaches_the_rendered_page():
     assert {"primary_business_goal", "secondary_customer_action"}.isdisjoint(
         VisualPriority.model_fields
     )
+
+
+# ------------------------------------------------ worker routing (live bug)
+
+
+def test_the_worker_hands_interview_builds_to_personalisation_not_the_generic_generator():
+    """On Railway every interview build was rebuilt from generic template copy."""
+    from platform_core.interview.design_strategy import GENERATION_PLAN_VERSION
+    from platform_core.services.website_generation import is_interview_job
+
+    built = WebsiteGenerationJob(
+        business_id=uuid4(), triggered_by=uuid4(), prompt_version=GENERATION_PLAN_VERSION,
+        intake={"blueprint": confirmed().model_dump(mode="json")},
+    )
+    assert is_interview_job(built)
+    legacy = WebsiteGenerationJob(business_id=uuid4(), triggered_by=uuid4(), prompt_version="interview-v1")
+    assert is_interview_job(legacy)
+    generic = WebsiteGenerationJob(business_id=uuid4(), triggered_by=uuid4(), prompt_version="v2",
+                                   intake={"answers": {}})
+    assert not is_interview_job(generic)
+
+
+@pytest.mark.asyncio
+async def test_execute_job_routes_an_interview_build_to_personalize_job(monkeypatch):
+    from platform_core.interview.design_strategy import GENERATION_PLAN_VERSION
+    from platform_core.services.website_generation import WebsiteGenerationService
+
+    job = WebsiteGenerationJob(
+        id=uuid4(), business_id=uuid4(), triggered_by=uuid4(), status="pending",
+        prompt_version=GENERATION_PLAN_VERSION,
+        intake={"blueprint": confirmed().model_dump(mode="json")},
+    )
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = job
+    session.execute.return_value = result
+    personalize = AsyncMock(return_value={"status": "completed"})
+    monkeypatch.setattr(Service, "personalize_job", personalize)
+    out = await WebsiteGenerationService.execute_job(session, generation_job_id=job.id, correlation_id="c")
+    assert out == {"status": "completed"}
+    personalize.assert_awaited_once()
