@@ -468,7 +468,11 @@ def build_preview(
             else:
                 # Live-record sections contain labels only. Inventory, prices,
                 # availability, people, rooms, and plans come from live modules.
-                content = {"title": page.title}
+                # On the home page the page's own name ("Home") is not a heading.
+                home_titles = {"offerings_list": "Order online", "menu_section": "Menu",
+                               "rooms_section": "Rooms", "plans_section": "Plans",
+                               "classes_section": "Classes"}
+                content = {"title": page.title if page.slug != "home" else home_titles.get(kind, page.title)}
             sections.append(
                 {
                     "section_type_id": kind,

@@ -33,11 +33,7 @@ type Business = { id: string; slug: string; display_name: string }
  * draft exists at all — a direct visit before building, or a generation that
  * failed outright. It is a real empty state, not a default.
  */
-export default async function WebsiteStepPage({
-  params,
-}: {
-  params: { businessId: string }
-}) {
+export default async function WebsiteStepPage({ params }: { params: { businessId: string } }) {
   const token = await getAccessToken()
   if (!token) redirect(`/login?destination=/start/${params.businessId}/website`)
 
@@ -129,11 +125,7 @@ export default async function WebsiteStepPage({
       </div>
 
       {previewHref ? (
-        <LivePreview
-          businessId={params.businessId}
-          src={previewHref}
-          initialStatus={genStatus}
-        />
+        <LivePreview businessId={params.businessId} src={previewHref} initialStatus={genStatus} />
       ) : (
         <p className="lp-lede" role="status">
           Your draft is saved with {pages.length} {pages.length === 1 ? 'page' : 'pages'}, but the

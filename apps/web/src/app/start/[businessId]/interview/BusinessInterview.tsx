@@ -517,7 +517,9 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
                   </button>
                 ) : null}
               </div>
-              <p className="ob-help">Drawn after you build, so it never slows your first preview.</p>
+              <p className="ob-help">
+                Drawn after you build, so it never slows your first preview.
+              </p>
             </details>
           )}
         </section>

@@ -150,13 +150,17 @@ export function LiveItemsSection({
   // A visitor must never see an empty shelf. If the business has no records
   // for this section yet, the section renders nothing at all rather than an
   // apologetic placeholder. The owner is told what to add in the Workspace.
-  if (state === 'ready' && filtered.length === 0) return null
+  // A list that cannot load (the catalogue is not switched on yet) is the
+  // same empty shelf — it once left a lone heading between two sections.
+  if ((state === 'ready' && filtered.length === 0) || state === 'error') return null
 
   return (
     <section className={`ls-section ${altGround ? 'ls-section--alt' : ''} ${sectionClass || ''}`}>
       <div className="ls-inner">
         {(title || subtitle) && (
-          <div className={`ls-head ${kind === 'menu' || kind === 'plans' ? 'ls-head--center' : ''}`}>
+          <div
+            className={`ls-head ${kind === 'menu' || kind === 'plans' ? 'ls-head--center' : ''}`}
+          >
             {title ? <h2 className="ls-title">{title}</h2> : null}
             {subtitle ? <p className="ls-sub">{subtitle}</p> : null}
           </div>
@@ -164,8 +168,13 @@ export function LiveItemsSection({
 
         {state === 'loading' ? (
           <ItemsSkeleton variant={variant} />
-        ) : state === 'error' ? null : kind === 'menu' && variant !== 'simple' ? (
-          <MenuCategorized items={filtered} showPrices={showPrices} onAdd={addToCart} action={action} />
+        ) : kind === 'menu' && variant !== 'simple' ? (
+          <MenuCategorized
+            items={filtered}
+            showPrices={showPrices}
+            onAdd={addToCart}
+            action={action}
+          />
         ) : kind === 'plans' ? (
           <Plans items={filtered} variant={variant} slug={businessSlug} action={action} />
         ) : kind === 'rooms' && variant !== 'cards' ? (
@@ -376,11 +385,12 @@ function Plans({
                 <td data-num="">{money(p.price_amount, p.currency) || '—'}</td>
                 <td>
                   {action === 'enquire' ? (
-
-                    <Link className="ls-btn ls-btn--outline" href={`/${slug}/enquire?offering_id=${p.id}`}>
+                    <Link
+                      className="ls-btn ls-btn--outline"
+                      href={`/${slug}/enquire?offering_id=${p.id}`}
+                    >
                       Choose
                     </Link>
-
                   ) : null}
                 </td>
               </tr>
@@ -405,11 +415,9 @@ function Plans({
           {p.description ? <p className="ls-plan__desc">{p.description}</p> : null}
           <div className="ls-plan__cta">
             {action === 'enquire' ? (
-
               <Link className="ls-btn" href={`/${slug}/enquire?offering_id=${p.id}`}>
                 Get started
               </Link>
-
             ) : null}
           </div>
         </div>
@@ -485,9 +493,7 @@ function ClassSchedule({
           <div className="ls-sched__dayname">{group}</div>
           {list.map((c) => (
             <div key={c.id} className="ls-sched__row">
-              <span className="ls-sched__time">
-                {money(c.price_amount, c.currency) || '—'}
-              </span>
+              <span className="ls-sched__time">{money(c.price_amount, c.currency) || '—'}</span>
               <span>
                 <span className="ls-sched__name">{c.title}</span>
                 {c.description ? <div className="ls-sched__who">{c.description}</div> : null}
@@ -508,7 +514,10 @@ function ClassSchedule({
 function ItemsSkeleton({ variant }: { variant?: string }) {
   const n = variant === 'list' ? 5 : 6
   return (
-    <div className={`ls-items ls-items--${variant === 'list' ? 'list' : 'cards'}`} aria-hidden="true">
+    <div
+      className={`ls-items ls-items--${variant === 'list' ? 'list' : 'cards'}`}
+      aria-hidden="true"
+    >
       {Array.from({ length: n }).map((_, i) => (
         <div key={i} className="ls-item" style={{ border: 0 }}>
           <div className="lc-skeleton" style={{ height: variant === 'list' ? 26 : 150 }} />

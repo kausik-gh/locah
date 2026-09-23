@@ -246,7 +246,9 @@ export function UnderstandingPanel({
             return (
               <div className="bi-truth" key={status}>
                 <p className="bi-panel__label bi-truth__status">
-                  <span className={`bi-tag ${status === 'confirmed' ? 'bi-tag--owner' : 'bi-tag--check'}`}>
+                  <span
+                    className={`bi-tag ${status === 'confirmed' ? 'bi-tag--owner' : 'bi-tag--check'}`}
+                  >
                     {status === 'confirmed' ? 'Confirmed' : 'Needs confirmation'}
                   </span>
                   {status === 'from_you' ? 'From what you said' : null}
@@ -261,7 +263,9 @@ export function UnderstandingPanel({
                         className="bi-text-button"
                         disabled={busy}
                         aria-label={`Change ${item.label.toLowerCase()}`}
-                        onClick={() => onCorrect(item.target, item.label, item.value, FACT_OF[item.target])}
+                        onClick={() =>
+                          onCorrect(item.target, item.label, item.value, FACT_OF[item.target])
+                        }
                       >
                         Change
                       </button>
@@ -276,7 +280,10 @@ export function UnderstandingPanel({
             {u.logo.state === 'ready' ? (
               u.logo.url ? (
                 // eslint-disable-next-line @next/next/no-img-element -- signed storage URL
-                <img src={u.logo.url} alt={`${bp.identity.display_name?.value ?? 'Business'} logo`} />
+                <img
+                  src={u.logo.url}
+                  alt={`${bp.identity.display_name?.value ?? 'Business'} logo`}
+                />
               ) : (
                 <span>Ready</span>
               )
@@ -289,7 +296,9 @@ export function UnderstandingPanel({
                 {u.logo.reason || 'Locah couldn’t draw a logo this time.'}
               </span>
             ) : (
-              <span className="bi-muted">Not added yet — upload one, or ask Locah to make one.</span>
+              <span className="bi-muted">
+                Not added yet — upload one, or ask Locah to make one.
+              </span>
             )}
           </div>
         </section>
@@ -336,7 +345,11 @@ export function UnderstandingPanel({
                             className="bi-text-button"
                             disabled={busy}
                             onClick={() =>
-                              void onDraft({ field: 'offering', op: 'regenerate', offering_name: offering.name })
+                              void onDraft({
+                                field: 'offering',
+                                op: 'regenerate',
+                                offering_name: offering.name,
+                              })
                             }
                           >
                             Write a line for this
@@ -413,7 +426,9 @@ export function UnderstandingPanel({
 
         <section className="bi-panel__section bi-panel__ready">
           <p className="bi-progress" role="status">
-            {ready ? 'Enough for a strong first website. Everything else can wait.' : u.readiness.reason}
+            {ready
+              ? 'Enough for a strong first website. Everything else can wait.'
+              : u.readiness.reason}
           </p>
           {ready && (
             <button
