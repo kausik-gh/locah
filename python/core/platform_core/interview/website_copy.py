@@ -46,6 +46,13 @@ class StepCopy(_Model):
     quote: str = Field(min_length=1, max_length=300)
 
 
+class NamedLine(_Model):
+    """One short line about one thing the owner named — a category or an item."""
+
+    name: str = Field(min_length=1, max_length=80)
+    line: str = Field(min_length=1, max_length=160)
+
+
 class WebsiteCopy(_Model):
     headline: str = Field(default="", max_length=90)
     headline_accent: str = Field(default="", max_length=40)
@@ -60,6 +67,11 @@ class WebsiteCopy(_Model):
     closing_headline: str = Field(default="", max_length=90)
     closing_body: str = Field(default="", max_length=200)
     contact_title: str = Field(default="", max_length=60)
+    # Headings for browsing what is sold ("Shop by category", "Our menu").
+    categories_title: str = Field(default="", max_length=60)
+    products_title: str = Field(default="", max_length=60)
+    category_lines: list[NamedLine] = Field(default_factory=list, max_length=8)
+    item_lines: list[NamedLine] = Field(default_factory=list, max_length=24)
 
 
 # Claims that need the owner's own evidence. Allowed only when the owner used
@@ -131,6 +143,7 @@ def govern_copy(copy: WebsiteCopy, bp: BusinessBlueprint) -> WebsiteCopy:
     for field in (
         "headline", "subheadline", "about_title", "about_body", "offerings_title",
         "offerings_subtitle", "steps_title", "closing_headline", "closing_body", "contact_title",
+        "categories_title", "products_title",
     ):
         text = _clean(getattr(copy, field))
         if text and _grounded(text, corpus):
@@ -155,6 +168,16 @@ def govern_copy(copy: WebsiteCopy, bp: BusinessBlueprint) -> WebsiteCopy:
         body = _clean(step.body)
         steps.append(StepCopy(title=title, body=body if body and _grounded(body, corpus) else "", quote=quote))
     data["steps"] = steps if len(steps) >= 2 else []
+    # A line belongs to something the owner named, and adds no evidence.
+    named = {g.name.casefold() for g in bp.taxonomy.groups}
+    named |= {i.name.casefold() for g in bp.taxonomy.groups for i in g.items}
+    for field in ("category_lines", "item_lines"):
+        kept: list[NamedLine] = []
+        for entry in getattr(copy, field):
+            name, line = _clean(entry.name), _clean(entry.line)
+            if name.casefold() in named and line and _grounded(line, corpus):
+                kept.append(NamedLine(name=name, line=line))
+        data[field] = kept
     return WebsiteCopy(**data)
 
 
@@ -174,6 +197,12 @@ COPY_PROMPT = (
     "- about_title / about_body: a short, warm paragraph drawn only from what they said.\n"
     "- offerings_title, steps_title, closing_headline, closing_body, contact_title: short and "
     "specific.\n"
+    "- products_title / categories_title: the heading over what can be bought or chosen, in the "
+    "voice of this kind of site ('Shop by category', 'Our menu', 'Featured projects') — never "
+    "'What we do' for things people buy.\n"
+    "- category_lines / item_lines: for each group and item in brief.catalogue, one short "
+    "appetising line (at most 14 words) about what it is or what it is good for, naming it "
+    "exactly as given; never a price, weight, origin or quality claim the owner did not make.\n"
     "NEVER add numbers, years, awards, certifications, guarantees, ratings, reviews, "
     "staff, 'best', 'trusted', 'organic', 'authentic' or any fact the owner did not say. "
     "Never write 'Welcome to', 'your trusted partner', 'quality and excellence', 'one-stop' "

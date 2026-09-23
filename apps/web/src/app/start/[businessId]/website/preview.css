@@ -45,3 +45,59 @@
 .lp--full .lp-stage { flex: 1; min-height: 0; }
 .lp--full .lp-stage iframe { height: 100%; min-height: 0; }
 .lp--full .lp-stage--phone iframe { height: calc(100% - 40px); }
+.lp-setup li em {
+  font-style: normal;
+  font-weight: 400;
+  color: #6b7480;
+  font-size: 12px;
+}
+.lp-setup__needs {
+  color: #9a5b12 !important;
+  font-weight: 600;
+}
+.lp-setup__needs--done {
+  color: #1f6f45 !important;
+}
+.lp-setup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+.lp-setup__form {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+.lp-setup__form fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  border: 1px solid #e9e6e0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 0;
+}
+.lp-setup__form legend {
+  font-weight: 700;
+  padding: 0 6px;
+}
+.lp-setup__form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: #4c5967;
+}
+.lp-setup__form input {
+  border: 1px solid #c4c5c5;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font: inherit;
+  min-width: 120px;
+}
+.lp-setup__wide {
+  flex: 1 1 260px;
+}
+.lp-setup__wide input {
+  width: 100%;
+}

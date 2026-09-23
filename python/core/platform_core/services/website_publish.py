@@ -263,6 +263,20 @@ class WebsitePublishService:
                 )
             )
             version = result.scalars().first()
+            # A token pins the draft that existed when it was minted, and
+            # personalisation replaces that draft a few seconds later — so the
+            # owner's "Open full size" showed the site from before Locah finished
+            # writing it. The token proves who may preview this business; what
+            # they preview is its draft as it is now.
+            if version is None or version.superseded_at is not None:
+                current = await session.execute(
+                    select(WebsiteVersion).where(
+                        WebsiteVersion.business_id == business.id,
+                        WebsiteVersion.version_type == "draft",
+                        WebsiteVersion.superseded_at.is_(None),
+                    )
+                )
+                version = current.scalars().first() or version
             is_preview = True
         else:
             if website.status != "published" or not website.published_version_id:

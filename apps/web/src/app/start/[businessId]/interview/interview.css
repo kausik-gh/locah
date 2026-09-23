@@ -172,3 +172,38 @@
   .bi-panel__body { display: none; padding: 4px 18px 18px; }
   .bi-panel__body[data-open=true] { display: block; }
 }
+
+/* What you sell: the catalogue as Locah understood it, and what it still needs. */
+.bi-range {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: grid;
+  gap: 10px;
+}
+.bi-range li {
+  border: 1px solid #ece9e3;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.bi-range__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+.bi-range__price {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1c5f57;
+}
+.bi-range p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4c5967;
+}
+.bi-range__needs {
+  color: #9a5b12 !important;
+  font-size: 12px !important;
+}

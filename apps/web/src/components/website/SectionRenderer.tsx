@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { LiveItemsSection } from './LiveItemsSection'
+import { ProductShowcase } from './ProductShowcase'
 import { withPreviewToken } from './preview-links'
 
 /**
@@ -76,15 +77,88 @@ function ContactActions({
   )
 }
 
+/** A call to action: an in-page anchor, an outside link (WhatsApp) or a page. */
+function Cta({
+  label,
+  path,
+  slug,
+  previewToken,
+  className,
+}: {
+  label: string
+  path: string
+  slug: string
+  previewToken?: string
+  className: string
+}) {
+  if (path.startsWith('#')) {
+    return (
+      <a className={className} href={path}>
+        {label}
+      </a>
+    )
+  }
+  if (/^https?:\/\//i.test(path)) {
+    return (
+      <a className={className} href={path} target="_blank" rel="noopener noreferrer">
+        {label}
+      </a>
+    )
+  }
+  return (
+    <Link className={className} href={withPreviewToken(pathHref(slug, path), previewToken)}>
+      {label}
+    </Link>
+  )
+}
+
+/** Small icons for the ordering strip — drawn, never downloaded. */
+function FactIcon({ kind }: { kind: string }) {
+  const paths: Record<string, string> = {
+    weight: 'M6 7h12l2 13H4L6 7Zm3 0a3 3 0 0 1 6 0',
+    delivery:
+      'M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm10 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
+    pickup: 'M4 10l2-5h12l2 5M4 10v9h16v-9M4 10h16M9 19v-5h6v5',
+    payment: 'M3 6h18v12H3zM3 10h18M7 15h3',
+    order: 'M5 5h14v14H5zM9 9h6M9 13h6',
+  }
+  return (
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" className="ls-fact__icon">
+      <path
+        d={paths[kind] || paths.order}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function listOf(v: unknown): Record<string, unknown>[] {
+  return Array.isArray(v)
+    ? v.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object')
+    : []
+}
+
 /** The part of a headline set in the brand colour, when there is one. */
 function Accented({ text, accent }: { text: string; accent: string }) {
   if (!accent || !text.includes(accent)) return <>{text}</>
   const at = text.indexOf(accent)
+  let rest = text.slice(at + accent.length)
+  let phrase = accent
+  // "…made at home." — the full stop belongs with the phrase, or it wraps
+  // onto a line of its own when the phrase is set on its own line.
+  if (/^[.!?,]+$/.test(rest.trim())) {
+    phrase = accent + rest.trim()
+    rest = ''
+  }
   return (
     <>
       {text.slice(0, at)}
-      <span className="ls-accent">{accent}</span>
-      {text.slice(at + accent.length)}
+      <span className="ls-accent">{phrase}</span>
+      {rest}
     </>
   )
 }
@@ -207,7 +281,14 @@ export function SectionRenderer({
     /* ------------------------------------------------------------ hero */
     case 'hero': {
       const variant = v || 'centered'
-      const split = variant === 'image_left' || variant === 'image_right'
+      const split = [
+        'image_left',
+        'image_right',
+        'commerce_split',
+        'airy_split',
+        'editorial_split',
+      ].includes(variant)
+      const badges = Array.isArray(c.badges) ? c.badges.map(String).filter(Boolean).slice(0, 4) : []
       const headline = str(c.headline)
       const accent = str(c.headline_accent)
       const eyebrow = str(c.eyebrow)
@@ -219,12 +300,13 @@ export function SectionRenderer({
         (ctaLabel && ctaPath) || contact?.phone || contact?.whatsapp ? (
           <div className="ls-hero__cta">
             {ctaLabel && ctaPath ? (
-              <Link
-                className={`ls-btn ${onMedia ? 'ls-btn--onmedia' : ''}`}
-                href={withPreviewToken(pathHref(businessSlug, ctaPath), previewToken)}
-              >
-                {ctaLabel}
-              </Link>
+              <Cta
+                className={`ls-btn ls-btn--primary ${onMedia ? 'ls-btn--onmedia' : ''}`}
+                label={ctaLabel}
+                path={ctaPath}
+                slug={businessSlug}
+                previewToken={previewToken}
+              />
             ) : null}
             <ContactActions
               contact={contact}
@@ -241,6 +323,18 @@ export function SectionRenderer({
           </h1>
           {sub ? <p className="ls-hero__sub">{sub}</p> : null}
           {actions}
+          {badges.length ? (
+            <ul className="ls-hero__badges">
+              {badges.map((badge) => (
+                <li key={badge}>
+                  <span className="ls-hero__tick" aria-hidden="true">
+                    ✓
+                  </span>
+                  {badge}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </>
       )
 
@@ -277,13 +371,38 @@ export function SectionRenderer({
       const variant = v || (image ? 'image_right' : 'text_only')
       const title = str(c.title)
       const body = str(c.body)
+      const anchor = str(c.anchor) || undefined
+      if (variant === 'story_split' && image) {
+        return (
+          <section id={anchor} className={`ls-section ls-story ${alt ? 'ls-section--alt' : ''}`}>
+            <div className="ls-inner ls-story__grid">
+              <div className="ls-story__media">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={image.url} alt={image.alt_text || title} loading="lazy" />
+              </div>
+              <div className="ls-story__copy">
+                <p className="ls-eyebrow">{str(c.eyebrow) || 'Our story'}</p>
+                <h2 className="ls-title">{title}</h2>
+                <p className="ls-about__body">{body}</p>
+                {c.quote ? (
+                  <blockquote className="ls-story__quote">{str(c.quote)}</blockquote>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        )
+      }
 
       if (variant === 'text_only' || !image) {
         return (
-          <section className={`ls-section ls-about--text_only ${alt ? 'ls-section--alt' : ''}`}>
+          <section
+            id={anchor}
+            className={`ls-section ls-about--text_only ${alt ? 'ls-section--alt' : ''}`}
+          >
             <div className="ls-inner ls-inner--prose">
               <Heading eyebrow="About" title={title} />
               <p className="ls-about__body">{body}</p>
+              {c.quote ? <blockquote className="ls-story__quote">{str(c.quote)}</blockquote> : null}
             </div>
           </section>
         )
@@ -337,7 +456,14 @@ export function SectionRenderer({
       // A band with nothing to press is a banner with no point.
       if (!(ctaLabel && ctaPath) && !contact?.phone && !contact?.whatsapp) return null
       return (
-        <section className={`ls-cta ls-cta--${variant}`}>
+        <section
+          className={`ls-cta ls-cta--${variant} ${image ? 'ls-cta--hasimage' : ''}`}
+          style={
+            variant === 'image_banner' && image
+              ? { backgroundImage: `url(${image.url})` }
+              : undefined
+          }
+        >
           <div className="ls-cta__inner">
             <div>
               <h2 className="ls-cta__headline">{str(c.headline)}</h2>
@@ -345,12 +471,13 @@ export function SectionRenderer({
             </div>
             <div className="ls-cta__actions">
               {ctaLabel && ctaPath ? (
-                <Link
+                <Cta
                   className="ls-btn ls-btn--onmedia"
-                  href={withPreviewToken(pathHref(businessSlug, ctaPath), previewToken)}
-                >
-                  {ctaLabel}
-                </Link>
+                  label={ctaLabel}
+                  path={ctaPath}
+                  slug={businessSlug}
+                  previewToken={previewToken}
+                />
               ) : null}
               <ContactActions contact={contact} businessName={businessName} onMedia />
             </div>
@@ -498,6 +625,126 @@ export function SectionRenderer({
                 ))}
               </ul>
             )}
+          </div>
+        </section>
+      )
+    }
+
+    /* ----------------------------------------------- category_showcase */
+    case 'category_showcase': {
+      const rows = listOf(c.items)
+      if (rows.length === 0) return null
+      const variant = v || 'image_cards'
+      return (
+        <section
+          id={str(c.anchor) || undefined}
+          className={`ls-section ls-categories ls-categories--${variant} ${alt ? 'ls-section--alt' : ''}`}
+        >
+          <div className="ls-inner">
+            <div className="ls-head ls-head--showcase">
+              <h2 className="ls-title">{str(c.title)}</h2>
+              {c.subtitle ? <p className="ls-sub">{str(c.subtitle)}</p> : null}
+            </div>
+            <ul className="ls-category-grid" data-count={rows.length}>
+              {rows.map((row, i) => {
+                const picture = assets[`items.${i}`]
+                const tags = Array.isArray(row.tags) ? row.tags.map(String).slice(0, 6) : []
+                return (
+                  <li
+                    key={str(row.name)}
+                    className={`ls-category ${picture ? 'ls-category--image' : ''}`}
+                  >
+                    {picture ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        className="ls-category__img"
+                        src={picture.url}
+                        alt={picture.alt_text || str(row.name)}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className="ls-category__initial" aria-hidden="true">
+                        {str(row.name).charAt(0)}
+                      </span>
+                    )}
+                    <div className="ls-category__copy">
+                      {row.meta ? <span className="ls-category__meta">{str(row.meta)}</span> : null}
+                      <h3 className="ls-category__name">{str(row.name)}</h3>
+                      {row.description ? (
+                        <p className="ls-category__text">{str(row.description)}</p>
+                      ) : null}
+                      {tags.length ? <p className="ls-category__tags">{tags.join(' · ')}</p> : null}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </section>
+      )
+    }
+
+    /* ------------------------------------------------ product_showcase */
+    case 'product_showcase': {
+      const itemRows = listOf(c.items).map((row, i) => ({
+        name: str(row.name),
+        category: str(row.category) || undefined,
+        description: str(row.description) || undefined,
+        price: str(row.price) || undefined,
+        unit: str(row.unit) || undefined,
+        image: assets[`items.${i}`],
+      }))
+      if (itemRows.length === 0) return null
+      const categoryRows = listOf(c.categories).map((row, i) => ({
+        name: str(row.name),
+        description: str(row.description) || undefined,
+        meta: str(row.meta) || undefined,
+        tags: Array.isArray(row.tags) ? row.tags.map(String) : undefined,
+        image: assets[`categories.${i}`],
+      }))
+      return (
+        <ProductShowcase
+          title={str(c.title)}
+          subtitle={c.subtitle ? str(c.subtitle) : undefined}
+          variant={v || 'commerce_grid'}
+          items={itemRows}
+          categories={categoryRows}
+          filters={Array.isArray(c.filters) ? c.filters.map(String) : []}
+          orderLabel={c.order_label ? str(c.order_label) : undefined}
+          anchor={str(c.anchor) || undefined}
+          businessSlug={businessSlug}
+          businessName={businessName || ''}
+          contact={contact}
+          capabilities={capabilities}
+          alt={alt}
+        />
+      )
+    }
+
+    /* ------------------------------------------------ fulfilment_strip */
+    case 'fulfilment_strip': {
+      const rows = listOf(c.items)
+      if (rows.length < 2) return null
+      return (
+        <section
+          id={str(c.anchor) || undefined}
+          className={`ls-section ls-facts ls-facts--${v || 'icons'} ${alt ? 'ls-section--alt' : ''}`}
+        >
+          <div className="ls-inner">
+            {c.title ? <h2 className="ls-title ls-facts__title">{str(c.title)}</h2> : null}
+            <ul className="ls-facts__list" data-count={rows.length}>
+              {rows.map((row, i) => (
+                <li key={i} className="ls-fact">
+                  <span className="ls-fact__badge">
+                    <FactIcon kind={str(row.kind)} />
+                  </span>
+                  <div>
+                    <h3 className="ls-fact__title">{str(row.title)}</h3>
+                    {row.body ? <p className="ls-fact__body">{str(row.body)}</p> : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
       )

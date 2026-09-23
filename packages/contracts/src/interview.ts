@@ -45,7 +45,25 @@ export type DraftCommand = {
   field: DraftField; op: 'edit' | 'approve' | 'dismiss' | 'regenerate'
   text?: string; offering_name?: string
 }
-export type InterviewReadiness = { ready: boolean; missing: string[]; reason: string }
+export type InterviewReadiness = {
+  ready: boolean; missing: string[]; reason: string
+  /** Can the first website be designed well: content, conversion, visuals, story, structure. */
+  website?: Record<string, boolean>
+}
+export type CatalogueNeed = 'varieties' | 'cuts' | 'sizes' | 'price' | 'photo'
+/** What the business sells, as a structure — groups and the items inside them. */
+export type CatalogueGroup = {
+  name: string
+  items: { name: string; price: string; unit: string; description: string; source: string }[]
+  sold_by: string; price: string; unit: string; needs: CatalogueNeed[]
+  label_source: 'owner' | 'ai_suggestion'; description: string
+}
+/** One line of the catalogue as the owner reads it in a panel. */
+export type CatalogueLine = {
+  name: string; suggested_label: boolean; items: string[]; sold_by: string; price: string
+  needs: CatalogueNeed[]
+}
+export type CatalogueEdit = { group: string; item?: string; price?: string; unit?: string; add_items?: string[] }
 /** The side panel: built from state by the server, never a fact dump. */
 export type InterviewUnderstanding = {
   kind: string
@@ -54,6 +72,7 @@ export type InterviewUnderstanding = {
   items: { label: string; value: string; status: 'confirmed' | 'from_you'; target: string }[]
   still_worth_knowing: { id: string; label: string; essential: boolean }[]
   readiness: InterviewReadiness
+  catalogue: CatalogueLine[]
   logo:
     | { state: 'none' }
     | { state: 'ready'; source: 'USER_UPLOAD' | 'AI_GENERATED'; url: string | null }
@@ -68,7 +87,9 @@ export type BusinessBlueprint = {
   brand: InterviewFact | null; tone: InterviewFact | null; colours: InterviewFact | null
   logo_state: 'not_supplied' | 'uploaded' | 'generation_requested' | 'generated'
   media_assets: InterviewMedia[]
-  media_generation_requests: { role: 'hero' | 'logo'
+  media_generation_requests: { role: 'hero' | 'logo' | 'visual'
+    /** For a draft visual: the slot it fills ("hero", "category:chicken"). */
+    key?: string
     status: 'requested' | 'unavailable' | 'queued' | 'ready' | 'failed'
     reason: string | null; asset_id: string | null }[]
   requested_capabilities: { intent: string; original_request: string }[]
@@ -99,6 +120,9 @@ export type BusinessBlueprint = {
   website_draft: WebsiteDraft
   readiness: InterviewReadiness
   applied_setup_offerings: string[]
+  taxonomy: { groups: CatalogueGroup[] }
+  /** Whether the owner agreed to draft visuals for the website. */
+  visual_consent: 'unknown' | 'draft_visuals' | 'own_photos' | 'none'
 }
 export type BusinessInterviewData = {
   blueprint: BusinessBlueprint; classification_seed: string
@@ -111,11 +135,13 @@ export type BusinessInterviewData = {
 }
 export type InterviewCommand = {
   revision: number; request_id: string
-  action: 'turn' | 'confirm' | 'choices' | 'template' | 'media' | 'image' | 'build' | 'draft' | 'setup'
+  action: 'turn' | 'confirm' | 'choices' | 'template' | 'media' | 'image' | 'build' | 'draft' | 'setup' | 'catalogue'
   text?: string; field?: InterviewFactKey; choices?: Record<string, 'approved' | 'declined'>
   template_id?: string; media?: InterviewMedia
   /** For action 'image': what to draw. */
   image_role?: 'hero' | 'logo'
   /** For action 'draft': edit, keep, remove or rewrite one piece of website wording. */
   draft?: DraftCommand
+  /** For action 'catalogue': prices, units and varieties the owner typed. */
+  catalogue?: CatalogueEdit[]
 }

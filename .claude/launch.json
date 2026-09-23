@@ -38,6 +38,16 @@
         "platform_worker.main"
       ],
       "port": 8099
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@platform/web",
+        "dev"
+      ],
+      "port": 3000
     }
   ]
 }

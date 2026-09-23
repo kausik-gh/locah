@@ -241,6 +241,7 @@ def test_completion_tells_the_voice_to_stop_interviewing():
     )
     bp.discovery["brand.story"] = TargetState(status="answered", summary="Made to last.")
     bp.discovery["media.logo"] = TargetState(status="declined", asked=1)
+    bp.discovery["media.photos"] = TargetState(status="declined", asked=1)
     Engine.project(bp)
     assert bp.completion_state.sufficient
     instructions = voice.build_session_instructions(bp)

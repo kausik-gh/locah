@@ -8,8 +8,11 @@ wording the owner approved — rather than from a name, a type and a sentence.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
+from platform_core.interview.creative_director import derive_archetype
 from platform_core.interview.discovery import characteristics
 from platform_core.interview.models import BusinessBlueprint
 
@@ -41,6 +44,9 @@ class WebsiteBrief(BaseModel):
     media_state: str = ""
     section_priorities: list[str] = Field(default_factory=list)
     module_backed: list[str] = Field(default_factory=list)
+    # What is sold, as groups and items, and what kind of site this is.
+    catalogue: list[dict[str, Any]] = Field(default_factory=list)
+    site_archetype: str = ""
 
 
 _GOALS = (
@@ -110,4 +116,10 @@ def build_brief(bp: BusinessBlueprint, business_type: str | None = None) -> Webs
         media_state=f"logo: {logo}; photos: {sum(1 for m in bp.media_assets if m.role != 'logo')}",
         section_priorities=priorities,
         module_backed=[r.module_id for r in bp.recommended_modules if r.choice == "approved"],
+        catalogue=[
+            {"group": g.name, "items": [i.name for i in g.items][:12],
+             **({"price": f"{g.price} {g.unit}".strip()} if g.price else {})}
+            for g in bp.taxonomy.groups
+        ],
+        site_archetype=derive_archetype(bp, business_type),
     )

@@ -216,13 +216,16 @@ def entitlements():
 def plan(bp, template=None):
     active = {row["module_id"] for row in ModuleRegistry.list_modules()}
     variants = {
-        "hero": ["centered", "left_aligned", "image_left", "image_right", "full_width"],
-        "about": ["text_only", "image_left", "image_right"],
+        "hero": [
+            "centered", "left_aligned", "image_left", "image_right", "full_width",
+            "commerce_split", "editorial_overlay", "cinematic", "airy_split", "editorial_split",
+        ],
+        "about": ["text_only", "image_left", "image_right", "story_split"],
         "contact": ["full", "compact"],
         "text_block": ["default", "highlighted"],
         "location_list": ["cards", "list"],
         "offerings_list": ["cards", "list", "grid"],
-        "cta_band": ["centered", "left_aligned"],
+        "cta_band": ["centered", "left_aligned", "image_banner"],
         "gallery": ["grid", "masonry", "carousel"],
         "enquiry_form": ["default", "compact"],
         "menu_section": ["categorized", "simple"],
@@ -231,6 +234,13 @@ def plan(bp, template=None):
         "classes_section": ["schedule", "cards"],
         "highlights": ["strip", "cards"],
         "feature_grid": ["cards", "steps", "list"],
+        # Mirrors 20260924010000_website_creative_sections.sql.
+        "category_showcase": ["image_cards", "tiles", "chips"],
+        "product_showcase": [
+            "category_boards", "commerce_grid", "menu_grid", "compact_list",
+            "project_cards", "plan_cards", "service_cards",
+        ],
+        "fulfilment_strip": ["icons", "steps"],
     }
     rows = [
         {"id": sid, "available": True, "allowed_variants": variants[sid], "requires_module": None}

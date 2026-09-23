@@ -29,6 +29,9 @@ VARIANTS = {
     "menu_section": ["categorized", "simple"], "rooms_section": ["cards", "list"],
     "plans_section": ["cards", "comparison"], "classes_section": ["schedule", "cards"],
     "highlights": ["strip", "cards"], "feature_grid": ["cards", "steps", "list"],
+    "category_showcase": ["image_cards", "tiles", "chips"],
+    "product_showcase": ["category_boards", "commerce_grid", "menu_grid", "compact_list"],
+    "fulfilment_strip": ["icons", "steps"],
 }
 
 

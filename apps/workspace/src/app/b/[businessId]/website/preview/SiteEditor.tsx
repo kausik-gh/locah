@@ -101,6 +101,7 @@ const FIELDS: Record<string, Field[]> = {
   about: [
     { key: 'title', label: 'Heading' },
     { key: 'body', label: 'Your story', multiline: true },
+    { key: 'quote', label: 'A line in your words (optional)', multiline: true },
   ],
   text_block: [
     { key: 'title', label: 'Heading' },
@@ -153,6 +154,21 @@ const FIELDS: Record<string, Field[]> = {
     { key: 'subtitle', label: 'Supporting line', multiline: true },
   ],
   highlights: [{ key: 'title', label: 'Heading (optional)' }],
+  product_showcase: [
+    { key: 'title', label: 'Heading' },
+    {
+      key: 'subtitle',
+      label: 'Supporting line',
+      multiline: true,
+      help: 'The items and prices come from your catalogue — complete them there.',
+    },
+    { key: 'order_label', label: 'Order button text', help: 'e.g. "Order on WhatsApp"' },
+  ],
+  category_showcase: [
+    { key: 'title', label: 'Heading' },
+    { key: 'subtitle', label: 'Supporting line', multiline: true },
+  ],
+  fulfilment_strip: [{ key: 'title', label: 'Heading (optional)' }],
 }
 
 /** Human names for section types. Owners never see the identifier. */
@@ -172,6 +188,9 @@ const SECTION_NAMES: Record<string, string> = {
   location_list: 'Locations',
   feature_grid: 'What you do',
   highlights: 'Numbers',
+  product_showcase: 'What you sell',
+  category_showcase: 'Categories',
+  fulfilment_strip: 'How ordering works',
 }
 
 function sectionName(s: EditorSection): string {

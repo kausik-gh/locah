@@ -13,6 +13,7 @@ import re
 from typing import Any
 
 from platform_core.interview.discovery import characteristics, rank
+from platform_core.interview.taxonomy import catalogue_lines
 from platform_core.interview.models import BusinessBlueprint
 
 _TRAITS = (
@@ -105,4 +106,18 @@ def understanding(
         "still_worth_knowing": open_targets[:4],
         "readiness": bp.readiness.model_dump(),
         "logo": logo,
+        "catalogue": _with_photo_needs(bp),
     }
+
+
+def _with_photo_needs(bp: BusinessBlueprint) -> list[dict[str, Any]]:
+    """A group still needs a picture until it has a real photo or a draft visual."""
+    from platform_core.interview.media_director import picture_for, slug
+
+    lines = catalogue_lines(bp)
+    for line in lines:
+        needs = list(line["needs"])
+        if not picture_for(bp, f"category:{slug(str(line['name']))}") and "photo" not in needs:
+            needs.append("photo")
+        line["needs"] = needs
+    return list(lines)

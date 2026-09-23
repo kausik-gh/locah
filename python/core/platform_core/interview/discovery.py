@@ -160,6 +160,12 @@ class Target:
     fact: str | None = None  # the business-truth field that answers it
     once: bool = False  # worth asking at most once
     fallback: dict[str, str] = field(default_factory=dict)
+    # 0 shapes the website (what is sold and how it is organised, how people
+    # buy, pictures, story); 1 shapes operations (delivery, payment, prices,
+    # contact); 2 is secondary (hours, team, look). A lower tier is asked first.
+    tier: int = 1
+    # Relevant only while this predicate holds (see PREDICATES).
+    when: str = ""
 
 
 def _t(
@@ -177,10 +183,25 @@ def _t(
     essential_when: tuple[str, ...] = (),
     fact: str | None = None,
     once: bool = False,
+    when: str = "",
 ) -> Target:
     return Target(target_id, label, learn, value, frozenset(relevant), frozenset(requires),
                   frozenset(unless), after, essential, frozenset(essential_when), fact, once,
-                  fallback)
+                  fallback, TIERS.get(target_id, 1), when)
+
+
+# What a question is for. Opening hours matter, but not before Locah knows
+# whether "fish" is one product, a category, or fifteen varieties.
+TIERS: dict[str, int] = {
+    "business.identity": 0, "offerings.main": 0, "offerings.structure": 0,
+    "commerce.action": 0, "offerings.units": 0, "media.photos": 0, "brand.story": 0,
+    "offerings.customisation": 0, "services.providers": 0, "b2b.customers": 0,
+    "bookings.format": 0, "memberships.plans": 0,
+    "fulfilment.mode": 1, "fulfilment.area": 1, "commerce.payment": 1, "offerings.pricing": 1,
+    "b2b.process": 1, "contact.location": 1, "contact.phone": 1, "media.logo": 1,
+    "operations.hours": 2, "operations.stock": 2, "operations.team": 2,
+    "fulfilment.operator": 2, "brand.feel": 2,
+}
 
 
 TARGETS: tuple[Target, ...] = (
@@ -196,6 +217,11 @@ TARGETS: tuple[Target, ...] = (
        fallback={"en": "Which ones should customers see first? Just list the main {things}.",
                  "ta_en": "Customers first-a enna paakanum? Main {things} mattum sollunga.",
                  "ta": "கஸ்டமர்ஸ் முதல்ல எதை பார்க்கணும்? முக்கியமானதை மட்டும் சொல்லுங்க."}),
+    _t("offerings.structure", "Varieties, cuts or sizes",
+       "how the range is organised: the varieties inside a group ('which fish'), whether "
+       "customers choose cuts or sizes — what the website's categories and product cards need",
+       92, essential=True, after=("offerings.main",), when="catalogue_open",
+       fallback={"en": "{structure}", "ta_en": "{structure}", "ta": "{structure}"}),
     _t("offerings.units", "How products are sold (weight, size or packs)",
        "how customers choose quantity or variant — by weight, size, pieces, fixed packs, "
        "cuts, or custom", 72, requires=("sells_products",), unless=("made_to_order",),
@@ -207,11 +233,11 @@ TARGETS: tuple[Target, ...] = (
                           "illa fixed packs-aa?",
                  "ta": "ஆர்டர் பண்ணும்போது எவ்வளவு வேணும்னு தேர்ந்தெடுக்கலாமா, இல்ல ஃபிக்ஸ்ட் பேக்கா?"}),
     _t("offerings.pricing", "Prices or price range",
-       "prices, or how pricing works (per kg, per item, starting from)", 30,
+       "prices, or how pricing works (per kg, per item, starting from)", 60,
        relevant=("sells_products", "provides_services", "has_memberships"),
        after=("offerings.main",), once=True,
-       fallback={"en": "Should prices show on the website? If so, how do you price — per item, "
-                       "per kg, or a starting price?",
+       fallback={"en": "Do you already have prices{per}, or should I leave those for you to "
+                       "fill in later?",
                  "ta_en": "Website-la price podalaamaa? Per item-aa, per kg-aa?",
                  "ta": "வெப்சைட்ல விலை போடலாமா? ஒரு பொருளுக்கா, கிலோவுக்கா?"}),
     _t("offerings.customisation", "What can be customised",
@@ -236,14 +262,14 @@ TARGETS: tuple[Target, ...] = (
                           "illa call?",
                  "ta": "ஆன்லைன்ல பார்த்தவங்க என்ன செய்யணும் — ஆர்டர், புக்கிங், இல்ல கால்?"}),
     _t("commerce.payment", "How customers pay",
-       "whether customers pay online, cash or pay on delivery, or both", 64,
+       "whether customers pay online, cash or pay on delivery, or both", 50,
        relevant=("accepts_orders", "has_memberships"), essential_when=("accepts_orders",),
        fallback={"en": "How would you like customers to pay — online, cash on delivery, or both?",
                  "ta_en": "Customers eppadi pay pannanum — online-aa, cash on delivery-aa, "
                           "illa rendum-aa?",
                  "ta": "கஸ்டமர்ஸ் எப்படி பணம் கட்டணும் — ஆன்லைன், கேஷ் ஆன் டெலிவரி, இல்ல ரெண்டும்?"}),
     _t("fulfilment.mode", "Delivery or pickup",
-       "whether orders are delivered, picked up, shipped — or both", 66,
+       "whether orders are delivered, picked up, shipped — or both", 56,
        relevant=("accepts_orders", "delivers"), requires=("sells_products",),
        essential_when=("accepts_orders",),
        fallback={"en": "Do you deliver orders, offer pickup from the shop, or both?",
@@ -269,9 +295,9 @@ TARGETS: tuple[Target, ...] = (
                  "ta_en": "Stock daily maarumaa — sold out-na customers-ku theriyanumaa?",
                  "ta": "தினமும் ஸ்டாக் மாறுமா — தீர்ந்தா கஸ்டமர்ஸுக்கு தெரியணுமா?"}),
     _t("operations.hours", "Opening hours",
-       "when customers can visit, order or book", 36,
+       "when customers can visit, order or book", 10,
        relevant=("has_physical_locations", "accepts_appointments", "walk_in", "accepts_orders"),
-       fact="opening_hours", once=True,
+       fact="opening_hours", once=True, after=("brand.story", "media.photos"),
        fallback={"en": "What are your usual opening hours?",
                  "ta_en": "Usual-aa eppo open irukkum?",
                  "ta": "வழக்கமா எப்போ திறந்திருக்கும்?"}),
@@ -306,18 +332,18 @@ TARGETS: tuple[Target, ...] = (
                  "ta_en": "Enna membership plans irukku — monthly, yearly?",
                  "ta": "என்ன மெம்பர்ஷிப் பிளான்கள் இருக்கு — மாதம், வருடம்?"}),
     _t("contact.location", "Where you are",
-       "area/street and city, or the area served", 58, essential=True, fact="locations",
+       "area/street and city, or the area served", 40, essential=True, fact="locations",
        fallback={"en": "Where is {name}? The area and city is enough.",
                  "ta_en": "{name} enga irukku? Area, city sonna podhum.",
                  "ta": "{name} எங்க இருக்கு? ஏரியா, ஊர் சொன்னா போதும்."}),
     _t("contact.phone", "Phone or WhatsApp number",
-       "the number customers can call or WhatsApp", 52, essential=True, fact="phone",
+       "the number customers can call or WhatsApp", 38, essential=True, fact="phone",
        fallback={"en": "What number should customers call or WhatsApp?",
                  "ta_en": "Customers endha number-ku call illa WhatsApp pannanum?",
                  "ta": "கஸ்டமர்ஸ் எந்த நம்பருக்கு கால் பண்ணணும்?"}),
     _t("brand.story", "What people should remember about you",
        "what the website should make people remember or trust — freshness, where things come "
-       "from, experience, speed, a family story", 40,
+       "from, experience, speed, a family story", 60,
        after=("offerings.main", "commerce.action"), once=True,
        fallback={"en": "For the website, what should people remember about {name}? Freshness, "
                        "where things come from, your experience — or something else?",
@@ -337,11 +363,15 @@ TARGETS: tuple[Target, ...] = (
                  "ta_en": "Logo irukkaa, upload pannureengalaa — illa naan oru simple logo "
                           "ready pannattumaa?",
                  "ta": "லோகோ இருக்கா? இல்லன்னா நான் ஒன்னு ரெடி பண்ணட்டுமா?"}),
-    _t("media.photos", "Photos of your place or products",
-       "whether they have photos to add", 14, once=True, after=("media.logo",),
-       fallback={"en": "Do you have a few photos of your shop or products we could use?",
-                 "ta_en": "Shop illa products photos konjam irukkaa?",
-                 "ta": "கடை இல்ல பொருட்களோட போட்டோ இருக்கா?"}),
+    _t("media.photos", "Photos for your website",
+       "whether they have real photos of their products/place to upload — and if not, whether "
+       "Locah may create draft visuals so the website does not look empty", 66, once=True,
+       after=("offerings.main",),
+       fallback={"en": "Do you have photos of your {things}? If not, I can create draft visuals "
+                       "so the website doesn't look empty.",
+                 "ta_en": "Unga {things} photos irukkaa? Illa-na website-ku naan draft visuals "
+                          "ready pannattumaa?",
+                 "ta": "உங்க பொருட்களோட போட்டோ இருக்கா? இல்லன்னா நான் மாதிரி படங்கள் ரெடி பண்ணட்டுமா?"}),
 )
 TARGETS_BY_ID: dict[str, Target] = {t.id: t for t in TARGETS}
 
@@ -354,6 +384,20 @@ _VAGUE = re.compile(
 _DONE = {"answered", "declined", "deferred"}
 
 
+def _catalogue_open(bp: BusinessBlueprint) -> bool:
+    from platform_core.interview.taxonomy import open_structure
+
+    return bool(open_structure(bp))
+
+
+# Predicates a target can depend on (Target.when).
+PREDICATES = {"catalogue_open": _catalogue_open}
+
+
+def _live(target: Target, bp: BusinessBlueprint) -> bool:
+    return not target.when or PREDICATES[target.when](bp)
+
+
 def _addressed(bp: BusinessBlueprint, target_id: str) -> bool:
     state = bp.discovery.get(target_id)
     return bool(state and (state.status in _DONE or state.asked > 0 or state.status == "partial"))
@@ -361,6 +405,9 @@ def _addressed(bp: BusinessBlueprint, target_id: str) -> bool:
 
 def sync_from_facts(bp: BusinessBlueprint) -> None:
     """Targets answered by business truth held elsewhere count as answered."""
+    from platform_core.interview.taxonomy import ensure_taxonomy
+
+    ensure_taxonomy(bp)
     facts = {**bp.known_facts, **bp.unconfirmed_facts}
     for target in TARGETS:
         state = bp.discovery.setdefault(target.id, TargetState())
@@ -377,6 +424,13 @@ def sync_from_facts(bp: BusinessBlueprint) -> None:
                 continue
         if target.id == "media.logo" and (
             bp.logo_state != "not_supplied" or any(m.role == "logo" for m in bp.media_assets)
+        ):
+            state.status = "answered"
+            continue
+        if target.id == "media.photos" and (
+            bp.visual_consent != "unknown"
+            or any(m.role in {"business", "offering", "gallery", "hero"} and m.source == "USER_UPLOAD"
+                   for m in bp.media_assets)
         ):
             state.status = "answered"
             continue
@@ -433,8 +487,12 @@ def rank(bp: BusinessBlueprint, business_type: str | None = None) -> list[Ranked
             continue
         if target.after and not all(_addressed(bp, dep) for dep in target.after):
             continue
+        if not _live(target, bp):
+            continue
         essential = _essential(target, chars)
-        score = float(target.value) * (1.0 if observed else 0.65)
+        # Tier first: what shapes the website before what shapes operations,
+        # and both before secondary details like opening hours.
+        score = (2 - target.tier) * 200 + float(target.value) * (1.0 if observed else 0.65)
         if essential:
             score += 30
         if state.status == "partial":
@@ -454,7 +512,7 @@ def readiness(bp: BusinessBlueprint, business_type: str | None = None) -> Readin
     missing: list[str] = []
     for target in TARGETS:
         relevant, _ = _relevance(target, chars)
-        if not relevant or not _essential(target, chars):
+        if not relevant or not _essential(target, chars) or not _live(target, bp):
             continue
         state = bp.discovery.get(target.id) or TargetState()
         if state.status in _DONE:
@@ -468,7 +526,7 @@ def readiness(bp: BusinessBlueprint, business_type: str | None = None) -> Readin
     # Worth asking once before the first version even though neither blocks
     # it: the story the site tells, and whether there is a logo (or one to make).
     soft_pending = [
-        target_id for target_id in ("brand.story", "media.logo")
+        target_id for target_id in ("brand.story", "media.photos", "media.logo")
         if (lambda t, s: _relevance(t, chars)[0] and s.status not in _DONE and s.asked == 0)(
             TARGETS_BY_ID[target_id], bp.discovery.get(target_id) or TargetState())
     ]
@@ -477,13 +535,36 @@ def readiness(bp: BusinessBlueprint, business_type: str | None = None) -> Readin
         (bp.discovery.get(t) or TargetState()).status in {"answered", "partial"} for t in floor
     )
     owner_turns = sum(1 for m in bp.messages if m.role == "user")
+    website = website_readiness(bp)
     if floor_met and not missing and not story_pending:
-        return Readiness(ready=True, missing=[], reason="Everything essential for this business is known.")
+        return Readiness(ready=True, missing=[], website=website,
+                         reason="Everything essential for this business is known.")
     if floor_met and owner_turns >= 14:
-        return Readiness(ready=True, missing=missing, reason="Enough for a first version; the rest can follow.")
+        return Readiness(ready=True, missing=missing, website=website,
+                         reason="Enough for a first version; the rest can follow.")
     pending = missing + soft_pending
     reason = "Still worth knowing: " + ", ".join(TARGETS_BY_ID[t].label.lower() for t in pending[:3])
-    return Readiness(ready=False, missing=pending, reason=reason[:200])
+    return Readiness(ready=False, missing=pending, website=website, reason=reason[:200])
+
+
+def website_readiness(bp: BusinessBlueprint) -> dict[str, bool]:
+    """Can the first website be DESIGNED well? Separate from operational completeness."""
+    state = bp.discovery
+
+    def done(target_id: str) -> bool:
+        s = state.get(target_id)
+        return bool(s and (s.status in {"answered", "partial"} or s.asked > 0))
+
+    content = done("offerings.main") and not _catalogue_open(bp) or bool(
+        state.get("offerings.structure") and state["offerings.structure"].asked > 0)
+    return {
+        "content": bool(content),
+        "conversion": done("commerce.action"),
+        "visuals": bp.visual_consent != "unknown" or any(
+            m.role != "logo" for m in bp.media_assets),
+        "story": done("brand.story"),
+        "structure": bool(bp.taxonomy.groups),
+    }
 
 
 def candidates(bp: BusinessBlueprint, business_type: str | None = None, limit: int = 6) -> list[dict[str, str]]:
@@ -508,8 +589,13 @@ def choose(
     ranked = rank(bp, business_type)
     if not ranked:
         return None
+    # The model follows the conversation, but only within the tier that
+    # matters now: it may not ask about delivery while the range is unknown.
+    tier = ranked[0].target.tier
     for index, item in enumerate(ranked):
-        if item.target.id == proposed and (item.essential or index < window):
+        if item.target.id == proposed and item.target.tier <= tier and (
+            item.essential or index < window
+        ):
             return proposed
     return ranked[0].target.id
 
@@ -528,6 +614,10 @@ def _short_list(text: str, limit: int = 3) -> str:
 def fallback_question(target_id: str, bp: BusinessBlueprint, style: str) -> str:
     """Emergency phrasing for one target, filled from what is already known."""
     target = TARGETS_BY_ID[target_id]
+    if target_id == "offerings.structure":
+        from platform_core.interview.taxonomy import structure_question
+
+        return structure_question(bp, style) or "Which ones do customers usually ask for?"
     lang = style if style in target.fallback else ("ta_en" if style.startswith("ta") else "en")
     template = target.fallback.get(lang) or target.fallback["en"]
     facts = {**bp.known_facts, **bp.unconfirmed_facts}
@@ -536,4 +626,6 @@ def fallback_question(target_id: str, bp: BusinessBlueprint, style: str) -> str:
     things = "products" if "sells_products" in characteristics(bp) else "things you offer"
     listed = _short_list(offerings)
     about = f" {listed}" if listed and len(listed) < 60 else ""
-    return str(template.format(name=name, things=things, about=about)).strip()
+    units = (bp.discovery.get("offerings.units") or TargetState()).summary.lower()
+    per = " per kg" if re.search(r"\b(kg|kilo|weight)", units) else ""
+    return str(template.format(name=name, things=things, about=about, per=per)).strip()

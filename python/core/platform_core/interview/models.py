@@ -45,7 +45,7 @@ OperatingPattern = Literal[
 # not a question: "offerings.units" is asked once, in whatever words fit this
 # business, and never again once it is known. See `discovery.TARGETS`.
 DiscoveryTargetId = Literal[
-    "business.identity", "offerings.main", "offerings.units", "offerings.pricing",
+    "business.identity", "offerings.main", "offerings.structure", "offerings.units", "offerings.pricing",
     "offerings.customisation", "services.providers", "commerce.action", "commerce.payment",
     "fulfilment.mode", "fulfilment.area", "fulfilment.operator", "operations.stock",
     "operations.hours", "operations.team", "b2b.customers", "b2b.process",
@@ -57,7 +57,17 @@ TargetStatus = Literal["open", "asked", "partial", "answered", "declined", "defe
 # How the owner reacted to the last question. "redundant" is the one that
 # matters most: it means Locah asked something it already knew.
 OwnerSignal = Literal["none", "redundant", "correction", "wants_to_finish", "annoyed"]
-MediaIntent = Literal["none", "generate_logo", "generate_hero", "will_upload_logo", "no_logo"]
+MediaIntent = Literal[
+    "none", "generate_logo", "generate_hero", "will_upload_logo", "no_logo",
+    # Product/category imagery: the owner has none and agrees to draft visuals,
+    # will upload their own, or wants none.
+    "generate_visuals", "will_upload_photos", "no_visuals",
+]
+# What the owner agreed to about pictures for the site. Draft visuals are drawn
+# only after an explicit yes, marked as drafts, and always lose to a real photo.
+VisualConsent = Literal["unknown", "draft_visuals", "own_photos", "none"]
+# What a catalogue group still needs before it can be sold or shown well.
+CatalogueNeed = Literal["varieties", "cuts", "sizes", "price", "photo"]
 DraftProvenance = Literal["ai_suggestion", "owner_claim", "owner_edited", "owner_approved"]
 
 # Optional things worth asking about once, after the essentials. None of them
@@ -154,12 +164,55 @@ class RecommendationEvidence(StrictModel):
     text: str = Field(max_length=300)
 
 
+class CatalogueItem(StrictModel):
+    """One thing sold inside a group: a cut, a variety, a dish, a project.
+
+    Name, price and unit are the owner's; a description is website wording and
+    may be Locah's suggestion.
+    """
+
+    name: str = Field(max_length=80)
+    price: str = Field(default="", max_length=40)
+    unit: str = Field(default="", max_length=40)
+    description: str = Field(default="", max_length=240)
+    source: Literal["owner", "owner_edited"] = "owner"
+
+
+class CatalogueGroup(StrictModel):
+    """A category or product family — "Chicken", "Fish & Seafood", "Thokku".
+
+    A group is not an item: "fish different varieties" is the group Fish with
+    `varieties` still needed, never a product called that.
+    """
+
+    name: str = Field(max_length=80)
+    items: list[CatalogueItem] = Field(default_factory=list, max_length=24)
+    # How it is sold, in the owner's terms: "by weight (kg)", "250g jars".
+    sold_by: str = Field(default="", max_length=80)
+    price: str = Field(default="", max_length=40)
+    unit: str = Field(default="", max_length=40)
+    needs: list[CatalogueNeed] = Field(default_factory=list, max_length=5)
+    # "owner" when the group's name is the owner's own words; "ai_suggestion"
+    # when Locah grouped owner-named items under a label ("Fish & Seafood").
+    label_source: Literal["owner", "ai_suggestion"] = "owner"
+    description: str = Field(default="", max_length=240)
+
+
+class OfferingTaxonomy(StrictModel):
+    groups: list[CatalogueGroup] = Field(default_factory=list, max_length=12)
+
+
 class Readiness(StrictModel):
     """Whether there is enough for a strong first website, for THIS business."""
 
     ready: bool = False
     missing: list[str] = Field(default_factory=list)  # target ids still essential
     reason: str = Field(default="", max_length=200)
+    # Whether the first WEBSITE can be designed well, separately from whether
+    # every operational detail is known: content (what is sold, organised),
+    # conversion (what a visitor does), visuals (pictures or consent to draft
+    # them), story (something true to say). Opening hours never block this.
+    website: dict[str, bool] = Field(default_factory=dict)
 
 
 class Fact(StrictModel):
@@ -184,7 +237,10 @@ class MediaReference(StrictModel):
 
 
 class MediaGenerationRequest(StrictModel):
-    role: Literal["hero", "logo"]
+    # "visual" is a draft picture for one slot of the site ("hero",
+    # "category:chicken", "project:green-meadows"), identified by `key`.
+    role: Literal["hero", "logo", "visual"]
+    key: str = Field(default="", max_length=120)
     status: Literal["requested", "unavailable", "queued", "ready", "failed"]
     reason: str | None = None
     asset_id: UUID | None = None
@@ -318,6 +374,9 @@ class BusinessBlueprint(StrictModel):
     # Website wording, kept apart from business truth.
     website_draft: WebsiteDraft = Field(default_factory=WebsiteDraft)
     readiness: Readiness = Field(default_factory=Readiness)
+    # What is sold, as a structure: groups, items, units, prices, what is missing.
+    taxonomy: OfferingTaxonomy = Field(default_factory=OfferingTaxonomy)
+    visual_consent: VisualConsent = "unknown"
     # Owner-approved draft catalogue items created from the interview. Never
     # infer this from website copy or create sellable items automatically.
     applied_setup_offerings: list[str] = Field(default_factory=list, max_length=12)
@@ -348,6 +407,28 @@ class DraftUpdate(StrictModel):
     owner_claims: list[OwnerClaim] = Field(default_factory=list, max_length=5)
 
 
+class ItemProposal(StrictModel):
+    name: str = Field(max_length=80)
+    # Only what the owner said: "240", "per kg". Numbers are checked against
+    # their words before anything is kept.
+    price: str = Field(default="", max_length=40)
+    unit: str = Field(default="", max_length=40)
+
+
+class GroupProposal(StrictModel):
+    """How the model reads the owner's range this turn: groups and their items."""
+
+    group: str = Field(max_length=80)
+    items: list[ItemProposal] = Field(default_factory=list, max_length=24)
+    sold_by: str = Field(default="", max_length=80)
+    price: str = Field(default="", max_length=40)
+    unit: str = Field(default="", max_length=40)
+    # The owner said there are more of these without naming them
+    # ("different varieties", "all kinds"), or options exist that matter for
+    # ordering (cuts, sizes) that are not known yet.
+    unknown: list[Literal["varieties", "cuts", "sizes"]] = Field(default_factory=list, max_length=3)
+
+
 class TurnIntelligence(StrictModel):
     """Everything one owner message means, from ONE model call.
 
@@ -366,6 +447,7 @@ class TurnIntelligence(StrictModel):
     owner_signal: OwnerSignal = "none"
     media_intent: MediaIntent = "none"
     draft: DraftUpdate = Field(default_factory=DraftUpdate)
+    catalogue: list[GroupProposal] = Field(default_factory=list, max_length=12)
     acknowledgement: str = Field(default="", max_length=140)
     next_target: str = Field(default="none", max_length=40)
     next_question: str = Field(default="", max_length=300)
@@ -382,11 +464,22 @@ class DraftCommand(StrictModel):
     offering_name: str = Field(default="", max_length=80)
 
 
+class CatalogueEdit(StrictModel):
+    """The owner completing the catalogue by hand: a price, a unit, a variety."""
+
+    group: str = Field(min_length=1, max_length=80)
+    item: str = Field(default="", max_length=80)  # empty: the group itself
+    price: str = Field(default="", max_length=40)
+    unit: str = Field(default="", max_length=40)
+    add_items: list[str] = Field(default_factory=list, max_length=12)
+
+
 class InterviewCommand(StrictModel):
     revision: int = Field(ge=0)
     request_id: UUID
     action: Literal[
-        "turn", "confirm", "choices", "template", "media", "image", "build", "draft", "setup"
+        "turn", "confirm", "choices", "template", "media", "image", "build", "draft", "setup",
+        "catalogue",
     ]
     text: str = Field(default="", max_length=4000)
     # Explicit correction also works without an AI provider.
@@ -398,3 +491,5 @@ class InterviewCommand(StrictModel):
     image_role: Literal["hero", "logo"] = "hero"
     # For action="draft": the owner editing, keeping or removing website wording.
     draft: DraftCommand | None = None
+    # For action="catalogue": prices, units and varieties typed by the owner.
+    catalogue: list[CatalogueEdit] = Field(default_factory=list, max_length=24)

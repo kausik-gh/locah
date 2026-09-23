@@ -303,6 +303,28 @@ export function UnderstandingPanel({
           </div>
         </section>
 
+        {(u.catalogue ?? []).length > 0 && (
+          <section className="bi-panel__section" aria-labelledby="bi-range">
+            <p className="bi-eyebrow" id="bi-range">
+              WHAT YOU SELL
+            </p>
+            <ul className="bi-range">
+              {(u.catalogue ?? []).map((line) => (
+                <li key={line.name}>
+                  <div className="bi-range__head">
+                    <strong>{line.name}</strong>
+                    {line.price ? <span className="bi-range__price">{line.price}</span> : null}
+                  </div>
+                  {line.items.length ? <p>{line.items.join(' · ')}</p> : null}
+                  {line.needs.length ? (
+                    <p className="bi-range__needs">Still needed: {line.needs.join(' · ')}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <section className="bi-panel__section" aria-labelledby="bi-draft">
           <p className="bi-eyebrow" id="bi-draft">
             WEBSITE DRAFT

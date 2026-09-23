@@ -10,7 +10,8 @@
     },
     "./tokens.css": "./src/tokens.css",
     "./public.css": "./src/public.css",
-    "./website.css": "./src/website.css"
+    "./website.css": "./src/website.css",
+    "./site-studio.css": "./src/site-studio.css"
   },
   "files": [
     "dist",

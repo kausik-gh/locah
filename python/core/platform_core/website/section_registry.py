@@ -18,8 +18,98 @@ CORE_SECTION_SCHEMAS: dict[str, dict[str, Any]] = {
             "eyebrow": {"type": "string", "maxLength": 60},
             "subheadline": {"type": "string", "maxLength": 300},
             "cta_label": {"type": "string", "maxLength": 60},
-            "cta_url": {"type": "string", "maxLength": 200},
+            "cta_url": {"type": "string", "maxLength": 500},
             "image_asset_id": {"type": "string", "format": "uuid"},
+            # Short true facts under the headline ("Sold by the kg", "Home delivery").
+            "badges": {"type": "array", "maxItems": 4, "items": {"type": "string", "maxLength": 40}},
+        },
+    },
+    # Categories of what is sold, image-led. Filled from the owner's catalogue.
+    "category_showcase": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "subtitle": {"type": "string", "maxLength": 300},
+            "anchor": {"type": "string", "maxLength": 30},
+            "items": {
+                "type": "array",
+                "maxItems": 12,
+                "items": {
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {
+                        "name": {"type": "string", "maxLength": 80},
+                        "description": {"type": "string", "maxLength": 200},
+                        "meta": {"type": "string", "maxLength": 60},
+                        "tags": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 40}},
+                        "image_asset_id": {"type": "string", "format": "uuid"},
+                    },
+                },
+            },
+        },
+    },
+    # The things a visitor chooses between: cuts, dishes, plans, projects. Prices
+    # only as the owner gave them; live catalogue items replace these once real.
+    "product_showcase": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "subtitle": {"type": "string", "maxLength": 300},
+            "anchor": {"type": "string", "maxLength": 30},
+            "order_label": {"type": "string", "maxLength": 40},
+            "filters": {"type": "array", "maxItems": 12, "items": {"type": "string", "maxLength": 40}},
+            "categories": {
+                "type": "array",
+                "maxItems": 12,
+                "items": {
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {
+                        "name": {"type": "string", "maxLength": 80},
+                        "description": {"type": "string", "maxLength": 200},
+                        "meta": {"type": "string", "maxLength": 60},
+                        "tags": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 40}},
+                        "image_asset_id": {"type": "string", "format": "uuid"},
+                    },
+                },
+            },
+            "items": {
+                "type": "array",
+                "maxItems": 48,
+                "items": {
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {
+                        "name": {"type": "string", "maxLength": 80},
+                        "category": {"type": "string", "maxLength": 80},
+                        "description": {"type": "string", "maxLength": 200},
+                        "price": {"type": "string", "maxLength": 40},
+                        "unit": {"type": "string", "maxLength": 40},
+                        "image_asset_id": {"type": "string", "format": "uuid"},
+                    },
+                },
+            },
+        },
+    },
+    # How buying works — delivery, pickup, weight, payment — from the owner's answers.
+    "fulfilment_strip": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "anchor": {"type": "string", "maxLength": 30},
+            "items": {
+                "type": "array",
+                "maxItems": 5,
+                "items": {
+                    "type": "object",
+                    "required": ["title"],
+                    "properties": {
+                        "kind": {"type": "string", "maxLength": 20},
+                        "title": {"type": "string", "maxLength": 60},
+                        "body": {"type": "string", "maxLength": 160},
+                    },
+                },
+            },
         },
     },
     # Numbers the owner stated, verified against their words before they get here.
@@ -67,6 +157,10 @@ CORE_SECTION_SCHEMAS: dict[str, dict[str, Any]] = {
             "title": {"type": "string", "maxLength": 120},
             "body": {"type": "string", "maxLength": 2000},
             "image_asset_id": {"type": "string", "format": "uuid"},
+            "eyebrow": {"type": "string", "maxLength": 40},
+            # A line the owner asked the site to say, set as a pull quote.
+            "quote": {"type": "string", "maxLength": 200},
+            "anchor": {"type": "string", "maxLength": 30},
         },
     },
     "contact": {
@@ -112,7 +206,8 @@ CORE_SECTION_SCHEMAS: dict[str, dict[str, Any]] = {
             "headline": {"type": "string", "maxLength": 200},
             "body": {"type": "string", "maxLength": 500},
             "cta_label": {"type": "string", "maxLength": 60},
-            "cta_url": {"type": "string", "maxLength": 200},
+            "cta_url": {"type": "string", "maxLength": 500},
+            "image_asset_id": {"type": "string", "format": "uuid"},
         },
     },
     "gallery": {

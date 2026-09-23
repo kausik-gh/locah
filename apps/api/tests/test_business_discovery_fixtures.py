@@ -91,8 +91,10 @@ MEAT = Fixture(
     ],
     strong={"offerings-catalog", "orders", "payments", "inventory", "fulfilment"},
     never={"bookings", "workforce", "quotes", "memberships", "projects"},
-    never_asked={"bookings.format", "b2b.customers", "memberships.plans", "offerings.main"},
-    asked={"fulfilment.mode"},
+    never_asked={"bookings.format", "b2b.customers", "memberships.plans", "offerings.main",
+                 "operations.hours", "fulfilment.mode"},
+    # Website-shaping first: pictures before delivery, even though the model proposed delivery.
+    asked={"media.photos"},
 )
 
 FURNITURE = Fixture(
@@ -239,7 +241,7 @@ GYM = Fixture(
     useful={"workforce"},
     never={"inventory", "fulfilment", "quotes"},
     never_asked={"fulfilment.mode", "offerings.units", "operations.stock", "b2b.customers"},
-    asked={"commerce.payment"},
+    asked={"bookings.format"},
 )
 
 SUPPLIER = Fixture(
@@ -278,8 +280,9 @@ SUPPLIER = Fixture(
     useful={"invoicing", "orders"},  # a PO after an accepted quote — not a checkout
     never={"payments", "bookings", "memberships"},
     only_as_dependency={"inventory"},
-    never_asked={"commerce.payment", "offerings.units", "bookings.format", "operations.stock"},
-    asked={"b2b.process"},
+    never_asked={"commerce.payment", "bookings.format", "operations.stock"},
+    # What a buyer does comes before how the quote process runs.
+    asked={"commerce.action"},
 )
 
 FIXTURES = [MEAT, FURNITURE, RESTAURANT, CLINIC, GYM, SUPPLIER]

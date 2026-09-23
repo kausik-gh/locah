@@ -51,7 +51,7 @@ from platform_core.interview.models import (
 from platform_core.interview import voice
 from platform_core.interview.orchestrator import BusinessInterviewOrchestrator, QUESTIONS
 from platform_core.interview.understanding import understanding
-from platform_core.interview.website import build_preview
+from platform_core.interview.website import build_preview, with_draft
 from platform_core.logging import get_logger
 from platform_core.models import Business, WebsiteGenerationJob, WebsiteVersion
 from platform_core.resolvers.website_resolver import WebsiteResolver
@@ -65,6 +65,90 @@ from platform_core.services.website_composition import WebsiteCompositionService
 from platform_core.website.generation_plan import GenerationPlan, build_plan
 from platform_core.website.image_generation import image_generation_available
 from platform_core.website.template_registry import TEMPLATES_BY_ID
+
+
+async def _sync_catalogue_into_draft(session: AsyncSession, business_id: UUID, bp: BusinessBlueprint) -> None:
+    """Prices the owner typed appear on the draft site at once — nowhere else changes."""
+    from platform_core.models import WebsitePage, WebsiteSection
+
+    draft = (
+        await session.execute(
+            select(WebsiteVersion).where(
+                WebsiteVersion.business_id == business_id,
+                WebsiteVersion.version_type == "draft",
+                WebsiteVersion.superseded_at.is_(None),
+            ).with_for_update()
+        )
+    ).scalars().first()
+    if draft is None:
+        return
+    rows = (
+        await session.execute(
+            select(WebsiteSection).join(WebsitePage).where(
+                WebsitePage.website_version_id == draft.id,
+                WebsiteSection.section_type_id.in_(("product_showcase", "category_showcase")),
+            )
+        )
+    ).scalars().all()
+    groups = {g.name.casefold(): g for g in bp.taxonomy.groups}
+    for section in rows:
+        content = dict(section.content or {})
+        for key in ("categories", "items") if section.section_type_id == "product_showcase" else ("items",):
+            updated = []
+            for row in content.get(key) or []:
+                row = dict(row)
+                if key == "categories" or section.section_type_id == "category_showcase":
+                    group = groups.get(str(row.get("name", "")).casefold())
+                    if group and group.price:
+                        row["meta"] = f"From {group.price} {group.unit}".strip()[:60]
+                else:
+                    group = groups.get(str(row.get("category", "")).casefold())
+                    item = next((i for i in (group.items if group else [])
+                                 if i.name.casefold() == str(row.get("name", "")).casefold()), None)
+                    if item and item.price:
+                        row["price"], row["unit"] = item.price, item.unit
+                updated.append(row)
+            content[key] = updated
+        section.content = content
+    draft.updated_at = now()
+
+
+def _setup_rows(bp: BusinessBlueprint) -> list[tuple[str, str, str]]:
+    """(title, price, unit) per draft catalogue item, from the owner's structure.
+
+    An item named in more than one group ("Curry cut" of chicken and of
+    mutton) carries its group, so the two do not collapse into one.
+    """
+    groups = bp.taxonomy.groups
+    if not groups:
+        return [(d.name.strip(), "", "") for d in bp.website_draft.offerings]
+    counts: dict[str, int] = {}
+    for group in groups:
+        for item in group.items:
+            counts[item.name.casefold()] = counts.get(item.name.casefold(), 0) + 1
+    rows: list[tuple[str, str, str]] = []
+    for group in groups:
+        if not group.items:
+            rows.append((group.name, group.price, group.unit))
+            continue
+        for item in group.items:
+            title = item.name
+            if counts[item.name.casefold()] > 1 and group.name.casefold() not in item.name.casefold():
+                title = f"{group.name} {item.name[0].lower() + item.name[1:]}"
+            rows.append((title[:120], item.price or group.price, item.unit or group.unit))
+    return rows[:12]
+
+
+def _trade(bp: BusinessBlueprint, archetype: str) -> str:
+    """What the business trades in, for an image prompt — group names, not the transcript."""
+    names = [g.name.lower() for g in bp.taxonomy.groups][:4]
+    listed = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else "".join(names)
+    return {
+        "product_commerce": f"a local shop selling {listed}" if listed else "a local shop",
+        "menu_commerce": f"a home kitchen making {listed}" if listed else "a home kitchen",
+        "membership_fitness": "a strength and fitness gym",
+        "real_estate_projects": "a residential real-estate developer",
+    }.get(archetype, f"a local business offering {listed}" if listed else "a local business")
 
 
 def public_contact(bp: BusinessBlueprint) -> dict[str, Any]:
@@ -452,6 +536,15 @@ class BusinessInterviewService:
             await BusinessInterviewService.setup_offerings(
                 session, business, bp, actor_id=actor_id, correlation_id=correlation_id
             )
+        elif command.action == "catalogue":
+            from platform_core.interview.taxonomy import apply_edits
+
+            try:
+                touched = apply_edits(bp, command.catalogue)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+            if touched and bp.completion_state.status == "built":
+                await _sync_catalogue_into_draft(session, business.id, bp)
         await _queue_logo(session, business, bp, actor_id=actor_id)
         bp.revision += 1
         bp.applied_requests = (bp.applied_requests + [command.request_id])[-30:]
@@ -502,25 +595,29 @@ class BusinessInterviewService:
         existing = await OfferingService.list_for_business(session, business.id)
         known = {item.title.strip().casefold() for item in existing}
         applied = {name.casefold() for name in bp.applied_setup_offerings}
-        for draft in bp.website_draft.offerings:
-            name = draft.name.strip()
+        for name, price, unit in _setup_rows(bp):
             if not name or name.casefold() in applied:
                 continue
             if name.casefold() not in known:
+                payload: dict[str, Any] = {
+                    "title": name, "status": "draft", "visibility": "private", "price_type": "enquiry",
+                }
+                amount = re.sub(r"[^\d.]", "", price)
+                if amount:
+                    # A price the owner gave (in the chat or typed in the panel).
+                    payload.update({"price_type": "fixed", "price_amount": amount})
+                    if unit:
+                        payload["unit_of_measure"] = unit[:40]
                 await OfferingService.create_offering(
                     session,
                     business_id=business.id,
                     actor_id=actor_id,
                     correlation_id=correlation_id,
-                    payload={
-                        "title": name,
-                        "status": "draft",
-                        "visibility": "private",
-                        "price_type": "enquiry",
-                    },
+                    payload=payload,
                 )
                 known.add(name.casefold())
-            bp.applied_setup_offerings.append(name)
+            if len(bp.applied_setup_offerings) < 12:
+                bp.applied_setup_offerings.append(name)
 
     @staticmethod
     async def build(
@@ -632,7 +729,22 @@ class BusinessInterviewService:
         plan = await BusinessInterviewService.plan(session, business, bp)
         bp.template_preferences.template_id = plan.template.id
         immediate_strategy = derive_strategy(bp, plan)
-        payload = build_preview(bp, plan, immediate_strategy)
+        # A design the owner picked by hand is honoured as it is; otherwise the
+        # site is composed from its own creative direction, not a template.
+        creative = bp.template_preferences.source != "USER_STATEMENT"
+        if creative:
+            from platform_core.interview.creative_director import direct
+            from platform_core.interview.site_composer import compose_site
+
+            direction = direct(bp, business.business_type)
+            payload = compose_site(
+                bp, direction, with_draft(bp, None), business_type=business.business_type,
+                contact=public_contact(bp), active_modules=plan.active_modules,
+                meta={"stage": "immediate", "creative_strategy": "deterministic",
+                      "reference_profile": direction.reference_profile, "fallback_used": False},
+            )
+        else:
+            payload = build_preview(bp, plan, immediate_strategy)
         website = await WebsiteResolver.resolve_website(session, business_id=business.id)
         job = WebsiteGenerationJob(
             business_id=business.id,
@@ -660,6 +772,7 @@ class BusinessInterviewService:
             "design_strategy": immediate_strategy.model_dump(mode="json"),
             "design_strategy_version": DESIGN_STRATEGY_VERSION,
             "generation_plan_version": GENERATION_PLAN_VERSION,
+            "composer": "creative-v2" if creative else "template-v1",
         }
         await AsyncJobService.enqueue(
             session,
@@ -701,6 +814,144 @@ class BusinessInterviewService:
         )
 
     @staticmethod
+    async def _personalize_creative(
+        session: AsyncSession,
+        job: WebsiteGenerationJob,
+        bp: BusinessBlueprint,
+        business: Business,
+        plan: GenerationPlan,
+        correlation_id: str,
+        started: float,
+    ) -> dict[str, Any]:
+        """Creative direction + words (one model call) and draft visuals, together."""
+        import asyncio
+
+        from platform_core.interview.creative_director import direct, generate_creative_plan
+        from platform_core.interview.media_director import draw_missing, record, slug
+        from platform_core.interview.site_composer import compose_site
+
+        await session.commit()  # no transaction held open across the provider calls
+        baseline = direct(bp, business.business_type)
+        trade = _trade(bp, baseline.archetype)
+        plan_task = asyncio.create_task(generate_creative_plan(bp, business.business_type))
+        images_started = time.monotonic()
+        drawn = await draw_missing(bp, baseline, trade)
+        images_ms = int((time.monotonic() - images_started) * 1000)
+        fallback: str | None = None
+        provider: Any = None
+        latency_ms = 0
+        try:
+            direction, copy, provider, latency_ms = await plan_task
+            creative_source = direction.source
+        except Exception as exc:  # noqa: BLE001 — the pictures still improve the site
+            fallback = type(exc).__name__
+            direction, copy, creative_source = baseline, None, "deterministic"
+        drawn_ok = 0
+        for slot, image, reason in drawn:
+            if image is None:
+                record(bp, slot, None, reason)
+                continue
+            asset = await MediaService.persist_generated(
+                session, business_id=job.business_id, actor_id=job.triggered_by or business.primary_owner_identity_id,
+                purpose="website", mime_type=image.mime_type, body=image.bytes,
+                alt_text=f"Illustrative picture: {slot.subject or 'cover'}"[:200],
+                original_filename=f"draft-{slug(slot.key)}.png",
+            )
+            record(bp, slot, UUID(asset["id"]))
+            drawn_ok += 1
+        meta = {
+            "stage": "personalised", "creative_strategy": creative_source,
+            "reference_profile": direction.reference_profile, "archetype": direction.archetype,
+            "fallback_used": bool(fallback), "fallback_reason": fallback,
+            "validation_repairs": direction.repairs,
+            "media_plan": [r.key for r in bp.media_generation_requests if r.role == "visual"],
+            "media_drawn": drawn_ok, "media_failed": len(drawn) - drawn_ok,
+            "creative_latency_ms": latency_ms, "image_latency_ms": images_ms,
+        }
+        payload = compose_site(
+            bp, direction, with_draft(bp, copy), business_type=business.business_type,
+            contact=public_contact(bp), active_modules=plan.active_modules, meta=meta,
+        )
+        if provider is not None:
+            job.ai_provider = provider.provider_name
+            job.model_name = provider.model_name
+        job.provider_usage = {**dict(getattr(provider, "last_usage", None) or {}), **meta}
+
+        locked = await BusinessInterviewService.load_business(session, job.business_id, lock=True)
+        snapshot = job.intake or {}
+        draft = (
+            (
+                await session.execute(
+                    select(WebsiteVersion)
+                    .where(
+                        WebsiteVersion.business_id == job.business_id,
+                        WebsiteVersion.version_type == "draft",
+                        WebsiteVersion.superseded_at.is_(None),
+                    )
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        # The pictures belong to the business whatever happens to this draft.
+        live = BusinessInterviewService.read(locked)
+        for request in bp.media_generation_requests:
+            if request.role == "visual":
+                live.media_generation_requests = [
+                    r for r in live.media_generation_requests
+                    if not (r.role == "visual" and r.key == request.key)
+                ] + [request]
+        known = {m.asset_id for m in live.media_assets}
+        live.media_assets.extend(m for m in bp.media_assets if m.asset_id not in known)
+        await BusinessInterviewService.save(session, locked, live)
+        if (
+            not draft
+            or str(draft.id) != snapshot["base_version_id"]
+            or draft.updated_at.isoformat() != snapshot["base_updated_at"]
+        ):
+            job.status = "superseded"
+            job.fallback_reason = "Owner edits preserved; personalization was not applied."
+        elif fallback and not drawn_ok:
+            job.status = "fallback_used"
+            job.fallback_reason = fallback
+            job.result_version_id = draft.id
+        else:
+            website = await WebsiteResolver.resolve_website(session, business_id=job.business_id)
+            generated = await WebsiteService.replace_draft_from_generation(
+                session, business_id=job.business_id, website=website, payload=payload,
+                generated_by="interview_personalization", generation_job_id=job.id,
+            )
+            job.result_version_id = generated.id
+            job.status = "completed"
+            job.fallback_reason = fallback
+        job.provider_usage = {
+            **(job.provider_usage or {}),
+            "personalization_latency_ms": int((time.monotonic() - started) * 1000),
+            "total_time_to_personalized_preview_ms": int((now() - bp.created_at).total_seconds() * 1000),
+        }
+        job.completed_at = now()
+        await session.flush()
+        await OutboxService.publish(
+            session, event_type="website.draft_generated", business_id=job.business_id,
+            correlation_id=correlation_id,
+            payload={"business_id": str(job.business_id), "job_id": str(job.id), "status": job.status,
+                     "composer": "creative-v2", "reference_profile": direction.reference_profile,
+                     "strategy_source": creative_source},
+        )
+        get_logger("business.interview").info(
+            "interview.website_personalized", business_id=str(job.business_id), job_id=str(job.id),
+            status=job.status, composer="creative-v2", archetype=direction.archetype,
+            reference_profile=direction.reference_profile, model=job.model_name,
+            strategy_source=creative_source, fallback_reason=job.fallback_reason,
+            media_drawn=drawn_ok, media_failed=len(drawn) - drawn_ok, image_latency_ms=images_ms,
+            creative_latency_ms=latency_ms,
+            personalization_latency_ms=job.provider_usage.get("personalization_latency_ms"),
+        )
+        return {"status": job.status, "job_id": str(job.id)}
+
+    @staticmethod
     async def personalize_job(
         session: AsyncSession, job: WebsiteGenerationJob, correlation_id: str
     ) -> dict[str, Any]:
@@ -714,6 +965,9 @@ class BusinessInterviewService:
         fallback = None
         strategy_source = "deterministic"
         personalization_started = time.monotonic()
+        if snapshot.get("composer") == "creative-v2":
+            return await BusinessInterviewService._personalize_creative(
+                session, job, bp, business, plan, correlation_id, personalization_started)
         try:
             result, copy, provider = await generate_website_plan(bp, plan)
             payload = build_preview(bp, plan, result.strategy, copy)

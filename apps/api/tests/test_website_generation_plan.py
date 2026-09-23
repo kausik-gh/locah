@@ -46,6 +46,11 @@ _SECTION_MODULES: dict[str, str | None] = {
     # Filled only from the owner's own words and numbers; no module behind them.
     "highlights": None,
     "feature_grid": None,
+    # The owner's own catalogue and ordering facts, composed by the creative
+    # composer; a live record is never read, so no module.
+    "category_showcase": None,
+    "product_showcase": None,
+    "fulfilment_strip": None,
 }
 
 

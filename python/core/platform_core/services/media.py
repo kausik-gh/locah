@@ -218,6 +218,9 @@ class MediaService:
     # a url into content would break the next PATCH round-trip, because
     # validate_section_content rejects fields absent from the SectionType schema.
     ASSET_CONTENT_KEYS = ("image_asset_id", "og_image_asset_id", "logo_asset_id")
+    # Lists whose rows may carry their own `image_asset_id`, resolved as
+    # `assets["items.3"]` / `assets["categories.0"]`.
+    NESTED_ASSET_LISTS = ("items", "categories")
 
     @staticmethod
     async def attach_section_asset_urls(
@@ -247,6 +250,16 @@ class MediaService:
                     wanted.add(uuid.UUID(str(raw)))
                 except ValueError:
                     continue
+            # Pictures inside a section's items: a category card, a product card.
+            for list_key in MediaService.NESTED_ASSET_LISTS:
+                for row in (content.get(list_key) or [])[:48]:
+                    raw = row.get("image_asset_id") if isinstance(row, dict) else None
+                    if not raw:
+                        continue
+                    try:
+                        wanted.add(uuid.UUID(str(raw)))
+                    except ValueError:
+                        continue
         if not wanted:
             return sections
 
@@ -271,6 +284,12 @@ class MediaService:
                 asset = by_id.get(str(raw))
                 if asset is not None and asset.public_url:
                     resolved[f"image_asset_id_{index}"] = {"url": asset.public_url, "alt_text": asset.alt_text}
+            for list_key in MediaService.NESTED_ASSET_LISTS:
+                for index, row in enumerate((content.get(list_key) or [])[:48]):
+                    raw = row.get("image_asset_id") if isinstance(row, dict) else None
+                    asset = by_id.get(str(raw or ""))
+                    if asset is not None and asset.public_url:
+                        resolved[f"{list_key}.{index}"] = {"url": asset.public_url, "alt_text": asset.alt_text}
             if resolved:
                 section["assets"] = resolved
         return sections

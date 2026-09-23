@@ -17,7 +17,7 @@ from uuid import uuid4
 import pytest
 
 from platform_core.interview.capabilities import resolve_recommendations
-from platform_core.interview.discovery import TARGETS_BY_ID, characteristics, rank, readiness
+from platform_core.interview.discovery import TARGETS_BY_ID, rank, readiness
 from platform_core.interview.models import BusinessBlueprint, Fact, TargetState
 from platform_core.interview.orchestrator import BusinessInterviewOrchestrator as Engine
 from platform_core.interview.understanding import understanding
@@ -59,11 +59,24 @@ def blueprint(name: str = "Ishant Proteins") -> BusinessBlueprint:
     return bp
 
 
-async def say(bp: BusinessBlueprint, text: str, answer: dict, *, image: bool = True) -> BusinessBlueprint:
-    bp = await Engine.turn(bp, text, provider=Model(answer), business_type="retail",
+async def say(bp: BusinessBlueprint, text: str, answer: dict, *, image: bool = True,
+              business_type: str = "retail") -> BusinessBlueprint:
+    bp = await Engine.turn(bp, text, provider=Model(answer), business_type=business_type,
                            image_available=image)
-    resolve_recommendations(bp, entitlements(), "retail")
+    resolve_recommendations(bp, entitlements(), business_type)
     return bp
+
+
+def fact(name: str, quote: str) -> dict:
+    return {"field": name, "quote": quote}
+
+
+def ans(target: str, summary: str, quote: str, status: str = "answered") -> dict:
+    return {"target": target, "summary": summary, "quote": quote, "status": status}
+
+
+def pat(pattern: str, quote: str) -> dict:
+    return {"pattern": pattern, "quote": quote}
 
 
 def reply(bp: BusinessBlueprint) -> str:
@@ -169,83 +182,151 @@ T10 = {"media_intent": "none", "acknowledgement": "Sure."}  # the model misses i
 
 
 @pytest.mark.asyncio
-async def test_the_ishant_proteins_conversation():
+async def test_the_original_failure_is_not_repeated():
+    """ "We sell all types of meat" once got "What do people come to you for?" — twice."""
     bp = blueprint()
-    bp.messages = []
-
-    # 1. "We sell all types of meat" — understood; asked which meats, not the opener.
     bp = await say(bp, "We sell all types of meat", T1)
     assert GENERIC not in reply(bp).lower()
     assert bp.last_asked_target == "offerings.main"
     assert "chicken, mutton, fish" in reply(bp)
-    assert bp.discovery["business.identity"].status == "answered"
     assert bp.discovery["offerings.main"].status == "partial"
-    assert "sells_products" in characteristics(bp, "retail")
-    view = understanding(bp, "retail")
-    assert view["kind"] == "A meat retailer selling many kinds of meat."
-    assert bp.website_draft.about is not None  # the panel already shows the start of a website
-    assert recommended(bp, "strong") >= {"offerings-catalog"}
+    assert [g.name for g in bp.taxonomy.groups] == ["Meat"]
+    assert "varieties" in bp.taxonomy.groups[0].needs  # "all types" names no items
 
-    # 2. "Obviously to get meat only." — owned, and a MORE specific question.
     bp = await say(bp, "Obviously to get meat only.", T2)
     assert reply(bp).startswith("Right — let me be more specific.")
-    assert "cut and weight" in reply(bp)
     assert GENERIC not in reply(bp).lower()
-    assert bp.discovery["offerings.main"].status == "partial"  # still want the actual meats
 
-    # 3. "Select meat, then kg, then order" — ordering, weight, and now payment matters.
+    # The model proposes delivery; the range is still unknown, so Locah asks for it.
     bp = await say(bp, "Select meat and then select kg and then order", T3)
     assert bp.discovery["offerings.units"].status == "answered"
     assert {"offerings-catalog", "orders", "payments", "inventory"} <= recommended(bp, "strong")
-    assert "fulfilment" not in recommended(bp)  # waits for delivery or pickup
-    assert bp.website_draft.hero_headline.text == "Every kind of meat, in one place."  # "Fresh" was dropped
-    assert bp.website_draft.cta_label.text == "Order now"
-    assert bp.last_asked_target == "fulfilment.mode"
-    orders = next(r for r in bp.recommended_modules if r.module_id == "orders")
-    assert "Select meat and then select kg and then order" in orders.reason
+    assert bp.last_asked_target == "offerings.structure"
+    assert "varieties" in reply(bp)
 
-    # 4-5. Location and phone — and still not "done".
-    bp = await say(bp, "In nookampalayam road", T4)
-    bp = await say(bp, "8754722026", T5)
-    assert not bp.readiness.ready
-    assert {"fulfilment.mode", "commerce.payment"} <= set(bp.readiness.missing)
-    assert "anything else" not in reply(bp).lower()
 
-    # 6-7. Delivery and payment.
-    bp = await say(bp, "We deliver ourselves around Nookampalayam and Perumbakkam, people can pick up too", T6)
-    assert "fulfilment" in recommended(bp, "strong")
-    assert "workforce" not in recommended(bp)  # "ourselves" is not a staff-scheduling need
-    bp = await say(bp, "Both online and cash on delivery", T7)
-    assert bp.discovery["commerce.payment"].status == "answered"
+# ------------------------------------------- the improved conversation (brief §57)
 
-    # 8. The story request becomes website copy, with the owner's own claim.
-    bp = await say(bp, STORY, T8)
-    wd = bp.website_draft
-    assert wd.hero_headline.text == "Fresh meat, closer to home."  # fresh and farm: the owner said them
-    assert "from the farm to your home" in wd.about.text
-    assert wd.owner_claims[0].quote == "we sell fresh meat from farm to ur house"
-    assert "description" not in bp.unconfirmed_facts or bp.unconfirmed_facts["description"].value != STORY
+N1 = {
+    "facts": [fact("offerings", "chicken, mutton, fish, crab and squid"),
+              fact("customer_actions", "People select the meat and kg and order")],
+    "answered": [ans("business.identity", "You sell meat and seafood.", "We sell chicken, mutton"),
+                 ans("offerings.main", "Chicken, mutton, fish, crab and squid.",
+                     "chicken, mutton, fish, crab and squid"),
+                 ans("commerce.action", "People pick the meat, the kg, and order.",
+                     "People select the meat and kg and order"),
+                 ans("offerings.units", "Sold by weight — customers choose the kg.", "select the meat and kg")],
+    "operating_patterns": [pat("product_led", "We sell chicken, mutton, fish, crab and squid"),
+                           pat("order_led", "and order")],
+    "catalogue": [
+        {"group": "Chicken", "unknown": ["cuts"], "sold_by": "by weight (kg)"},
+        {"group": "Mutton", "unknown": ["cuts"], "sold_by": "by weight (kg)"},
+        {"group": "Fish & Seafood", "items": [{"name": "Fish"}, {"name": "Crab"}, {"name": "Squid"}],
+         "unknown": ["varieties"]},
+    ],
+    "draft": {"hero_headline": "Chicken, mutton and seafood, by the kilo.",
+              "hero_subheadline": "Pick your meat, choose the weight and order."},
+    "acknowledgement": "Nice.",
+    "next_target": "offerings.structure",
+    "next_question": "For chicken and mutton, do people choose cuts too? And for fish, which "
+                     "varieties do you normally sell?",
+}
+N2 = {
+    "answered": [ans("offerings.structure", "Chicken and mutton come in cuts; fish in three varieties.",
+                     "Chicken whole, curry cut and boneless")],
+    "catalogue": [
+        {"group": "Chicken", "items": [{"name": "Whole chicken"}, {"name": "Curry cut"}, {"name": "Boneless"}]},
+        {"group": "Mutton", "items": [{"name": "Curry cut"}, {"name": "Chops"}]},
+        {"group": "Fish & Seafood", "items": [{"name": "Seer fish"}, {"name": "Pomfret"}, {"name": "Sardine"},
+                                              {"name": "Crab"}, {"name": "Squid"},
+                                              {"name": "fish different varieties"}]},
+    ],
+    "acknowledgement": "That helps.",
+    # A secondary question the model wants to ask too early.
+    "next_target": "operations.hours",
+    "next_question": "What are your opening hours?",
+}
+N3 = {"acknowledgement": "Sure.", "next_target": "brand.story",
+      "next_question": "What should people remember about Ishant Proteins?"}
+N5 = {"answered": [ans("fulfilment.mode", "You deliver and offer pickup.",
+                       "We deliver ourselves around Nookampalayam and Perumbakkam, people can pick up too"),
+                   ans("fulfilment.area", "Nookampalayam and Perumbakkam", "around Nookampalayam and Perumbakkam")],
+      "operating_patterns": [pat("local_delivery", "We deliver ourselves"), pat("pickup", "people can pick up too")],
+      "acknowledgement": "Delivery and pickup.", "next_target": "commerce.payment",
+      "next_question": "How do customers pay — online, cash on delivery, or both?"}
+N6 = {"answered": [ans("commerce.payment", "Online and cash on delivery.", "Both online and cash on delivery")],
+      "acknowledgement": "Both work.", "next_target": "contact.location",
+      "next_question": "Where is the shop?"}
+N7 = {"facts": [fact("locations", "nookampalayam road")],
+      "answered": [ans("contact.location", "Nookampalayam Road", "nookampalayam road")],
+      "acknowledgement": "Noted.", "next_target": "contact.phone",
+      "next_question": "Which number should customers call or WhatsApp?"}
+N8 = {"facts": [fact("phone", "8754722026")],
+      "answered": [ans("contact.phone", "8754722026", "8754722026")],
+      "acknowledgement": "Saved.", "next_target": "offerings.pricing",
+      "next_question": "Do you already have prices per kg, or should I leave those for later?"}
+N9 = {"answered": [ans("offerings.pricing", "Chicken 240 and mutton 800 per kg.", "Chicken 240 per kg")],
+      "catalogue": [{"group": "Chicken", "price": "₹240", "unit": "per kg"},
+                    {"group": "Mutton", "price": "₹800", "unit": "per kg"},
+                    {"group": "Fish & Seafood", "price": "₹999", "unit": "per kg"}],
+      "acknowledgement": "Prices noted.", "next_target": "media.logo",
+      "next_question": "Do you have a logo, or should I create a simple one?"}
 
-    # 9. The actual meats — descriptions written, the invented claim refused.
-    bp = await say(bp, "Chicken, mutton and fish", T9)
-    names = {o.name: o for o in bp.website_draft.offerings}
-    assert set(names) == {"Chicken", "Mutton", "Fish"}
-    assert names["Chicken"].description and "curries" in names["Chicken"].description.text
-    assert names["Mutton"].description is None  # "antibiotic-free" was never said
+
+@pytest.mark.asyncio
+async def test_the_ishant_proteins_conversation():
+    bp = blueprint()
+    say_ = lambda b, t, a, **k: say(b, t, a, business_type="other", **k)  # noqa: E731
+
+    # 1. The whole range in one line: understood as a structure, and the next
+    # question is what the WEBSITE needs — cuts and varieties.
+    bp = await say_(bp, "We sell chicken, mutton, fish, crab and squid. People select the meat and kg and order.", N1)
+    groups = {g.name: g for g in bp.taxonomy.groups}
+    assert list(groups) == ["Chicken", "Mutton", "Fish & Seafood"]
+    assert groups["Fish & Seafood"].label_source == "ai_suggestion"
+    assert [i.name for i in groups["Fish & Seafood"].items] == ["Fish", "Crab", "Squid"]
+    assert "varieties" in groups["Fish & Seafood"].needs and "cuts" in groups["Chicken"].needs
+    assert bp.last_asked_target == "offerings.structure"
+    assert "cuts" in reply(bp) and "varieties" in reply(bp)
+
+    # 2. Cuts and varieties — "fish different varieties" never becomes a product.
+    bp = await say_(bp, "Chicken whole, curry cut and boneless. Mutton curry cut and chops. "
+                        "Fish - seer, pomfret, sardine, fish different varieties.", N2)
+    groups = {g.name: g for g in bp.taxonomy.groups}
+    assert [i.name for i in groups["Chicken"].items] == ["Whole chicken", "Curry cut", "Boneless"]
+    assert "Fish different varieties" not in [i.name for i in groups["Fish & Seafood"].items]
+    assert "cuts" not in groups["Chicken"].needs
+    # Hours can wait: the photos question shapes the website more.
+    assert bp.last_asked_target == "media.photos"
+    assert "draft visuals" in reply(bp)
+
+    # 3. Draft visuals, with consent.
+    bp = await say_(bp, "No photos yet, you can create them", N3)
+    assert bp.visual_consent == "draft_visuals"
+    assert "draft visuals" in reply(bp)
+    assert bp.last_asked_target == "brand.story"
+
+    bp = await say_(bp, STORY, T8)
+    assert bp.last_asked_target == "fulfilment.mode"  # operations now, after the website shape
+    bp = await say_(bp, "We deliver ourselves around Nookampalayam and Perumbakkam, people can pick up too", N5)
+    bp = await say_(bp, "Both online and cash on delivery", N6)
+    bp = await say_(bp, "In nookampalayam road", N7)
+    bp = await say_(bp, "8754722026", N8)
+    assert bp.last_asked_target == "offerings.pricing"
+
+    # 4. Prices only as the owner said them — an invented one is dropped.
+    bp = await say_(bp, "Chicken 240 per kg, mutton 800 per kg. Fish I'll fill later.", N9)
+    groups = {g.name: g for g in bp.taxonomy.groups}
+    assert (groups["Chicken"].price, groups["Chicken"].unit) == ("₹240", "per kg")
+    assert groups["Fish & Seafood"].price == "" and "price" in groups["Fish & Seafood"].needs
     assert bp.last_asked_target == "media.logo"
 
-    # 10. "Generate one" — a logo request, not a misunderstanding.
-    bp = await say(bp, "Generate one", T10)
-    assert [(r.role, r.status) for r in bp.media_generation_requests] == [("logo", "requested")]
-    assert "couldn't" not in reply(bp).lower() and "didn't quite follow" not in reply(bp).lower()
-    assert "draw a simple logo for Ishant Proteins" in reply(bp)
+    bp = await say_(bp, "Generate one", T10)
     assert bp.readiness.ready
-    assert "strong first version" in reply(bp)
-
-    # Nothing was asked twice in a row, and no concept was re-opened once known.
+    assert all(bp.readiness.website.values())
+    assert bp.discovery["operations.hours"].asked == 0  # never needed for a first website
     asked = [t for t, s in bp.discovery.items() if s.asked]
     assert all(bp.discovery[t].asked <= 2 for t in asked)
-    assert "business.identity" not in asked
 
 
 @pytest.mark.asyncio

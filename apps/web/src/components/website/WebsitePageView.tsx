@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { CommerceCart } from './CommerceCart'
 import { SectionRenderer, type SiteContact } from './SectionRenderer'
 import { siteFontVariables } from './site-fonts'
 import { withPreviewToken } from './preview-links'
@@ -115,9 +116,61 @@ export function WebsitePageView({
     '--site-primary': primary,
     '--site-primary-fg': readable(primary),
     '--site-accent': accent,
+    '--site-accent-fg': readable(accent),
   }
   if (theme.text_color) styleVars['--site-ink'] = String(theme.text_color)
   if (theme.background_color) styleVars['--site-bg'] = String(theme.background_color)
+  if (theme.surface_alt_color) styleVars['--site-bg-alt'] = String(theme.surface_alt_color)
+  if (theme.muted_color) styleVars['--site-muted'] = String(theme.muted_color)
+  const paletteMode = finite(
+    theme.palette_mode,
+    ['light', 'dark'],
+    personality === 'dark' ? 'dark' : 'light'
+  )
+  if (theme.palette_mode) {
+    styleVars['--site-border'] =
+      paletteMode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(16, 20, 24, 0.10)'
+  }
+  // The creative direction: which design language this site speaks. Finite,
+  // renderer-backed values only — anything else falls back to the older look.
+  const profile = finite(
+    theme.reference_profile,
+    [
+      'bold_food_commerce',
+      'editorial_home_food',
+      'cinematic_fitness',
+      'airy_real_estate',
+      'calm_care',
+      'technical_b2b',
+      'friendly_local',
+    ],
+    ''
+  )
+  const typeSystem = finite(
+    theme.type_system,
+    [
+      'bold_commerce',
+      'editorial_food',
+      'cinematic_fitness',
+      'premium_property',
+      'calm_care',
+      'technical_b2b',
+      'friendly_local',
+    ],
+    ''
+  )
+  const cards = finite(theme.card_style, ['sharp', 'soft', 'editorial', 'glass'], '')
+  const navStyle = finite(
+    theme.nav_style,
+    ['commerce', 'editorial', 'cinematic', 'airy', 'standard'],
+    'standard'
+  )
+  const motionIntensity = finite(theme.motion_intensity, ['subtle', 'lively'], 'subtle')
+  const navCta =
+    theme.nav_cta && typeof theme.nav_cta === 'object'
+      ? (theme.nav_cta as { label?: unknown; href?: unknown })
+      : null
+  const utility = Array.isArray(theme.utility_bar) ? theme.utility_bar.map(String).slice(0, 2) : []
 
   // The tab title is set by each route's generateMetadata, not here — a <title>
   // rendered in the tree lands in <body> on React 18 and duplicates the tag.
@@ -149,8 +202,21 @@ export function WebsitePageView({
 
   function navHref(path: string) {
     if (!path || path === '/') return `/${slug}`
+    // "/#shop": a section of the home page. On the home page itself the plain
+    // anchor keeps the visitor where they are and just scrolls.
+    if (path.startsWith('/#'))
+      return data.page.slug === 'home' ? path.slice(1) : `/${slug}${path.slice(1)}`
     return `/${slug}${path.startsWith('/') ? path : `/${path}`}`
   }
+  const ctaLabel = navCta ? String(navCta.label || '') : ''
+  const ctaHref = navCta ? String(navCta.href || '') : ''
+  const ctaTarget = ctaHref.startsWith('#')
+    ? data.page.slug === 'home'
+      ? ctaHref
+      : `/${slug}${ctaHref}`
+    : ctaHref
+  const callLabel =
+    profile === 'bold_food_commerce' || profile === 'editorial_home_food' ? 'Call to order' : 'Call'
 
   return (
     <div
@@ -163,6 +229,12 @@ export function WebsitePageView({
       data-motion={motion}
       data-mobile-priority={mobilePriority}
       data-navigation={navigationStyle}
+      data-profile={profile || undefined}
+      data-type={typeSystem || undefined}
+      data-palette={paletteMode}
+      data-cards={cards || undefined}
+      data-nav={navStyle}
+      data-motion-intensity={motionIntensity}
       style={styleVars}
     >
       {data.is_preview ? (
@@ -181,14 +253,23 @@ export function WebsitePageView({
         </aside>
       ) : null}
 
-      <header className="ls-nav">
+      {utility.length && navStyle === 'commerce' ? (
+        <div className="ls-utility" role="note">
+          <div className="ls-utility__inner">
+            {utility.map((line) => (
+              <span key={line}>{line}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <header className={`ls-nav ls-nav--${navStyle}`}>
         <div className="ls-nav__inner">
           <Link className="ls-nav__brand" href={withPreviewToken(`/${slug}`, previewToken)}>
             {logo ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img className="ls-nav__logo" src={logo} alt="" />
             ) : null}
-            {name}
+            <span className="ls-nav__name">{name}</span>
           </Link>
           <nav className="ls-nav__links">
             {nav.map((item) => {
@@ -214,6 +295,19 @@ export function WebsitePageView({
               )
             })}
           </nav>
+          <div className="ls-nav__actions">
+            {canOrder ? <CommerceCart slug={slug} /> : null}
+            {ctaLabel && ctaTarget ? (
+              <a
+                className="ls-btn ls-btn--sm ls-nav__cta"
+                href={ctaTarget}
+                target={ctaTarget.startsWith('http') ? '_blank' : undefined}
+                rel={ctaTarget.startsWith('http') ? 'noopener noreferrer' : undefined}
+              >
+                {ctaLabel}
+              </a>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -260,7 +354,7 @@ export function WebsitePageView({
       {reachable ? (
         // On a phone the two things a visitor most wants are always one tap away.
         <nav className="ls-mobile-bar" aria-label="Contact">
-          {contact.phone ? <a href={`tel:${contact.phone}`}>Call</a> : null}
+          {contact.phone ? <a href={`tel:${contact.phone}`}>{callLabel}</a> : null}
           {contact.whatsapp ? (
             <a
               href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}

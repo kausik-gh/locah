@@ -19,6 +19,7 @@ from platform_core.interview.conversation import (
     ANYTHING_ELSE,
     LOGO_QUEUED,
     LOGO_UNAVAILABLE,
+    VISUALS_QUEUED,
     LOGO_UPLOAD,
     READY,
     REDIRECT,
@@ -54,6 +55,7 @@ from platform_core.interview.models import (
     DraftUpdate,
     ExtractedFact,
     FactKey,
+    GroupProposal,
     MediaGenerationRequest,
     Message,
     Question,
@@ -258,6 +260,11 @@ class BusinessInterviewOrchestrator:
                 "offerings": [o.name for o in wd.offerings],
                 "owner_claims": [c.claim for c in wd.owner_claims],
             },
+            "catalogue": [
+                {"group": g.name, "items": [i.name for i in g.items][:12], "sold_by": g.sold_by,
+                 "still_unknown": [n for n in g.needs if n in {"varieties", "cuts", "sizes"}]}
+                for g in bp.taxonomy.groups
+            ],
             "message": text,
         }
 
@@ -348,6 +355,18 @@ class BusinessInterviewOrchestrator:
             if media_note:
                 understood += 1
             if govern_draft(bp, ti.draft, text):
+                understood += 1
+            from platform_core.interview.taxonomy import govern_catalogue, taxonomy_from_listing
+
+            proposals = list(ti.catalogue)
+            if not proposals:
+                # No reading from the model: the owner's own list, one group per phrase.
+                proposals = [
+                    GroupProposal(group=g.name, unknown=["varieties"] if "varieties" in g.needs else [])
+                    for fact in ti.facts if fact.field == "offerings" and fact.quote in text
+                    for g in taxonomy_from_listing(fact.quote)
+                ]
+            if govern_catalogue(bp, proposals, text):
                 understood += 1
         BusinessInterviewOrchestrator.project(bp, business_type)
 
@@ -462,6 +481,10 @@ class BusinessInterviewOrchestrator:
 
 _GENERATE = re.compile(r"\b(generate|create|make|design|draw)\b.{0,20}\b(one|it|logo|for me)?", re.I)
 _DECLINE = re.compile(r"^\s*(no|nope|skip|later|not now|don'?t know|no idea|nothing|illa|venaam)\b", re.I)
+_YES = re.compile(r"^\s*(yes|yeah|yep|sure|ok(?:ay)?|please|go ahead|do it|seri|aamaa|ama|haan)\b", re.I)
+_OWN_PHOTOS = re.compile(
+    r"\b(i (?:have|'ll|will) (?:upload|send|share|add)|i have (?:photos|pictures|pics)|will upload)\b",
+    re.I)
 
 
 def _contextual_signals(bp: BusinessBlueprint, ti: TurnIntelligence, text: str) -> None:
@@ -473,6 +496,16 @@ def _contextual_signals(bp: BusinessBlueprint, ti: TurnIntelligence, text: str) 
     last = bp.last_asked_target
     if last == "media.logo" and ti.media_intent == "none" and _GENERATE.search(text):
         ti.media_intent = "generate_logo"
+    if last == "media.photos" and ti.media_intent == "none":
+        # "No photos yet, you can create them" is a yes to drafts, not a no.
+        refused = re.search(r"\b(?:don'?t|do not|no need to|not)\b[^.]{0,20}\b(?:create|generate|make)",
+                            text, re.I)
+        if _OWN_PHOTOS.search(text):
+            ti.media_intent = "will_upload_photos"
+        elif not refused and (_YES.search(text) or _GENERATE.search(text)):
+            ti.media_intent = "generate_visuals"
+        elif refused or (_DECLINE.search(text) and len(text) < 40):
+            ti.media_intent = "no_visuals"
     if last and _DECLINE.search(text) and len(text) < 40 and not ti.answered and ti.media_intent == "none":
         ti.answered.append(TargetAnswer(target=last, status="declined"))
 
@@ -545,6 +578,21 @@ def _record_media_intent(bp: BusinessBlueprint, intent: str, image_available: bo
         return str(LOGO_UPLOAD[lang])
     if intent == "no_logo":
         logo.status = "declined"
+        return ""
+    if intent in {"generate_visuals", "will_upload_photos", "no_visuals"}:
+        photos = bp.discovery.setdefault("media.photos", TargetState())
+        photos.status = "answered" if intent != "no_visuals" else "declined"
+        bp.visual_consent = {
+            "generate_visuals": "draft_visuals", "will_upload_photos": "own_photos",
+            "no_visuals": "none",
+        }[intent]
+        photos.summary = {
+            "generate_visuals": "Locah will create draft visuals you can replace with real photos.",
+            "will_upload_photos": "You'll add your own photos.",
+            "no_visuals": "No pictures for now.",
+        }[intent]
+        if intent == "generate_visuals" and image_available:
+            return str(VISUALS_QUEUED[lang])
         return ""
     role = {"generate_logo": "logo", "generate_hero": "hero"}.get(intent)
     if role is None:

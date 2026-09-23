@@ -9,6 +9,8 @@ import { Plus_Jakarta_Sans, Instrument_Serif } from 'next/font/google'
 import '@platform/ui/tokens.css'
 import '@platform/ui/public.css'
 import '@platform/ui/website.css'
+// A site's creative direction (profile, type system, cards, nav) on top.
+import '@platform/ui/site-studio.css'
 
 const sans = Plus_Jakarta_Sans({
   subsets: ['latin'],
