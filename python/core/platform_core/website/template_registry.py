@@ -162,6 +162,39 @@ _TEMPLATES: tuple[WebsiteTemplate, ...] = (
             ),
         ),
     ),
+    # A kitchen that has not put its menu online yet still deserves a warm
+    # site. Without this, the only warm template needed the catalogue, so a
+    # Chettinad restaurant that takes reservations by phone was dressed in the
+    # navy of a consultancy.
+    WebsiteTemplate(
+        id="open-kitchen",
+        name="Open Kitchen",
+        tagline="Warm, simple, and one call away from a table.",
+        description=(
+            "For a place people come to eat before its menu is online: the "
+            "dishes you are known for, your story, and a phone that is always "
+            "one tap away."
+        ),
+        suits=("restaurant", "cafe", "bakery", "home_food"),
+        personality="warm",
+        primary_color="#7A2E1C",
+        accent_color="#D08A3C",
+        look=("warm", "welcoming", "unhurried"),
+        pages=(
+            TemplatePage(
+                "home",
+                "Home",
+                "home",
+                (
+                    TemplateSection("hero", "full_width", {"headline": "", "cta_label": "Reserve a table"}),
+                    _about("image_right", "Our kitchen", ""),
+                    TemplateSection("gallery", "masonry", {"title": "Inside"}),
+                    TemplateSection("cta_band", "centered", {"headline": "", "cta_label": "Call us"}),
+                    _contact("Come and eat"),
+                ),
+            ),
+        ),
+    ),
     # ----------------------------------------------------------- editorial
     WebsiteTemplate(
         id="quiet-authority",

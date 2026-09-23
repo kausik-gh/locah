@@ -268,3 +268,18 @@ def test_the_profile_contract_keeps_the_whatsapp_number():
 
     assert validate_contact({"phone": "+919876543210", "whatsapp": "+919876543210"}) == {
         "phone": "+919876543210", "whatsapp": "+919876543210"}
+
+
+def test_a_restaurant_without_its_menu_online_still_gets_a_warm_site():
+    """Live: a Chettinad restaurant without the catalogue was dressed in navy."""
+    from platform_core.interview.design_strategy import select_contextual_template
+
+    bp = furniture()
+    bp.known_facts["description"] = Fact(value="We're a South Indian restaurant in Chennai.", source="USER_STATEMENT")
+    bp.known_facts["offerings"] = Fact(value="Chettinad lamb, Kerala-style seafood and filter coffee", source="USER_STATEMENT")
+    bp.known_facts["classification"] = Fact(value="restaurant", source="USER_STATEMENT")
+    rows = [{"id": sid, "available": True, "allowed_variants": VARIANTS[sid], "requires_module": None}
+            for sid in CORE_SECTION_SCHEMAS]
+    p = build_plan(business_type="restaurant", active_modules=set(), capability_rows=rows)
+    chosen = select_contextual_template(bp, p)
+    assert chosen.personality == "warm" and not chosen.required_modules

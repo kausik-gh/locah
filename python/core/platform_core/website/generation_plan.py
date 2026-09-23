@@ -143,9 +143,18 @@ def select_template(
     ranked = templates_for_business_type(btype)
 
     affordable = [t for t in ranked if set(t.required_modules) <= active]
+    first_suited = next((t for t in ranked if btype and btype in t.suits), None)
     for template in affordable:
         if btype and btype in template.suits:
-            return template, f"it suits a {btype.replace('_', ' ')}"
+            reason = f"it suits a {btype.replace('_', ' ')}"
+            if first_suited is not None and first_suited is not template:
+                # A better fit exists but is switched off: still worth saying.
+                missing = ", ".join(sorted(set(first_suited.required_modules) - active))
+                reason += (
+                    f"; {first_suited.name} would suit it even better, but needs "
+                    f"{missing}, which is switched off"
+                )
+            return template, reason
 
     # Nothing both names this business type and fits inside what it has turned
     # on. Say which one it missed out on, because that is the useful half.
