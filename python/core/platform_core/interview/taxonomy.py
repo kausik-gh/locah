@@ -165,6 +165,15 @@ def govern_catalogue(bp: BusinessBlueprint, proposals: list[GroupProposal], hear
             standalone = _find(groups, item.name)
             if standalone is not None and standalone is not group and not standalone.items:
                 groups.remove(standalone)
+        if group.items:
+            # "Fish" was heard first with no varieties; "Fish & Seafood" now
+            # holds them. The empty one is the same shelf — one place, not two.
+            label_words = set(re.findall(r"[a-z]{3,}", group.name.casefold()))
+            for other in list(groups):
+                words = set(re.findall(r"[a-z]{3,}", other.name.casefold()))
+                if other is not group and not other.items and words and words <= label_words:
+                    group.needs = list(dict.fromkeys([*group.needs, *other.needs]))
+                    groups.remove(other)
         group.sold_by = " ".join(proposal.sold_by.split())[:80] if proposal.sold_by and _grounded(
             proposal.sold_by, corpus) else group.sold_by
         group.price = _price(proposal.price, corpus) or group.price
@@ -268,6 +277,26 @@ def structure_question(bp: BusinessBlueprint, style: str = "en") -> str:
     return " ".join(parts[:2])
 
 
+def _price_line(group: CatalogueGroup) -> str:
+    """The group's own price, or the lowest item price the owner gave ("from 240 per kg")."""
+    if group.price:
+        return f"{group.price} {group.unit}".strip()
+    priced = [i for i in group.items if i.price]
+    if not priced:
+        return ""
+
+    def amount(item: CatalogueItem) -> float:
+        digits = re.sub(r"[^\d.]", "", item.price)
+        try:
+            return float(digits)
+        except ValueError:
+            return float("inf")
+
+    low = min(priced, key=amount)
+    prefix = "from " if len(priced) > 1 else ""
+    return f"{prefix}{low.price} {low.unit or group.unit}".strip()
+
+
 def catalogue_lines(bp: BusinessBlueprint) -> list[dict[str, object]]:
     """The structure as the owner reads it in the panel."""
     labels = {"varieties": "varieties", "cuts": "cuts", "sizes": "sizes", "price": "price", "photo": "photo"}
@@ -278,7 +307,7 @@ def catalogue_lines(bp: BusinessBlueprint) -> list[dict[str, object]]:
             "suggested_label": group.label_source == "ai_suggestion",
             "items": [i.name for i in group.items][:12],
             "sold_by": group.sold_by,
-            "price": (f"{group.price} {group.unit}".strip() if group.price else ""),
+            "price": _price_line(group),
             "needs": [labels[n] for n in group.needs],
         })
     return out

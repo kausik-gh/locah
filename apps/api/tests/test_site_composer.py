@@ -250,3 +250,60 @@ def test_media_budget_follows_the_archetype():
     for build, count in ((meat, 4), (home_food, 5), (gym, 1), (real_estate, 4)):
         bp = build()
         assert len(plan_slots(bp, direct(bp, "other"))) == count, build.__name__
+
+
+# ------------------------------------------------ found in the live Gemini run
+
+
+def test_the_model_sees_the_shape_of_every_list_it_must_fill() -> None:
+    """Nested `$defs` were dropped, so `item_lines` reached Gemini as `items: {}`.
+
+    It answered with bare strings, and validation threw the whole plan away.
+    """
+    from platform_core.interview.creative_director import creative_plan_schema
+    from platform_core.website.ai_provider import _inline_schema
+
+    copy = _inline_schema(creative_plan_schema())["properties"]["copy"]["properties"]
+    for field in ("category_lines", "item_lines", "features", "steps"):
+        assert copy[field]["items"].get("properties"), field
+    assert set(copy["item_lines"]["items"]["properties"]) == {"name", "line"}
+
+
+def test_one_bad_line_does_not_discard_a_good_answer() -> None:
+    from platform_core.interview.creative_director import validate_repairing
+
+    raw = {"headline": "Fresh cuts, your way", "extra": 1,
+           "item_lines": [{"name": "Curry cut", "line": "For everyday curries."}, "Boneless"]}
+    copy, repairs = validate_repairing(WebsiteCopy, raw, "copy")
+    assert copy.headline == "Fresh cuts, your way"
+    assert [line.name for line in copy.item_lines] == ["Curry cut"]
+    assert "copy.extra:extra_forbidden" in repairs and any("item_lines.1" in r for r in repairs)
+
+
+def test_an_empty_group_folds_into_the_group_that_names_its_varieties() -> None:
+    """"Fish" (varieties unknown) and "Fish & Seafood" (the varieties) are one shelf."""
+    from platform_core.interview.models import GroupProposal, ItemProposal
+    from platform_core.interview.taxonomy import catalogue_lines, govern_catalogue
+
+    bp = _bp("Ishant Proteins", {"offerings": "chicken, mutton, fish, crab and squid"}, [], {},
+             [CatalogueGroup(name="Chicken", items=[CatalogueItem(name="Curry cut", price="240", unit="per kg"),
+                                                    CatalogueItem(name="Boneless", price="380", unit="per kg")]),
+              CatalogueGroup(name="Fish", needs=["varieties", "price"])])
+    heard = "Fish - seer fish, pomfret and sardine. Crab and squid we clean and sell by kg."
+    govern_catalogue(bp, [GroupProposal(group="Fish & Seafood", items=[
+        ItemProposal(name=n) for n in ("Seer fish", "Pomfret", "Sardine", "Crab", "Squid")])], heard)
+    names = [g.name for g in bp.taxonomy.groups]
+    assert names == ["Chicken", "Fish & Seafood"]
+    seafood = bp.taxonomy.groups[1]
+    assert "varieties" not in seafood.needs and len(seafood.items) == 5
+    assert catalogue_lines(bp)[0]["price"] == "from 240 per kg"
+
+
+def test_a_claim_the_owner_made_survives_in_another_word_form() -> None:
+    from platform_core.interview.website_copy import _grounded
+
+    said = "we deliver around nookampalayam. fresh stock every morning. family run for 8 years"
+    assert _grounded("Fresh cuts delivered to your door.", said)
+    assert _grounded("Delivery around Nookampalayam.", said)
+    assert not _grounded("Fresh daily.", said)  # "every morning" is not "daily"
+    assert not _grounded("The best cuts in town.", said)

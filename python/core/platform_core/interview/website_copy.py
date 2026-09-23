@@ -122,9 +122,18 @@ def _grounded(text: str, corpus: str) -> bool:
         if re.sub(r"[,.]", "", number) not in owner_digits:
             return False
     for match in _CLAIM_RE.finditer(text):
-        if match.group(0).casefold() not in low:
+        if _claim_root(match.group(0)) not in low:
             return False
     return not _STOCK.search(text)
+
+
+def _claim_root(word: str) -> str:
+    """"delivered" is the owner's "we deliver"; "daily" is not their "every morning"."""
+    word = word.casefold()
+    for suffix in ("ies", "ied", "ing", "ery", "ers", "ed", "er", "es", "ly", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            return word[: -len(suffix)]
+    return word
 
 
 def _built_from_owner_words(title: str, corpus: str) -> bool:
