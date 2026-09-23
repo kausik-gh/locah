@@ -86,7 +86,10 @@ _SIGNALS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("quote_led", re.compile(r"\b(quote|quotation|estimate|rfq)\w*\b", re.I)),
     ("has_team", TEAM),
     ("has_memberships", re.compile(r"\b(membership|monthly plan|subscription)s?\b", re.I)),
-    ("runs_classes", re.compile(r"\b(class|classes|batch|batches|sessions)\b", re.I)),
+    # "Morning batch" is a class; "small batches" of pickles is how food is made.
+    ("runs_classes", re.compile(
+        r"\b(class|classes|sessions)\b|\b(?:morning|evening|weekend|weekday|new|next|kids'?|ladies'?)"
+        r"\s+batch(?:es)?\b|\bbatch\s+(?:timings?|starts?|schedule)\b", re.I)),
     ("serves_businesses", re.compile(r"\b(factories|companies|businesses|wholesale|b2b|corporate|retailers|dealers)\b", re.I)),
     ("walk_in", re.compile(r"\b(walk[- ]?in|visit (?:the|our) (?:shop|store|showroom)|showroom|come to (?:the|our) (?:shop|store))\b", re.I)),
     # The whole word only: "custom\w*" matched "customers", the word every owner uses.

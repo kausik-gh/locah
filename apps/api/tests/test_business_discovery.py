@@ -501,3 +501,18 @@ def test_confirming_covers_every_detail_the_panel_shows():
     assert understanding(bp, "retail")["items"][0]["status"] == "from_you"
     bp.completion_state.confirmed = True
     assert understanding(bp, "retail")["items"][0]["status"] == "confirmed"
+
+
+def test_food_made_in_small_batches_is_not_a_class_to_book() -> None:
+    """A pickle kitchen was asked "What do people usually book with you?"."""
+    from platform_core.interview.discovery import characteristics
+
+    bp = BusinessBlueprint(business_id=uuid4())
+    bp.known_facts["description"] = Fact(
+        value="We make homemade podis and pickles in small batches from our home kitchen.",
+        source="USER_STATEMENT", confirmation="confirmed")
+    assert "runs_classes" not in characteristics(bp, "other")
+    assert "bookings.format" not in {r.target.id for r in rank(bp, "other")}
+    bp.known_facts["description"] = Fact(value="Morning batch and evening batch for strength classes.",
+                                         source="USER_STATEMENT", confirmation="confirmed")
+    assert "runs_classes" in characteristics(bp, "other")
