@@ -294,7 +294,12 @@ def _price_line(group: CatalogueGroup) -> str:
 
     low = min(priced, key=amount)
     prefix = "from " if len(priced) > 1 else ""
-    return f"{prefix}{low.price} {low.unit or group.unit}".strip()
+    price = f"₹{low.price}" if re.fullmatch(r"\d[\d,.]*", low.price) else low.price
+    unit = low.unit or group.unit
+    # "per kg" reads on its own; a pack size ("250 g") needs the slash.
+    if unit and not re.match(r"(per|/|a |an |each)", unit, re.I):
+        unit = f"/ {unit}"
+    return f"{prefix}{price} {unit}".strip()
 
 
 def catalogue_lines(bp: BusinessBlueprint) -> list[dict[str, object]]:

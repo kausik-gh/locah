@@ -74,7 +74,7 @@ def _place(text: str) -> str:
     text = re.sub(r"^\s*(?:in|at|near|on)\s+", "", " ".join((text or "").split()), flags=re.I).strip(" .,")
     if not text or len(text) > 60:
         return ""
-    small = {"and", "of", "the", "near", "to", "in", "on"}
+    small = {"and", "of", "the", "near", "to", "in", "on", "only", "or"}
     return " ".join(
         w if w.isupper() or any(c.isdigit() for c in w) else w.lower() if i and w.lower() in small
         else w.capitalize()
@@ -115,37 +115,51 @@ def ordering_facts(bp: BusinessBlueprint, business_type: str | None) -> list[dic
                       "body": (bp.discovery["offerings.units"].summary or "")[:160]})
     delivers = "delivers" in seen or re.search(r"\bdeliver", mode)
     pickup = "pickup" in seen or re.search(r"pick ?up|collect|takeaway", mode)
-    if delivers:
-        where = ""
-        if area_state and area_state.status == "answered":
-            raw = area_state.quote or area_state.summary
-            raw = re.sub(r"^(?:we deliver\s+)?(?:around|in|to|within)\s+", "", raw.strip(), flags=re.I)
-            where = _place(raw) if len(raw) <= 60 else ""
-        items.append({"kind": "delivery", "title": "Home delivery",
-                      "body": f"Delivered around {where}." if where else "Brought to your door."})
+    area_text = (area_state.quote or area_state.summary) if area_state and area_state.status == "answered" else ""
+    courier = re.search(r"\b(courier|ship|shipping|shipped|post|parcel|dispatch)\w*", f"{mode} {area_text}", re.I)
+    if delivers or courier:
+        where = _area(area_text)
+        if courier:
+            items.append({"kind": "delivery", "title": "Sent by courier",
+                          "body": f"Across {where}." if where else "Packed and sent to you."})
+        else:
+            items.append({"kind": "delivery", "title": "Home delivery",
+                          "body": f"Delivered around {where}." if where else "Brought to your door."})
     if pickup:
         items.append({"kind": "pickup", "title": "Store pickup",
                       "body": f"Collect your order at {location}." if location else "Collect your order from the shop."})
     if payment:
-        online = re.search(r"\b(online|upi|card|gpay|phonepe)\b", payment)
-        cash = re.search(r"\b(cash|cod)\b", payment)
-        if online and cash:
-            items.append({"kind": "payment", "title": "Pay your way",
-                          "body": "Pay online, or cash on delivery."})
-        elif online:
-            items.append({"kind": "payment", "title": "Pay online", "body": "Pay securely when you order."})
-        elif cash:
-            items.append({"kind": "payment", "title": "Cash on delivery", "body": "Pay when your order arrives."})
+        # Only the ways the owner named, in their order — no "securely", no "instant".
+        named = [label for pattern, label in (
+            (r"\bupi\b|gpay|google pay|phonepe|paytm", "UPI"), (r"\bcards?\b", "card"),
+            (r"bank transfer|neft|imps", "bank transfer"), (r"\bonline\b", "online"),
+            (r"cash on delivery|\bcod\b", "cash on delivery"), (r"\bcash\b", "cash"),
+        ) if re.search(pattern, payment)]
+        if "cash on delivery" in named and "cash" in named:
+            named.remove("cash")
+        if named:
+            body = " or ".join(dict.fromkeys(named))
+            if re.search(r"\bbefore\b.*\b(dispatch|deliver|ship)", payment):
+                body += ", before dispatch"
+            items.append({"kind": "payment", "title": "How to pay", "body": body[0].upper() + body[1:] + "."})
     return items[:4]
+
+
+def _area(text: str) -> str:
+    """ "All over Tamil Nadu by courier." -> "Tamil Nadu"; "around X and Y" -> "X and Y"."""
+    raw = re.sub(r"\b(?:by|through|via)\s+(?:courier|post|parcel)\w*", "", text, flags=re.I)
+    raw = re.sub(r"^\s*(?:we\s+)?(?:deliver|ship|send|courier)\w*\s+", "", raw.strip(), flags=re.I)
+    raw = re.sub(r"^(?:all over|across|anywhere in|throughout|around|in|to|within)\s+", "", raw.strip(), flags=re.I)
+    raw = raw.strip(" .,")
+    return _place(raw) if raw and len(raw) <= 60 else ""
 
 
 def hero_badges(bp: BusinessBlueprint, business_type: str | None) -> list[str]:
     """Short true chips under the headline — never a rating, a count or an award."""
     badges: list[str] = []
     for item in ordering_facts(bp, business_type):
-        label = {"weight": "Sold by the kg", "delivery": "Home delivery", "pickup": "Store pickup",
-                 "payment": item["body"].rstrip(".").replace("Pay online, or cash on delivery",
-                                                               "Online or cash on delivery")}.get(item["kind"])
+        label = {"weight": "Sold by the kg", "delivery": item["title"], "pickup": "Store pickup",
+                 "payment": item["body"].rstrip(".")}.get(item["kind"])
         if label and label not in badges:
             badges.append(label[:40])
     return badges[:3]
@@ -350,8 +364,11 @@ def compose_site(
                                  "eyebrow": "Our story", "anchor": "story"}
         if claims:
             story["quote"] = claims[0][:200]
-        # The first category's picture: the last one was just shown above.
-        picture = picture_for(bp, "category:" + slug(bp.taxonomy.groups[0].name)) if bp.taxonomy.groups else None
+        # Its own picture first; else the first category's (the last one was
+        # just shown above); the hero only as a last resort.
+        picture = picture_for(bp, "story")
+        if not picture and bp.taxonomy.groups:
+            picture = picture_for(bp, "category:" + slug(bp.taxonomy.groups[0].name))
         picture = picture or hero_picture
         if picture:
             story["image_asset_id"] = picture

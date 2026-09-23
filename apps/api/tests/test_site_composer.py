@@ -232,7 +232,8 @@ async def test_draft_visuals_need_consent_and_are_drawn_once():
     bp.visual_consent = "draft_visuals"
     drawn = await draw_missing(bp, direction, "a meat shop", draw=draw)
     assert [s.key for s, _, _ in drawn] == ["hero", "category:chicken", "category:mutton",
-                                           "category:fish-seafood"]
+                                           "category:fish-seafood", "story"]
+    assert all("One continuous photograph" in p for p in calls)
     assert all("No text" in p and "people" in p for p in calls)
     assert all("farm" not in p.lower() and "240" not in p for p in calls)
     for slot, _, _ in drawn:
@@ -243,11 +244,17 @@ async def test_draft_visuals_need_consent_and_are_drawn_once():
     assert found["hero"]["content"]["image_asset_id"] == picture_for(bp, "hero")
     boards = found["product_showcase"]["content"]["categories"]
     assert all(c.get("image_asset_id") for c in boards)
+    # The story has its own picture: the hero is not shown three times.
+    storied = sections(compose_site(
+        bp, direction, WebsiteCopy(about_body="Family run for eight years."), business_type="other",
+        contact={"phone": "8754722026"}, active_modules=ACTIVE))
+    assert storied["about"]["content"]["image_asset_id"] == picture_for(bp, "story")
+    assert storied["about"]["content"]["image_asset_id"] != found["hero"]["content"]["image_asset_id"]
     assert all(m.source == "AI_GENERATED" and m.label.startswith("Draft visual") for m in bp.media_assets)
 
 
 def test_media_budget_follows_the_archetype():
-    for build, count in ((meat, 4), (home_food, 5), (gym, 1), (real_estate, 4)):
+    for build, count in ((meat, 5), (home_food, 6), (gym, 2), (real_estate, 4)):
         bp = build()
         assert len(plan_slots(bp, direct(bp, "other"))) == count, build.__name__
 
@@ -296,7 +303,7 @@ def test_an_empty_group_folds_into_the_group_that_names_its_varieties() -> None:
     assert names == ["Chicken", "Fish & Seafood"]
     seafood = bp.taxonomy.groups[1]
     assert "varieties" not in seafood.needs and len(seafood.items) == 5
-    assert catalogue_lines(bp)[0]["price"] == "from 240 per kg"
+    assert catalogue_lines(bp)[0]["price"] == "from ₹240 per kg"
 
 
 def test_a_claim_the_owner_made_survives_in_another_word_form() -> None:
@@ -324,3 +331,22 @@ def test_prices_read_as_rupees_and_boards_show_the_lowest_price_given() -> None:
     chicken = next(c for c in show["content"]["categories"] if c["name"] == "Chicken")
     assert chicken["meta"] == "From ₹240 per kg"
     assert {i["price"] for i in show["content"]["items"] if i["category"] == "Chicken"} == {"₹240", "₹380"}
+
+
+def test_ordering_facts_say_what_the_owner_said() -> None:
+    """ "UPI before we dispatch" was shown as "Pay securely when you order"; a
+    courier business was "Home delivery … around All over Tamil Nadu"."""
+    from platform_core.interview.site_composer import hero_badges, ordering_facts
+
+    bp = home_food()
+    bp.discovery["fulfilment.mode"] = TargetState(status="open")
+    bp.discovery["fulfilment.area"] = TargetState(status="answered", summary="All over Tamil Nadu",
+                                                  quote="All over Tamil Nadu by courier.")
+    bp.discovery["commerce.payment"] = TargetState(status="answered", summary="UPI before dispatch.",
+                                                   quote="UPI before we dispatch.")
+    facts = {f["kind"]: f for f in ordering_facts(bp, "other")}
+    assert facts["delivery"]["title"] == "Sent by courier"
+    assert facts["delivery"]["body"] == "Across Tamil Nadu."
+    assert facts["payment"]["body"] == "UPI, before dispatch."
+    assert "Sent by courier" in hero_badges(bp, "other")
+    assert not any("secure" in f["body"].lower() for f in facts.values())

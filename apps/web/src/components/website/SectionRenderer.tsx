@@ -49,21 +49,26 @@ function ContactActions({
   contact,
   businessName,
   onMedia = false,
+  primaryPath = '',
 }: {
   contact?: SiteContact
   businessName?: string
   onMedia?: boolean
+  /** The section's main button — its channel is not repeated beside it. */
+  primaryPath?: string
 }) {
   if (!contact?.phone && !contact?.whatsapp) return null
   const tone = onMedia ? 'ls-btn--ghost-onmedia' : 'ls-btn--outline'
+  const showPhone = Boolean(contact.phone) && !/^tel:/i.test(primaryPath)
+  const showWhatsapp = Boolean(contact.whatsapp) && !/wa\.me|whatsapp/i.test(primaryPath)
   return (
     <>
-      {contact.phone ? (
+      {showPhone ? (
         <a className={`ls-btn ${tone}`} href={`tel:${contact.phone}`}>
           Call now
         </a>
       ) : null}
-      {contact.whatsapp ? (
+      {showWhatsapp && contact.whatsapp ? (
         <a
           className={`ls-btn ${tone} ls-btn--whatsapp`}
           href={whatsappHref(contact.whatsapp, businessName)}
@@ -312,6 +317,7 @@ export function SectionRenderer({
               contact={contact}
               businessName={businessName}
               onMedia={onMedia || !split}
+              primaryPath={ctaLabel ? ctaPath : ''}
             />
           </div>
         ) : null
@@ -479,7 +485,12 @@ export function SectionRenderer({
                   previewToken={previewToken}
                 />
               ) : null}
-              <ContactActions contact={contact} businessName={businessName} onMedia />
+              <ContactActions
+                contact={contact}
+                businessName={businessName}
+                onMedia
+                primaryPath={ctaLabel ? ctaPath : ''}
+              />
             </div>
           </div>
         </section>

@@ -37,9 +37,21 @@ BUDGET: dict[str, int] = {
 }
 
 _NEVER = (
-    "No text, words, letters, numbers, logos, labels, packaging, price tags, signage or "
-    "watermarks. No people, faces or hands."
+    "One continuous photograph of a single scene — no collage, split panels, borders, frames "
+    "or inset pictures. No text, words, letters, numbers, logos, labels, packaging, price tags, "
+    "signage or watermarks. No people, faces or hands."
 )
+
+# The story section's own picture: where the work happens. Without it the
+# hero photograph appeared three times on one page (hero, story, closing band).
+_STORY = {
+    "product_commerce": "the shop's counter and workspace — clean chopping block, tools and "
+                        "fresh produce laid out, seen from the side",
+    "menu_commerce": "the kitchen where everything is made — spices, brass and clay vessels, "
+                     "a stone grinder and fresh ingredients on a worn wooden counter",
+    "membership_fitness": "the training floor — racks, plates and a lifting platform, "
+                          "seen from a low angle",
+}
 
 
 @dataclass(frozen=True)
@@ -84,12 +96,20 @@ def plan_slots(bp: BusinessBlueprint, direction: CreativeDirection) -> list[Slot
                                       f"Draft visual · {item.name}"[:120]))
                     picked += 1
         if picked:
-            return slots
+            return _with_story(slots, direction)
     for group in groups[:budget]:
         members = ", ".join(_clean(i.name) for i in group.items[:4] if _clean(i.name))
         subject = _clean(group.name) + (f" — {members}" if members else "")
         slots.append(Slot(f"category:{slug(group.name)}", subject, "4:3", "offering",
                           f"Draft visual · {group.name}"[:120]))
+    return _with_story(slots, direction)
+
+
+def _with_story(slots: list[Slot], direction: CreativeDirection) -> list[Slot]:
+    """One picture for the story, last — the least important slot."""
+    subject = _STORY.get(direction.archetype)
+    if subject and direction.story_variant == "story_split":
+        slots.append(Slot("story", subject, "4:5", "gallery", "Draft visual · where it is made"))
     return slots
 
 
@@ -120,6 +140,10 @@ def owner_photo(bp: BusinessBlueprint, slot: Slot) -> UUID | None:
     if slot.key == "hero":
         hero = next((m for m in uploads if m.role == "hero"), None)
         return hero.asset_id if hero else None
+    if slot.key == "story":
+        # A photo of their own place tells the story better than any draft.
+        place = next((m for m in uploads if m.role == "business"), None)
+        return place.asset_id if place else None
     name = slot.key.split(":", 1)[1]
     for media in uploads:
         if media.role in {"offering", "gallery", "business"} and slug(media.label).startswith(name[:12]):
@@ -131,6 +155,8 @@ def picture_for(bp: BusinessBlueprint, key: str) -> str | None:
     """The asset id to show in a slot, if there is one."""
     for media in bp.media_assets:
         if media.source == "USER_UPLOAD" and media.role == "hero" and key == "hero":
+            return str(media.asset_id)
+        if media.source == "USER_UPLOAD" and media.role == "business" and key == "story":
             return str(media.asset_id)
     found = cached(bp, key)
     if found:
