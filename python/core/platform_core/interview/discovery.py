@@ -102,9 +102,10 @@ _SIGNALS: tuple[tuple[str, re.Pattern[str]], ...] = (
         r"builders?|gated communit\w*|residential projects?)\b", re.I)),
     ("sells_products", re.compile(r"\b(we sell|we are selling|we're selling|selling|our shop|our store)\b", re.I)),
 )
+_BUILT = r"(?:projects?|homes?|houses?|flats?|villas?|apartments?|units?|buildings?|sites?|towers?)"
+# "14 projects delivered", "14 delivered projects", "delivered 14 homes".
 _TRACK_RECORD = re.compile(
-    r"\b(projects?|homes?|houses?|flats?|villas?|apartments?|units?|buildings?|sites?|towers?)"
-    r"(?:\s+\w+){0,2}\s+delivered\b", re.I)
+    rf"\b{_BUILT}(?:\s+\w+){{0,2}}\s+delivered\b|\bdelivered(?:\s+\w+){{0,2}}\s+{_BUILT}\b", re.I)
 _NEGATED = re.compile(r"\b(no|not|don't|dont|do not|never|without)\b[^.]*$", re.I)
 
 
@@ -143,7 +144,7 @@ def characteristics(
                 before = text[max(0, match.start() - 25): match.start()]
                 if _NEGATED.search(before):
                     continue  # "we don't deliver" is not delivery
-                if name == "delivers" and _TRACK_RECORD.search(text[max(0, match.start() - 40): match.end()]):
+                if name == "delivers" and _TRACK_RECORD.search(text[max(0, match.start() - 40): match.end() + 40]):
                     continue  # "14 projects delivered" is a track record, not delivery
                 found[name] = "observed"
                 break
@@ -636,7 +637,15 @@ def fallback_question(target_id: str, bp: BusinessBlueprint, style: str) -> str:
     facts = {**bp.known_facts, **bp.unconfirmed_facts}
     name = bp.identity["display_name"].value if "display_name" in bp.identity else "your business"
     offerings = facts["offerings"].value if "offerings" in facts else ""
-    things = "products" if "sells_products" in characteristics(bp) else "things you offer"
+    chars = characteristics(bp)
+    # The words the owner would use: "projects", "products", "services" —
+    # never the placeholder "things you offer".
+    things = (
+        "projects" if "sells_property" in chars
+        else "products" if "sells_products" in chars
+        else "services" if "provides_services" in chars
+        else "work"
+    )
     listed = _short_list(offerings)
     about = f" {listed}" if listed and len(listed) < 60 else ""
     units = (bp.discovery.get("offerings.units") or TargetState()).summary.lower()

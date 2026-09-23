@@ -132,7 +132,10 @@ def govern_catalogue(bp: BusinessBlueprint, proposals: list[GroupProposal], hear
         if label_deep:
             unknown.add("varieties")
         for raw in proposal.items:
-            name, deep = normalise_name(raw.name)
+            # "Aranya Greens - 3 BHK villas in Thalambur": a name, then what it is.
+            parts = re.split(r"\s+[-–—:]\s+", raw.name, maxsplit=1)
+            head, tail = parts[0], (parts[1] if len(parts) > 1 else "")
+            name, deep = normalise_name(head)
             if deep:
                 # "fish different varieties" inside a group: the group has depth.
                 unknown.add("varieties")
@@ -140,10 +143,14 @@ def govern_catalogue(bp: BusinessBlueprint, proposals: list[GroupProposal], hear
                     continue
             if not name or not _built_from_owner_words(name, corpus) or len(name) > 60:
                 continue
+            if name.casefold() == label.casefold():
+                continue  # "Chicken" is the group, not one of its items
             if any(i.name.casefold() == name.casefold() for i in items):
                 continue
+            about = " ".join(tail.split()).strip(" .,")
             items.append(CatalogueItem(
                 name=name[:80], price=_price(raw.price, corpus), unit=_unit(raw.unit, corpus),
+                description=about[:240] if about and len(about) <= 160 and _grounded(about, corpus) else "",
             ))
         owner_label = _built_from_owner_words(label, corpus)
         if not owner_label and not items:
@@ -187,10 +194,54 @@ def govern_catalogue(bp: BusinessBlueprint, proposals: list[GroupProposal], hear
             elif need not in unknown and need in structural and need != "varieties":
                 structural.remove(need)
         group.needs = structural + (["price"] if "price" in group.needs else [])
-    groups = groups[:12]
+    groups = _tidy(groups)[:12]
     bp.taxonomy.groups = groups
     refresh_needs(bp)
     return [g.model_dump() for g in bp.taxonomy.groups] != before
+
+
+def _tidy(groups: list[CatalogueGroup]) -> list[CatalogueGroup]:
+    """One shelf per thing: no group inside itself, no group repeated inside another.
+
+    A turn can read "Crab and squid we clean and sell by kg" as groups "Crab",
+    "Squid" and "Crab & Squid" while "Fish & Seafood" already holds both —
+    four boards (and four drawn pictures) for two things.
+    """
+    for group in groups:
+        items: list[CatalogueItem] = []
+        for item in group.items:
+            # Stored before names were split: "Aranya Greens - 3 BHK villas ...".
+            parts = re.split(r"\s+[-–—:]\s+", item.name, maxsplit=1)
+            if len(parts) > 1 and parts[0].strip():
+                item = item.model_copy(update={"name": parts[0].strip()[:80],
+                                               "description": item.description or parts[1].strip()[:240]})
+            if item.name.casefold() == group.name.casefold():
+                continue
+            same = next((i for i in items if i.name.casefold() == item.name.casefold()), None)
+            if same is None:
+                items.append(item)
+            else:
+                same.description = same.description or item.description
+                same.price, same.unit = same.price or item.price, same.unit or item.unit
+        group.items = items
+
+    def names(g: CatalogueGroup) -> set[str]:
+        return {i.name.casefold() for i in g.items}
+
+    kept: list[CatalogueGroup] = []
+    for group in groups:
+        own = names(group)
+        elsewhere = [o for o in groups if o is not group and o.items]
+        if not group.items and any(group.name.casefold() in names(o) for o in elsewhere):
+            continue  # "Crab" is already an item of another group
+        bigger = next((o for o in elsewhere if own and own < names(o)), None)
+        if bigger is not None:
+            bigger.price = bigger.price or group.price
+            bigger.unit = bigger.unit or group.unit
+            continue  # "Crab & Squid" is inside "Fish & Seafood"
+        kept.append(group)
+    return kept
+
 
 
 def apply_edits(bp: BusinessBlueprint, edits: list[CatalogueEdit]) -> list[str]:
@@ -244,8 +295,12 @@ def _property_led(bp: BusinessBlueprint) -> bool:
 
 
 def ensure_taxonomy(bp: BusinessBlueprint) -> None:
-    """A structure exists whenever the owner has said what they sell."""
+    """A structure exists whenever the owner has said what they sell — and is tidy."""
     if bp.taxonomy.groups:
+        tidy = _tidy([g.model_copy(deep=True) for g in bp.taxonomy.groups])
+        if [g.model_dump() for g in tidy] != [g.model_dump() for g in bp.taxonomy.groups]:
+            bp.taxonomy.groups = tidy
+            refresh_needs(bp)
         return
     facts = {**bp.known_facts, **bp.unconfirmed_facts}
     if "offerings" in facts:

@@ -35,7 +35,7 @@ COMPOSER_VERSION = "creative-composer-v2"
 # only — for a shop it hides the fact that there are things to buy.
 BROWSE_TITLE = {
     "product_commerce": "Shop by category", "menu_commerce": "Our menu",
-    "membership_fitness": "Programmes", "real_estate_projects": "Featured projects",
+    "membership_fitness": "Programmes & plans", "real_estate_projects": "Featured projects",
     "service_appointment": "Services", "b2b_rfq": "What we supply",
     "project_portfolio": "What we make", "local_service": "Services",
 }
@@ -45,7 +45,11 @@ NAV_BROWSE = {
     "project_portfolio": "Work", "local_service": "Services",
 }
 _COMMERCE = {"product_commerce", "menu_commerce"}
-_GENERIC_TITLE = re.compile(r"^\s*(what we do|our services|what we offer|our offerings)\s*$", re.I)
+# Headings that could sit on any site. "Available options" came back from a
+# live gym build; the section is its programmes and plans.
+_GENERIC_TITLE = re.compile(
+    r"^\s*(what we do|our services|what we offer|our offerings|(?:available|our) options|"
+    r"our products|products|offerings|services|our items|items|browse|explore)\s*$", re.I)
 
 
 def _facts(bp: BusinessBlueprint) -> dict[str, str]:

@@ -409,3 +409,53 @@ def test_a_whatsapp_label_never_scrolls_to_the_menu() -> None:
     hero = sections(payload)["hero"]["content"]
     assert hero["cta_url"] == "#shop" and "whatsapp" not in hero["cta_label"].lower()
     assert payload["theme_hints"]["nav_cta"] == {"label": "Order on WhatsApp", "href": "whatsapp:"}
+
+
+def test_one_shelf_per_thing() -> None:
+    """The live meat run kept "Chicken" inside Chicken, and Crab/Squid four times over."""
+    from platform_core.interview.models import GroupProposal, ItemProposal
+    from platform_core.interview.taxonomy import govern_catalogue
+
+    bp = _bp("Ishant Proteins", {"offerings": "chicken, mutton, fish, crab and squid"}, [], {}, [])
+    heard = ("We sell chicken, mutton, fish, crab and squid. Chicken - whole chicken, curry cut. "
+             "Fish - seer fish, pomfret. Crab and squid we clean and sell by kg.")
+    govern_catalogue(bp, [
+        GroupProposal(group="Chicken", items=[ItemProposal(name=n) for n in ("Chicken", "Whole chicken", "Curry cut")]),
+        GroupProposal(group="Crab", items=[ItemProposal(name="Crab")]),
+        GroupProposal(group="Squid", items=[ItemProposal(name="Squid")]),
+        GroupProposal(group="Fish & Seafood", items=[ItemProposal(name=n) for n in
+                                                     ("Seer fish", "Pomfret", "Crab", "Squid")]),
+        GroupProposal(group="Crab & Squid", items=[ItemProposal(name="Crab"), ItemProposal(name="Squid")]),
+    ], heard)
+    assert [g.name for g in bp.taxonomy.groups] == ["Chicken", "Fish & Seafood"]
+    assert [i.name for i in bp.taxonomy.groups[0].items] == ["Whole chicken", "Curry cut"]
+
+
+def test_a_project_name_is_a_name_and_its_description_is_kept() -> None:
+    from platform_core.interview.models import GroupProposal, ItemProposal
+    from platform_core.interview.taxonomy import govern_catalogue
+
+    bp = real_estate()
+    bp.taxonomy.groups = []
+    heard = "Aranya Greens - 3 BHK villas in Thalambur, ready to move."
+    govern_catalogue(bp, [GroupProposal(group="Villa projects", items=[
+        ItemProposal(name="Aranya Greens - 3 BHK villas in Thalambur, ready to move"),
+        ItemProposal(name="Aranya Greens")])], heard)
+    items = bp.taxonomy.groups[0].items
+    assert [i.name for i in items] == ["Aranya Greens"]
+    assert items[0].description == "3 BHK villas in Thalambur, ready to move"
+
+
+def test_a_stored_untidy_catalogue_heals_on_the_next_projection() -> None:
+    from platform_core.interview.taxonomy import ensure_taxonomy
+
+    bp = real_estate()
+    bp.taxonomy.groups = [
+        CatalogueGroup(name="Villas", items=[CatalogueItem(name="Aranya Greens - 3 BHK villas in Thalambur"),
+                                             CatalogueItem(name="Aranya Greens")]),
+        CatalogueGroup(name="Crab"), CatalogueGroup(name="Seafood", items=[CatalogueItem(name="Crab")]),
+    ]
+    ensure_taxonomy(bp)
+    assert [g.name for g in bp.taxonomy.groups] == ["Villas", "Seafood"]
+    villa = bp.taxonomy.groups[0].items
+    assert [(i.name, i.description) for i in villa] == [("Aranya Greens", "3 BHK villas in Thalambur")]
