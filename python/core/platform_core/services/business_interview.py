@@ -448,6 +448,10 @@ class BusinessInterviewService:
             await BusinessInterviewService.build(
                 session, business, bp, actor_id=actor_id, correlation_id=correlation_id
             )
+        elif command.action == "setup":
+            await BusinessInterviewService.setup_offerings(
+                session, business, bp, actor_id=actor_id, correlation_id=correlation_id
+            )
         await _queue_logo(session, business, bp, actor_id=actor_id)
         bp.revision += 1
         bp.applied_requests = (bp.applied_requests + [command.request_id])[-30:]
@@ -473,6 +477,50 @@ class BusinessInterviewService:
         )
         await session.commit()
         return result
+
+    @staticmethod
+    async def setup_offerings(
+        session: AsyncSession,
+        business: Business,
+        bp: BusinessBlueprint,
+        *,
+        actor_id: UUID,
+        correlation_id: str,
+    ) -> None:
+        """Apply an explicitly accepted proposal as private, unpriced drafts.
+
+        Names were checked against the owner's words when added to the Website
+        draft. Website descriptions are marketing copy, not operational facts,
+        so they are intentionally not copied to the catalogue.
+        """
+        if bp.completion_state.status != "built" or not bp.completion_state.confirmed:
+            raise ValidationError("Build and confirm your business before setting up items")
+        if "offerings-catalog" not in bp.approved_modules:
+            raise ValidationError("Choose the online catalogue before setting up items")
+        from platform_core.services.offering import OfferingService
+
+        existing = await OfferingService.list_for_business(session, business.id)
+        known = {item.title.strip().casefold() for item in existing}
+        applied = {name.casefold() for name in bp.applied_setup_offerings}
+        for draft in bp.website_draft.offerings:
+            name = draft.name.strip()
+            if not name or name.casefold() in applied:
+                continue
+            if name.casefold() not in known:
+                await OfferingService.create_offering(
+                    session,
+                    business_id=business.id,
+                    actor_id=actor_id,
+                    correlation_id=correlation_id,
+                    payload={
+                        "title": name,
+                        "status": "draft",
+                        "visibility": "private",
+                        "price_type": "enquiry",
+                    },
+                )
+                known.add(name.casefold())
+            bp.applied_setup_offerings.append(name)
 
     @staticmethod
     async def build(

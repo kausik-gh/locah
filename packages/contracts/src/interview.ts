@@ -98,6 +98,7 @@ export type BusinessBlueprint = {
   last_asked_target: string | null
   website_draft: WebsiteDraft
   readiness: InterviewReadiness
+  applied_setup_offerings: string[]
 }
 export type BusinessInterviewData = {
   blueprint: BusinessBlueprint; classification_seed: string
@@ -110,7 +111,7 @@ export type BusinessInterviewData = {
 }
 export type InterviewCommand = {
   revision: number; request_id: string
-  action: 'turn' | 'confirm' | 'choices' | 'template' | 'media' | 'image' | 'build' | 'draft'
+  action: 'turn' | 'confirm' | 'choices' | 'template' | 'media' | 'image' | 'build' | 'draft' | 'setup'
   text?: string; field?: InterviewFactKey; choices?: Record<string, 'approved' | 'declined'>
   template_id?: string; media?: InterviewMedia
   /** For action 'image': what to draw. */

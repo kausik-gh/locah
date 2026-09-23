@@ -10,7 +10,7 @@ from platform_core.context import RequestContext
 from platform_core.exceptions import PermissionDenied, ServiceUnavailable
 from platform_core.interview.models import InterviewCommand
 from platform_core.interview import voice as voice_module
-from platform_core.permissions import BUSINESS_UPDATE, WEBSITE_EDIT
+from platform_core.permissions import BUSINESS_UPDATE, WEBSITE_EDIT, OFFERINGS_CREATE
 from platform_core.services.business_interview import BusinessInterviewService
 
 router = APIRouter(prefix="/v1/b/{business_id}/interview", tags=["business-interview"])
@@ -36,6 +36,8 @@ async def update_interview(business_id: UUID, body: InterviewCommand,
                            ctx: RequestContext = Depends(get_request_context),
                            session: AsyncSession = Depends(get_db_session)) -> dict[str, Any]:
     await owner(business_id, ctx, session)
+    if body.action == "setup":
+        await resolve_business_actor(business_id, OFFERINGS_CREATE, ctx, session, "offerings-catalog")
     return {"data": await BusinessInterviewService.execute(session, business_id, body,
             actor_id=ctx.identity_id, correlation_id=ctx.correlation_id)}
 

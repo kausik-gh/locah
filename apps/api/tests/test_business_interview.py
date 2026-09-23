@@ -36,6 +36,7 @@ from platform_core.interview.models import (
     Fact,
     InterviewCommand,
     MediaReference,
+    OfferingDraft,
     TargetState,
     now,
 )
@@ -44,6 +45,7 @@ from platform_core.interview.website import build_preview
 from platform_core.models import Business, WebsiteGenerationJob
 from platform_core.services.business_interview import BusinessInterviewService as Service
 from platform_core.services.media import MediaService
+from platform_core.services.offering import OfferingService
 from platform_core.website.generation_plan import build_plan
 from platform_core.website.section_registry import CORE_SECTION_SCHEMAS
 from platform_core.website.template_registry import TEMPLATES_BY_ID
@@ -134,6 +136,58 @@ async def test_build_accepts_discovery_without_legacy_description(monkeypatch, w
         }
     else:
         patch_profile.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_setup_offerings_creates_private_unpriced_drafts_only_after_approval(monkeypatch):
+    bp = blueprint()
+    bp.completion_state.status = "built"
+    bp.completion_state.confirmed = True
+    bp.approved_modules = ["offerings-catalog"]
+    bp.website_draft.offerings = [
+        OfferingDraft(name="Chicken"),
+        OfferingDraft(name="Mutton"),
+    ]
+    business = Business(id=bp.business_id)
+    session = AsyncMock()
+    list_items = AsyncMock(return_value=[])
+    create = AsyncMock()
+    monkeypatch.setattr(OfferingService, "list_for_business", list_items)
+    monkeypatch.setattr(OfferingService, "create_offering", create)
+
+    await Service.setup_offerings(
+        session, business, bp, actor_id=uuid4(), correlation_id=str(uuid4())
+    )
+    assert [call.kwargs["payload"]["title"] for call in create.await_args_list] == [
+        "Chicken", "Mutton"
+    ]
+    assert all(
+        call.kwargs["payload"]["status"] == "draft"
+        and call.kwargs["payload"]["visibility"] == "private"
+        and "price_amount" not in call.kwargs["payload"]
+        for call in create.await_args_list
+    )
+    assert bp.applied_setup_offerings == ["Chicken", "Mutton"]
+    await Service.setup_offerings(
+        session, business, bp, actor_id=uuid4(), correlation_id=str(uuid4())
+    )
+    assert create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_setup_offerings_needs_explicit_module_choice(monkeypatch):
+    bp = blueprint()
+    bp.completion_state.status = "built"
+    bp.completion_state.confirmed = True
+    bp.website_draft.offerings = [OfferingDraft(name="Chicken")]
+    create = AsyncMock()
+    monkeypatch.setattr(OfferingService, "create_offering", create)
+    with pytest.raises(ValidationError, match="Choose the online catalogue"):
+        await Service.setup_offerings(
+            AsyncMock(), Business(id=bp.business_id), bp,
+            actor_id=uuid4(), correlation_id=str(uuid4()),
+        )
+    create.assert_not_awaited()
 
 
 def entitlements():

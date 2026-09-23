@@ -318,6 +318,9 @@ class BusinessBlueprint(StrictModel):
     # Website wording, kept apart from business truth.
     website_draft: WebsiteDraft = Field(default_factory=WebsiteDraft)
     readiness: Readiness = Field(default_factory=Readiness)
+    # Owner-approved draft catalogue items created from the interview. Never
+    # infer this from website copy or create sellable items automatically.
+    applied_setup_offerings: list[str] = Field(default_factory=list, max_length=12)
 
 
 class ExtractedFact(StrictModel):
@@ -383,7 +386,7 @@ class InterviewCommand(StrictModel):
     revision: int = Field(ge=0)
     request_id: UUID
     action: Literal[
-        "turn", "confirm", "choices", "template", "media", "image", "build", "draft"
+        "turn", "confirm", "choices", "template", "media", "image", "build", "draft", "setup"
     ]
     text: str = Field(default="", max_length=4000)
     # Explicit correction also works without an AI provider.

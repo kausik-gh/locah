@@ -4,6 +4,8 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/platform-api'
 import { OnboardingError, OnboardingShell, Steps } from '@/components/onboarding/Shell'
 import { LivePreview } from './LivePreview'
+import { SetupOfferings } from './SetupOfferings'
+import type { BusinessInterviewData } from '@platform/contracts'
 import './preview.css'
 
 export const dynamic = 'force-dynamic'
@@ -37,13 +39,14 @@ export default async function WebsiteStepPage({ params }: { params: { businessId
   const token = await getAccessToken()
   if (!token) redirect(`/login?destination=/start/${params.businessId}/website`)
 
-  const [siteRes, bizRes, genRes] = await Promise.all([
+  const [siteRes, bizRes, genRes, interviewRes] = await Promise.all([
     apiTry<{ data: WebsiteAggregate }>(`/v1/b/${params.businessId}/website`, token),
     apiTry<{ data: Business[] }>('/v1/platform/businesses', token),
     apiTry<{ data: { status: string; generated_by?: string | null } | null }>(
       `/v1/b/${params.businessId}/website/generation`,
       token
     ),
+    apiTry<{ data: BusinessInterviewData }>(`/v1/b/${params.businessId}/interview`, token),
   ])
 
   if (!siteRes.ok) {
@@ -123,6 +126,8 @@ export default async function WebsiteStepPage({ params }: { params: { businessId
           ) : null}
         </div>
       </div>
+
+      {interviewRes.ok ? <SetupOfferings data={interviewRes.data.data} /> : null}
 
       {previewHref ? (
         <LivePreview businessId={params.businessId} src={previewHref} initialStatus={genStatus} />
