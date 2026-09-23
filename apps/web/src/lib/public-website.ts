@@ -2,7 +2,14 @@ import { platformUrl } from '@platform/config'
 const apiUrl = platformUrl('api')
 
 export type PublicWebsitePayload = {
-  business: { id: string; slug: string; display_name: string; business_type?: string | null }
+  business: {
+    id: string
+    slug: string
+    display_name: string
+    business_type?: string | null
+    /** Only what the owner published: a number to call or WhatsApp, an email. */
+    contact?: { phone?: string; whatsapp?: string; email?: string }
+  }
   /** What a visitor can actually do here, from the business's live modules.
    *  Sections read this instead of assuming from their own type. */
   capabilities?: Record<string, boolean>

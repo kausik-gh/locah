@@ -14,6 +14,8 @@ export type InterviewModule = {
   module_id: string; label: string; reason: string; capability_ids: string[]; dependencies: string[]
   status: 'SUPPORTED' | 'SUPPORTED_REQUIRES_CONFIGURATION' | 'SUPPORTED_NOT_ENABLED' | 'NOT_CURRENTLY_AVAILABLE'
   availability_reason: string; choice: 'pending' | 'approved' | 'declined'
+  /** Who the tool is for: the owner's customers, or running the business. */
+  group?: 'customer' | 'operations'
 }
 export type BusinessBlueprint = {
   schema_version: 1; business_id: string; session_id: string; revision: number
@@ -22,7 +24,8 @@ export type BusinessBlueprint = {
   operating_model: InterviewFact | null; locations: InterviewFact | null; offerings: InterviewFact | null
   customer_actions: InterviewFact | null; operational_characteristics: InterviewFact | null
   brand: InterviewFact | null; tone: InterviewFact | null; colours: InterviewFact | null
-  logo_state: 'not_supplied' | 'uploaded' | 'generation_requested'; media_assets: InterviewMedia[]
+  logo_state: 'not_supplied' | 'uploaded' | 'generation_requested' | 'generated'
+  media_assets: InterviewMedia[]
   media_generation_requests: { role: 'hero' | 'logo'; status: string; reason: string | null; asset_id: string | null }[]
   requested_capabilities: { intent: string; original_request: string }[]
   recommended_modules: InterviewModule[]; declined_modules: string[]; approved_modules: string[]
@@ -40,6 +43,12 @@ export type BusinessBlueprint = {
   last_turn: { provider: string; model: string; latency_ms: number; input_tokens: number | null
     output_tokens: number | null; cost: number | null; retries: number; fallback_reason: string | null } | null
   applied_requests: string[]
+  /** How the owner talks: Locah answers in the same mix. */
+  language_style: 'en' | 'ta' | 'ta_en' | 'hi' | 'hi_en' | 'other'
+  operating_patterns: { pattern: string; quote: string }[]
+  /** Numbers the owner said, verified against their own words. */
+  highlights: { value: string; label: string; quote: string }[]
+  asked_optional: ('locations' | 'phone' | 'logo')[]
 }
 export type BusinessInterviewData = {
   blueprint: BusinessBlueprint; classification_seed: string
@@ -54,4 +63,6 @@ export type InterviewCommand = {
   action: 'turn' | 'confirm' | 'choices' | 'template' | 'media' | 'image' | 'build'
   text?: string; field?: InterviewFactKey; choices?: Record<string, 'approved' | 'declined'>
   template_id?: string; media?: InterviewMedia
+  /** For action 'image': what to draw. */
+  image_role?: 'hero' | 'logo'
 }

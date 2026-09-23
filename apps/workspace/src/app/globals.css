@@ -568,6 +568,49 @@ a .ws-card {
   display: none;
 }
 
+.ed-list {
+  list-style: none;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.ed-list__row {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+}
+.ed-sublabel {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--color-muted);
+  margin-bottom: 0.2rem;
+}
+.ed-input--short {
+  min-height: 3.6rem;
+}
+.ed-list__remove {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ed-list__remove:hover {
+  color: var(--status-bad-fg);
+}
+.ed-list__add {
+  width: 100%;
+  justify-content: center;
+}
+
 .ed__stage {
   display: flex;
   flex-direction: column;

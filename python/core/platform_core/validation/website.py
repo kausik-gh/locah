@@ -128,7 +128,51 @@ def _validate_against_schema(
                 "Invalid section content field type",
                 details={"errors": [_field_error(f"{field}.{key}", "Must be an integer")]},
             )
+        if prop.get("type") == "array" and value is not None:
+            value = _validate_array(value, prop, field=f"{field}.{key}", lenient=lenient)
+            if value is None:
+                continue
         cleaned[key] = value
+    return cleaned
+
+
+def _validate_array(
+    value: Any, schema: dict[str, Any], *, field: str, lenient: bool
+) -> list[Any] | None:
+    """Arrays were passed through unchecked; list sections now carry real items.
+
+    Items that are objects are validated with the same rules as section content,
+    so a highlight or feature card cannot smuggle an unknown field or an
+    over-long string into a draft. Lenient mode (AI output) drops bad items and
+    truncates to `maxItems`; strict mode (owner edits) reports them.
+    """
+    if not isinstance(value, list):
+        if lenient:
+            return None
+        raise ValidationError(
+            "Invalid section content field type",
+            details={"errors": [_field_error(field, "Must be a list")]},
+        )
+    max_items = schema.get("maxItems")
+    if max_items is not None and len(value) > int(max_items):
+        if not lenient:
+            raise ValidationError(
+                "Too many items",
+                details={"errors": [_field_error(field, f"At most {int(max_items)} items")]},
+            )
+        value = value[: int(max_items)]
+    item_schema = schema.get("items") or {}
+    if item_schema.get("type") != "object":
+        return list(value)
+    cleaned: list[Any] = []
+    for index, item in enumerate(value):
+        try:
+            cleaned.append(
+                _validate_against_schema(item, item_schema, field=f"{field}.{index}", lenient=lenient)
+            )
+        except ValidationError:
+            if not lenient:
+                raise
     return cleaned
 
 

@@ -6,9 +6,13 @@ import { startVoiceSession } from '../actions'
 import {
   VoiceConnection,
   type RealtimeSession,
+  type VoiceCallbacks,
   type VoiceState,
   type VoiceTranscriptLine,
 } from './realtime'
+import { GeminiLiveConnection, type GeminiLiveSession } from './gemini-live'
+
+type Connection = VoiceConnection | GeminiLiveConnection
 
 const LABEL: Record<VoiceState, string> = {
   idle: 'Ready when you are',
@@ -49,7 +53,7 @@ export function VoicePanel({
   const [lines, setLines] = useState<VoiceTranscriptLine[]>([])
   const [error, setError] = useState('')
   const [muted, setMuted] = useState(false)
-  const connection = useRef<VoiceConnection | null>(null)
+  const connection = useRef<Connection | null>(null)
   const stream = useRef<HTMLDivElement>(null)
   const turnRef = useRef(onTurn)
   turnRef.current = onTurn
@@ -71,7 +75,8 @@ export function VoicePanel({
       setError(minted.error)
       return
     }
-    const conn = new VoiceConnection({
+    const session = minted.session as (RealtimeSession & { provider?: string }) | GeminiLiveSession
+    const callbacks: VoiceCallbacks = {
       onState: setState,
       onTranscript: (line) =>
         setLines((prev) => {
@@ -90,9 +95,18 @@ export function VoicePanel({
       onMetric: (name, ms) => {
         if (process.env.NODE_ENV !== 'production') console.info(`[voice] ${name}=${ms}`)
       },
-    })
-    connection.current = conn
-    await conn.start(minted.session as RealtimeSession)
+    }
+    // One interview, two possible voices. The provider is a server decision;
+    // the panel only follows it.
+    if (session.provider === 'gemini') {
+      const conn = new GeminiLiveConnection(callbacks)
+      connection.current = conn
+      await conn.start(session as GeminiLiveSession)
+    } else {
+      const conn = new VoiceConnection(callbacks)
+      connection.current = conn
+      await conn.start(session as RealtimeSession)
+    }
   }, [businessId])
 
   const end = useCallback(() => {

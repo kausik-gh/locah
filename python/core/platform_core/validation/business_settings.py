@@ -238,7 +238,9 @@ def validate_profile_fields(raw: dict[str, Any]) -> dict[str, Any]:
 def validate_contact(contact: dict[str, Any]) -> dict[str, Any]:
     errors: list[dict[str, str]] = []
     cleaned: dict[str, Any] = {}
-    for key in ("email", "phone", "secondary_phone"):
+    # whatsapp: the number the owner said customers WhatsApp them on. It was
+    # once silently dropped here, so no site ever showed a WhatsApp button.
+    for key in ("email", "phone", "secondary_phone", "whatsapp"):
         if key not in contact:
             continue
         value = contact[key]

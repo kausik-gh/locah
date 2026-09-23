@@ -3,7 +3,12 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { BusinessInterviewData, InterviewCommand, InterviewFactKey } from '@platform/contracts'
+import type {
+  BusinessInterviewData,
+  InterviewCommand,
+  InterviewFactKey,
+  InterviewModule,
+} from '@platform/contracts'
 import {
   finishInterviewUpload,
   interviewAction,
@@ -33,6 +38,51 @@ type Change = Omit<InterviewCommand, 'revision' | 'request_id'>
 /** An image that is uploaded and waiting only for the owner to say what it is. */
 type Staged = { assetId: string; filename: string }
 
+/** One tool the owner can switch on. Choosing is always the owner's. */
+function ToolCard({
+  module,
+  busy,
+  compact = false,
+  onChoose,
+}: {
+  module: InterviewModule
+  busy: boolean
+  compact?: boolean
+  onChoose: (choice: 'approved' | 'declined') => void
+}) {
+  const extra = module.dependencies.filter((id) => !id.startsWith('core-'))
+  return (
+    <article className={`bi-tool${compact ? ' bi-tool--compact' : ''}`}>
+      <h4>{module.label}</h4>
+      <p className={module.reason.startsWith('Because you said') ? 'bi-tool__why' : undefined}>
+        {module.reason}
+      </p>
+      {!compact ? <p className="ob-help">{module.availability_reason}</p> : null}
+      {extra.length > 0 && !compact ? (
+        <p className="ob-help">May also need: {extra.join(', ')}.</p>
+      ) : null}
+      <div className="bi-choices">
+        <button
+          className="lc-btn"
+          disabled={busy}
+          aria-pressed={module.choice === 'approved'}
+          onClick={() => onChoose('approved')}
+        >
+          {module.choice === 'approved' ? '✓ Using this' : 'Use this'}
+        </button>
+        <button
+          className="lc-btn"
+          disabled={busy}
+          aria-pressed={module.choice === 'declined'}
+          onClick={() => onChoose('declined')}
+        >
+          Not now
+        </button>
+      </div>
+    </article>
+  )
+}
+
 export function BusinessInterview({ initial }: { initial: BusinessInterviewData }) {
   const [data, setData] = useState(initial)
   const [text, setText] = useState('')
@@ -47,12 +97,28 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
   const [mode, setMode] = useState<'chat' | 'voice'>('chat')
   const [uploading, setUploading] = useState(false)
   const input = useRef<HTMLTextAreaElement>(null)
+  // Spoken turns can overlap: the owner keeps talking while the last sentence
+  // is still being saved. They run one after another, and each reads the
+  // revision the previous one produced — not the one from the last render.
+  const latest = useRef(initial)
+  const voiceChain = useRef<Promise<unknown>>(Promise.resolve())
   const stream = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const bp = data.blueprint
+  latest.current = data
   const facts = { ...bp.known_facts, ...bp.unconfirmed_facts }
   const pendingChoices = bp.recommended_modules.some((m) => m.choice === 'pending')
   const answered = Object.keys(facts).length
+  const requested = (role: 'hero' | 'logo') =>
+    bp.media_generation_requests.some((r) => r.role === role)
+  // Recommended tools are shown once, with the owner's own words as the reason;
+  // everything else they could use is listed after, grouped by who it serves.
+  const recommendedIds = new Set(bp.recommended_modules.map((m) => m.module_id))
+  const others = data.available_modules.filter((m) => !recommendedIds.has(m.module_id))
+  const forCustomers = others.filter((m) => (m.group ?? 'customer') === 'customer')
+  const forRunning = others.filter((m) => m.group === 'operations')
+  const choose = (moduleId: string, choice: 'approved' | 'declined') =>
+    void send({ action: 'choices', choices: { [moduleId]: choice } })
 
   useEffect(() => {
     stream.current?.scrollTo({ top: stream.current.scrollHeight, behavior: 'smooth' })
@@ -65,7 +131,7 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
     try {
       const res = await interviewAction(bp.business_id, {
         ...change,
-        revision: bp.revision,
+        revision: latest.current.blueprint.revision,
         request_id: crypto.randomUUID(),
       })
       if (!res.ok) {
@@ -76,6 +142,7 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
         }
         return false
       }
+      latest.current = res.data
       setData(res.data)
       if (change.action === 'turn') {
         setLastAnswer(change.text || '')
@@ -100,30 +167,40 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
    * told what to say, it does not choose. That is what keeps one Blueprint
    * authoritative across both ways of talking to it.
    */
-  async function speakTurn(transcript: string): Promise<{ say: string; sufficient: boolean }> {
-    const res = await interviewAction(bp.business_id, {
-      action: 'turn',
-      text: transcript,
-      revision: bp.revision,
-      request_id: crypto.randomUUID(),
-    })
-    if (!res.ok) {
-      if (res.stale) {
-        const latest = await reloadInterview(bp.business_id)
-        if (latest.ok) setData(latest.data)
+  function speakTurn(transcript: string): Promise<{ say: string; sufficient: boolean }> {
+    const run = async () => {
+      const current = latest.current.blueprint
+      const res = await interviewAction(current.business_id, {
+        action: 'turn',
+        text: transcript,
+        revision: current.revision,
+        request_id: crypto.randomUUID(),
+      })
+      if (!res.ok) {
+        if (res.stale) {
+          const reloaded = await reloadInterview(current.business_id)
+          if (reloaded.ok) {
+            latest.current = reloaded.data
+            setData(reloaded.data)
+          }
+        }
+        return {
+          say: 'I could not save that just now — could you say it once more?',
+          sufficient: false,
+        }
       }
+      latest.current = res.data
+      setData(res.data)
+      const next = res.data.blueprint
+      const reply = next.messages.filter((m) => m.role === 'assistant').slice(-1)[0]?.text
       return {
-        say: 'I could not save that just now — could you say it once more?',
-        sufficient: false,
+        say: reply || 'Tell me a little more about your business.',
+        sufficient: next.completion_state.sufficient,
       }
     }
-    setData(res.data)
-    const next = res.data.blueprint
-    const reply = next.messages.filter((m) => m.role === 'assistant').slice(-1)[0]?.text
-    return {
-      say: reply || 'Tell me a little more about your business.',
-      sufficient: next.completion_state.sufficient,
-    }
+    const turn = voiceChain.current.then(run, run)
+    voiceChain.current = turn.catch(() => undefined)
+    return turn
   }
 
   /** Upload now so the transfer overlaps with typing; ask what it is only if the words do not say. */
@@ -371,23 +448,31 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
               ))}
             </ul>
           )}
-          {data.image_generation.available && (
+          {data.image_generation.available && bp.completion_state.status !== 'built' && (
             <details className="bi-artwork">
-              <summary>No cover photo? Locah can draw one · optional</summary>
+              <summary>No logo or cover photo? Locah can draw them · optional</summary>
               <p className="ob-help">{data.image_generation.reason}</p>
-              <button
-                className="lc-btn"
-                disabled={
-                  busy ||
-                  bp.media_generation_requests.length > 0 ||
-                  bp.completion_state.status === 'built'
-                }
-                onClick={() => void send({ action: 'image' })}
-              >
-                {bp.media_generation_requests.length
-                  ? 'Cover artwork requested'
-                  : 'Draw cover artwork after building'}
-              </button>
+              <div className="bi-choices">
+                {!bp.media_assets.some((m) => m.role === 'logo') ? (
+                  <button
+                    className="lc-btn"
+                    disabled={busy || requested('logo')}
+                    onClick={() => void send({ action: 'image', image_role: 'logo' })}
+                  >
+                    {requested('logo') ? '✓ Logo will be drawn' : 'Make me a simple logo'}
+                  </button>
+                ) : null}
+                {!bp.media_assets.some((m) => m.role === 'hero') ? (
+                  <button
+                    className="lc-btn"
+                    disabled={busy || requested('hero')}
+                    onClick={() => void send({ action: 'image', image_role: 'hero' })}
+                  >
+                    {requested('hero') ? '✓ Cover artwork will be drawn' : 'Draw cover artwork'}
+                  </button>
+                ) : null}
+              </div>
+              <p className="ob-help">Drawn after you build, so it never slows your first preview.</p>
             </details>
           )}
         </section>
@@ -479,118 +564,74 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
               {gap.why_unsupported}
             </p>
           ))}
-          <section aria-label="Tools available for your business">
-            <h3>Tools available for your business</h3>
-            <p>
-              These are options included in your current access. The recommendations below are
-              available too. Nothing turns on unless you choose it, and some tools need setup.
-            </p>
-            {data.available_modules.length > 0 ? (
-              <div className="bi-tool-grid">
-                {data.available_modules.map((module) => (
-                  <article className="bi-tool" key={module.module_id}>
-                    <h4>{module.label}</h4>
-                    <p>{module.reason}</p>
-                    <p className="ob-help">{module.availability_reason}</p>
-                    {module.dependencies.some((id) => !id.startsWith('core-')) ? (
-                      <p className="ob-help">
-                        May also need: {module.dependencies.filter((id) => !id.startsWith('core-')).join(', ')}.
-                      </p>
-                    ) : null}
-                    <div className="bi-choices">
-                      <button
-                        className="lc-btn"
-                        disabled={busy}
-                        aria-pressed={module.choice === 'approved'}
-                        onClick={() =>
-                          void send({
-                            action: 'choices',
-                            choices: { [module.module_id]: 'approved' },
-                          })
-                        }
-                      >
-                        Use this
-                      </button>
-                      <button
-                        className="lc-btn"
-                        disabled={busy}
-                        aria-pressed={module.choice === 'declined'}
-                        onClick={() =>
-                          void send({
-                            action: 'choices',
-                            choices: { [module.module_id]: 'declined' },
-                          })
-                        }
-                      >
-                        Not now
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p>All currently available tools are shown in your recommendations below.</p>
-            )}
-          </section>
           {bp.recommended_modules.length > 0 && (
-            <>
-              <h3>Recommended for you</h3>
+            <section aria-label="Recommended for you">
+              <h3>Recommended from what you told us</h3>
               <p>
-                Based on what you told Locah, these tools may help now. Review each reason and
-                approve only what you want.
+                Each one says why. Nothing turns on unless you choose it, and you can change your
+                mind later.
               </p>
               <div className="bi-tool-grid">
                 {bp.recommended_modules.map((module) => (
-                  <article className="bi-tool" key={module.module_id}>
-                    <h4>{module.label}</h4>
-                    <p>{module.reason}</p>
-                    <p className="ob-help">{module.availability_reason}</p>
-                    <div className="bi-choices">
-                      <button
-                        className="lc-btn"
-                        disabled={busy}
-                        aria-pressed={module.choice === 'approved'}
-                        onClick={() =>
-                          void send({
-                            action: 'choices',
-                            choices: { [module.module_id]: 'approved' },
-                          })
-                        }
-                      >
-                        Use this
-                      </button>
-                      <button
-                        className="lc-btn"
-                        disabled={busy}
-                        aria-pressed={module.choice === 'declined'}
-                        onClick={() =>
-                          void send({
-                            action: 'choices',
-                            choices: { [module.module_id]: 'declined' },
-                          })
-                        }
-                      >
-                        Not now
-                      </button>
-                    </div>
-                  </article>
+                  <ToolCard
+                    key={module.module_id}
+                    module={module}
+                    busy={busy}
+                    onChoose={(choice) => choose(module.module_id, choice)}
+                  />
                 ))}
               </div>
-              <button
-                className="bi-text-button"
-                disabled={busy}
-                onClick={() =>
-                  void send({
-                    action: 'choices',
-                    choices: Object.fromEntries(
-                      bp.recommended_modules.map((m) => [m.module_id, 'declined'])
-                    ),
-                  })
-                }
-              >
-                Continue without these tools
-              </button>
-            </>
+              {pendingChoices ? (
+                <button
+                  className="bi-text-button"
+                  disabled={busy}
+                  onClick={() =>
+                    void send({
+                      action: 'choices',
+                      choices: Object.fromEntries(
+                        bp.recommended_modules
+                          .filter((m) => m.choice === 'pending')
+                          .map((m) => [m.module_id, 'declined'])
+                      ),
+                    })
+                  }
+                >
+                  Skip these for now
+                </button>
+              ) : null}
+            </section>
+          )}
+          {others.length > 0 && (
+            <details className="bi-more-tools">
+              <summary>
+                Also available for your business · {others.length}{' '}
+                {others.length === 1 ? 'tool' : 'tools'}
+              </summary>
+              <p className="ob-help">
+                Included in your access, switched off until you choose them.
+              </p>
+              {[
+                { title: 'For your customers', rows: forCustomers },
+                { title: 'For running your business', rows: forRunning },
+              ]
+                .filter((g) => g.rows.length > 0)
+                .map((g) => (
+                  <section key={g.title} aria-label={g.title}>
+                    <h4 className="bi-tool-group">{g.title}</h4>
+                    <div className="bi-tool-grid">
+                      {g.rows.map((module) => (
+                        <ToolCard
+                          key={module.module_id}
+                          module={module}
+                          busy={busy}
+                          compact
+                          onChoose={(choice) => choose(module.module_id, choice)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ))}
+            </details>
           )}
           <details>
             <summary>Choose your starting design · optional</summary>

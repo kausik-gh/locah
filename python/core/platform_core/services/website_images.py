@@ -110,7 +110,7 @@ class WebsiteImageService:
             purpose="website",
             mime_type=generated.mime_type,
             body=generated.bytes,
-            alt_text=f"{business.display_name} homepage",
+            alt_text="AI-generated decorative artwork",
             original_filename="generated-hero.jpg",
         )
         content = dict(section.content or {})
@@ -177,7 +177,7 @@ class WebsiteImageService:
                 purpose="website",
                 mime_type=generated.mime_type,
                 body=generated.bytes,
-                alt_text=f"{display_name} homepage",
+                alt_text="AI-generated decorative artwork",
                 original_filename="generated-hero.jpg",
             )
         except Exception as exc:  # noqa: BLE001
@@ -239,7 +239,7 @@ class WebsiteImageService:
                     purpose="offering",
                     mime_type=generated.mime_type,
                     body=generated.bytes,
-                    alt_text=offering.title,
+                    alt_text=f"AI illustration: {offering.title}",
                     original_filename=f"generated-{offering.id}.jpg",
                 )
             except Exception as exc:  # noqa: BLE001

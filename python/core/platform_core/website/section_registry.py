@@ -11,10 +11,54 @@ CORE_SECTION_SCHEMAS: dict[str, dict[str, Any]] = {
         "required": ["headline"],
         "properties": {
             "headline": {"type": "string", "maxLength": 120},
+            # The part of the headline set in the accent colour. Must be a
+            # substring of the headline; the composer checks.
+            "headline_accent": {"type": "string", "maxLength": 60},
+            # A short location / category line above the headline.
+            "eyebrow": {"type": "string", "maxLength": 60},
             "subheadline": {"type": "string", "maxLength": 300},
             "cta_label": {"type": "string", "maxLength": 60},
             "cta_url": {"type": "string", "maxLength": 200},
             "image_asset_id": {"type": "string", "format": "uuid"},
+        },
+    },
+    # Numbers the owner stated, verified against their words before they get here.
+    "highlights": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "items": {
+                "type": "array",
+                "maxItems": 6,
+                "items": {
+                    "type": "object",
+                    "required": ["value", "label"],
+                    "properties": {
+                        "value": {"type": "string", "maxLength": 24},
+                        "label": {"type": "string", "maxLength": 40},
+                    },
+                },
+            },
+        },
+    },
+    # What the business does, or how a customer works with it.
+    "feature_grid": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "subtitle": {"type": "string", "maxLength": 300},
+            "items": {
+                "type": "array",
+                "maxItems": 9,
+                "items": {
+                    "type": "object",
+                    "required": ["title"],
+                    "properties": {
+                        "title": {"type": "string", "maxLength": 80},
+                        "body": {"type": "string", "maxLength": 240},
+                    },
+                },
+            },
         },
     },
     "about": {

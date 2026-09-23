@@ -94,10 +94,11 @@ async def _execute_job(session: AsyncSession, job: dict[str, Any]) -> None:
             correlation_id=str(payload.get("correlation_id") or job.get("id")),
             trigger="async_job",
         )
-    elif job_type == "interview.generate_hero":
+    elif job_type in {"interview.generate_media", "interview.generate_hero"}:
+        # generate_hero is the name jobs queued before logos existed still carry.
         from uuid import UUID
-        from platform_core.interview.media import generate_interview_hero
-        await generate_interview_hero(session, business_id=UUID(payload["business_id"]),
+        from platform_core.interview.media import generate_interview_media
+        await generate_interview_media(session, business_id=UUID(payload["business_id"]),
             actor_id=UUID(payload["actor_id"]), generation_job_id=UUID(payload["generation_job_id"]))
     elif job_type == "media.generate_website_images":
         from uuid import UUID

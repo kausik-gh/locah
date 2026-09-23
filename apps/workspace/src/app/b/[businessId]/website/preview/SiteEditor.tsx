@@ -48,11 +48,52 @@ export type EditorPage = {
 
 type Field = { key: string; label: string; help?: string; multiline?: boolean }
 
+/** A repeating field: a short list of small records the owner can add to,
+ *  reword and remove, within the limit the section type allows. */
+type ListField = {
+  key: string
+  label: string
+  help?: string
+  max: number
+  parts: { key: string; label: string; multiline?: boolean; required?: boolean }[]
+  addLabel: string
+}
+
+const LISTS: Record<string, ListField> = {
+  feature_grid: {
+    key: 'items',
+    label: 'Items',
+    max: 9,
+    addLabel: 'Add an item',
+    parts: [
+      { key: 'title', label: 'Title', required: true },
+      { key: 'body', label: 'Description (optional)', multiline: true },
+    ],
+  },
+  highlights: {
+    key: 'items',
+    label: 'Numbers',
+    help: 'Only numbers that are true — for example "15" and "years in business".',
+    max: 6,
+    addLabel: 'Add a number',
+    parts: [
+      { key: 'value', label: 'Number', required: true },
+      { key: 'label', label: 'What it counts', required: true },
+    ],
+  },
+}
+
 /** What an owner may change, per section type. Anything not listed here is
  *  structure, and structure is not edited by hand. */
 const FIELDS: Record<string, Field[]> = {
   hero: [
+    { key: 'eyebrow', label: 'Small line above the headline', help: 'e.g. your area' },
     { key: 'headline', label: 'Headline', help: 'The first thing a visitor reads.' },
+    {
+      key: 'headline_accent',
+      label: 'Words to colour',
+      help: 'Part of the headline to show in your accent colour. Leave empty for none.',
+    },
     { key: 'subheadline', label: 'Supporting line', multiline: true },
     { key: 'cta_label', label: 'Button text', help: 'e.g. "See the menu"' },
     { key: 'cta_url', label: 'Button goes to', help: 'A path on your site, like /menu' },
@@ -107,6 +148,11 @@ const FIELDS: Record<string, Field[]> = {
   ],
   gallery: [{ key: 'title', label: 'Gallery heading' }],
   location_list: [{ key: 'title', label: 'Heading' }],
+  feature_grid: [
+    { key: 'title', label: 'Heading' },
+    { key: 'subtitle', label: 'Supporting line', multiline: true },
+  ],
+  highlights: [{ key: 'title', label: 'Heading (optional)' }],
 }
 
 /** Human names for section types. Owners never see the identifier. */
@@ -124,10 +170,99 @@ const SECTION_NAMES: Record<string, string> = {
   enquiry_form: 'Enquiry form',
   gallery: 'Gallery',
   location_list: 'Locations',
+  feature_grid: 'What you do',
+  highlights: 'Numbers',
 }
 
 function sectionName(s: EditorSection): string {
   return SECTION_NAMES[s.section_type_id] || s.section_type_id.replace(/_/g, ' ')
+}
+
+type Row = Record<string, string>
+
+function rowsOf(value: unknown): Row[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((v): v is Record<string, unknown> => Boolean(v) && typeof v === 'object')
+    .map((v) => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, String(x ?? '')])))
+}
+
+function ListEditor({
+  field,
+  sectionId,
+  value,
+  onCommit,
+}: {
+  field: ListField
+  sectionId: string
+  value: unknown
+  onCommit: (rows: Row[]) => void
+}) {
+  const [rows, setRows] = useState<Row[]>(() => rowsOf(value))
+  // Rows missing a required part are kept on screen while the owner types,
+  // and left out of what is saved — the section type would reject them.
+  const complete = (list: Row[]) =>
+    list.filter((r) => field.parts.every((p) => !p.required || (r[p.key] || '').trim()))
+  const save = (next: Row[]) => {
+    setRows(next)
+    onCommit(
+      complete(next).map((r) =>
+        Object.fromEntries(
+          field.parts
+            .map((p) => [p.key, (r[p.key] || '').trim()] as const)
+            .filter(([, v]) => v !== '')
+        )
+      )
+    )
+  }
+  return (
+    <div className="ed-field">
+      <span className="ed-label">{field.label}</span>
+      {field.help ? <p className="ed-help" style={{ marginTop: 0 }}>{field.help}</p> : null}
+      <ol className="ed-list">
+        {rows.map((row, i) => (
+          <li className="ed-list__row" key={i}>
+            {field.parts.map((part) => {
+              const id = `${sectionId}-${field.key}-${i}-${part.key}`
+              const common = {
+                id,
+                className: `ed-input${part.multiline ? ' ed-input--area ed-input--short' : ''}`,
+                defaultValue: row[part.key] || '',
+                onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+                  if (e.target.value === (row[part.key] || '')) return
+                  save(rows.map((r, j) => (j === i ? { ...r, [part.key]: e.target.value } : r)))
+                },
+              }
+              return (
+                <div key={part.key}>
+                  <label className="ed-sublabel" htmlFor={id}>
+                    {part.label}
+                  </label>
+                  {part.multiline ? <textarea {...common} /> : <input {...common} />}
+                </div>
+              )
+            })}
+            <button
+              type="button"
+              className="ed-list__remove"
+              onClick={() => save(rows.filter((_, j) => j !== i))}
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ol>
+      {rows.length < field.max ? (
+        <button
+          type="button"
+          className="btn btn-ghost ed-list__add"
+          onClick={() => setRows([...rows, {}])}
+        >
+          {field.addLabel}
+        </button>
+      ) : null}
+    </div>
+  )
 }
 
 /** Sections that carry a picture. */
@@ -336,6 +471,7 @@ export function SiteEditor({
           {(page?.sections || []).map((section) => {
             const isOpen = openSection === section.id
             const fields = FIELDS[section.section_type_id] || []
+            const list = LISTS[section.section_type_id]
             const current = content[section.id] || {}
             const bound = Boolean(
               (section as unknown as { module_binding?: unknown }).module_binding
@@ -392,6 +528,15 @@ export function SiteEditor({
                         {f.help ? <p className="ed-help">{f.help}</p> : null}
                       </div>
                     ))}
+
+                    {list ? (
+                      <ListEditor
+                        field={list}
+                        sectionId={section.id}
+                        value={current[list.key]}
+                        onCommit={(rows) => void commit(section, list.key, rows)}
+                      />
+                    ) : null}
 
                     {IMAGE_SECTIONS.has(section.section_type_id) ? (
                       <ImageField

@@ -305,6 +305,9 @@ class WebsitePublishService:
                 "slug": business.slug,
                 "display_name": business.display_name,
                 "business_type": business.business_type,
+                # Only the fields a visitor can use: a number to call or
+                # WhatsApp and an email, exactly as the owner published them.
+                "contact": await _public_contact(session, business.id),
             },
             "capabilities": capabilities,
             "website": WebsiteResolver.serialize_website(website),
@@ -315,3 +318,19 @@ class WebsitePublishService:
             "is_preview": is_preview,
             "cache_control": "no-store" if is_preview else "public",
         }
+
+
+async def _public_contact(session: Any, business_id: Any) -> dict[str, str]:
+    from sqlalchemy import select as _select
+
+    from platform_core.models import BusinessProfile
+
+    profile = (
+        await session.execute(_select(BusinessProfile).where(BusinessProfile.business_id == business_id))
+    ).scalars().first()
+    raw = (profile.contact if profile and isinstance(profile.contact, dict) else {}) or {}
+    return {
+        key: str(raw[key])
+        for key in ("phone", "whatsapp", "email")
+        if isinstance(raw.get(key), str) and raw.get(key)
+    }

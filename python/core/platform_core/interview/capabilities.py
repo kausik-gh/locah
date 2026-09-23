@@ -23,17 +23,37 @@ INTENTS = {
     "catalog": (
         "offerings-catalog",
         "Show your products or services",
-        r"\b(products?|catalog|menu|services?)\b",
+        r"\b(products?|catalog(?:ue)?|menu|services?|browse)\b",
     ),
-    "orders": ("orders", "Accept orders", r"\b(orders?|buy|purchase|checkout)\b"),
-    "bookings": ("bookings", "Take bookings", r"\b(book|bookings?|appointments?|reservations?)\b"),
-    "enquiries": ("leads", "Receive enquiries", r"\b(enquir\w*|inquir\w*|contact)\b"),
-    "memberships": ("memberships", "Manage memberships", r"\b(memberships?|subscriptions?)\b"),
-    "payments": ("payments", "Collect customer payments", r"\b(payments?|pay online)\b"),
+    "orders": ("orders", "Take orders online", r"\b(orders?|buy|purchase|checkout|pre-?order)\b"),
+    "bookings": (
+        "bookings",
+        "Take bookings and appointments",
+        r"\b(book|bookings?|appointments?|reservations?|reserve)\b",
+    ),
+    "enquiries": ("leads", "Receive enquiries", r"\b(enquir\w*|inquir\w*|contact us|call us|whatsapp)\b"),
+    "quotes": (
+        "quotes",
+        "Send quotations",
+        r"\b(quotes?|quotations?|estimates?|rfq|request (?:a |for )?(?:price|quote))\b",
+    ),
+    "memberships": ("memberships", "Run memberships and subscriptions", r"\b(memberships?|subscriptions?|monthly plans?)\b"),
+    "payments": ("payments", "Collect payments online", r"\b(payments?|pay online|upi)\b"),
     "inventory": ("inventory", "Keep track of stock", r"\b(inventory|stock)\b"),
-    "delivery": ("fulfilment", "Manage delivery or pickup", r"\b(delivery|pickup|fulfilment)\b"),
+    "delivery": ("fulfilment", "Manage delivery and pickup", r"\b(deliver\w*|pickup|pick up|fulfilment)\b"),
+    "projects": ("projects", "Track projects and work orders", r"\b(projects?|work orders?|installations?)\b"),
+    "reviews": ("reviews", "Collect customer reviews", r"\b(reviews?|feedback|ratings?)\b"),
+    "messaging": ("messaging", "Message customers", r"\b(messag\w+|sms|broadcasts?)\b"),
+    "crm": ("customer-relationships", "Keep customer records", r"\b(customer (?:records|list|history)|crm)\b"),
+    "loyalty": ("loyalty", "Reward repeat customers", r"\b(loyalty|rewards?|points)\b"),
+    "invoicing": ("invoicing", "Send invoices", r"\b(invoices?|invoicing|bills?|gst bill)\b"),
 }
 LABELS = {module: label for module, label, _ in INTENTS.values()}
+CUSTOMER_FACING = frozenset(
+    {"offerings-catalog", "orders", "bookings", "leads", "quotes", "memberships",
+     "payments", "fulfilment", "reviews", "loyalty"}
+)
+
 # Classification aliases extend registry data; never grant tools or branch workflow.
 CLASSIFICATION_SEEDS = {
     "hospital": "clinic",
@@ -65,6 +85,14 @@ def blueprint_text(bp: BusinessBlueprint) -> str:
     parts += [fact.value for fact in bp.identity.values()]
     parts += [intent.original_request for intent in bp.requested_capabilities]
     return " ".join(parts).lower()
+
+
+def because(said: str) -> str:
+    """Why a tool is recommended, in the owner's own words."""
+    quote = " ".join(said.split()).strip(" .")
+    if len(quote) > 110:
+        quote = quote[:107].rsplit(" ", 1)[0] + "…"
+    return f"Because you said “{quote}”."
 
 
 def classification_seed(bp: BusinessBlueprint) -> str:
@@ -136,8 +164,8 @@ def resolve_recommendations(bp: BusinessBlueprint, entitlement: ResolvedEntitlem
             )
             continue
         module, _, _ = INTENTS[request.intent]
-        if ModuleRegistry.get(module):
-            wanted[module] = f"You asked to {INTENTS[request.intent][1].lower()}."
+        if ModuleRegistry.get(module) and module not in wanted:
+            wanted[module] = because(request.original_request)
 
     def dependencies(module: str) -> None:
         definition = ModuleRegistry.get_or_raise(module)
@@ -199,16 +227,23 @@ def resolve_recommendations(bp: BusinessBlueprint, entitlement: ResolvedEntitlem
 def available_modules(
     bp: BusinessBlueprint, entitlement: ResolvedEntitlement
 ) -> list[ModuleRecommendation]:
-    """Owner-selectable, entitled tools not inferred from the conversation.
+    """Every optional tool this business could switch on, straight from the registry.
 
-    This is a catalogue for an explicit choice, not another recommendation or
-    an activation. Keep its vocabulary within the supported interview intents.
+    Available is not recommended, and neither is active. A tool appears here
+    because the platform supports it and the business is entitled to it — a
+    module added to the registry tomorrow appears here without a code change.
+    Recommendation needs evidence from the conversation and lives elsewhere.
     """
     recommended = {item.module_id for item in bp.recommended_modules}
     snapshot = PlatformCapabilityResolver.resolve_from_entitlement(entitlement)
     result: list[ModuleRecommendation] = []
-    for module, label, _ in INTENTS.values():
-        if module in recommended:
+    rows = sorted(
+        ModuleRegistry.list_modules(),
+        key=lambda row: (row["module_id"] not in CUSTOMER_FACING, row.get("display_name") or ""),
+    )
+    for row in rows:
+        module = row["module_id"]
+        if row.get("module_class") != "optional" or module in recommended:
             continue
         definition = ModuleRegistry.get(module)
         state = entitlement.module_states.get(module)
@@ -233,16 +268,17 @@ def available_modules(
             why = "Available with your current access, but setup or a prerequisite is still needed."
         else:
             status = "SUPPORTED"
-            why = "Available with your current access."
+            why = "Already switched on."
         result.append(
             ModuleRecommendation(
                 module_id=module,
-                label=label,
-                reason="An option for your business; not recommended from what you have told us so far.",
+                label=LABELS.get(module, definition.display_name),
+                reason=getattr(definition, "description", "") or definition.display_name,
                 capability_ids=caps,
                 dependencies=list(definition.dependencies),
                 status=status,
                 availability_reason=why,
+                group="customer" if module in CUSTOMER_FACING else "operations",
                 choice="declined"
                 if module in bp.declined_modules
                 else "approved"

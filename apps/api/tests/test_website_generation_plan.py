@@ -43,6 +43,9 @@ _SECTION_MODULES: dict[str, str | None] = {
     "plans_section": "offerings-catalog",
     "classes_section": "offerings-catalog",
     "enquiry_form": "leads",
+    # Filled only from the owner's own words and numbers; no module behind them.
+    "highlights": None,
+    "feature_grid": None,
 }
 
 

@@ -22,10 +22,12 @@ from platform_core.interview.design_strategy import (
     Goal,
     QualityIssue,
     QualityReport,
+    SectionDecision,
     derive_strategy,
     validate_strategy,
 )
 from platform_core.interview.models import BusinessBlueprint
+from platform_core.interview.website_copy import WebsiteCopy
 from platform_core.validation.website import validate_generation_payload
 from platform_core.website.generation_plan import GenerationPlan, normalise_theme
 
@@ -66,7 +68,9 @@ def _action_target(action: Goal, pages: list[dict[str, Any]]) -> tuple[str, str]
     if action in {"contact", "enquire"}:
         for page in pages:
             if any(section["section_type_id"] == "contact" for section in page["sections"]):
-                path = "/" if page["slug"] == "home" else f"/{page['slug']}"
+                # On the home page itself, "/" is the page the visitor is already
+                # on — a button that goes nowhere. Scroll to the contact section.
+                path = "#contact" if page["slug"] == "home" else f"/{page['slug']}"
                 return ACTION_LABEL[action], path
     return None
 
@@ -172,12 +176,143 @@ def _quality_report(
     )
 
 
+
+_NAME_SUFFIXES = {"co", "co.", "ltd", "ltd.", "pvt", "pvt.", "llp", "inc", "inc.", "&", "and"}
+
+
+def _first_sentence(text: str, limit: int) -> str:
+    text = " ".join(text.split())
+    match = re.match(r"(.+?[.!?])(\s|$)", text)
+    sentence = match.group(1) if match else text
+    return sentence[:limit].strip()
+
+
+def _default_accent(name: str) -> str:
+    """The word of a business name worth setting in the brand colour.
+
+    "Meridian Multispeciality *Hospital*", "Teakwood *Furniture* Co" — the
+    word that says what the place is, skipping legal suffixes.
+    """
+    words = name.split()
+    while words and words[-1].casefold() in _NAME_SUFFIXES:
+        words.pop()
+    return words[-1] if len(words) >= 2 else ""
+
+
+def _eyebrow(location: str) -> str:
+    """A short place line above the headline — "COIMBATORE", "ANNA NAGAR, CHENNAI"."""
+    text = " ".join(location.split()).strip(" .,")
+    if not text:
+        return ""
+    if len(text) <= 40 and not re.search(r"\b(we|our|is|are|run|have)\b", text, re.I):
+        return re.sub(r"^(?:in|at|near)\s+", "", text, flags=re.I)[:60]
+    match = re.search(r"\b(?:in|at|near)\s+([A-Z][\w.'-]*(?:[ ,]+[A-Z][\w.'-]*){0,3})", text)
+    return match.group(1).strip(" ,")[:60] if match else ""
+
+
+def _offering_items(text: str) -> list[str]:
+    """Split an owner's list of what they sell into tidy, owner-worded titles."""
+    cleaned = re.sub(
+        r"^(?:(?:we|i)\s+(?:mainly\s+|mostly\s+)?(?:sell|make|do|offer|serve|provide)\s+|"
+        r"mostly\s+|mainly\s+|people come (?:to us )?(?:mainly )?for\s+)",
+        "",
+        " ".join(text.split()).strip(" ."),
+        flags=re.I,
+    )
+    parts = re.split(r"\s*(?:[,;]|\band\b|&)\s*", cleaned)
+    items: list[str] = []
+    for part in parts:
+        part = part.strip(" .")
+        if len(part) < 3 or len(part) > 60 or re.search(r"\d", part):
+            continue  # numbers belong in highlights, not in a list of services
+        title = part[0].upper() + part[1:]
+        if title.casefold() not in {item.casefold() for item in items}:
+            items.append(title)
+    return items[:8]
+
+
+def _story(facts: dict[str, str], *, skip_offerings: bool) -> str:
+    keys = ["description", "operating_model", "operational_characteristics"]
+    if not skip_offerings:
+        keys.append("offerings")
+    parts = [facts[key].strip() for key in keys if facts.get(key)]
+    return "\n\n".join(dict.fromkeys(parts))[:2000]
+
+
+def _plain(text: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", text.casefold()).split())
+
+
+def _display_phone(text: str) -> str:
+    """A number as a visitor should read it — not the sentence it was said in.
+
+    "ஃபோன் நம்பர் 98765-43210" is what the owner said; "+91 98765 43210" is
+    what belongs on their site. Anything that is not a phone number is left out.
+    """
+    digits = re.sub(r"\D", "", text or "")
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    if len(digits) == 10:
+        return f"+91 {digits[:5]} {digits[5:]}"
+    if 8 <= len(digits) <= 13:
+        return "+" + digits if (text or "").strip().startswith("+") else digits
+    return ""
+
+
+def _after_first_sentence(text: str) -> str:
+    """Everything after the opening sentence, or nothing."""
+    first, _, others = text.strip().partition("\n\n")
+    parts = re.split(r"(?<=[.!?])\s+", first, maxsplit=1)
+    rest = parts[1] if len(parts) == 2 else ""
+    return "\n\n".join(p for p in (rest.strip(), others.strip()) if p)
+
+
+def _without_repeats(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Say each thing once per page.
+
+    A one-sentence description would otherwise appear as the hero's supporting
+    line, again as "Our story", and again in a text block — the clearest tell
+    that a page was assembled rather than written. A story that only repeats
+    what the page already said is dropped; one that starts with it keeps only
+    what is new.
+    """
+    said: list[str] = []
+    kept: list[dict[str, Any]] = []
+    for section in sections:
+        content = section["content"]
+        if section["section_type_id"] == "hero" and content.get("subheadline"):
+            said.append(_plain(content["subheadline"]))
+        if section["section_type_id"] in {"about", "text_block"}:
+            body = str(content.get("body") or "")
+            for earlier in said:
+                if earlier and _plain(body) == earlier:
+                    body = ""
+                    break
+                if earlier and _plain(body).startswith(earlier):
+                    body = _after_first_sentence(body)
+                    break
+            if not body or _plain(body) in said:
+                continue
+            content["body"] = body
+            said.append(_plain(body))
+        kept.append(section)
+    return kept
+
+
 def build_preview(
     bp: BusinessBlueprint,
     plan: GenerationPlan,
     strategy: DesignStrategy | None = None,
+    copy: WebsiteCopy | None = None,
 ) -> dict[str, Any]:
-    """Build an immediate, editable preview from truth plus controlled design choices."""
+    """Build an immediate, editable preview from truth plus controlled design choices.
+
+    `copy` is the governed model-written wording, when personalisation has run.
+    Every field of it is optional: whatever is missing falls back to the owner's
+    own words, so the immediate preview (no copy) and the personalised one use
+    exactly the same composition rules.
+    """
+    words = copy or WebsiteCopy()
     selected, strategy_quality = validate_strategy(strategy or derive_strategy(bp, plan), bp, plan)
     decisions = _decision_map(selected)
     facts = bp.known_facts
@@ -219,27 +354,52 @@ def build_preview(
                     selected.visual_priority.primary_customer_action == "offerings"
                     and headline_options(bp)[1] != name
                 )
+                headline = words.headline or headline_options(bp)[1 if use_offering else 0]
+                accent = (
+                    words.headline_accent
+                    if words.headline and words.headline_accent
+                    else _default_accent(headline) if headline == name else ""
+                )
                 content = {
-                    "headline": headline_options(bp)[1 if use_offering else 0],
-                    "subheadline": value("description", 300),
+                    "headline": headline,
+                    "subheadline": words.subheadline or _first_sentence(value("description"), 300),
                 }
+                if accent and accent in headline:
+                    content["headline_accent"] = accent
+                eyebrow = _eyebrow(value("locations"))
+                if eyebrow:
+                    content["eyebrow"] = eyebrow
                 if hero_asset:
                     content["image_asset_id"] = hero_asset
             elif kind in {"about", "text_block"}:
-                body_parts = [part for part in (value("description"), value("offerings")) if part]
+                if copy is not None and not words.about_body:
+                    # Personalisation ran and its story did not survive
+                    # governance. The hero, the cards and the steps already say
+                    # what the business does; a raw paste of mixed-script
+                    # quotes under a polished heading reads worse than nothing.
+                    continue
                 content = {
-                    "title": f"About {name}"[:120],
-                    "body": "\n\n".join(dict.fromkeys(body_parts))[:2000],
+                    "title": (words.about_title or "Our story")[:120],
+                    "body": (words.about_body or _story(
+                        {k: f.value for k, f in facts.items()},
+                        skip_offerings=len(_offering_items(value("offerings"))) >= 2,
+                    ))[:2000],
                 }
                 if not content["body"]:
                     continue
                 if about_asset and kind == "about":
                     content["image_asset_id"] = about_asset
             elif kind == "contact":
-                content = {"title": "Contact", "show_map": False}
+                content = {
+                    "title": words.contact_title
+                    or ("Visit us" if value("locations") else "Get in touch"),
+                    "show_map": False,
+                }
+                phone = _display_phone(value("phone"))
+                if phone:
+                    content["phone"] = phone
                 for source, content_field, limit in (
                     ("locations", "address", 500),
-                    ("phone", "phone", 50),
                     ("email", "email", 200),
                     ("opening_hours", "hours_summary", 500),
                 ):
@@ -255,7 +415,13 @@ def build_preview(
             elif kind == "cta_band":
                 # Filled only after retained pages are known, so it cannot link
                 # to a page removed for lack of real content.
-                content = {"headline": name, "cta_label": "", "cta_url": ""}
+                content = {
+                    "headline": words.closing_headline or f"Talk to {name}"[:200],
+                    "cta_label": "",
+                    "cta_url": "",
+                }
+                if words.closing_body:
+                    content["body"] = words.closing_body
             elif kind == "location_list":
                 # Interview prose is not a configured Location record.
                 continue
@@ -281,6 +447,7 @@ def build_preview(
             )
         if sections:
             sections.sort(key=lambda item: (item.pop("_order"), item.pop("_source")))
+            sections = _without_repeats(sections)
             pages.append(
                 {
                     "slug": page.slug,
@@ -294,7 +461,13 @@ def build_preview(
     if not pages:
         raise ValueError("The selected template has no available sections.")
 
+    extra_decisions = _inject_truthful_sections(pages, bp, plan, selected, words)
+
     resolved_target = _action_target(primary_action, pages)
+    # A phone number the owner gave is a real way to reach them. The renderer
+    # turns it into Call and WhatsApp buttons, so a closing band is worth
+    # keeping for it even when no platform action backs the band.
+    reachable = bool(value("phone"))
     for page in pages:
         kept: list[dict[str, Any]] = []
         for section in page["sections"]:
@@ -303,11 +476,14 @@ def build_preview(
                     {"cta_label": resolved_target[0], "cta_url": resolved_target[1]}
                 )
             if section["section_type_id"] == "cta_band":
-                if not resolved_target or not selected.cta_hierarchy.repeat_primary:
+                if resolved_target and selected.cta_hierarchy.repeat_primary:
+                    section["content"].update(
+                        {"cta_label": resolved_target[0], "cta_url": resolved_target[1]}
+                    )
+                elif reachable:
+                    section["content"].update({"cta_label": "Call or WhatsApp", "cta_url": ""})
+                else:
                     continue
-                section["content"].update(
-                    {"cta_label": resolved_target[0], "cta_url": resolved_target[1]}
-                )
             kept.append(section)
         page["sections"] = kept
     pages = [page for page in pages if page["sections"]]
@@ -326,7 +502,9 @@ def build_preview(
         {
             "design_strategy_version": DESIGN_STRATEGY_VERSION,
             "generation_plan_version": GENERATION_PLAN_VERSION,
-            "design_strategy": selected.model_dump(mode="json"),
+            "design_strategy": selected.model_copy(
+                update={"section_variants": [*selected.section_variants, *extra_decisions]}
+            ).model_dump(mode="json"),
             "typography_direction": selected.typography_direction,
             "content_density": selected.composition.content_density,
             "hero_density": selected.composition.hero_density,
@@ -353,3 +531,91 @@ def build_preview(
         raise ValueError("Website quality validation rejected the generated composition.")
     payload["theme_hints"]["quality"] = quality.model_dump(mode="json")
     return payload
+
+
+def _inject_truthful_sections(
+    pages: list[dict[str, Any]],
+    bp: BusinessBlueprint,
+    plan: GenerationPlan,
+    strategy: DesignStrategy,
+    words: WebsiteCopy,
+) -> list[SectionDecision]:
+    """Add the sections a template cannot know about, from the owner's own facts.
+
+    Templates describe structure; they cannot know that this hospital said
+    "200-bed" or that this workshop listed four things it makes. Each section
+    here appears only when the registry has it and the owner supplied the
+    material — no numbers means no stats strip, one offering means no grid.
+    Returns the emphasis decisions for the renderer.
+    """
+    if not pages:
+        return []
+    home = next((page for page in pages if page["slug"] == "home"), pages[0])
+    sections = home["sections"]
+    decisions: list[SectionDecision] = []
+    facts = {key: fact.value for key, fact in bp.known_facts.items()}
+    goal = strategy.cta_hierarchy.primary
+    hero_at = next(
+        (i for i, section in enumerate(sections) if section["section_type_id"] == "hero"), -1
+    )
+    position = hero_at + 1
+
+    if "highlights" in plan.available_ids and len(bp.highlights) >= 2:
+        variants = plan.variants_for("highlights")
+        sections.insert(position, {
+            "section_type_id": "highlights",
+            "layout_variant": "strip" if "strip" in variants else (variants[0] if variants else None),
+            "content": {"items": [{"value": h.value, "label": h.label} for h in bp.highlights[:6]]},
+            "is_visible": True,
+        })
+        decisions.append(SectionDecision(
+            section_type_id="highlights", emphasis="supporting", variant="strip", order=position,
+        ))
+        position += 1
+
+    if "feature_grid" in plan.available_ids:
+        variants = plan.variants_for("feature_grid")
+        items = [
+            {"title": item.title, **({"body": item.body} if item.body else {})}
+            for item in words.features
+        ] or [{"title": title} for title in _offering_items(facts.get("offerings", ""))]
+        if len(items) >= 2 and "cards" in variants:
+            content: dict[str, Any] = {
+                "title": words.offerings_title or "What we do",
+                "items": items[:9],
+            }
+            if words.offerings_subtitle:
+                content["subtitle"] = words.offerings_subtitle
+            sections.insert(position, {
+                "section_type_id": "feature_grid",
+                "layout_variant": "cards",
+                "content": content,
+                "is_visible": True,
+            })
+            # What a business does is the point of its site when the visitor's
+            # next step is to choose something from it.
+            emphasis = "primary" if goal in {"offerings", "order", "enquire", "discover"} else "supporting"
+            decisions.append(SectionDecision(
+                section_type_id="feature_grid", emphasis=emphasis, variant="cards", order=position,
+            ))
+        if len(words.steps) >= 2 and "steps" in variants:
+            closing = next(
+                (
+                    i for i, section in enumerate(sections)
+                    if section["section_type_id"] in {"contact", "cta_band"}
+                ),
+                len(sections),
+            )
+            sections.insert(closing, {
+                "section_type_id": "feature_grid",
+                "layout_variant": "steps",
+                "content": {
+                    "title": words.steps_title or "How it works",
+                    "items": [
+                        {"title": step.title, **({"body": step.body} if step.body else {})}
+                        for step in words.steps
+                    ],
+                },
+                "is_visible": True,
+            })
+    return decisions

@@ -7,8 +7,9 @@ facts use the owning services when the owner builds. No schema migration needed.
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import replace
-import os
 import time
 from typing import Any
 from uuid import UUID
@@ -32,7 +33,7 @@ from platform_core.interview.design_strategy import (
     DESIGN_STRATEGY_VERSION,
     GENERATION_PLAN_VERSION,
     derive_strategy,
-    generate_strategy,
+    generate_website_plan,
     select_contextual_template,
 )
 from platform_core.interview.models import (
@@ -57,7 +58,38 @@ from platform_core.services.outbox import OutboxService
 from platform_core.services.website import WebsiteService
 from platform_core.services.website_composition import WebsiteCompositionService
 from platform_core.website.generation_plan import GenerationPlan, build_plan
+from platform_core.website.image_generation import image_generation_available
 from platform_core.website.template_registry import TEMPLATES_BY_ID
+
+
+def public_contact(bp: BusinessBlueprint) -> dict[str, Any]:
+    """The contact details the owner gave, shaped for their public site.
+
+    Only what they actually said: a phone number they stated, and WhatsApp only
+    if they mentioned WhatsApp. A number is normalised to digits so a button can
+    dial it; anything that does not look like a phone number is left out rather
+    than guessed at.
+    """
+    facts = {**bp.known_facts, **bp.unconfirmed_facts}
+    contact: dict[str, Any] = {}
+    phone = facts.get("phone")
+    if phone:
+        digits = re.sub(r"\D", "", phone.value)
+        if 10 <= len(digits) <= 13:
+            if len(digits) == 10:
+                digits = "91" + digits  # an Indian mobile written without its country code
+            contact["phone"] = "+" + digits
+            said = " ".join(
+                [fact.value for fact in facts.values()]
+                + [m.text for m in bp.messages if m.role == "user"]
+            )
+            # Said in any script the owner used: "WhatsApp", "வாட்ஸ்அப்", "व्हाट्सएप".
+            if re.search(r"whats\s?app|வாட்ஸ்\s?(?:அப்|ஆப்)|व्हाट्स\s?(?:एप|ऐप)", said, re.I):
+                contact["whatsapp"] = "+" + digits
+    email = facts.get("email")
+    if email and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.value.strip()):
+        contact["email"] = email.value.strip()
+    return contact
 
 
 class BusinessInterviewService:
@@ -178,8 +210,10 @@ class BusinessInterviewService:
                 else "Voice isn't available on this server. Chat saves the same interview state.",
             },
             "image_generation": {
-                "available": bool(os.getenv("XAI_API_KEY")),
-                "reason": "Optional AI cover artwork uses the existing image provider. It is an illustration, not a photo of your business. Logo generation is not supported; upload your own logo.",
+                "available": image_generation_available(),
+                "reason": "Locah can draw cover artwork, or a simple one-letter logo if you have "
+                "none. It is artwork, marked as generated — never a photo of your business. "
+                "Your own photos and logo always come first.",
             },
         }
 
@@ -284,7 +318,7 @@ class BusinessInterviewService:
             if command.media.role == "logo":
                 bp.logo_state = "uploaded"
         elif command.action == "image":
-            if not os.getenv("XAI_API_KEY"):
+            if not image_generation_available():
                 raise ValidationError(
                     "Image generation is not configured. You can upload an image instead."
                 )
@@ -292,7 +326,14 @@ class BusinessInterviewService:
                 raise ValidationError(
                     "Use the website editor to request more artwork after building."
                 )
-            bp.media_generation_requests = [MediaGenerationRequest(role="hero", status="requested")]
+            role = command.image_role
+            if role == "logo" and any(m.role == "logo" for m in bp.media_assets):
+                raise ValidationError("You already added a logo. Your own logo is used.")
+            bp.media_generation_requests = [
+                r for r in bp.media_generation_requests if r.role != role
+            ] + [MediaGenerationRequest(role=role, status="requested")]
+            if role == "logo":
+                bp.logo_state = "generation_requested"
         elif command.action == "build":
             await BusinessInterviewService.build(
                 session, business, bp, actor_id=actor_id, correlation_id=correlation_id
@@ -389,10 +430,14 @@ class BusinessInterviewService:
         from platform_core.services.business_settings import BusinessSettingsService
         from platform_core.services.business_configuration import BusinessConfigurationService
 
+        profile: dict[str, Any] = {"description": bp.known_facts["description"].value}
+        contact = public_contact(bp)
+        if contact:
+            profile["contact"] = contact
         await BusinessSettingsService.patch_profile(
             session,
             business_id=business.id,
-            raw={"description": bp.known_facts["description"].value},
+            raw=profile,
             actor_id=actor_id,
             correlation_id=correlation_id,
         )
@@ -463,10 +508,10 @@ class BusinessInterviewService:
             },
             max_attempts=2,
         )
-        if any(r.role == "hero" and r.status == "requested" for r in bp.media_generation_requests):
+        if any(r.status == "requested" for r in bp.media_generation_requests):
             await AsyncJobService.enqueue(
                 session,
-                job_type="interview.generate_hero",
+                job_type="interview.generate_media",
                 business_id=business.id,
                 payload={
                     "business_id": str(business.id),
@@ -476,7 +521,7 @@ class BusinessInterviewService:
                 max_attempts=1,
             )
             for request in bp.media_generation_requests:
-                if request.role == "hero":
+                if request.status == "requested":
                     request.status = "queued"
         get_logger("business.interview").info(
             "interview.preview_ready",
@@ -506,8 +551,8 @@ class BusinessInterviewService:
         strategy_source = "deterministic"
         personalization_started = time.monotonic()
         try:
-            result, provider = await generate_strategy(bp, plan)
-            payload = build_preview(bp, plan, result.strategy)
+            result, copy, provider = await generate_website_plan(bp, plan)
+            payload = build_preview(bp, plan, result.strategy, copy)
             job.ai_provider = provider.provider_name
             job.model_name = provider.model_name
             provider_usage = dict(getattr(provider, "last_usage", None) or {})
@@ -529,6 +574,9 @@ class BusinessInterviewService:
         except Exception as exc:
             fallback = type(exc).__name__
             payload = build_preview(bp, plan, derive_strategy(bp, plan))
+        # Business row first, then the draft: the same order the artwork job
+        # takes, so the two never deadlock and the later one places the artwork.
+        locked = await BusinessInterviewService.load_business(session, job.business_id, lock=True)
         # Lock and refresh the *exact* immediate preview. Edits before the worker
         # starts count too; compare against enqueue time, not job.started_at.
         draft = (
@@ -571,6 +619,10 @@ class BusinessInterviewService:
             )
             job.result_version_id = generated.id
             job.status = "completed"
+            job.fallback_reason = None  # an earlier failed attempt is not this result
+        from platform_core.interview.media import place_ready_artwork
+
+        await place_ready_artwork(session, job.business_id, BusinessInterviewService.read(locked))
         job.provider_usage = {
             **(job.provider_usage or {}),
             "personalization_latency_ms": int(

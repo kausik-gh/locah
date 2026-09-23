@@ -75,7 +75,7 @@ def test_voice_is_unavailable_without_a_key(monkeypatch):
 
 def test_voice_is_available_with_a_key(monkeypatch):
     monkeypatch.setenv("XAI_API_KEY", KEY)
-    monkeypatch.setenv("AI_PROVIDER", "xai")
+    monkeypatch.setenv("VOICE_PROVIDER", "xai")
     assert voice.is_configured() is True
 
 
@@ -146,6 +146,7 @@ async def test_the_owner_gets_a_session_and_never_the_account_key(monkeypatch):
     from platform_core.services.business_interview import BusinessInterviewService
 
     monkeypatch.setenv("XAI_API_KEY", KEY)
+    monkeypatch.setenv("VOICE_PROVIDER", "xai")
     bp = blueprint(description="We are a hospital", offerings="Cardiology")
     monkeypatch.setattr(
         routes,
@@ -288,3 +289,85 @@ def test_server_vad_and_transcription_are_on_so_the_owner_can_interrupt():
 
 def test_voice_uses_the_fast_model_not_a_reasoning_one():
     assert "fast" in voice.VOICE_MODEL
+
+
+# ------------------------------------------------------------------- Gemini Live
+
+GEMINI_KEY = "gemini-account-key-that-must-never-be-served"
+
+
+def test_gemini_is_the_default_voice_provider(monkeypatch):
+    monkeypatch.delenv("VOICE_PROVIDER", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", GEMINI_KEY)
+    assert voice.voice_provider() == "gemini"
+    assert voice.is_configured() is True
+    monkeypatch.delenv("GEMINI_API_KEY")
+    assert voice.is_configured() is False
+
+
+def test_the_gemini_setup_locks_one_narrow_tool_and_the_instructions():
+    bp = blueprint(description="Furniture kadai in Chennai")
+    setup = voice.gemini_setup(bp)
+    declarations = setup["tools"][0]["functionDeclarations"]
+    assert [d["name"] for d in declarations] == ["process_business_interview_turn"]
+    assert set(declarations[0]["parameters"]["properties"]) == {"transcript"}
+    text = setup["systemInstruction"]["parts"][0]["text"]
+    assert "Furniture kadai in Chennai" in text
+    assert "WhatsApp pannitu" in text  # code-switching is expected, not tolerated
+    assert "Do not ask anything before the tool answers" in " ".join(text.split())
+    # gemini-3.8-live takes no thinking configuration.
+    assert "thinkingConfig" not in setup["generationConfig"]
+    assert setup["generationConfig"]["responseModalities"] == ["AUDIO"]
+    assert setup["inputAudioTranscription"] == {} and setup["outputAudioTranscription"] == {}
+
+
+@pytest.mark.asyncio
+async def test_a_gemini_token_is_one_use_short_lived_and_locked(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", GEMINI_KEY)
+    client = _Client(payload={"name": "auth_tokens/abc123"})
+    monkeypatch.setattr(voice.httpx, "AsyncClient", lambda **_: client)
+
+    minted = await voice.mint_gemini_token(blueprint(description="A clinic"))
+    assert minted["token"] == "auth_tokens/abc123"
+    assert GEMINI_KEY not in json.dumps(minted)
+    sent = client.sent["json"]
+    assert sent["uses"] == 1
+    # The instructions and tools are locked into the token itself.
+    assert sent["bidiGenerateContentSetup"]["tools"][0]["functionDeclarations"][0]["name"] == (
+        "process_business_interview_turn"
+    )
+    # The browser only names the model; it cannot resend its own instructions.
+    assert set(minted["setup"]) == {"model"}
+    assert client.sent["headers"]["x-goog-api-key"] == GEMINI_KEY
+
+
+@pytest.mark.asyncio
+async def test_a_refused_gemini_token_is_a_voice_failure_not_a_crash(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", GEMINI_KEY)
+    monkeypatch.setattr(voice.httpx, "AsyncClient", lambda **_: _Client(status=429))
+    with pytest.raises(voice.VoiceSessionError):
+        await voice.mint_gemini_token(blueprint())
+
+
+@pytest.mark.asyncio
+async def test_the_owner_gets_a_gemini_session_and_never_the_account_key(monkeypatch):
+    import platform_api.routers.v1_business_interview as routes
+    from platform_core.services.business_interview import BusinessInterviewService
+
+    monkeypatch.setenv("GEMINI_API_KEY", GEMINI_KEY)
+    monkeypatch.setenv("VOICE_PROVIDER", "gemini")
+    bp = blueprint(description="We are a hospital")
+    monkeypatch.setattr(routes, "resolve_business_actor", AsyncMock(return_value=SimpleNamespace(
+        actor_membership=SimpleNamespace(role="primary_owner"),
+        request=SimpleNamespace(effective_permissions={"website.edit", "business.update"}))))
+    monkeypatch.setattr(BusinessInterviewService, "load_business", AsyncMock(return_value=MagicMock()))
+    monkeypatch.setattr(BusinessInterviewService, "read", MagicMock(return_value=bp))
+    monkeypatch.setattr(voice.httpx, "AsyncClient", lambda **_: _Client(payload={"name": "auth_tokens/t1"}))
+
+    result = await routes.create_voice_session(
+        bp.business_id, SimpleNamespace(identity_id=uuid4(), correlation_id="c"), AsyncMock()
+    )
+    assert GEMINI_KEY not in json.dumps(result)
+    assert result["data"]["provider"] == "gemini"
+    assert result["data"]["url"].startswith("wss://generativelanguage.googleapis.com/")
+    assert "Constrained" in result["data"]["url"]

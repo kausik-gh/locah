@@ -54,14 +54,7 @@ async def create_voice_session(business_id: UUID, ctx: RequestContext = Depends(
     business = await BusinessInterviewService.load_business(session, business_id)
     blueprint = BusinessInterviewService.read(business)
     try:
-        minted = await voice_module.mint_client_secret()
+        minted = await voice_module.create_voice_session(blueprint)
     except voice_module.VoiceSessionError as exc:
         raise ServiceUnavailable(str(exc)) from exc
-    return {"data": {
-        **minted,
-        "url": voice_module.REALTIME_URL,
-        "model": voice_module.VOICE_MODEL,
-        "voice": voice_module.VOICE_NAME,
-        "session": voice_module.session_config(blueprint),
-        "revision": blueprint.revision,
-    }}
+    return {"data": {**minted, "revision": blueprint.revision}}

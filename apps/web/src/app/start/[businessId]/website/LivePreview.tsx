@@ -31,7 +31,19 @@ export function LivePreview({
   const [status, setStatus] = useState(initialStatus)
   const [device, setDevice] = useState<'desktop' | 'phone'>('desktop')
   const [refreshed, setRefreshed] = useState(0)
+  // The site deserves the whole screen at least once before the owner decides
+  // anything about it; a framed thumbnail undersells every layout.
+  const [full, setFull] = useState(false)
   const frame = useRef<HTMLIFrameElement>(null)
+
+  useEffect(() => {
+    if (!full) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFull(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [full])
 
   useEffect(() => {
     if (!running(status)) return
@@ -64,7 +76,7 @@ export function LivePreview({
             : 'This is your draft. Only you can see it until you publish.'
 
   return (
-    <div className="lp">
+    <div className={`lp${full ? ' lp--full' : ''}`}>
       <div className="lp-bar">
         <p className="lp-note" role="status">
           {running(status) ? <span className="lp-dot" aria-hidden="true" /> : null}
@@ -87,6 +99,14 @@ export function LivePreview({
           >
             Phone
           </button>
+          <button
+            type="button"
+            className="lc-btn lc-btn--primary"
+            aria-pressed={full}
+            onClick={() => setFull((v) => !v)}
+          >
+            {full ? 'Exit full screen' : 'Full screen'}
+          </button>
         </div>
       </div>
       <div className={`lp-stage lp-stage--${device}`}>
@@ -96,7 +116,7 @@ export function LivePreview({
           src={src}
           title="Preview of your website"
           loading="eager"
-          sandbox="allow-same-origin allow-scripts"
+          sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
         />
       </div>
     </div>

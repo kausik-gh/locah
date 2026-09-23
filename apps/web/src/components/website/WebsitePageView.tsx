@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { SectionRenderer } from './SectionRenderer'
+import { SectionRenderer, type SiteContact } from './SectionRenderer'
+import { siteFontVariables } from './site-fonts'
 import type { PublicWebsitePayload } from '@/lib/public-website'
 
 /**
@@ -113,6 +114,8 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
 
   // The tab title is set by each route's generateMetadata, not here — a <title>
   // rendered in the tree lands in <body> on React 18 and duplicates the tag.
+  const contact: SiteContact = data.business.contact || {}
+  const reachable = Boolean(contact.phone || contact.whatsapp)
   const nav = data.navigation || []
   const sections = data.page.sections.filter((s) => s.is_visible !== false)
   const capabilities = data.capabilities || {}
@@ -144,6 +147,7 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
 
   return (
     <div
+      className={siteFontVariables}
       data-locah-site=""
       data-personality={personality}
       data-typography={typography}
@@ -221,12 +225,47 @@ export function WebsitePageView({ data }: { data: PublicWebsitePayload }) {
               businessSlug={slug}
               index={i}
               capabilities={data.capabilities}
+              contact={contact}
+              businessName={name}
             />
           </div>
         ))}
       </main>
 
-      <footer className="ls-foot">
+      {contact.whatsapp ? (
+        <a
+          className="ls-wa-float"
+          href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`WhatsApp ${name}`}
+        >
+          <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.4-.2Z"
+            />
+          </svg>
+        </a>
+      ) : null}
+
+      {reachable ? (
+        // On a phone the two things a visitor most wants are always one tap away.
+        <nav className="ls-mobile-bar" aria-label="Contact">
+          {contact.phone ? <a href={`tel:${contact.phone}`}>Call</a> : null}
+          {contact.whatsapp ? (
+            <a
+              href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              WhatsApp
+            </a>
+          ) : null}
+        </nav>
+      ) : null}
+
+      <footer className={`ls-foot ${reachable ? 'ls-foot--with-bar' : ''}`}>
         <div className="ls-foot__inner">
           <div>
             <p className="ls-foot__name">{name}</p>

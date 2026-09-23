@@ -32,3 +32,9 @@
   .lp-stage iframe { height: 60vh; min-height: 380px; }
   .lp-pages span { margin-left: 0; }
 }
+
+/* Full screen: the draft fills the window; the bar stays so there is always a way out. */
+.lp--full { position: fixed; inset: 0; z-index: 100; border-radius: 0; border: 0; display: flex; flex-direction: column; }
+.lp--full .lp-stage { flex: 1; min-height: 0; }
+.lp--full .lp-stage iframe { height: 100%; min-height: 0; }
+.lp--full .lp-stage--phone iframe { height: calc(100% - 40px); }

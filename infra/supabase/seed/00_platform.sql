@@ -45,7 +45,7 @@ INSERT INTO website_section_types (id, label, description, content_schema, allow
 
 -- Core sections (available to all businesses)
 ('hero', 'Hero / Banner', 'Main header section with headline, subheadline, and call-to-action',
- '{"type":"object","required":["headline"],"properties":{"headline":{"type":"string","maxLength":120},"subheadline":{"type":"string","maxLength":300},"cta_label":{"type":"string","maxLength":60},"cta_url":{"type":"string","maxLength":500},"image_asset_id":{"type":"string","format":"uuid"}}}',
+ '{"type":"object","required":["headline"],"properties":{"headline":{"type":"string","maxLength":120},"headline_accent":{"type":"string","maxLength":60},"eyebrow":{"type":"string","maxLength":60},"subheadline":{"type":"string","maxLength":300},"cta_label":{"type":"string","maxLength":60},"cta_url":{"type":"string","maxLength":500},"image_asset_id":{"type":"string","format":"uuid"}}}',
  ARRAY['centered', 'left_aligned', 'image_left', 'image_right', 'full_width'],
  NULL, 10),
 
@@ -58,6 +58,16 @@ INSERT INTO website_section_types (id, label, description, content_schema, allow
  '{"type":"object","properties":{"title":{"type":"string","maxLength":120},"address":{"type":"string","maxLength":500},"phone":{"type":"string","maxLength":50},"email":{"type":"string","maxLength":200},"hours_summary":{"type":"string","maxLength":500},"show_map":{"type":"boolean"}}}',
  ARRAY['full', 'compact'],
  NULL, 30),
+
+('highlights', 'Highlights', 'A few numbers the business itself stated, shown prominently',
+ '{"type":"object","properties":{"title":{"type":"string","maxLength":120},"items":{"type":"array","maxItems":6,"items":{"type":"object","required":["value","label"],"properties":{"value":{"type":"string","maxLength":24},"label":{"type":"string","maxLength":40}}}}}}',
+ ARRAY['strip', 'cards'],
+ NULL, 15),
+
+('feature_grid', 'What we do', 'The things the business does, or how a customer works with them',
+ '{"type":"object","properties":{"title":{"type":"string","maxLength":120},"subtitle":{"type":"string","maxLength":300},"items":{"type":"array","maxItems":9,"items":{"type":"object","required":["title"],"properties":{"title":{"type":"string","maxLength":80},"body":{"type":"string","maxLength":240}}}}}}',
+ ARRAY['cards', 'steps', 'list'],
+ NULL, 25),
 
 ('text_block', 'Text Block', 'Freeform structured text content block',
  '{"type":"object","required":["body"],"properties":{"title":{"type":"string","maxLength":120},"body":{"type":"string","maxLength":5000}}}',

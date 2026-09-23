@@ -74,3 +74,30 @@
 .vp-line--assistant { color: #4c5967; }
 .vp-note { margin-top: 14px; font-size: 12.5px; }
 @media (max-width: 760px) { .vp-stage { padding: 26px 8px 20px; } .vp-orb { width: 62px; height: 62px; } .vp-controls .lc-btn { flex: 1 1 auto; } }
+
+/* Tools: recommended first with the owner's words as the reason, the rest
+   folded away and grouped by who they serve. */
+.bi-tool__why {
+  font-style: italic;
+}
+.bi-tool--compact h4 {
+  font-size: 0.98rem;
+}
+.bi-tool--compact p {
+  font-size: 0.88rem;
+}
+.bi-more-tools {
+  margin-top: 1.5rem;
+}
+.bi-more-tools > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.6rem 0;
+}
+.bi-tool-group {
+  margin: 1.1rem 0 0.6rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted, #5b6472);
+}

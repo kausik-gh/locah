@@ -129,6 +129,8 @@ def plan(bp, template=None):
         "rooms_section": ["cards", "list"],
         "plans_section": ["cards", "comparison"],
         "classes_section": ["schedule", "cards"],
+        "highlights": ["strip", "cards"],
+        "feature_grid": ["cards", "steps", "list"],
     }
     rows = [
         {"id": sid, "available": True, "allowed_variants": variants[sid], "requires_module": None}
@@ -219,7 +221,8 @@ async def test_off_topic_never_becomes_a_fact():
 async def test_missing_info_asks_only_next_required_question():
     bp = await Engine.turn(blueprint(), "We make furniture", field="description")
     assert [q.field for q in bp.remaining_questions] == ["offerings", "customer_actions"]
-    assert bp.messages[-1].text == QUESTIONS[1].text
+    # A short acknowledgement may precede it; the one question is still the next required one.
+    assert bp.messages[-1].text.endswith(QUESTIONS[1].text)
 
 
 @pytest.mark.asyncio
@@ -389,11 +392,17 @@ def test_each_template_uses_only_confirmed_truth_and_original_structure(template
     assert payload["theme_hints"]["template_id"] == template
     assert payload == build_preview(bp, p)
     assert "Sofas" in json.dumps(payload) or "We make furniture" in json.dumps(payload)
+    truthful_additions = {"highlights", "feature_grid"}
     for page in payload["pages"]:
         original = next(x for x in p.template.pages if x.slug == page["slug"])
         assert {s["section_type_id"] for s in page["sections"]} <= {
             s.section_type_id for s in original.sections
-        }
+        } | truthful_additions
+        for section in page["sections"]:
+            if section["section_type_id"] == "feature_grid":
+                # Every item is something the owner named.
+                for item in section["content"]["items"]:
+                    assert item["title"].casefold() in "sofas and dining tables"
     assert "24 hours" not in json.dumps(payload)
 
 
@@ -686,12 +695,13 @@ async def test_worker_failure_keeps_preview_and_owner_edits(monkeypatch, edited)
             "base_updated_at": stamp.isoformat(),
         },
     )
-    monkeypatch.setattr(
-        Service, "load_business", AsyncMock(return_value=Business(id=bp.business_id))
-    )
+    # The business row carries the live blueprint: personalization reads it
+    # under lock to place any artwork that finished first.
+    business = Business(id=bp.business_id, metadata_={"interview": bp.model_dump(mode="json")})
+    monkeypatch.setattr(Service, "load_business", AsyncMock(return_value=business))
     monkeypatch.setattr(Service, "plan", AsyncMock(return_value=plan(bp)))
     monkeypatch.setattr(
-        service_module, "generate_strategy", AsyncMock(side_effect=TimeoutError())
+        service_module, "generate_website_plan", AsyncMock(side_effect=TimeoutError())
     )
     monkeypatch.setattr(service_module.OutboxService, "publish", AsyncMock())
     session = AsyncMock()
@@ -781,13 +791,21 @@ def test_a_business_with_no_unsupported_ask_raises_nothing():
 def test_interview_extraction_does_not_run_on_the_website_reasoning_model():
     """Extraction is quotation, not reasoning, and the owner waits through it.
 
-    Measured against the same key and provider, the reasoning default took
-    8.6s-10.2s per turn versus 1.5s-2.3s, and was the less accurate of the two.
+    Each provider owns its per-purpose model, so business logic never names a
+    vendor model. Grok routes extraction to its non-reasoning model (measured
+    1.5-2.3s against 8.6-10.2s); Gemini uses its fast model thinking at "low".
     """
-    from platform_core.interview.orchestrator import INTERVIEW_MODEL
-    from platform_core.website.ai_provider import _DEFAULT_MODEL
+    from platform_core.website.ai_provider import (
+        _DEFAULT_MODEL,
+        _GEMINI_THINKING,
+        GEMINI_DEFAULT_MODEL,
+        GeminiProvider,
+        GrokProvider,
+    )
 
-    assert INTERVIEW_MODEL != _DEFAULT_MODEL
+    assert GrokProvider("k").model_for("business.interview") != _DEFAULT_MODEL
+    assert GeminiProvider("k").model_for("business.interview") == GEMINI_DEFAULT_MODEL
+    assert _GEMINI_THINKING["business.interview"] == "low"
 
 
 @pytest.mark.asyncio
@@ -802,13 +820,16 @@ async def test_the_turn_sends_the_fast_model_and_no_registry_dump():
 
     provider.generate_structured = spy  # type: ignore[method-assign]
     await Engine.turn(blueprint(), "We make furniture", provider=provider)
-    from platform_core.interview.orchestrator import INTERVIEW_MODEL
 
-    assert captured["model"] == INTERVIEW_MODEL
+    # The orchestrator states a purpose; it never names a vendor model.
+    assert captured["purpose"] == "business.interview"
+    assert "model" not in captured
     # Capability resolution is deterministic and stays out of the prompt.
     assert "offerings-catalog" not in provider.prompts[0]
     assert "module" not in provider.prompts[0].lower()
-    assert "multilingual or code-switched" in captured["system_prompt"]
+    # Code-switched owners are understood natively and quoted in their own script.
+    prompt = captured["system_prompt"]
+    assert "Tamil mixed with" in prompt and "original words" in prompt and "script" in prompt
 
 
 @pytest.mark.asyncio
