@@ -51,6 +51,8 @@ _STORY = {
                      "a stone grinder and fresh ingredients on a worn wooden counter",
     "membership_fitness": "the training floor — racks, plates and a lifting platform, "
                           "seen from a low angle",
+    "real_estate_projects": "a calm landscaped courtyard between low-rise homes — a stone "
+                            "walkway, trees and soft evening light",
 }
 
 

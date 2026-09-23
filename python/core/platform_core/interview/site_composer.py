@@ -24,7 +24,7 @@ from typing import Any
 
 from platform_core.interview.creative_director import CreativeDirection
 from platform_core.interview.media_director import picture_for, slug
-from platform_core.interview.models import BusinessBlueprint, CatalogueGroup
+from platform_core.interview.models import BusinessBlueprint, CatalogueGroup, TargetState
 from platform_core.interview.taxonomy import normalise_name
 from platform_core.interview.website_copy import WebsiteCopy
 from platform_core.validation.website import validate_generation_payload
@@ -92,7 +92,13 @@ def _places(bp: BusinessBlueprint) -> list[str]:
     for the eyebrow, the most specific place for pickup and the address.
     """
     raw = _facts(bp).get("locations", "")
-    return [" ".join(part.split()).strip(" .,") for part in raw.split(";") if part.strip(" .,")]
+    parts: list[str] = []
+    for part in raw.split(";"):
+        part = re.sub(r"^\s*(?:in|at|near|on)\s+", "", " ".join(part.split()), flags=re.I).strip(" .,")
+        if part and all(part.casefold() != seen.casefold() for seen in parts):
+            parts.append(part)
+    # "Chennai" adds nothing to "OMR, Thoraipakkam, Chennai".
+    return [p for p in parts if not any(p != o and p.casefold() in o.casefold() for o in parts)]
 
 
 def _town(bp: BusinessBlueprint) -> str:
@@ -210,6 +216,8 @@ def money(price: str) -> str:
     price = " ".join(price.split())
     if re.fullmatch(r"\d[\d,]*(?:\.\d+)?", price):
         return f"₹{price}"
+    if re.match(r"\d[\d,.]*\s*(?:crores?|cr|lakhs?|lacs?|l|k)\b", price, re.I):
+        return f"₹{price}"
     return re.sub(r"^(?:rs\.?|inr)\s*", "₹", price, flags=re.I)
 
 
@@ -268,6 +276,9 @@ def browse_sections(
                 entry["price"] = money(item.price)[:40]
                 if item.unit:
                     entry["unit"] = item.unit[:40]
+            elif group.price and arche == "real_estate_projects":
+                # "Villas from 1.2 crore": the owner's starting price for the kind.
+                entry["price"] = f"From {money(group.price)}"[:40]
             picture = picture_for(bp, f"item:{slug(name)}") or picture_for(bp, f"project:{slug(name)}")
             if picture:
                 entry["image_asset_id"] = picture
@@ -407,7 +418,12 @@ def compose_site(
         })
 
     story_body = copy.about_body
-    claims = [c.claim for c in bp.website_draft.owner_claims]
+    # The owner's own answer to "what should people remember?" is the story's
+    # line; a claim the model filed is only the fallback ("Crab and squid
+    # cleaned and sold by kg" was quoted as the shop's story).
+    remembered = (bp.discovery.get("brand.story") or TargetState()).quote
+    claims = [_first_sentence(remembered)] if remembered else []
+    claims += [c.claim for c in bp.website_draft.owner_claims]
     if story_body:
         story: dict[str, Any] = {"title": (copy.about_title or "Our story")[:120], "body": story_body[:2000],
                                  "eyebrow": "Our story", "anchor": "story"}

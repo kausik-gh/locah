@@ -254,7 +254,7 @@ async def test_draft_visuals_need_consent_and_are_drawn_once():
 
 
 def test_media_budget_follows_the_archetype():
-    for build, count in ((meat, 5), (home_food, 6), (gym, 2), (real_estate, 4)):
+    for build, count in ((meat, 5), (home_food, 6), (gym, 2), (real_estate, 5)):
         bp = build()
         assert len(plan_slots(bp, direct(bp, "other"))) == count, build.__name__
 
@@ -320,7 +320,7 @@ def test_prices_read_as_rupees_and_boards_show_the_lowest_price_given() -> None:
     from platform_core.interview.site_composer import money
 
     assert money("240") == "₹240" and money("Rs. 1,200") == "₹1,200" and money("₹99") == "₹99"
-    assert money("1.2 crore") == "1.2 crore"  # words the owner used stay theirs
+    assert money("1.2 crore") == "₹1.2 crore" and money("price on request") == "price on request"
     bp = meat()
     bp.taxonomy.groups[0] = CatalogueGroup(name="Chicken", items=[
         CatalogueItem(name="Curry cut", price="240", unit="per kg"),
@@ -460,3 +460,25 @@ def test_a_stored_untidy_catalogue_heals_on_the_next_projection() -> None:
     assert [g.name for g in bp.taxonomy.groups] == ["Villas", "Seafood"]
     villa = bp.taxonomy.groups[0].items
     assert [(i.name, i.description) for i in villa] == [("Aranya Greens", "3 BHK villas in Thalambur")]
+
+
+def test_the_final_live_details() -> None:
+    """Project cards carry the owner's starting price; one place is one place;
+    the story quotes what the owner said to remember."""
+    from platform_core.interview.site_composer import _address, money
+
+    assert money("1.2 crore") == "₹1.2 crore" and money("68 lakh") == "₹68 lakh"
+    bp = real_estate()
+    bp.taxonomy.groups[0].price = "1.2 crore"
+    bp.known_facts["locations"] = Fact(value="In Chennai; Chennai", source="USER_STATEMENT",
+                                       confirmation="confirmed")
+    assert _address(bp) == "Chennai"
+    shop = sections(compose(bp))["product_showcase"]["content"]
+    villas = [i for i in shop["items"] if i["category"] == "Villa projects"]
+    assert villas and all(i["price"] == "From ₹1.2 crore" for i in villas)
+
+    bp = meat()
+    bp.discovery["brand.story"] = TargetState(status="answered", summary="Fresh every morning",
+                                              quote="Fresh stock comes every morning. Family run for 8 years.")
+    about = sections(compose(bp, WebsiteCopy(about_body="Family run for eight years.")))["about"]["content"]
+    assert about["quote"] == "Fresh stock comes every morning."
