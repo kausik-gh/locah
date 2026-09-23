@@ -214,6 +214,9 @@ def hero_badges(bp: BusinessBlueprint, business_type: str | None) -> list[str]:
 def money(price: str) -> str:
     """The owner's price as a visitor reads it: bare digits are rupees ("240" -> "₹240")."""
     price = " ".join(price.split())
+    lead = re.match(r"(from|starting (?:at|from)|starts at)\s+(?=\d)", price, re.I)
+    if lead:  # "from 1.2 crore" -> "From ₹1.2 crore"
+        return "From " + money(price[lead.end():])
     if re.fullmatch(r"\d[\d,]*(?:\.\d+)?", price):
         return f"₹{price}"
     if re.match(r"\d[\d,.]*\s*(?:crores?|cr|lakhs?|lacs?|l|k)\b", price, re.I):
@@ -278,7 +281,8 @@ def browse_sections(
                     entry["unit"] = item.unit[:40]
             elif group.price and arche == "real_estate_projects":
                 # "Villas from 1.2 crore": the owner's starting price for the kind.
-                entry["price"] = f"From {money(group.price)}"[:40]
+                shown = money(group.price)
+                entry["price"] = (shown if shown.startswith("From ") else f"From {shown}")[:40]
             picture = picture_for(bp, f"item:{slug(name)}") or picture_for(bp, f"project:{slug(name)}")
             if picture:
                 entry["image_asset_id"] = picture

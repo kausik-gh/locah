@@ -468,6 +468,7 @@ def test_the_final_live_details() -> None:
     from platform_core.interview.site_composer import _address, money
 
     assert money("1.2 crore") == "₹1.2 crore" and money("68 lakh") == "₹68 lakh"
+    assert money("from 1.2 crore") == "From ₹1.2 crore" and money("From 240") == "From ₹240"
     bp = real_estate()
     bp.taxonomy.groups[0].price = "1.2 crore"
     bp.known_facts["locations"] = Fact(value="In Chennai; Chennai", source="USER_STATEMENT",
