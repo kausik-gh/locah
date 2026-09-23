@@ -411,3 +411,12 @@ def test_owner_wording_wins_over_personalisation_on_the_built_site():
     assert "Sofas that last a lifetime." in payload
     assert "Comfort for every home" not in payload
     assert "We make sofas and dining tables." in payload  # the draft had no About, so copy fills it
+
+
+def test_confirming_covers_every_detail_the_panel_shows():
+    """Live: after "These details are correct", delivery and payment still said "Needs confirmation"."""
+    bp = blueprint()
+    bp.discovery["commerce.payment"] = TargetState(status="answered", summary="Online and cash on delivery.")
+    assert understanding(bp, "retail")["items"][0]["status"] == "from_you"
+    bp.completion_state.confirmed = True
+    assert understanding(bp, "retail")["items"][0]["status"] == "confirmed"

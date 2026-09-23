@@ -74,7 +74,9 @@ def understanding(
         value = answer(target) or (facts[fact].value if fact and fact in facts else "")
         if not value:
             continue
-        confirmed = bool(fact and fact in bp.known_facts)
+        # "These details are correct" covers everything shown, including what
+        # lives only as a discovery answer (how it is sold, delivery, payment).
+        confirmed = bool(fact and fact in bp.known_facts) or bp.completion_state.confirmed
         items.append({
             "label": label,
             "value": value[:200],
