@@ -299,6 +299,40 @@ def _without_repeats(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return kept
 
 
+def _accent_of(headline: str) -> str:
+    """The part after the comma in "Fresh meat, closer to home." — if there is one."""
+    head, sep, tail = headline.partition(",")
+    tail = tail.strip().rstrip(".!")
+    return tail if sep and 2 <= len(tail) <= 40 and head.strip() else ""
+
+
+def with_draft(bp: BusinessBlueprint, copy: WebsiteCopy | None) -> WebsiteCopy:
+    """The wording the site uses: the owner's draft first, then personalisation.
+
+    Draft text is what the owner saw — and possibly edited — beside the
+    conversation. A later model pass may fill what the draft leaves empty, but
+    it never replaces a line the owner has already looked at.
+    """
+    data = (copy or WebsiteCopy()).model_dump()
+    wd = bp.website_draft
+    if wd.hero_headline:
+        data["headline"] = wd.hero_headline.text[:90]
+        data["headline_accent"] = _accent_of(wd.hero_headline.text)
+    if wd.hero_subheadline:
+        data["subheadline"] = wd.hero_subheadline.text[:220]
+    if wd.about:
+        data["about_body"] = wd.about.text[:800]
+    if len(wd.offerings) >= 2:
+        # An item the draft names without a line keeps personalisation's line for it.
+        written = {str(f.get("title", "")).casefold(): str(f.get("body", "")) for f in data.get("features") or []}
+        data["features"] = [
+            {"title": o.name[:80],
+             "body": (o.description.text if o.description else written.get(o.name.casefold(), ""))[:240]}
+            for o in wd.offerings[:8]
+        ]
+    return WebsiteCopy.model_validate(data)
+
+
 def build_preview(
     bp: BusinessBlueprint,
     plan: GenerationPlan,
@@ -312,7 +346,7 @@ def build_preview(
     own words, so the immediate preview (no copy) and the personalised one use
     exactly the same composition rules.
     """
-    words = copy or WebsiteCopy()
+    words = with_draft(bp, copy)
     selected, strategy_quality = validate_strategy(strategy or derive_strategy(bp, plan), bp, plan)
     decisions = _decision_map(selected)
     facts = bp.known_facts
@@ -464,6 +498,10 @@ def build_preview(
     extra_decisions = _inject_truthful_sections(pages, bp, plan, selected, words)
 
     resolved_target = _action_target(primary_action, pages)
+    cta_label = (
+        bp.website_draft.cta_label.text[:60]
+        if bp.website_draft.cta_label and resolved_target else resolved_target[0] if resolved_target else ""
+    )
     # A phone number the owner gave is a real way to reach them. The renderer
     # turns it into Call and WhatsApp buttons, so a closing band is worth
     # keeping for it even when no platform action backs the band.
@@ -473,7 +511,7 @@ def build_preview(
         for section in page["sections"]:
             if section["section_type_id"] == "hero" and resolved_target:
                 section["content"].update(
-                    {"cta_label": resolved_target[0], "cta_url": resolved_target[1]}
+                    {"cta_label": cta_label, "cta_url": resolved_target[1]}
                 )
             if section["section_type_id"] == "cta_band":
                 if resolved_target and selected.cta_hierarchy.repeat_primary:

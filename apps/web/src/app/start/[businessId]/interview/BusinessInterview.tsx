@@ -16,6 +16,7 @@ import {
   startInterviewUpload,
 } from './actions'
 import { ROLE_LABELS, ROLE_ORDER, roleFromText, type MediaRole } from './attachment'
+import { UnderstandingPanel } from './UnderstandingPanel'
 import { VoicePanel } from './voice/VoicePanel'
 
 const LABELS: Record<InterviewFactKey, string> = {
@@ -51,12 +52,28 @@ function ToolCard({
   onChoose: (choice: 'approved' | 'declined') => void
 }) {
   const extra = module.dependencies.filter((id) => !id.startsWith('core-'))
+  const said = module.evidence?.find((e) => e.kind === 'owner_said')
   return (
     <article className={`bi-tool${compact ? ' bi-tool--compact' : ''}`}>
       <h4>{module.label}</h4>
+      {module.strength && !compact ? (
+        <span className="bi-tag bi-tag--tool">
+          {module.strength === 'dependency'
+            ? `Needed for ${module.needed_by?.join(', ') || 'another tool'}`
+            : module.strength === 'useful'
+              ? 'Useful'
+              : 'Strong fit'}
+        </span>
+      ) : null}
       <p className={module.reason.startsWith('Because you said') ? 'bi-tool__why' : undefined}>
         {module.reason}
       </p>
+      {said && !compact && !module.reason.includes(said.text) ? (
+        <p className="bi-evidence">You said: “{said.text}”</p>
+      ) : null}
+      {module.configuration_needed && !compact ? (
+        <p className="ob-help">To set up: {module.configuration_needed}</p>
+      ) : null}
       {!compact ? <p className="ob-help">{module.availability_reason}</p> : null}
       {extra.length > 0 && !compact ? (
         <p className="ob-help">May also need: {extra.join(', ')}.</p>
@@ -97,6 +114,7 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
   const [mode, setMode] = useState<'chat' | 'voice'>('chat')
   const [uploading, setUploading] = useState(false)
   const input = useRef<HTMLTextAreaElement>(null)
+  const busyRef = useRef(false)
   // Spoken turns can overlap: the owner keeps talking while the last sentence
   // is still being saved. They run one after another, and each reads the
   // revision the previous one produced — not the one from the last render.
@@ -106,9 +124,8 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
   const router = useRouter()
   const bp = data.blueprint
   latest.current = data
-  const facts = { ...bp.known_facts, ...bp.unconfirmed_facts }
   const pendingChoices = bp.recommended_modules.some((m) => m.choice === 'pending')
-  const answered = Object.keys(facts).length
+  const logoState = data.understanding.logo.state
   const requested = (role: 'hero' | 'logo') =>
     bp.media_generation_requests.some((r) => r.role === role)
   // Recommended tools are shown once, with the owner's own words as the reason;
@@ -124,8 +141,27 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
     stream.current?.scrollTo({ top: stream.current.scrollHeight, behavior: 'smooth' })
   }, [bp.messages.length, sending])
 
+  // A logo is drawn in the background while the owner carries on. Look again
+  // every few seconds until it arrives or fails — never for more than 3 minutes.
+  useEffect(() => {
+    if (logoState !== 'queued' && logoState !== 'requested') return
+    let tries = 0
+    const timer = window.setInterval(async () => {
+      tries += 1
+      if (tries > 36) window.clearInterval(timer)
+      if (busyRef.current) return
+      const res = await reloadInterview(bp.business_id)
+      if (!res.ok || busyRef.current) return
+      if (res.data.blueprint.revision < latest.current.blueprint.revision) return
+      latest.current = res.data
+      setData(res.data)
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [logoState, bp.business_id])
+
   async function send(change: Change) {
     setBusy(true)
+    busyRef.current = true
     setError('')
     if (change.action === 'turn' && change.text) setSending(change.text)
     try {
@@ -156,6 +192,7 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
       return false
     } finally {
       setBusy(false)
+      busyRef.current = false
       setSending('')
     }
   }
@@ -477,82 +514,24 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
           )}
         </section>
 
-        <aside className="bi-summary" aria-label="What Locah understood">
-          <p className="bi-eyebrow">WHAT WE’VE UNDERSTOOD</p>
-          <h2>{bp.completion_state.sufficient ? 'Ready for your review' : 'Taking shape'}</h2>
-          <p className="bi-progress" role="status">
-            {bp.completion_state.sufficient
-              ? 'Enough for a first website. Everything else can wait.'
-              : `${answered} ${answered === 1 ? 'detail' : 'details'} so far · ${bp.remaining_questions.length} to go`}
-          </p>
-          <dl>
-            {Object.entries(facts).map(
-              ([key, fact]) =>
-                fact && (
-                  <div key={key}>
-                    <dt>
-                      {LABELS[key as InterviewFactKey]}{' '}
-                      <span>
-                        {fact.confirmation === 'confirmed' ? 'Confirmed' : 'Please review'}
-                      </span>
-                    </dt>
-                    <dd>{fact.value}</dd>
-                    {bp.unconfirmed_facts[key as InterviewFactKey] &&
-                      bp.known_facts[key as InterviewFactKey] && (
-                        <small>Previously: {bp.known_facts[key as InterviewFactKey]?.value}</small>
-                      )}
-                    <button
-                      className="bi-text-button"
-                      disabled={busy}
-                      onClick={() => {
-                        setField(key as InterviewFactKey)
-                        setText(fact.value)
-                        input.current?.focus()
-                      }}
-                    >
-                      Change
-                    </button>
-                  </div>
-                )
-            )}
-          </dl>
-          {!Object.keys(facts).length && <p>Your details will appear here as we talk.</p>}
-          <details>
-            <summary>Add or correct a detail</summary>
-            <select
-              aria-label="Detail to update"
-              value={field}
-              onChange={(e) => {
-                setField(e.target.value as InterviewFactKey)
-                input.current?.focus()
-              }}
-            >
-              <option value="">Choose a detail</option>
-              {Object.entries(LABELS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </details>
-          {bp.completion_state.sufficient && (
-            <>
-              <p className="ob-help">
-                Suggested starting point: {data.classification_seed.replaceAll('_', ' ')}. This does
-                not add paid tools.
-              </p>
-              <button
-                className="lc-btn"
-                disabled={busy || bp.completion_state.confirmed}
-                onClick={() => void send({ action: 'confirm' })}
-              >
-                {bp.completion_state.confirmed
-                  ? '✓ Details confirmed'
-                  : 'These details are correct'}
-              </button>
-            </>
-          )}
-        </aside>
+        <UnderstandingPanel
+          data={data}
+          busy={busy}
+          thinking={waiting}
+          onDraft={(draft) => send({ action: 'draft', draft })}
+          onConfirm={() => void send({ action: 'confirm' })}
+          onCorrect={(target, label, value, key) => {
+            setMode('chat')
+            if (key) {
+              setField(key)
+              setText(value)
+            } else {
+              setField('')
+              setText(`About ${label.toLowerCase()}: `)
+            }
+            input.current?.focus()
+          }}
+        />
       </div>
       {bp.completion_state.sufficient && (
         <section className="bi-finish" aria-label="Review and build">

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from typing import Any
 
@@ -22,6 +23,9 @@ class AsyncJobService:
         idempotency_key: str | None = None,
     ) -> uuid.UUID:
         job_id = uuid.uuid4()
+        if os.getenv("LOCAH_JOBS_INERT") == "1":
+            # Test runs: recorded like any job, executed by no worker.
+            payload = {**payload, "inert": True}
         await session.execute(
             text("""
                 INSERT INTO platform_async_jobs (

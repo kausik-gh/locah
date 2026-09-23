@@ -15,6 +15,7 @@ from platform_core.interview.models import (
     CapabilityIntent,
     Message,
     ModuleRecommendation,
+    RecommendationEvidence,
 )
 
 # Recommendation vocabulary, not business-type mechanics. Every value is verified
@@ -31,7 +32,9 @@ INTENTS = {
         "Take bookings and appointments",
         r"\b(book|bookings?|appointments?|reservations?|reserve)\b",
     ),
-    "enquiries": ("leads", "Receive enquiries", r"\b(enquir\w*|inquir\w*|contact us|call us|whatsapp)\b"),
+    # "Call us" is how people reach any business; it is not an enquiry workflow.
+    "enquiries": ("leads", "Receive enquiries",
+                  r"\b(enquir\w*|inquir\w*|whatsapp us|send (?:us )?(?:an? )?(?:message|requirement)s?)\b"),
     "quotes": (
         "quotes",
         "Send quotations",
@@ -62,6 +65,12 @@ CLASSIFICATION_SEEDS = {
     "meat shop": "retail",
     "clothing": "retail",
     "product seller": "retail",
+    "meat": "retail",
+    "grocery": "retail",
+    "vegetables": "retail",
+    "bakery": "cafe",
+    "industrial": "professional_service",
+    "supplier": "professional_service",
     "home food": "restaurant",
     "home-food": "restaurant",
     "real estate": "professional_service",
@@ -110,25 +119,310 @@ def classification_seed(bp: BusinessBlueprint) -> str:
     return "other"
 
 
-def resolve_recommendations(bp: BusinessBlueprint, entitlement: ResolvedEntitlement) -> None:
-    snapshot = PlatformCapabilityResolver.resolve_from_entitlement(entitlement)
+# ------------------------------------------------------------------ recommendations
+#
+# Deterministic and explainable (Document 07 §9): every recommendation names
+# its evidence — the owner's words, an answered question, or an observed way of
+# working — and a Business-Type Profile alone never recommends anything. The
+# model contributes signals; it never names a module.
+
+# Owner-facing names. Canonical ids stay internal.
+FRIENDLY: dict[str, str] = {
+    "offerings-catalog": "Online catalogue",
+    "orders": "Online orders",
+    "payments": "Payments",
+    "inventory": "Inventory & stock",
+    "fulfilment": "Delivery & pickup",
+    "bookings": "Bookings & appointments",
+    "customer-relationships": "Customer relationships",
+    "messaging": "Messaging",
+    "workforce": "Staff & schedules",
+    "memberships": "Memberships",
+    "quotes": "Quotations",
+    "leads": "Enquiries",
+    "invoicing": "Invoices",
+    "projects": "Projects & work orders",
+    "reviews": "Reviews",
+    "loyalty": "Loyalty rewards",
+    "marketing": "Marketing",
+    "analytics": "Analytics",
+    "queue-operations": "Walk-in queue",
+    "b2b-network": "Business network",
+    "payroll": "Payroll",
+}
+WHAT: dict[str, str] = {
+    "offerings-catalog": "Show what you sell or offer, with options and prices.",
+    "orders": "Let customers choose what they want and place an order.",
+    "payments": "Collect payment when customers check out.",
+    "inventory": "Track what is in stock and mark items sold out.",
+    "fulfilment": "Manage delivery and pickup for each order.",
+    "bookings": "Let people book appointments, tables or sessions.",
+    "customer-relationships": "Keep customer details and order history in one place.",
+    "messaging": "Send order updates and messages to customers.",
+    "workforce": "Plan who is working and when.",
+    "memberships": "Sell monthly or yearly plans.",
+    "quotes": "Send quotations and track which are accepted.",
+    "leads": "Collect enquiries and follow them up.",
+    "invoicing": "Send invoices and track what is owed.",
+    "projects": "Track custom work from order to completion.",
+    "reviews": "Collect reviews after an order.",
+    "loyalty": "Reward customers who come back.",
+    "marketing": "Send offers to your customers.",
+}
+
+
+def _short(text: str, limit: int = 3) -> str:
+    parts = [p.strip(" .") for p in re.split(r",|;|\band\b", text) if p.strip(" .")]
+    parts = [p for p in parts if not re.search(r"\ball (?:types|kinds)\b|\beverything\b", p, re.I)]
+    parts = parts[:limit]
+    if not parts:
+        return ""
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
+def _quote(text: str) -> str:
+    quote = " ".join(text.split()).strip(" .")
+    return quote if len(quote) <= 110 else quote[:107].rsplit(" ", 1)[0] + "…"
+
+
+def _evidence_quote(bp: BusinessBlueprint, pattern: str) -> str:
+    """The owner's own sentence that shows this, wherever they said it."""
     facts = {**bp.known_facts, **bp.unconfirmed_facts}
-    action = facts.get("customer_actions")
+    haystack = [facts[k].value for k in ("customer_actions", "operational_characteristics",
+                                         "operating_model", "description", "offerings") if k in facts]
+    haystack += [s.quote for s in bp.discovery.values() if s.quote]
+    haystack += [e.quote for e in bp.operating_patterns]
+    haystack += [m.text for m in bp.messages if m.role == "user"]
+    rx = re.compile(pattern, re.I)
+    for text in haystack:
+        for sentence in re.split(r"(?<=[.!?])\s+", text):
+            if rx.search(sentence):
+                return _quote(sentence)
+    return ""
+
+
+def recommend(
+    bp: BusinessBlueprint, business_type: str | None = None
+) -> dict[str, tuple[str, str, list[RecommendationEvidence], str]]:
+    """module -> (strength, reason for the owner, evidence, configuration needed).
+
+    Only modules with evidence appear. Dependencies are added by the caller.
+    """
+    from platform_core.interview.discovery import TEAM, characteristics
+
+    chars = characteristics(bp, business_type)
+    seen = {c for c, how in chars.items() if how == "observed"}
+    facts = {**bp.known_facts, **bp.unconfirmed_facts}
+    state = bp.discovery
+    intents = {i.intent for i in bp.requested_capabilities}
+    # The plain words of what customers should do ("book appointments", "view
+    # products") are evidence even when the model returned no intents.
+    action_text = facts["customer_actions"].value if "customer_actions" in facts else ""
+    if action_text and not re.search(r"\b(no|not|don't|without)\b", action_text, re.I):
+        intents |= {name for name, (_, _, pattern) in INTENTS.items()
+                    if re.search(pattern, action_text, re.I)}
+    items = _short(facts["offerings"].value) if "offerings" in facts else ""
+    units = (state.get("offerings.units").summary if state.get("offerings.units") else "") or ""
+    payment = (state.get("commerce.payment").summary if state.get("commerce.payment") else "") or ""
+    fulfil = state.get("fulfilment.mode")
+    fulfil_text = ((fulfil.summary + " " + fulfil.quote) if fulfil else "").lower()
+    out: dict[str, tuple[str, str, list[RecommendationEvidence], str]] = {}
+
+    def said(pattern: str, otherwise: str = "") -> list[RecommendationEvidence]:
+        """The owner's own sentence; else the way of working it was read from."""
+        quote = _evidence_quote(bp, pattern)
+        if quote:
+            return [RecommendationEvidence(kind="owner_said", text=quote)]
+        return [RecommendationEvidence(kind="operating_model", text=otherwise)] if otherwise else []
+
+    sells = "sells_products" in seen or ("sells_products" in chars and "accepts_orders" in seen)
+    orders = "accepts_orders" in seen or "orders" in intents
+    # A business buyer asks for a quote and pays an invoice; a consumer
+    # checkout is the wrong tool for them.
+    quote_b2b = "serves_businesses" in seen and ("quote_led" in seen or "quotes" in intents)
+    if sells or orders or "catalog" in intents:
+        what = items or "your products"
+        low_units = units.lower()
+        how = (
+            "so buyers can see what you supply before they ask for a quote" if quote_b2b
+            else "with photos of past work, so people can ask for their own"
+            if "made_to_order" in seen and not orders
+            else "with the weights customers can choose" if re.search(r"\b(kg|kilo|weight|gram)", low_units)
+            else "with the pack sizes you sell" if re.search(r"\b(pack|size)", low_units)
+            else "with the options and prices customers can choose"
+        )
+        out["offerings-catalog"] = (
+            "strong",
+            f"Show {what}, {how}.",
+            said(r"\b(sell|products?|menu|catalog\w*)\b") or [
+                RecommendationEvidence(kind="operating_model", text="You sell products.")],
+            "Add your items, and their options and prices.",
+        )
+    elif "provides_services" in seen:
+        out["offerings-catalog"] = (
+            "useful",
+            "List your services, so people can see what you offer before they get in touch.",
+            [RecommendationEvidence(kind="operating_model", text="You offer services.")],
+            "Add your services.",
+        )
+    if orders and quote_b2b:
+        out["orders"] = (
+            "useful",
+            "Once a buyer accepts your quote, track it as an order through to delivery.",
+            said(r"\b(order\w*|purchase\w*|po)\b") or [
+                RecommendationEvidence(kind="operating_model", text="Business buyers order after a quote.")],
+            "",
+        )
+    elif orders:
+        evidence = said(r"\b(order\w*|buy|cart|checkout)\b")
+        out["orders"] = (
+            "strong",
+            ("Because you said “" + evidence[0].text + "”. " if evidence else "")
+            + "Customers choose what they want and place an order.",
+            evidence or [RecommendationEvidence(kind="operating_model", text="Customers order from you.")],
+            "Decide how orders are confirmed.",
+        )
+        cash_only = re.search(r"\b(cash|cod|pay on delivery)\b", payment, re.I) and not re.search(
+            r"\b(online|upi|card|both)\b", payment, re.I)
+        if cash_only:
+            out["payments"] = (
+                "useful",
+                "You said customers pay cash on delivery for now — add online payment whenever you want.",
+                [RecommendationEvidence(kind="answer", text=payment)],
+                "Choose whether to accept online payment.",
+            )
+        else:
+            out["payments"] = (
+                "strong",
+                "Online orders need a way to pay at checkout — online, cash on delivery, or both."
+                if not payment else f"Collect payment at checkout — {payment[:1].lower()}{payment[1:].rstrip('.')}.",
+                [RecommendationEvidence(kind="answer", text=payment)] if payment else [
+                    RecommendationEvidence(kind="operating_model", text="Customers order online.")],
+                "" if payment else "Choose online payment, cash on delivery, or both.",
+            )
+        # Stock matters when customers pick a quantity of something that can
+        # run out — a weight, packs, pieces — not merely because food is sold.
+        by_quantity = bool(units) and bool(
+            state.get("offerings.units") and state["offerings.units"].status == "answered")
+        if sells and (by_quantity or "stock_based" in seen or "inventory" in intents):
+            quantity = (
+                "the weight" if re.search(r"\b(kg|kilo|weight|gram)", units, re.I)
+                else "how many" if units else "what they want"
+            )
+            out["inventory"] = (
+                "strong",
+                f"Customers choose {quantity} — keep track of what is available and mark items "
+                "sold out, so nobody orders what you don't have.",
+                [RecommendationEvidence(kind="answer", text=units)] if units else
+                said(r"\b(stock|sold out|availab\w*)\b") or [
+                    RecommendationEvidence(kind="operating_model", text="Stock changes day to day.")],
+                "Set what is in stock.",
+            )
+    if "stock_based" in seen and "inventory" not in out:
+        out["inventory"] = ("useful", "Track what is in stock and when items sell out.",
+                            said(r"\b(stock|sold out|availab\w*)\b", "What is available changes."),
+                            "Set what is in stock.")
+    delivers = "delivers" in seen or re.search(r"\bdeliver|\bship", fulfil_text)
+    pickup = "pickup" in seen or re.search(r"pick ?up|collect", fulfil_text)
+    if (delivers or pickup) and orders:
+        area = state.get("fulfilment.area")
+        where = f" to {area.summary.rstrip('.')}" if area and area.summary else ""
+        mode = "delivery" + where + (" and pickup" if pickup else "") if delivers else "pickup"
+        out["fulfilment"] = (
+            "useful" if quote_b2b else "strong",
+            f"You offer {mode} — manage it order by order.",
+            said(r"\b(deliver\w*|pick ?up|ship\w*|take ?away|collect\w*)\b",
+                 (fulfil.summary if fulfil and fulfil.summary else f"You offer {mode}.")),
+            "Set your delivery area and charges." if delivers else "Set pickup times.",
+        )
+    if "accepts_appointments" in seen or "bookings" in intents:
+        evidence = said(r"\b(book\w*|appointment\w*|reserv\w*|slot\w*)\b")
+        out["bookings"] = (
+            "strong",
+            ("Because you said “" + evidence[0].text + "”. " if evidence else "")
+            + "Let people book online.",
+            evidence or [RecommendationEvidence(kind="operating_model", text="People book with you.")],
+            "Set your hours and what can be booked.",
+        )
+    elif "runs_classes" in seen:
+        out["bookings"] = (
+            "useful",
+            "You run classes — let people reserve a place in each one.",
+            said(r"\b(class\w*|batch\w*|sessions?)\b", "You run classes."),
+            "Add your class timetable.",
+        )
+    if "has_team" in seen:
+        evidence = said(TEAM.pattern)
+        if evidence and evidence[0].kind == "owner_said":
+            out["workforce"] = (
+                "useful",
+                f"You mentioned your team (“{evidence[0].text}”) — plan who is working and when.",
+                evidence, "Add your team members.",
+            )
+    if "has_memberships" in seen or "memberships" in intents:
+        out["memberships"] = ("strong", "Sell membership plans and manage renewals.",
+                              said(r"\b(membership\w*|monthly|subscription\w*)\b", "You sell plans."),
+                              "Create your plans.")
+        if "payments" not in out:
+            out["payments"] = (
+                "strong",
+                "Collect membership fees"
+                + (f" — {payment[:1].lower()}{payment[1:].rstrip('.')}." if payment else " online."),
+                [RecommendationEvidence(kind="answer", text=payment)] if payment else [
+                    RecommendationEvidence(kind="operating_model", text="Members pay for plans.")],
+                "" if payment else "Choose how members pay.",
+            )
+    if "quote_led" in seen or "quotes" in intents:
+        evidence = said(r"\b(quot\w*|estimate\w*|rfq)\b")
+        out["quotes"] = (
+            "strong",
+            ("Because you said “" + evidence[0].text + "”. " if evidence else "")
+            + "Send quotations and see which are accepted.",
+            evidence or [RecommendationEvidence(kind="operating_model", text="Customers ask for quotes.")],
+            "Set up your quotation details.",
+        )
+    if "enquiry_led" in seen or "enquiries" in intents or (
+        "serves_businesses" in seen and "quote_led" in seen
+    ):
+        evidence = said(r"\b(enquir\w*|inquir\w*|quot\w*|call us|whatsapp)\b")
+        out["leads"] = (
+            "useful" if (orders and not quote_b2b) or "bookings" in out else "strong",
+            "Collect enquiries in one place and follow each one up.",
+            evidence or [RecommendationEvidence(kind="operating_model", text="Customers enquire first.")],
+            "",
+        )
+    if "made_to_order" in seen and ("projects" in intents or _evidence_quote(
+        bp, r"\b(install\w*|fit\w*|project\w*)\b"
+    )):
+        out["projects"] = ("useful", "Track each custom job from order to installation.",
+                           said(r"\b(install\w*|fit\w*|project\w*|custom)\b", "You make things to order."),
+                           "")
+    if "serves_businesses" in seen or "invoicing" in intents:
+        out["invoicing"] = ("useful", "Send invoices to business customers and track payment.",
+                            said(r"\b(invoice\w*|gst|compan\w*|factor\w*|business\w*)\b",
+                                 "You sell to businesses."), "")
+    # Tools the owner asked for by name, and only then.
+    for intent, module in (("crm", "customer-relationships"), ("messaging", "messaging"),
+                           ("reviews", "reviews"), ("loyalty", "loyalty")):
+        if intent in intents and module not in out:
+            asked = next(i for i in bp.requested_capabilities if i.intent == intent)
+            out[module] = ("strong", WHAT[module],
+                           [RecommendationEvidence(kind="owner_said", text=_quote(asked.original_request))],
+                           "")
+    return out
+
+
+def _gaps(bp: BusinessBlueprint) -> list[CapabilityGapProposal]:
+    """Requests the platform cannot do, answered wherever the owner said them."""
+    facts = {**bp.known_facts, **bp.unconfirmed_facts}
     requests = list(bp.requested_capabilities)
-    if action:
-        # Deterministic fallback recommendations, only from an explicit desired action.
-        for intent, (_, _, pattern) in INTENTS.items():
-            if re.search(pattern, action.value, re.I) and not re.search(
-                r"\b(no|not|don't|without)\b", action.value, re.I
-            ):
-                requests.append(CapabilityIntent(intent=intent, original_request=action.value))
     # An unsupported ask must be answered wherever the owner happened to say it,
     # and whether or not extraction kept it. A hospital asked for "live GPS
     # tracking of our ambulances" in the same breath as everything else;
     # extraction has no field for it, so the sentence was dropped, nothing was
     # raised, and the request passed in silence — which reads to the owner as
-    # the platform having quietly agreed to build it. Confirmed facts are
-    # checked first, then the owner's own words.
+    # the platform having quietly agreed to build it. Fulfilment gives a
+    # customer a status link; it does not track a vehicle live.
     spoken = [fact.value for fact in facts.values()]
     spoken += [message.text for message in bp.messages if message.role == "user"]
     tracking = re.compile(
@@ -145,74 +439,112 @@ def resolve_recommendations(bp: BusinessBlueprint, entitlement: ResolvedEntitlem
                 )
             )
             break
-    wanted: dict[str, str] = {}
     gaps: dict[str, CapabilityGapProposal] = {}
     for request in requests:
-        if request.intent not in INTENTS:
-            gaps[request.intent] = CapabilityGapProposal(
-                original_request=request.original_request,
-                normalized_intent=request.intent,
-                business_classification=classification_seed(bp),
-                closest_supported_capabilities=["use_fulfilment"]
-                if "track" in request.intent
-                else [],
-                why_unsupported="This specific workflow is not available in the current platform. It will not be added to your website.",
-                required_mechanics=[
-                    "A separately designed, authorised and tested platform integration"
-                ],
-                session_reference=bp.session_id,
-            )
+        if request.intent in INTENTS or request.intent in gaps:
             continue
-        module, _, _ = INTENTS[request.intent]
-        if ModuleRegistry.get(module) and module not in wanted:
-            wanted[module] = because(request.original_request)
-
-    def dependencies(module: str) -> None:
-        definition = ModuleRegistry.get_or_raise(module)
-        for dep in definition.dependencies:
-            if dep in ModuleRegistry.platform_core_ids() or dep in wanted:
-                continue
-            wanted[dep] = (
-                f"Needed by {LABELS.get(module, definition.display_name).lower()}; your choice is still required."
-            )
-            dependencies(dep)
-
-    for module in list(wanted):
-        dependencies(module)
-    recommendations = []
-    for module, reason in wanted.items():
-        definition = ModuleRegistry.get_or_raise(module)
-        state = entitlement.module_states.get(module)
-        caps = [key for key, cap in CAPABILITIES.items() if cap.required_module_id == module]
-        enabled_features = all(
-            entitlement.feature_states.get(feature) and entitlement.feature_states[feature].enabled
-            for feature in definition.features[:1]
+        gaps[request.intent] = CapabilityGapProposal(
+            original_request=request.original_request,
+            normalized_intent=request.intent,
+            business_classification=classification_seed(bp),
+            closest_supported_capabilities=["use_fulfilment"] if "track" in request.intent else [],
+            why_unsupported="This specific workflow is not available in the current platform. "
+            "It will not be added to your website.",
+            required_mechanics=["A separately designed, authorised and tested platform integration"],
+            session_reference=bp.session_id,
         )
-        if not state or not state.entitled or not enabled_features:
-            status = "NOT_CURRENTLY_AVAILABLE"
-            why = "Not included or enabled in your current access. Choosing this does not upgrade your plan."
-        elif state.activation_state != "active":
-            status = "SUPPORTED_NOT_ENABLED"
-            why = "Off. Your approval can enable it; setup is still required before customers can use it."
-        elif (
-            not state.configuration_ready
-            or not state.dependency_satisfied
-            or any(not snapshot.capabilities.get(cap, False) for cap in caps)
-        ):
-            status = "SUPPORTED_REQUIRES_CONFIGURATION"
-            why = "Requires setup, dependencies or available usage allowance."
-        else:
-            status = "SUPPORTED"
-            why = "Enabled. Actual products, availability and payment configuration still govern customer actions."
+    return list(gaps.values())[:40]
+
+
+def _status(
+    module: str, entitlement: ResolvedEntitlement, snapshot: object
+) -> tuple[str, str, list[str]]:
+    definition = ModuleRegistry.get_or_raise(module)
+    state = entitlement.module_states.get(module)
+    caps = [key for key, cap in CAPABILITIES.items() if cap.required_module_id == module]
+    enabled_features = all(
+        entitlement.feature_states.get(feature) and entitlement.feature_states[feature].enabled
+        for feature in definition.features[:1]
+    )
+    capabilities = getattr(snapshot, "capabilities", {})
+    if not state or not state.entitled or not enabled_features:
+        return ("NOT_CURRENTLY_AVAILABLE",
+                "Not included in your current access. Choosing it does not upgrade your plan.", caps)
+    if state.activation_state != "active":
+        return ("SUPPORTED_NOT_ENABLED",
+                "Off until you choose it. Some setup is needed before customers can use it.", caps)
+    if (
+        not state.configuration_ready
+        or not state.dependency_satisfied
+        or any(not capabilities.get(cap, False) for cap in caps)
+    ):
+        return "SUPPORTED_REQUIRES_CONFIGURATION", "On, but still needs setup.", caps
+    return "SUPPORTED", "Already on.", caps
+
+
+def resolve_recommendations(
+    bp: BusinessBlueprint, entitlement: ResolvedEntitlement, business_type: str | None = None
+) -> None:
+    """Rebuild the recommendations from everything known so far.
+
+    Recomputed every turn, so they evolve with the conversation — "we sell
+    meat" suggests a catalogue; "select meat, select kg and order" adds orders,
+    payments and stock; "we deliver" adds fulfilment. The owner's choices are
+    kept by module id and never reset. Nothing here enables anything.
+    """
+    snapshot = PlatformCapabilityResolver.resolve_from_entitlement(entitlement)
+    found = recommend(bp, business_type)
+    needed_by: dict[str, list[str]] = {}
+    core = ModuleRegistry.platform_core_ids()
+
+    def add_dependencies(module: str) -> None:
+        for dep in ModuleRegistry.get_or_raise(module).dependencies:
+            if dep in core:
+                continue
+            needed_by.setdefault(dep, [])
+            if module not in needed_by[dep]:
+                needed_by[dep].append(module)
+            if dep not in found:
+                found[dep] = (
+                    "dependency",
+                    f"Needed for {FRIENDLY.get(module, module)}. {WHAT.get(dep, '')}".strip(),
+                    [RecommendationEvidence(kind="dependency", text=f"{FRIENDLY.get(module, module)} "
+                                            f"works on top of {FRIENDLY.get(dep, dep)}.")],
+                    "",
+                )
+                add_dependencies(dep)
+
+    for module in list(found):
+        if ModuleRegistry.get(module):
+            add_dependencies(module)
+    order = {"strong": 0, "useful": 1, "dependency": 2}
+    # The order an owner thinks in: what I sell, how it is ordered and paid
+    # for, what is in stock, how it reaches them — then everything else.
+    journey = ["offerings-catalog", "orders", "bookings", "quotes", "leads", "payments",
+               "memberships", "inventory", "fulfilment"]
+    recommendations: list[ModuleRecommendation] = []
+    for module, (strength, reason, evidence, configuration) in sorted(
+        found.items(),
+        key=lambda kv: (order[kv[1][0]], journey.index(kv[0]) if kv[0] in journey else 99, kv[0]),
+    ):
+        definition = ModuleRegistry.get(module)
+        if definition is None:
+            continue
+        status, why, caps = _status(module, entitlement, snapshot)
         recommendations.append(
             ModuleRecommendation(
                 module_id=module,
-                label=LABELS.get(module, definition.display_name),
-                reason=reason,
+                label=FRIENDLY.get(module, definition.display_name),
+                reason=reason[:400],
                 capability_ids=caps,
                 dependencies=list(definition.dependencies),
                 status=status,
                 availability_reason=why,
+                group="customer" if module in CUSTOMER_FACING else "operations",
+                strength=strength,
+                evidence=[e for e in evidence if e.text][:6],
+                configuration_needed=configuration,
+                needed_by=[FRIENDLY.get(m, m) for m in needed_by.get(module, [])],
                 choice="declined"
                 if module in bp.declined_modules
                 else "approved"
@@ -221,7 +553,7 @@ def resolve_recommendations(bp: BusinessBlueprint, entitlement: ResolvedEntitlem
             )
         )
     bp.recommended_modules = recommendations
-    bp.unsupported_requests = list(gaps.values())[:40]
+    bp.unsupported_requests = _gaps(bp)
 
 
 def available_modules(
@@ -272,8 +604,8 @@ def available_modules(
         result.append(
             ModuleRecommendation(
                 module_id=module,
-                label=LABELS.get(module, definition.display_name),
-                reason=getattr(definition, "description", "") or definition.display_name,
+                label=FRIENDLY.get(module, definition.display_name),
+                reason=WHAT.get(module) or getattr(definition, "description", "") or definition.display_name,
                 capability_ids=caps,
                 dependencies=list(definition.dependencies),
                 status=status,

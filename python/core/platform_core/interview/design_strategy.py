@@ -672,6 +672,12 @@ async def generate_website_plan(
     ][-8:]
     context["business"]["highlights"] = [h.model_dump() for h in bp.highlights]
     context["business"]["operating_patterns"] = sorted({p.pattern for p in bp.operating_patterns})
+    # What the conversation established for the site: how customers buy, how
+    # things are sold, the story, the owner's own lines, and the wording the
+    # owner has already seen. Locked lines are used as they are.
+    from platform_core.interview.website_brief import build_brief
+
+    context["brief"] = build_brief(bp).model_dump(exclude_defaults=True)
     model_config: dict[str, Any] = {
         "purpose": "website.personalization",
         "schema_name": "locah_website_plan",

@@ -30,6 +30,16 @@ os.environ.pop("SUPABASE_JWKS_URL", None)
 # `UnavailableAIProvider` by default; the live Grok path is covered with a
 # stubbed provider in test_website_generation.py.
 os.environ.pop("XAI_API_KEY", None)
+# Gemini is the default provider and its key is paid. A test that forgets to
+# stub the provider must fail fast into the deterministic path, never spend.
+os.environ.pop("GEMINI_API_KEY", None)
+os.environ["IMAGE_PROVIDER"] = "none"
+
+# The suite writes to a database a deployed worker also polls. Every job it
+# queues is marked inert, and workers acknowledge inert jobs without running
+# them — otherwise a test build would be personalised, and pictures drawn, on
+# a paid key by whichever worker happened to claim it.
+os.environ["LOCAH_JOBS_INERT"] = "1"
 
 # AUD-11: keep the per-request INFO line ("request.completed") out of the test
 # transcript. WARN/ERROR — gate denials, 5xx, webhook signature rejections —

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -672,17 +673,22 @@ class WebsiteGenerationService:
                 action="fell_back",
                 after_state={"fallback_reason": fallback_reason},
             )
-        await AsyncJobService.enqueue(
-            session,
-            job_type="media.generate_website_images",
-            payload={
-                "business_id": str(job.business_id),
-                "actor_id": str(job.triggered_by),
-                "correlation_id": correlation_id,
-                "generation_job_id": str(job.id),
-            },
-            business_id=job.business_id,
-        )
+        if os.getenv("AUTO_GENERATE_WEBSITE_IMAGES") == "1":
+            # Off by default. Drawing a hero and product pictures for every
+            # generated site spends a paid image provider on owners who never
+            # asked — pictures are made when the owner asks, in the interview
+            # or the editor.
+            await AsyncJobService.enqueue(
+                session,
+                job_type="media.generate_website_images",
+                payload={
+                    "business_id": str(job.business_id),
+                    "actor_id": str(job.triggered_by),
+                    "correlation_id": correlation_id,
+                    "generation_job_id": str(job.id),
+                },
+                business_id=job.business_id,
+            )
         return {
             "status": job.status,
             "job_id": str(job.id),

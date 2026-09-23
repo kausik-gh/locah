@@ -353,3 +353,16 @@ async def test_concurrent_job_claim_safety(db_session: AsyncSession) -> None:
     # The specific job must be claimed by at most one worker
     assert not (str(job_id) in ids_a and str(job_id) in ids_b)
     assert str(job_id) in ids_a or str(job_id) in ids_b
+
+
+async def test_a_deployed_worker_acknowledges_a_test_job_without_running_it(monkeypatch) -> None:
+    """A job a test run queued on the shared database never runs on a deployed worker."""
+    from platform_worker.job_runner import _execute_job
+
+    job = {"job_type": "interview.generate_logo", "payload": {"inert": True, "__force_fail": True}}
+    monkeypatch.delenv("LOCAH_JOBS_INERT", raising=False)
+    await _execute_job(None, job)  # type: ignore[arg-type] — returns before touching the session
+    # The test process itself (inert, no paid keys) still drains its own jobs.
+    monkeypatch.setenv("LOCAH_JOBS_INERT", "1")
+    with pytest.raises(RuntimeError, match="forced job failure"):
+        await _execute_job(None, job)  # type: ignore[arg-type]

@@ -78,7 +78,7 @@ def test_prompts_carry_the_trade_and_colours_not_the_business():
     logo, logo_aspect = media.prompt_for(bp.media_generation_requests[1], bp)
     assert hero_aspect == "16:9" and logo_aspect == "1:1"
     assert "Teakwood" not in hero and "wardrobe" not in hero.lower()
-    assert "letter T" in logo
+    assert "letter T" in logo  # the build-time monogram prompt
 
 
 async def test_artwork_waits_for_personalization_instead_of_touching_the_draft(wired):
@@ -101,16 +101,34 @@ async def test_artwork_is_placed_once_personalization_is_done(wired):
     assert w.persist.call_args.kwargs["alt_text"] == "AI-generated decorative artwork"
 
 
+def _drawer(image: GeneratedImage | None = None, reason: str = ""):
+    calls: list[tuple[str, str]] = []
+
+    async def draw(prompt: str, aspect: str):
+        calls.append((prompt, aspect))
+        return image, reason
+
+    draw.calls = calls  # type: ignore[attr-defined]
+    return draw
+
+
+PNG = GeneratedImage(mime_type="image/png", bytes=b"png", model="m", latency_ms=1, prompt="p")
+
+
 async def test_a_requested_logo_becomes_the_brand_logo_marked_generated(wired):
     bp = blueprint("logo")
     w = wired(bp)
-    adapter = Adapter()
-    await media.generate_interview_media(w.session, business_id=bp.business_id, actor_id=uuid4(),
-        generation_job_id=bp.completion_state.generation_job_id, adapter=adapter)
-    assert adapter.calls[0][1] == "1:1"
+    draw = _drawer(PNG)
+    outcome = await media.generate_interview_logo(w.session, business_id=bp.business_id,
+                                                  actor_id=uuid4(), draw=draw)
+    assert outcome == "ready"
+    prompt, aspect = draw.calls[0]
+    # Brand context only: the name and the colours, never the conversation.
+    assert aspect == "1:1" and "Teakwood Furniture Co" in prompt and "wardrobes" not in prompt
     asset_id = w.branding.call_args.kwargs["raw"]["logo_asset_id"]
     final = w.saved[-1]
     assert final.logo_state == "generated"
+    assert final.revision == bp.revision  # a logo arriving never makes the owner's next message stale
     assert final.media_assets[-1] == MediaReference(
         asset_id=asset_id, role="logo", label="AI-generated logo", source="AI_GENERATED")
 
@@ -119,21 +137,45 @@ async def test_an_uploaded_logo_is_never_replaced(wired):
     bp = blueprint("logo")
     bp.media_assets = [MediaReference(asset_id=uuid4(), role="logo", source="USER_UPLOAD")]
     w = wired(bp)
-    await media.generate_interview_media(w.session, business_id=bp.business_id, actor_id=uuid4(),
-        generation_job_id=bp.completion_state.generation_job_id, adapter=Adapter())
+    await media.generate_interview_logo(w.session, business_id=bp.business_id, actor_id=uuid4(),
+                                        draw=_drawer(PNG))
     w.branding.assert_not_awaited()
     assert w.saved[-1].media_generation_requests[0].status == "failed"
 
 
 async def test_a_provider_failure_leaves_a_reason_not_a_broken_site(wired):
-    bp = blueprint("hero", "logo")
+    bp = blueprint("hero")
     w = wired(bp)
     await media.generate_interview_media(w.session, business_id=bp.business_id, actor_id=uuid4(),
         generation_job_id=bp.completion_state.generation_job_id, adapter=Adapter(fail=True))
-    statuses = {r.role: (r.status, r.reason) for r in w.saved[-1].media_generation_requests}
-    assert statuses["hero"][0] == "failed" and "usable without it" in statuses["hero"][1]
-    assert statuses["logo"][0] == "failed" and "upload one" in statuses["logo"][1]
+    hero = w.saved[-1].media_generation_requests[0]
+    assert hero.status == "failed" and "usable without it" in (hero.reason or "")
     w.persist.assert_not_awaited()
+
+
+@pytest.mark.parametrize("reason,words", [
+    ("quota", "reached its limit"),
+    ("billing", "isn't enabled"),
+    ("unavailable", "isn't available"),
+])
+async def test_a_failed_logo_says_why_in_plain_words(wired, reason, words):
+    """A quota refusal must never sound like Locah misunderstood the owner."""
+    bp = blueprint("logo")
+    w = wired(bp)
+    await media.generate_interview_logo(w.session, business_id=bp.business_id, actor_id=uuid4(),
+                                        draw=_drawer(None, reason))
+    logo = w.saved[-1].media_generation_requests[0]
+    assert logo.status == "failed" and words in (logo.reason or "")
+    w.persist.assert_not_awaited()
+
+
+async def test_the_build_job_never_draws_the_logo_a_second_time(wired):
+    bp = blueprint("hero", "logo")
+    w = wired(bp)
+    adapter = Adapter()
+    await media.generate_interview_media(w.session, business_id=bp.business_id, actor_id=uuid4(),
+        generation_job_id=bp.completion_state.generation_job_id, adapter=adapter)
+    assert [aspect for _, aspect in adapter.calls] == ["16:9"]
 
 
 async def test_a_stale_job_does_nothing(wired):
@@ -161,7 +203,8 @@ async def test_the_owner_can_ask_for_a_logo_but_not_over_their_own(monkeypatch):
     await Service.execute(AsyncMock(), bp.business_id, InterviewCommand(
         action="image", image_role="logo", revision=0, request_id=uuid4()),
         actor_id=uuid4(), correlation_id="c")
-    assert [(r.role, r.status) for r in saved[-1].media_generation_requests] == [("logo", "requested")]
+    # Queued at once, drawn in the background while the owner carries on.
+    assert [(r.role, r.status) for r in saved[-1].media_generation_requests] == [("logo", "queued")]
     assert saved[-1].logo_state == "generation_requested"
 
     bp.media_assets = [MediaReference(asset_id=uuid4(), role="logo", source="USER_UPLOAD")]

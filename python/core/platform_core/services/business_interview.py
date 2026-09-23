@@ -38,14 +38,19 @@ from platform_core.interview.design_strategy import (
 )
 from platform_core.interview.models import (
     BusinessBlueprint,
+    DraftCommand,
+    DraftText,
     Fact,
     InterviewCommand,
     Message,
     MediaGenerationRequest,
+    OfferingDraft,
+    TargetState,
     now,
 )
 from platform_core.interview import voice
 from platform_core.interview.orchestrator import BusinessInterviewOrchestrator, QUESTIONS
+from platform_core.interview.understanding import understanding
 from platform_core.interview.website import build_preview
 from platform_core.logging import get_logger
 from platform_core.models import Business, WebsiteGenerationJob, WebsiteVersion
@@ -92,6 +97,85 @@ def public_contact(bp: BusinessBlueprint) -> dict[str, Any]:
     return contact
 
 
+def _carry_media(fresh: BusinessBlueprint, proposed: BusinessBlueprint) -> None:
+    """Keep media the worker finished while a turn was being understood."""
+    known = {m.asset_id for m in proposed.media_assets}
+    for media in fresh.media_assets:
+        if media.asset_id not in known:
+            proposed.media_assets.append(media)
+    for request in fresh.media_generation_requests:
+        mine = next((r for r in proposed.media_generation_requests if r.role == request.role), None)
+        newer = (
+            mine is None
+            or request.status == "ready"
+            # the worker moved on from what this turn started with...
+            or (mine.status == "queued" and request.status in {"failed", "ready"})
+        )
+        # ...but a fresh ask this turn ("try again") beats an old failure.
+        if newer and not (mine is not None and mine.status == "requested"):
+            proposed.media_generation_requests = [
+                r for r in proposed.media_generation_requests if r.role != request.role
+            ] + [request]
+    if fresh.logo_state == "generated":
+        proposed.logo_state = "generated"
+
+
+def _apply_draft(bp: BusinessBlueprint, command: DraftCommand) -> None:
+    """The owner editing, keeping or removing website wording. The owner wins."""
+    wd = bp.website_draft
+    text = " ".join(command.text.split())
+    if command.field == "offering":
+        name = " ".join(command.offering_name.split())
+        offering = next((o for o in wd.offerings if o.name.casefold() == name.casefold()), None)
+        if offering is None:
+            if command.op != "edit" or not name:
+                raise ValidationError("That item is not in the draft")
+            offering = OfferingDraft(name=name[:80])
+            wd.offerings.append(offering)
+        if command.op == "edit":
+            offering.description = DraftText(text=text[:800], provenance="owner_edited") if text else None
+        elif command.op == "approve" and offering.description:
+            offering.description = offering.description.model_copy(update={"provenance": "owner_approved"})
+        elif command.op == "dismiss":
+            wd.offerings = [o for o in wd.offerings if o is not offering]
+        return
+    current = getattr(wd, command.field)
+    if command.op == "edit":
+        if not text:
+            raise ValidationError("Write something, or remove it instead")
+        limits = {"hero_headline": 90, "hero_subheadline": 220, "about": 800, "cta_label": 32}
+        setattr(wd, command.field, DraftText(text=text[: limits[command.field]], provenance="owner_edited"))
+        wd.dismissed = [f for f in wd.dismissed if f != command.field]
+    elif command.op == "approve":
+        if current is None:
+            raise ValidationError("There is nothing there to keep yet")
+        setattr(wd, command.field, current.model_copy(update={"provenance": "owner_approved"}))
+    elif command.op == "dismiss":
+        setattr(wd, command.field, None)
+        if command.field not in wd.dismissed:
+            wd.dismissed.append(command.field)
+
+
+async def _queue_logo(
+    session: AsyncSession, business: Business, bp: BusinessBlueprint, *, actor_id: UUID
+) -> None:
+    """Draw a requested logo now, in the background, while the owner carries on."""
+    request = next(
+        (r for r in bp.media_generation_requests if r.role == "logo" and r.status == "requested"),
+        None,
+    )
+    if request is None or not image_generation_available():
+        return
+    await AsyncJobService.enqueue(
+        session,
+        job_type="interview.generate_logo",
+        business_id=business.id,
+        payload={"business_id": str(business.id), "actor_id": str(actor_id)},
+        max_attempts=1,
+    )
+    request.status = "queued"
+
+
 class BusinessInterviewService:
     @staticmethod
     async def load_business(
@@ -126,8 +210,8 @@ class BusinessInterviewService:
                 ),
             },
             remaining_questions=list(QUESTIONS),
-            messages=[Message(role="assistant", text=QUESTIONS[0].text)],
         )
+        bp.messages = [Message(role="assistant", text=BusinessInterviewOrchestrator.opening_question(bp))]
         return bp
 
     @staticmethod
@@ -187,10 +271,19 @@ class BusinessInterviewService:
             entitlement = await BusinessEntitlementResolver.resolve(
                 session, business.id, business=business
             )
-        resolve_recommendations(bp, entitlement)
+        resolve_recommendations(bp, entitlement, business.business_type)
         active = operational_modules(entitlement)
+        logo_url = None
+        logo = next((m for m in reversed(bp.media_assets) if m.role == "logo"), None)
+        if logo:
+            try:
+                logo_url = (await MediaService.get(
+                    session, business_id=business.id, asset_id=logo.asset_id))["url"]
+            except Exception:  # noqa: BLE001 — a missing picture never breaks the page
+                logo_url = None
         return {
             "blueprint": bp.model_dump(mode="json"),
+            "understanding": understanding(bp, business.business_type, logo_url),
             "available_modules": [
                 item.model_dump(mode="json") for item in available_modules(bp, entitlement)
             ],
@@ -211,9 +304,9 @@ class BusinessInterviewService:
             },
             "image_generation": {
                 "available": image_generation_available(),
-                "reason": "Locah can draw cover artwork, or a simple one-letter logo if you have "
-                "none. It is artwork, marked as generated — never a photo of your business. "
-                "Your own photos and logo always come first.",
+                "reason": "Locah can draw a logo if you have none, or cover artwork. It is "
+                "marked as generated — never a photo of your business. Your own photos and "
+                "logo always come first.",
             },
         }
 
@@ -257,30 +350,46 @@ class BusinessInterviewService:
             await session.commit()
             try:
                 proposed = await BusinessInterviewOrchestrator.turn(
-                    initial, command.text, field=command.field
+                    initial, command.text, field=command.field,
+                    business_type=business.business_type,
+                    image_available=image_generation_available(),
                 )
             except ValueError as exc:
                 raise ValidationError(str(exc)) from exc
+        elif command.action == "draft" and command.draft and command.draft.op == "regenerate":
+            await session.commit()
+            proposed = await BusinessInterviewOrchestrator.regenerate_draft(
+                initial, command.draft.field, command.draft.offering_name,
+                business_type=business.business_type,
+            )
         business = await BusinessInterviewService.load_business(session, business_id, lock=True)
         bp = BusinessInterviewService.read(business)
         if not BusinessInterviewService.check_revision(bp, command):
             return await BusinessInterviewService.response(session, business, bp)
         if proposed is not None:
+            # A logo can finish drawing while the model was thinking about this
+            # turn. Keep what the worker wrote; everything else is this turn's.
+            _carry_media(bp, proposed)
             bp = proposed
             if bp.completion_state.status == "built":
                 bp.completion_state.status = "review"
-                BusinessInterviewOrchestrator.project(bp)
+                BusinessInterviewOrchestrator.project(bp, business.business_type)
         entitlement = await BusinessEntitlementResolver.resolve(
             session, business_id, business=business
         )
         previous_unsupported = {
             gap.normalized_intent for gap in initial.unsupported_requests
         }
-        resolve_recommendations(bp, entitlement)
-        if proposed is not None:
+        resolve_recommendations(bp, entitlement, business.business_type)
+        if proposed is not None and command.action == "turn":
             surface_new_unsupported_requests(bp, previous_unsupported)
         if command.action == "confirm":
-            BusinessInterviewOrchestrator.confirm(bp)
+            BusinessInterviewOrchestrator.confirm(bp, business.business_type)
+        elif command.action == "draft":
+            if command.draft is None:
+                raise ValidationError("Nothing to change")
+            if command.draft.op != "regenerate":
+                _apply_draft(bp, command.draft)
         elif command.action == "choices":
             allowed = {item.module_id for item in bp.recommended_modules}
             allowed.update(item.module_id for item in available_modules(bp, entitlement))
@@ -334,10 +443,12 @@ class BusinessInterviewService:
             ] + [MediaGenerationRequest(role=role, status="requested")]
             if role == "logo":
                 bp.logo_state = "generation_requested"
+                bp.discovery.setdefault("media.logo", TargetState()).status = "answered"
         elif command.action == "build":
             await BusinessInterviewService.build(
                 session, business, bp, actor_id=actor_id, correlation_id=correlation_id
             )
+        await _queue_logo(session, business, bp, actor_id=actor_id)
         bp.revision += 1
         bp.applied_requests = (bp.applied_requests + [command.request_id])[-30:]
         await BusinessInterviewService.save(session, business, bp)
@@ -372,7 +483,7 @@ class BusinessInterviewService:
         actor_id: UUID,
         correlation_id: str,
     ) -> None:
-        BusinessInterviewOrchestrator.project(bp)
+        BusinessInterviewOrchestrator.project(bp, business.business_type)
         if not bp.completion_state.confirmed:
             raise ValidationError("Review and confirm your business details before building")
         if any(r.choice == "pending" for r in bp.recommended_modules):
@@ -508,7 +619,7 @@ class BusinessInterviewService:
             },
             max_attempts=2,
         )
-        if any(r.status == "requested" for r in bp.media_generation_requests):
+        if any(r.role == "hero" and r.status == "requested" for r in bp.media_generation_requests):
             await AsyncJobService.enqueue(
                 session,
                 job_type="interview.generate_media",
@@ -521,7 +632,7 @@ class BusinessInterviewService:
                 max_attempts=1,
             )
             for request in bp.media_generation_requests:
-                if request.status == "requested":
+                if request.role == "hero" and request.status == "requested":
                     request.status = "queued"
         get_logger("business.interview").info(
             "interview.preview_ready",

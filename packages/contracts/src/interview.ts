@@ -16,6 +16,48 @@ export type InterviewModule = {
   availability_reason: string; choice: 'pending' | 'approved' | 'declined'
   /** Who the tool is for: the owner's customers, or running the business. */
   group?: 'customer' | 'operations'
+  /** How strongly the conversation points at it; `dependency` = another tool needs it. */
+  strength?: 'strong' | 'useful' | 'dependency'
+  evidence?: { kind: 'owner_said' | 'operating_model' | 'answer' | 'dependency' | 'profile'; text: string }[]
+  /** What still has to be set up before customers can use it. */
+  configuration_needed?: string
+  /** Owner-facing names of the tools that need this one. */
+  needed_by?: string[]
+}
+export type DiscoveryTargetStatus = 'open' | 'asked' | 'partial' | 'answered' | 'declined' | 'deferred'
+/** What Locah knows about one concept (not one question), and how often it asked. */
+export type DiscoveryTarget = {
+  status: DiscoveryTargetStatus; asked: number; last_asked_turn: number | null
+  summary: string; quote: string
+}
+export type DraftProvenance = 'ai_suggestion' | 'owner_claim' | 'owner_edited' | 'owner_approved'
+export type DraftText = { text: string; provenance: DraftProvenance; updated_at: string }
+/** Website wording beside the conversation. Presentation, never business truth. */
+export type WebsiteDraft = {
+  hero_headline: DraftText | null; hero_subheadline: DraftText | null
+  about: DraftText | null; cta_label: DraftText | null
+  offerings: { name: string; description: DraftText | null }[]
+  owner_claims: { claim: string; quote: string }[]
+  dismissed: string[]
+}
+export type DraftField = 'hero_headline' | 'hero_subheadline' | 'about' | 'cta_label' | 'offering'
+export type DraftCommand = {
+  field: DraftField; op: 'edit' | 'approve' | 'dismiss' | 'regenerate'
+  text?: string; offering_name?: string
+}
+export type InterviewReadiness = { ready: boolean; missing: string[]; reason: string }
+/** The side panel: built from state by the server, never a fact dump. */
+export type InterviewUnderstanding = {
+  kind: string
+  traits: string[]
+  customer_steps: string[]
+  items: { label: string; value: string; status: 'confirmed' | 'from_you'; target: string }[]
+  still_worth_knowing: { id: string; label: string; essential: boolean }[]
+  readiness: InterviewReadiness
+  logo:
+    | { state: 'none' }
+    | { state: 'ready'; source: 'USER_UPLOAD' | 'AI_GENERATED'; url: string | null }
+    | { state: 'requested' | 'unavailable' | 'queued' | 'failed'; reason: string | null }
 }
 export type BusinessBlueprint = {
   schema_version: 1; business_id: string; session_id: string; revision: number
@@ -26,7 +68,9 @@ export type BusinessBlueprint = {
   brand: InterviewFact | null; tone: InterviewFact | null; colours: InterviewFact | null
   logo_state: 'not_supplied' | 'uploaded' | 'generation_requested' | 'generated'
   media_assets: InterviewMedia[]
-  media_generation_requests: { role: 'hero' | 'logo'; status: string; reason: string | null; asset_id: string | null }[]
+  media_generation_requests: { role: 'hero' | 'logo'
+    status: 'requested' | 'unavailable' | 'queued' | 'ready' | 'failed'
+    reason: string | null; asset_id: string | null }[]
   requested_capabilities: { intent: string; original_request: string }[]
   recommended_modules: InterviewModule[]; declined_modules: string[]; approved_modules: string[]
   website_content: Record<string, InterviewFact>; website_priorities: InterviewFact | null
@@ -49,9 +93,15 @@ export type BusinessBlueprint = {
   /** Numbers the owner said, verified against their own words. */
   highlights: { value: string; label: string; quote: string }[]
   asked_optional: ('locations' | 'phone' | 'logo')[]
+  /** Discovery state per concept ("offerings.units", "fulfilment.mode", ...). */
+  discovery: Record<string, DiscoveryTarget>
+  last_asked_target: string | null
+  website_draft: WebsiteDraft
+  readiness: InterviewReadiness
 }
 export type BusinessInterviewData = {
   blueprint: BusinessBlueprint; classification_seed: string
+  understanding: InterviewUnderstanding
   available_modules: InterviewModule[]
   templates: { id: string; name: string; description: string; primary_color: string; accent_color: string
     available: boolean; look: string[]; page_count: number }[]
@@ -60,9 +110,11 @@ export type BusinessInterviewData = {
 }
 export type InterviewCommand = {
   revision: number; request_id: string
-  action: 'turn' | 'confirm' | 'choices' | 'template' | 'media' | 'image' | 'build'
+  action: 'turn' | 'confirm' | 'choices' | 'template' | 'media' | 'image' | 'build' | 'draft'
   text?: string; field?: InterviewFactKey; choices?: Record<string, 'approved' | 'declined'>
   template_id?: string; media?: InterviewMedia
   /** For action 'image': what to draw. */
   image_role?: 'hero' | 'logo'
+  /** For action 'draft': edit, keep, remove or rewrite one piece of website wording. */
+  draft?: DraftCommand
 }

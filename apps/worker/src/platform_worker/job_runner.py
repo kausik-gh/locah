@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from sqlalchemy import text
@@ -54,6 +55,12 @@ async def _record_processed(session: AsyncSession, job_id: str, handler: str) ->
 async def _execute_job(session: AsyncSession, job: dict[str, Any]) -> None:
     """Dispatch known job types; unknown types acknowledge without side effects."""
     payload = _payload_as_dict(job.get("payload"))
+    if payload.get("inert") and os.getenv("LOCAH_JOBS_INERT") != "1":
+        # Queued by a test run against a shared database. A deployed worker
+        # acknowledges it and never executes it: running it would spend a paid
+        # provider on a fake business. The test process itself (inert too, and
+        # holding no paid keys) may still drain its own jobs.
+        return
     if payload.get("__force_fail"):
         message = str(payload.get("__force_fail_message") or "forced job failure")
         raise RuntimeError(message)
@@ -94,6 +101,12 @@ async def _execute_job(session: AsyncSession, job: dict[str, Any]) -> None:
             correlation_id=str(payload.get("correlation_id") or job.get("id")),
             trigger="async_job",
         )
+    elif job_type == "interview.generate_logo":
+        # A logo the owner asked for mid-conversation, drawn while they carry on.
+        from uuid import UUID
+        from platform_core.interview.media import generate_interview_logo
+        await generate_interview_logo(session, business_id=UUID(payload["business_id"]),
+                                      actor_id=UUID(payload["actor_id"]))
     elif job_type in {"interview.generate_media", "interview.generate_hero"}:
         # generate_hero is the name jobs queued before logos existed still carry.
         from uuid import UUID

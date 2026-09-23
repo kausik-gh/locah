@@ -19,6 +19,7 @@ import pytest
 
 from platform_core.exceptions import PermissionDenied, ServiceUnavailable
 from platform_core.interview import voice
+from platform_core.interview.models import TargetState, Message
 from platform_core.interview.models import BusinessBlueprint, Fact
 from platform_core.interview.orchestrator import BusinessInterviewOrchestrator as Engine
 from platform_core.interview.orchestrator import QUESTIONS
@@ -227,14 +228,19 @@ def test_known_facts_are_marked_never_to_be_asked_again():
 
 def test_the_next_question_comes_from_the_interview_not_the_model():
     bp = blueprint(description="We make furniture")
+    bp.messages = [Message(role="assistant", text="Which pieces should customers see first?")]
     Engine.project(bp)
-    assert bp.remaining_questions[0].text in voice.build_session_instructions(bp)
+    # The voice repeats Locah's own question; it never chooses one.
+    assert "Which pieces should customers see first?" in voice.build_session_instructions(bp)
 
 
 def test_completion_tells_the_voice_to_stop_interviewing():
     bp = blueprint(
-        description="We make furniture", offerings="Sofas", customer_actions="Send an enquiry"
+        description="We make furniture", offerings="Sofas, wardrobes and dining tables",
+        customer_actions="Send an enquiry", locations="Jaipur", phone="94140 55678",
     )
+    bp.discovery["brand.story"] = TargetState(status="answered", summary="Made to last.")
+    bp.discovery["media.logo"] = TargetState(status="declined", asked=1)
     Engine.project(bp)
     assert bp.completion_state.sufficient
     instructions = voice.build_session_instructions(bp)

@@ -13,6 +13,7 @@ it, and an uploaded logo is never replaced.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -38,6 +39,9 @@ from platform_core.website.image_generation import (
     generate_image_bytes,
     hero_prompt,
     logo_prompt,
+    FAILURE_REASONS,
+    brand_logo_prompt,
+    generate_image,
 )
 from platform_core.website.template_registry import TEMPLATES_BY_ID
 
@@ -98,7 +102,9 @@ async def generate_interview_media(
     bp = BusinessInterviewService.read(business)
     if bp.completion_state.generation_job_id != generation_job_id:
         return
-    work = [r for r in (_queued(bp, "hero"), _queued(bp, "logo")) if r is not None]
+    # Cover artwork only. A logo has its own job (interview.generate_logo), queued
+    # the moment it is asked for; drawing it here too would pay for it twice.
+    work = [r for r in (_queued(bp, "hero"),) if r is not None]
     if not work:
         return
     # Generate outside the row lock — a slow provider must not block the owner.
@@ -276,3 +282,89 @@ async def _apply_logo(
 
 # Name kept for callers and jobs from before logos could be drawn.
 generate_interview_hero = generate_interview_media
+
+
+# --------------------------------------------------------------- logo, now
+#
+# An owner who says "generate one" in the middle of the conversation should see
+# a logo appear beside it — not learn after building that one was made. The
+# request is queued as soon as it is recorded and drawn by the worker while the
+# conversation carries on.
+
+LogoDrawer = Callable[[str, str], Awaitable[tuple[GeneratedImage | None, str]]]
+
+
+def logo_brief(bp: BusinessBlueprint) -> str:
+    """The logo prompt, from brand context only — never the transcript."""
+    from platform_core.interview.discovery import profile_type
+    from platform_core.website.template_registry import templates_for_business_type
+
+    facts = {**bp.known_facts, **bp.unconfirmed_facts}
+    name = bp.identity["display_name"].value if "display_name" in bp.identity else ""
+    identity = bp.discovery.get("business.identity")
+    category = ""
+    if "classification" in facts:
+        category = facts["classification"].value
+    elif identity and identity.summary:
+        category = identity.summary
+    feel = bp.discovery.get("brand.feel")
+    direction = (facts["brand"].value if "brand" in facts else "") or (feel.summary if feel else "")
+    template = TEMPLATES_BY_ID.get(bp.template_preferences.template_id or "") or (
+        templates_for_business_type(profile_type(bp))[0]
+    )
+    return str(brand_logo_prompt(
+        name=name, category=category[:80], direction=direction,
+        palette=(template.primary_color, template.accent_color),
+    ))
+
+
+async def generate_interview_logo(
+    session: AsyncSession,
+    *,
+    business_id: UUID,
+    actor_id: UUID,
+    draw: LogoDrawer | None = None,
+) -> str:
+    """Draw the logo the owner asked for. Returns the outcome for the job log."""
+    from platform_core.services.business_interview import BusinessInterviewService
+    from platform_core.services.business_settings import BusinessSettingsService
+
+    business = await BusinessInterviewService.load_business(session, business_id)
+    bp = BusinessInterviewService.read(business)
+    request = _queued(bp, "logo")
+    if request is None:
+        return "nothing_queued"
+    prompt = logo_brief(bp)
+    await session.commit()  # no row lock or open transaction across the provider call
+    image, reason = await (draw or (lambda p, a: generate_image(p, aspect_ratio=a, timeout_seconds=60)))(prompt, "1:1")
+
+    business = await BusinessInterviewService.load_business(session, business_id, lock=True)
+    bp = BusinessInterviewService.read(business)
+    request = _queued(bp, "logo")
+    if request is None:
+        return "superseded"
+    if any(m.role == "logo" and m.source == "USER_UPLOAD" for m in bp.media_assets):
+        request.status = "failed"
+        request.reason = "You uploaded your own logo, so it is used instead."
+    elif image is None:
+        request.status = "failed"
+        request.reason = FAILURE_REASONS.get(reason, FAILURE_REASONS["error"])
+    else:
+        asset = await MediaService.persist_generated(
+            session, business_id=business_id, actor_id=actor_id, purpose="brand",
+            mime_type=image.mime_type, body=image.bytes,
+            alt_text="AI-generated logo", original_filename="generated-logo.png",
+        )
+        await BusinessSettingsService.patch_branding(
+            session, business_id=business_id, raw={"logo_asset_id": asset["id"]},
+            actor_id=actor_id, correlation_id=str(uuid4()),
+        )
+        request.status = "ready"
+        request.asset_id = UUID(asset["id"])
+        bp.media_assets.append(MediaReference(asset_id=request.asset_id, role="logo",
+                                              label="AI-generated logo", source="AI_GENERATED"))
+        bp.logo_state = "generated"
+    # Saved without a revision bump: the owner may be typing, and a logo
+    # arriving is not a reason to reject their next message as stale.
+    await BusinessInterviewService.save(session, business, bp)
+    return str(request.status)

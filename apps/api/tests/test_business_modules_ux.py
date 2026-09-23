@@ -66,7 +66,9 @@ def test_the_reason_is_the_owners_words_not_a_restated_label():
     ]
     resolve_recommendations(bp, entitled())
     booking = next(item for item in bp.recommended_modules if item.module_id == "bookings")
-    assert booking.reason == "Because you said “Patients should book appointments online”."
+    assert booking.reason.startswith("Because you said “Patients should book appointments online”.")
+    assert booking.strength == "strong"
+    assert booking.evidence[0].kind == "owner_said"
 
 
 def test_available_comes_from_the_registry_and_excludes_what_is_recommended():

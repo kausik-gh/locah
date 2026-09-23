@@ -113,10 +113,19 @@ def _compact_state(bp: BusinessBlueprint) -> str:
             "sentence such as 'I've got enough to build a strong first version', then "
             "stop asking setup questions and let them review on screen."
         )
-    elif bp.remaining_questions:
-        question = bp.remaining_questions[0]
-        lines.append(f"Still needed: {question.field.replace('_', ' ')}.")
-        lines.append(f"Ask something close to: \"{question.text}\"")
+    else:
+        understood = [
+            f"  - {tid}: {(state.summary or state.quote)[:160]}"
+            for tid, state in bp.discovery.items() if state.status in {"answered", "partial"}
+        ]
+        if understood:
+            lines.append("Also understood:")
+            lines += understood[:12]
+        # The next question always comes back from the tool; the voice never
+        # chooses one. Opening a session, it asks the tool's last question.
+        last = next((m.text for m in reversed(bp.messages) if m.role == "assistant"), "")
+        if last:
+            lines.append(f"Locah's last question was: \"{last[:240]}\"")
     return "\n".join(lines)
 
 

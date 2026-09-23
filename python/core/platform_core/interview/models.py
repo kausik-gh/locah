@@ -35,7 +35,30 @@ OperatingPattern = Literal[
     "quote_led", "lead_generation", "catalogue_led", "order_led", "membership_led",
     "subscription_like", "multi_location", "provider_based", "project_based",
     "made_to_order", "delivery", "walk_in", "online_first",
+    # Added with the discovery planner. Each maps onto a Document 07 §11.1
+    # operating characteristic in `discovery.CHARACTERISTICS_BY_PATTERN`.
+    "product_led", "local_delivery", "pickup", "shipping", "stock_based", "has_team",
+    "runs_classes", "hybrid", "custom_made",
 ]
+
+# What Locah still wants to understand about a business. A target is a concept,
+# not a question: "offerings.units" is asked once, in whatever words fit this
+# business, and never again once it is known. See `discovery.TARGETS`.
+DiscoveryTargetId = Literal[
+    "business.identity", "offerings.main", "offerings.units", "offerings.pricing",
+    "offerings.customisation", "services.providers", "commerce.action", "commerce.payment",
+    "fulfilment.mode", "fulfilment.area", "fulfilment.operator", "operations.stock",
+    "operations.hours", "operations.team", "b2b.customers", "b2b.process",
+    "bookings.format", "memberships.plans", "contact.location", "contact.phone",
+    "brand.story", "brand.feel", "media.logo", "media.photos",
+]
+TargetStatus = Literal["open", "asked", "partial", "answered", "declined", "deferred"]
+
+# How the owner reacted to the last question. "redundant" is the one that
+# matters most: it means Locah asked something it already knew.
+OwnerSignal = Literal["none", "redundant", "correction", "wants_to_finish", "annoyed"]
+MediaIntent = Literal["none", "generate_logo", "generate_hero", "will_upload_logo", "no_logo"]
+DraftProvenance = Literal["ai_suggestion", "owner_claim", "owner_edited", "owner_approved"]
 
 # Optional things worth asking about once, after the essentials. None of them
 # blocks completion.
@@ -59,6 +82,84 @@ class Highlight(BaseModel):
     value: str = Field(min_length=1, max_length=24)
     label: str = Field(min_length=1, max_length=40)
     quote: str = Field(min_length=1, max_length=600)
+
+
+class TargetState(StrictModel):
+    """What Locah knows about one discovery target, and how often it asked.
+
+    Asking is tracked by concept, not by question text: "What do you sell?"
+    and "What do people come to you for?" are the same target, so the second
+    is never asked once the first has an answer.
+    """
+
+    status: TargetStatus = "open"
+    asked: int = 0
+    last_asked_turn: int | None = None
+    # Locah's understanding in a short line ("Sold by weight — customers pick
+    # the kg"), backed by the owner's own words in `quote`.
+    summary: str = Field(default="", max_length=240)
+    quote: str = Field(default="", max_length=600)
+
+
+class TargetAnswer(StrictModel):
+    target: DiscoveryTargetId
+    status: Literal["answered", "partial", "declined"] = "answered"
+    summary: str = Field(default="", max_length=240)
+    # The owner's words that answer it — exact, from the current message.
+    quote: str = Field(default="", max_length=600)
+
+
+class DraftText(StrictModel):
+    """Website wording and where it came from.
+
+    Suggestions are Locah's; claims are the owner's own marketing lines;
+    edited and approved text belongs to the owner and is never rewritten by a
+    later model pass. Draft text is presentation — it is never read back as a
+    business fact.
+    """
+
+    text: str = Field(max_length=800)
+    provenance: DraftProvenance = "ai_suggestion"
+    updated_at: datetime = Field(default_factory=now)
+
+
+class OfferingDraft(StrictModel):
+    name: str = Field(max_length=80)
+    description: DraftText | None = None
+
+
+class OwnerClaim(StrictModel):
+    """A line the owner asked to have said ("fresh from the farm to your home")."""
+
+    claim: str = Field(max_length=240)
+    quote: str = Field(max_length=600)
+
+
+DraftField = Literal["hero_headline", "hero_subheadline", "about", "cta_label", "offering"]
+
+
+class WebsiteDraft(StrictModel):
+    hero_headline: DraftText | None = None
+    hero_subheadline: DraftText | None = None
+    about: DraftText | None = None
+    cta_label: DraftText | None = None
+    offerings: list[OfferingDraft] = Field(default_factory=list, max_length=12)
+    owner_claims: list[OwnerClaim] = Field(default_factory=list, max_length=10)
+    # Fields the owner removed; Locah does not quietly put them back.
+    dismissed: list[str] = Field(default_factory=list, max_length=20)
+
+
+class RecommendationEvidence(StrictModel):
+    kind: Literal["owner_said", "operating_model", "answer", "dependency", "profile"]
+    text: str = Field(max_length=300)
+
+
+class Readiness(StrictModel):
+    """Whether there is enough for a strong first website, for THIS business."""
+
+    ready: bool = False
+    missing: list[str] = Field(default_factory=list)  # target ids still essential
+    reason: str = Field(default="", max_length=200)
 
 
 class Fact(StrictModel):
@@ -118,6 +219,13 @@ class ModuleRecommendation(StrictModel):
     choice: Literal["pending", "approved", "declined"] = "pending"
     # Customer-facing tools are shown first; back-office ones stay out of the way.
     group: Literal["customer", "operations"] = "customer"
+    # Evidence-based recommendation (see capabilities.recommend). `strong`
+    # needs the owner's own words or an answered question; `dependency` is here
+    # only because another recommended tool needs it.
+    strength: Literal["strong", "useful", "dependency"] = "useful"
+    evidence: list[RecommendationEvidence] = Field(default_factory=list, max_length=6)
+    configuration_needed: str = Field(default="", max_length=240)
+    needed_by: list[str] = Field(default_factory=list)
 
 
 class CreativeCopy(StrictModel):
@@ -204,6 +312,12 @@ class BusinessBlueprint(StrictModel):
     # Optional asks already made once. Asking again is the questionnaire feel
     # this whole conversation exists to avoid.
     asked_optional: list[OptionalAsk] = Field(default_factory=list)
+    # Discovery: every concept Locah wants to understand, by target id.
+    discovery: dict[str, TargetState] = Field(default_factory=dict)
+    last_asked_target: str | None = None
+    # Website wording, kept apart from business truth.
+    website_draft: WebsiteDraft = Field(default_factory=WebsiteDraft)
+    readiness: Readiness = Field(default_factory=Readiness)
 
 
 class ExtractedFact(StrictModel):
@@ -215,29 +329,62 @@ class ExtractedFact(StrictModel):
     mode: Literal["add", "replace"] = "replace"
 
 
-class Extraction(StrictModel):
+class OfferingDraftUpdate(StrictModel):
+    name: str = Field(max_length=80)
+    description: str = Field(default="", max_length=240)
+
+
+class DraftUpdate(StrictModel):
+    """Website wording the model proposes this turn. Every field optional."""
+
+    hero_headline: str = Field(default="", max_length=80)
+    hero_subheadline: str = Field(default="", max_length=220)
+    about: str = Field(default="", max_length=700)
+    cta_label: str = Field(default="", max_length=32)
+    offerings: list[OfferingDraftUpdate] = Field(default_factory=list, max_length=10)
+    owner_claims: list[OwnerClaim] = Field(default_factory=list, max_length=5)
+
+
+class TurnIntelligence(StrictModel):
+    """Everything one owner message means, from ONE model call.
+
+    Facts and answers are quotation-backed and validated before anything is
+    kept. The next target is only a proposal: the discovery planner accepts it
+    when it is still worth asking, and otherwise asks its own.
+    """
+
     off_topic: bool = False
     language: LanguageStyle = "en"
     facts: list[ExtractedFact] = Field(default_factory=list, max_length=20)
+    answered: list[TargetAnswer] = Field(default_factory=list, max_length=12)
     intents: list[CapabilityIntent] = Field(default_factory=list, max_length=12)
     operating_patterns: list[PatternEvidence] = Field(default_factory=list, max_length=10)
     highlights: list[Highlight] = Field(default_factory=list, max_length=8)
-    # Conversational glue in the owner's register. Governed: short, no numbers
-    # the owner did not say, no promises about what the platform will do.
-    acknowledgement: str = Field(default="", max_length=120)
-    # A phrasing for the one field Locah will ask about next. Locah decides the
-    # field; this is only how to say it, and it is discarded if it targets
-    # anything else.
-    next_question_field: str = Field(default="", max_length=40)
-    next_question: str = Field(default="", max_length=260)
-    # The owner explicitly asking Locah to draw something for them.
-    asset_request: Literal["none", "generate_logo", "generate_hero"] = "none"
+    owner_signal: OwnerSignal = "none"
+    media_intent: MediaIntent = "none"
+    draft: DraftUpdate = Field(default_factory=DraftUpdate)
+    acknowledgement: str = Field(default="", max_length=140)
+    next_target: str = Field(default="none", max_length=40)
+    next_question: str = Field(default="", max_length=300)
+
+
+# The name the rest of the codebase knew this as.
+Extraction = TurnIntelligence
+
+
+class DraftCommand(StrictModel):
+    field: DraftField
+    op: Literal["edit", "approve", "dismiss", "regenerate"]
+    text: str = Field(default="", max_length=800)
+    offering_name: str = Field(default="", max_length=80)
 
 
 class InterviewCommand(StrictModel):
     revision: int = Field(ge=0)
     request_id: UUID
-    action: Literal["turn", "confirm", "choices", "template", "media", "image", "build"]
+    action: Literal[
+        "turn", "confirm", "choices", "template", "media", "image", "build", "draft"
+    ]
     text: str = Field(default="", max_length=4000)
     # Explicit correction also works without an AI provider.
     field: FactKey | None = None
@@ -246,3 +393,5 @@ class InterviewCommand(StrictModel):
     media: MediaReference | None = None
     # For action="image": what the owner asked Locah to draw.
     image_role: Literal["hero", "logo"] = "hero"
+    # For action="draft": the owner editing, keeping or removing website wording.
+    draft: DraftCommand | None = None

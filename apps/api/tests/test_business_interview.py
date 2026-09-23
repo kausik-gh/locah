@@ -196,15 +196,21 @@ async def test_business_intakes(description, offering, action, seed, module):
         }
     )
     bp = await Engine.turn(blueprint(), text, provider=provider)
-    assert bp.completion_state.sufficient and not bp.completion_state.confirmed
-    assert not bp.remaining_questions  # One rich answer, no arbitrary question count.
+    # One rich answer understands the business — and, for THIS business, still
+    # leaves where it is and how to reach it worth knowing. Nothing it said is
+    # asked again.
+    assert not bp.completion_state.sufficient
+    assert {"contact.location", "contact.phone"} <= set(bp.readiness.missing)
+    for known in ("business.identity", "offerings.main", "commerce.action"):
+        assert bp.discovery[known].status in {"answered", "partial"}
+    assert bp.last_asked_target not in {"business.identity", "commerce.action"}
     assert not bp.known_facts
     assert classification_seed(bp) == seed
     Engine.confirm(bp)
     resolve_recommendations(bp, entitlements())
     assert module in {r.module_id for r in bp.recommended_modules}
     assert all(ModuleRegistry.get(r.module_id) for r in bp.recommended_modules)
-    assert bp.completion_state.confirmed
+    assert all(r.evidence for r in bp.recommended_modules)
 
 
 @pytest.mark.asyncio
@@ -218,11 +224,13 @@ async def test_off_topic_never_becomes_a_fact():
 
 
 @pytest.mark.asyncio
-async def test_missing_info_asks_only_next_required_question():
+async def test_missing_info_asks_about_what_they_sell_next():
     bp = await Engine.turn(blueprint(), "We make furniture", field="description")
-    assert [q.field for q in bp.remaining_questions] == ["offerings", "customer_actions"]
-    # A short acknowledgement may precede it; the one question is still the next required one.
-    assert bp.messages[-1].text.endswith(QUESTIONS[1].text)
+    assert bp.discovery["business.identity"].status == "answered"
+    # One question, about the most valuable unknown — not the opening again.
+    assert bp.last_asked_target == "offerings.main"
+    assert bp.messages[-1].text.count("?") == 1
+    assert "what kind of business" not in bp.messages[-1].text.lower()
 
 
 @pytest.mark.asyncio
@@ -859,7 +867,7 @@ async def test_tamil_booking_action_is_retained_when_model_omits_it():
     assert result.unconfirmed_facts["customer_actions"].value == (
         "கஸ்டமர்ஸ்ல அபாயிண்ட்மென்ட் புக் பண்ணனும்."
     )
-    assert result.completion_state.sufficient is True
+    assert result.discovery["commerce.action"].status == "answered"
 
 
 @pytest.mark.asyncio

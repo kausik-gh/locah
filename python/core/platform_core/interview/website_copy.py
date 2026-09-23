@@ -35,7 +35,7 @@ class _Model(BaseModel):
 
 class FeatureCopy(_Model):
     title: str = Field(min_length=1, max_length=80)
-    body: str = Field(default="", max_length=200)
+    body: str = Field(default="", max_length=240)
 
 
 class StepCopy(_Model):
@@ -47,11 +47,11 @@ class StepCopy(_Model):
 
 
 class WebsiteCopy(_Model):
-    headline: str = Field(default="", max_length=70)
+    headline: str = Field(default="", max_length=90)
     headline_accent: str = Field(default="", max_length=40)
-    subheadline: str = Field(default="", max_length=200)
+    subheadline: str = Field(default="", max_length=220)
     about_title: str = Field(default="", max_length=70)
-    about_body: str = Field(default="", max_length=700)
+    about_body: str = Field(default="", max_length=800)
     offerings_title: str = Field(default="", max_length=60)
     offerings_subtitle: str = Field(default="", max_length=160)
     features: list[FeatureCopy] = Field(default_factory=list, max_length=8)
@@ -70,6 +70,11 @@ _CLAIMS = (
     r"world[- ]class", r"state[- ]of[- ]the[- ]art", r"trusted", r"organic", r"authentic",
     r"100\s?%", r"free", r"cheapest", r"lowest", r"fastest", r"iso", r"experts?", r"experienced",
     r"years?", r"since", r"established", r"doctors?", r"surgeons?", r"specialists?", r"team",
+    # Sourcing, freshness and quality claims a food or product site reaches for.
+    r"farms?", r"farm[- ]fresh", r"fresh\w*", r"halal", r"antibiotic\w*", r"hormone\w*",
+    r"chemical\w*", r"premium", r"hygien\w*", r"same[- ]day", r"free[- ]range", r"grass[- ]fed",
+    r"natural", r"pure", r"sourced", r"hand[- ]picked", r"home[- ]grown", r"deliver\w*",
+    r"doorstep", r"daily",
 )
 _CLAIM_RE = re.compile(r"\b(" + "|".join(_CLAIMS) + r")\b", re.I)
 
@@ -174,4 +179,8 @@ COPY_PROMPT = (
     "Never write 'Welcome to', 'your trusted partner', 'quality and excellence', 'one-stop' "
     "or similar stock phrases. Write in English, keeping the owner's product names as they "
     "said them, unless the owner wrote mostly in Tamil script — then write in natural Tamil."
+    "\nThe `brief` in the context is what the conversation established. Where it already has a "
+    "hero_headline, hero_subheadline or about, the owner has seen those lines: keep them unless a "
+    "field is empty, and never contradict them. owner_claims are lines the owner asked for — you "
+    "may use them. Use sold_by, fulfilment and payment to write the steps and closing lines."
 )
