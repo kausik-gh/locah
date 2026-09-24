@@ -87,6 +87,11 @@ async def _execute_job(session: AsyncSession, job: dict[str, Any]) -> None:
             correlation_id=str(payload.get("correlation_id") or job.get("id")),
             limit=int(payload.get("limit") or 100),
         )
+        if payload.get("recurring"):
+            # A one-off reconcile (a test, an operator) does not start a chain.
+            await MarketplaceIndexingService.schedule_next_reconcile(
+                session, minutes=int(os.getenv("MARKETPLACE_RECONCILE_MINUTES") or 30)
+            )
     elif job_type == "marketplace.reindex":
         from uuid import UUID
 

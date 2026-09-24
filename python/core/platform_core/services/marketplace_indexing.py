@@ -6,11 +6,14 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from platform_core.business_categories import labels as category_labels
 from platform_core.marketplace.eligibility import evaluate_eligibility
+from platform_core.marketplace.listing_facts import gather_listing_facts
 from platform_core.models import (
+    Business,
     BusinessLocation,
     MarketplaceBusinessProjection,
     MarketplaceIndexHealth,
@@ -55,14 +58,15 @@ class MarketplaceIndexingService:
     @staticmethod
     async def _upsert_offerings(
         session: AsyncSession, *, business_id: uuid.UUID, eligible: bool
-    ) -> int:
+    ) -> list[str]:
+        """Rebuild the offering projections; returns the titles indexed."""
         await session.execute(
             delete(MarketplaceOfferingProjection).where(
                 MarketplaceOfferingProjection.business_id == business_id
             )
         )
         if not eligible:
-            return 0
+            return []
         offerings = (
             await session.execute(
                 select(Offering).where(
@@ -73,7 +77,7 @@ class MarketplaceIndexingService:
                 )
             )
         ).scalars().all()
-        count = 0
+        titles: list[str] = []
         for offering in offerings:
             category_name = None
             if offering.category_id:
@@ -101,9 +105,9 @@ class MarketplaceIndexingService:
                     indexed_at=datetime.now(timezone.utc),
                 )
             )
-            count += 1
+            titles.append(offering.title)
         await session.flush()
-        return count
+        return titles
 
     @staticmethod
     async def reindex_business(
@@ -158,9 +162,21 @@ class MarketplaceIndexingService:
             business = eligibility.business
             profile = eligibility.profile
             location = await MarketplaceIndexingService._primary_location(session, business_id)
-            city = None
-            if location and isinstance(location.address, dict):
-                city = location.address.get("city") or location.address.get("locality")
+
+            # Offerings first: their titles are part of what the listing is found by.
+            offering_titles = await MarketplaceIndexingService._upsert_offerings(
+                session, business_id=business_id, eligible=True
+            )
+            offering_count = len(offering_titles)
+            facts = await gather_listing_facts(
+                session,
+                business=business,
+                profile=profile,
+                website=eligibility.website,
+                location=location,
+                offering_titles=offering_titles,
+            )
+            placement = category_labels(facts.placement.family_id, facts.placement.category_id)
 
             projection = (
                 await session.execute(
@@ -176,14 +192,26 @@ class MarketplaceIndexingService:
                 or (profile.tagline if profile else None),
                 "business_type": business.business_type,
                 "characteristics": list(business.characteristics or []),
-                "primary_category": business.business_type,
+                "primary_category": placement["category"] or business.business_type,
                 "tags": [business.business_type] if business.business_type else [],
                 "primary_location_id": location.id if location else None,
-                "city": city,
-                "lat": float(location.latitude) if location and location.latitude is not None else None,
-                "lng": float(location.longitude)
-                if location and location.longitude is not None
-                else None,
+                "city": facts.city,
+                "locality": facts.locality,
+                "region": facts.region,
+                "postal_code": facts.postal_code,
+                "lat": facts.lat,
+                "lng": facts.lng,
+                "geo_precision": facts.geo_precision,
+                "category_family": placement["family"],
+                "category": placement["category"],
+                "keywords": facts.keywords,
+                "cover_url": facts.cover_url,
+                "logo_url": facts.logo_url,
+                "highlights": facts.highlights,
+                "offering_count": offering_count,
+                "published_at": facts.published_at,
+                "public_contact": facts.public_contact,
+                "site_paths": facts.site_paths,
                 "is_discoverable": True,
                 "logo_asset_id": profile.logo_asset_id if profile else None,
                 "website_status": eligibility.website.status if eligibility.website else None,
@@ -196,10 +224,6 @@ class MarketplaceIndexingService:
             else:
                 for key, value in payload.items():
                     setattr(projection, key, value)
-
-            offering_count = await MarketplaceIndexingService._upsert_offerings(
-                session, business_id=business_id, eligible=True
-            )
             health.last_status = "indexed"
             health.last_indexed_at = datetime.now(timezone.utc)
             health.last_reason = None
@@ -271,9 +295,16 @@ class MarketplaceIndexingService:
         reconciles and then checks its own business is racing every other writer
         — under `pytest -n` its business is simply pushed out of the window.
         """
-        from platform_core.models import Business
+        swept = await MarketplaceIndexingService.sweep_orphans(session, business_ids=business_ids)
 
-        query = select(Business.id).where(Business.deleted_at.is_(None))
+        # Only Businesses that could be listed, or are listed: re-reading every
+        # private draft each run would publish a `marketplace.deindexed` event
+        # for each of them every half hour and repair nothing.
+        has_projection = exists().where(MarketplaceBusinessProjection.business_id == Business.id)
+        query = select(Business.id).where(
+            Business.deleted_at.is_(None),
+            (Business.visibility == "discoverable") | has_projection,
+        )
         if business_ids:
             query = query.where(Business.id.in_(business_ids))
         businesses = (
@@ -294,7 +325,90 @@ class MarketplaceIndexingService:
                     deindexed += 1
             except Exception:  # noqa: BLE001
                 failed += 1
-        return {"indexed": indexed, "deindexed": deindexed, "failed": failed, "scanned": len(businesses)}
+        return {
+            "indexed": indexed,
+            "deindexed": deindexed,
+            "failed": failed,
+            "scanned": len(businesses),
+            "swept": swept,
+        }
+
+    @staticmethod
+    async def sweep_orphans(
+        session: AsyncSession, *, business_ids: list[uuid.UUID] | None = None
+    ) -> int:
+        """Remove listings whose Business has been deleted or no longer exists.
+
+        Deletion is a soft `deleted_at`, and nothing about it re-indexed the
+        Business, so its projection stayed discoverable. The query-time check
+        hid those rows, but after LIMIT: on staging, deleted test Businesses
+        filled nineteen of the first twenty places in the Marketplace.
+        """
+        live = exists().where(
+            Business.id == MarketplaceBusinessProjection.business_id,
+            Business.deleted_at.is_(None),
+        )
+        stmt = select(MarketplaceBusinessProjection.business_id).where(~live)
+        if business_ids:
+            stmt = stmt.where(MarketplaceBusinessProjection.business_id.in_(business_ids))
+        orphans = [row[0] for row in (await session.execute(stmt)).all()]
+        if not orphans:
+            return 0
+        await session.execute(
+            delete(MarketplaceOfferingProjection).where(
+                MarketplaceOfferingProjection.business_id.in_(orphans)
+            )
+        )
+        await session.execute(
+            delete(MarketplaceBusinessProjection).where(
+                MarketplaceBusinessProjection.business_id.in_(orphans)
+            )
+        )
+        await session.execute(
+            text(
+                "UPDATE marketplace_index_health SET last_status = 'deindexed', "
+                "last_reason = 'business_deleted', updated_at = now() "
+                "WHERE business_id = ANY(:ids) AND last_status <> 'deindexed'"
+            ),
+            {"ids": orphans},
+        )
+        await session.flush()
+        return len(orphans)
+
+    RECONCILE_RECURRENCE_KEY = "marketplace.reconcile"
+
+    @staticmethod
+    async def schedule_next_reconcile(session: AsyncSession, *, minutes: int = 30) -> bool:
+        """Queue the next reconciliation unless one is already waiting.
+
+        The worker job existed from Stage 3, but nothing ever enqueued it, so
+        drift was never repaired. Each run now books the next; the recurrence
+        key keeps it to one pending run however many workers finish at once.
+        """
+        pending = (
+            await session.execute(
+                text(
+                    "SELECT 1 FROM platform_scheduled_jobs "
+                    "WHERE recurrence_key = :key AND status = 'pending' LIMIT 1"
+                ),
+                {"key": MarketplaceIndexingService.RECONCILE_RECURRENCE_KEY},
+            )
+        ).first()
+        if pending is not None:
+            return False
+        await session.execute(
+            text(
+                "INSERT INTO platform_scheduled_jobs (schedule_type, payload, run_at, recurrence_key) "
+                "VALUES ('marketplace.reconcile', CAST(:payload AS jsonb), "
+                "now() + make_interval(mins => :minutes), :key)"
+            ),
+            {
+                "payload": '{"limit": 500, "recurring": true}',
+                "minutes": max(1, int(minutes)),
+                "key": MarketplaceIndexingService.RECONCILE_RECURRENCE_KEY,
+            },
+        )
+        return True
 
     @staticmethod
     def serialize_health(health: MarketplaceIndexHealth) -> dict[str, Any]:
