@@ -68,7 +68,14 @@ async def main() -> None:
     if sys.platform != "win32":
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown_tasks(s)))
+            # A `def` with an explicit default, not a lambda: add_signal_handler's
+            # callback parameter is too loosely typed for mypy to infer a
+            # lambda's parameter type from context, and `--python-platform`
+            # only checks this branch on non-Windows.
+            def _on_signal(s: signal.Signals = sig) -> None:
+                asyncio.create_task(shutdown_tasks(s))
+
+            loop.add_signal_handler(sig, _on_signal)
     else:
         signal.signal(signal.SIGINT, handle_shutdown_signal)
         signal.signal(signal.SIGTERM, handle_shutdown_signal)
