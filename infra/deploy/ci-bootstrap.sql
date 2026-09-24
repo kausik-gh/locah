@@ -12,8 +12,16 @@
 --       `storage.foldername()`, and the `anon`/`authenticated`/
 --       `service_role` roles the policies reference.
 -- 20260730000000_stage5_workforce_booking_providers.sql also references
--- `auth.uid()` in a policy. Every other migration is plain PostgreSQL and
--- needs nothing from this file.
+-- `auth.uid()` in a policy.
+--   - 20260923113433_restrict_internal_platform_objects.sql
+--       needs: `public.rls_auto_enable()` to exist, so its
+--       `REVOKE EXECUTE ON FUNCTION ...` has something to reference. Real
+--       Supabase projects install this trigger function themselves; a
+--       plain postgres:16 container has never heard of it. This was the
+--       first CI run to ever reach this migration — every earlier run
+--       died at an unrelated step first — so the gap went unnoticed.
+-- Every other migration is plain PostgreSQL and needs nothing from this
+-- file.
 
 -- ============================================================
 -- 1. SCHEMAS
@@ -29,6 +37,12 @@ CREATE SCHEMA IF NOT EXISTS storage;
 -- prefix. Match that here.
 ALTER DATABASE postgres SET search_path TO public, extensions;
 SET search_path TO public, extensions;
+
+-- `crypt()` (used by platform_testing.db_helpers.ensure_auth_user to stand in
+-- for Supabase Auth's password hashing) is pgcrypto, not core Postgres —
+-- unlike gen_random_uuid(), which has been built in since PG13 and needs no
+-- extension. Real Supabase projects have pgcrypto installed already.
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 -- ============================================================
 -- 2. ROLES
@@ -103,4 +117,19 @@ CREATE OR REPLACE FUNCTION storage.foldername(name text) RETURNS text[]
 LANGUAGE sql IMMUTABLE
 AS $$
     SELECT (string_to_array(name, '/'))[1 : array_length(string_to_array(name, '/'), 1) - 1];
+$$;
+
+-- ============================================================
+-- 5. public.rls_auto_enable()
+-- ============================================================
+-- A Supabase-platform trigger function (the dashboard's "auto-enable RLS on
+-- new tables" behaviour), not something this repo defines or calls. Nothing
+-- here needs it to DO anything — 20260923113433 only revokes EXECUTE on it —
+-- so the body is a placeholder; only the name, argument list and return type
+-- need to match closely enough for that REVOKE to resolve.
+CREATE OR REPLACE FUNCTION public.rls_auto_enable() RETURNS event_trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+END;
 $$;
