@@ -2,43 +2,25 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { fetchMarketplaceProfile } from '@/lib/marketplace-api'
-import { fetchPublicOfferings } from '@/lib/checkout-api'
+import { readPlace } from '@/lib/visitor-signals'
+import { getNavAccount } from '@/lib/nav-account'
 import { PublicNav } from '@/components/public/PublicNav'
 import { PublicFooter } from '@/components/public/PublicFooter'
-import { typeLabel } from '@/components/public/BusinessCard'
+import { ActionButton, ListingCard, ListingMedia, variantFor } from '@/components/marketplace/ListingCard'
+import { CategoryIcon, familyTint } from '@/components/marketplace/CategoryIcon'
+import { Remember } from '@/components/marketplace/Remember'
 
-export const revalidate = 60
+export const dynamic = 'force-dynamic'
 
-type Business = {
-  id: string
-  slug: string
-  display_name: string
-  business_type?: string | null
-  city?: string | null
-  description?: string | null
-}
-type Action = { action: string; label: string; href: string }
-type Offering = {
-  id: string
-  title: string
-  offering_type: string
-  description?: string | null
-  price_from?: number | null
-  currency?: string | null
-  handoff: { href: string }
-}
-
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string }
-}): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const data = await fetchMarketplaceProfile(params.slug)
   if (!data) return {}
-  const b = data.business as Business
+  const b = data.business
+  const what = [b.category_label, b.area_label].filter(Boolean).join(', ')
   return {
-    title: `${b.display_name} — on LOCAH`,
-    description: b.description || undefined,
+    title: `${b.display_name}${what ? `, ${what}` : ''} — LOCAH Marketplace`,
+    description: b.description || b.tagline || undefined,
+    openGraph: b.cover_url ? { images: [b.cover_url] } : undefined,
   }
 }
 
@@ -55,173 +37,245 @@ function money(amount?: number | null, currency?: string | null) {
   }
 }
 
+const HIGHLIGHT_HEADING: Record<string, string> = {
+  food: 'From the menu',
+  property: 'Projects',
+  appointment: 'Services',
+  trade: 'What they offer',
+  general: 'From their website',
+}
+
+const SITE_ACTIONS = new Set(['order', 'book', 'join', 'enquire'])
+
+const NOUN: Record<string, string> = {
+  order: 'ordering',
+  book: 'booking',
+  join: 'joining a plan',
+  enquire: 'enquiries',
+}
+
+/** "Ordering happens", "Booking and enquiries happen": only what exists. */
+function handoffLine(actions: string[]) {
+  const nouns = actions.map((a) => NOUN[a]).filter(Boolean)
+  const list =
+    nouns.length <= 1 ? nouns[0] : `${nouns.slice(0, -1).join(', ')} and ${nouns[nouns.length - 1]}`
+  const text = `${list} ${nouns.length > 1 ? 'happen' : 'happens'}`
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
 /** MKT-007 Marketplace Business Profile + MKT-008 offering handoff.
  *
- *  This is LOCAH's page about the Business, deliberately separate from the
- *  Business's own Website. Every action here is an explicit handoff across
- *  that boundary rather than an attempt to reproduce their site. */
+ *  LOCAH's page about the Business, deliberately separate from the Business's
+ *  own website. Every fact on it is something the Business published, and
+ *  every button is an explicit handoff to something that works. */
 export default async function MarketplaceBusinessProfilePage({
   params,
   searchParams,
 }: {
   params: { slug: string }
-  searchParams?: { offering_id?: string; intent?: string; location_id?: string }
+  searchParams?: { offering_id?: string }
 }) {
-  // The Marketplace projection carries no imagery, so the public offerings
-  // payload is merged in for pictures only. Both are already public.
-  const [data, live] = await Promise.all([
-    fetchMarketplaceProfile(params.slug),
-    fetchPublicOfferings(params.slug).catch(() => ({ offerings: [] })),
+  const place = readPlace()
+  const [data, account] = await Promise.all([
+    fetchMarketplaceProfile(params.slug, place?.param),
+    getNavAccount(),
   ])
   if (!data) notFound()
 
-  const business = data.business as Business
-  const actions = (data.actions || []) as Action[]
-  const offerings = (data.offerings || []) as Offering[]
-
-  const imageByTitle = new Map<string, string>()
-  for (const o of (live.offerings || []) as Array<Record<string, unknown>>) {
-    if (typeof o.title === 'string' && typeof o.image_url === 'string') {
-      imageByTitle.set(o.title, o.image_url)
-    }
-  }
-
+  const b = data.business
+  const variant = variantFor(b)
+  const actions = data.actions || []
+  const site = actions.filter((a) => SITE_ACTIONS.has(a.action))
+  const direct = actions.filter((a) => a.action === 'whatsapp' || a.action === 'call')
+  const visit = actions.find((a) => a.action === 'visit_website')
+  const highlights = (b.highlights || []).filter(
+    (h): h is { title: string; image_url: string } => Boolean(h.image_url)
+  )
+  const listed = (b.highlights || []).filter((h) => !h.image_url)
+  const offerings = data.offerings || []
   const selected = searchParams?.offering_id
     ? offerings.find((o) => o.id === searchParams.offering_id)
+    : undefined
+  const since = b.published_at
+    ? new Date(b.published_at).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
     : null
-
-  const primary = actions.find((a) => a.action !== 'visit_website') || actions[0]
-  const visit = actions.find((a) => a.action === 'visit_website')
-
-  function actionHref(a: Action) {
-    if (a.action === 'visit_website') return a.href
-    const qs = new URLSearchParams()
-    if (searchParams?.offering_id) qs.set('offering_id', searchParams.offering_id)
-    if (searchParams?.location_id) qs.set('location_id', searchParams.location_id)
-    qs.set('intent', searchParams?.intent || a.action)
-    return `${a.href}${a.href.includes('?') ? '&' : '?'}${qs.toString()}`
-  }
 
   return (
     <div className="locah-public">
-      <PublicNav active="marketplace" />
-      <main>
-        <section className="lc-section lc-section--tight lc-ground-paper">
-          <div className="lc-container lc-container--wide">
-            <p className="lc-eyebrow">
-              <Link className="lc-link" href="/marketplace">
-                Marketplace
-              </Link>
-            </p>
-            <div className="mkp-head">
-              <div>
-                <h1>{business.display_name}</h1>
-                <p className="lc-muted" style={{ marginBottom: 'var(--sp-4)' }}>
-                  {typeLabel(business.business_type)}
-                  {business.city ? ` · ${business.city}` : ''}
-                </p>
-                {business.description ? (
-                  <p className="lc-lead">{business.description}</p>
-                ) : null}
-                <div className="lc-row" style={{ marginTop: 'var(--sp-5)' }}>
-                  {primary ? (
-                    <Link className="lc-btn lc-btn--primary lc-btn--lg" href={actionHref(primary)}>
-                      {primary.label}
-                    </Link>
-                  ) : null}
-                  {visit && visit !== primary ? (
-                    <Link className="lc-btn lc-btn--ghost lc-btn--lg" href={visit.href}>
-                      {visit.label}
-                    </Link>
-                  ) : null}
-                </div>
-                <p className="lc-small lc-muted" style={{ marginTop: 'var(--sp-3)' }}>
-                  You will continue on {business.display_name}&rsquo;s own website.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {selected ? (
-          <section className="lc-section lc-section--tight">
-            <div className="lc-container lc-container--wide">
-              <div className="lc-card" style={{ borderColor: 'var(--locah-accent)' }}>
-                <p className="lc-eyebrow">You were looking at</p>
-                <h2 className="lc-card__title">{selected.title}</h2>
-                {selected.description ? (
-                  <p className="lc-card__body">{selected.description}</p>
-                ) : null}
-                <Link
-                  className="lc-btn lc-btn--primary"
-                  href={selected.handoff.href}
-                  style={{ marginTop: 'var(--sp-4)' }}
-                >
-                  Continue on their website
-                </Link>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        <section className="lc-section">
-          <div className="lc-container lc-container--wide">
-            {offerings.length === 0 ? (
-              <div className="lc-empty">
-                <p className="lc-empty__title">Nothing listed yet</p>
-                <p className="lc-empty__body">
-                  This business has not published anything to the Marketplace yet. Their website
-                  may still have more.
-                </p>
-                {visit ? (
-                  <Link className="lc-btn lc-btn--ghost" href={visit.href}>
-                    {visit.label}
-                  </Link>
-                ) : null}
-              </div>
-            ) : (
+      <PublicNav active="marketplace" signedIn={account.signedIn} businesses={account.businesses} />
+      <main className="mx-page">
+        <div className="lc-container lc-container--wide mx-prof">
+          <nav className="mx-crumbs" aria-label="Breadcrumb">
+            <Link href="/marketplace">Marketplace</Link>
+            {b.family ? (
               <>
-                <h2 style={{ marginBottom: 'var(--sp-6)' }}>
-                  What {business.display_name} offers
-                </h2>
-                <div className="lc-grid lc-grid--3">
-                  {offerings.map((o) => {
-                    const img = imageByTitle.get(o.title)
-                    return (
-                      <Link className="lc-mediacard" key={o.id} href={o.handoff.href}>
-                        <div className="lc-mediacard__media">
-                          {img ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={img} alt="" loading="lazy" />
-                          ) : (
-                            <div
-                              className="lc-mediacard__fallback"
-                              data-type={business.business_type || 'other'}
-                              aria-hidden="true"
-                            >
-                              {o.title.slice(0, 1).toUpperCase()}
-                            </div>
-                          )}
-                        </div>
-                        <div className="lc-mediacard__body">
-                          <h3 className="lc-mediacard__title">{o.title}</h3>
-                          {o.description ? (
-                            <p className="lc-muted lc-small mk-clamp">{o.description}</p>
-                          ) : null}
-                          {o.price_from !== null && o.price_from !== undefined ? (
-                            <p className="lc-mediacard__foot lc-stat__value" style={{ fontSize: '1.1rem' }}>
-                              {money(o.price_from, o.currency)}
-                            </p>
-                          ) : null}
-                        </div>
-                      </Link>
-                    )
-                  })}
-                </div>
+                <span aria-hidden="true">/</span>
+                <Link href={`/marketplace/category/${b.family}`}>{b.family_label}</Link>
               </>
-            )}
+            ) : null}
+            {b.family && b.category ? (
+              <>
+                <span aria-hidden="true">/</span>
+                <Link href={`/marketplace/category/${b.family}/${b.category}`}>{b.category_label}</Link>
+              </>
+            ) : null}
+          </nav>
+
+          <div className="mx-prof__head">
+            <div className="mx-prof__id">
+              <div className="mx-prof__brand">
+                {b.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="mx-prof__logo" src={b.logo_url} alt="" />
+                ) : (
+                  <span className="mx-prof__logo mx-prof__logo--glyph" data-tint={familyTint(b.family)} aria-hidden="true">
+                    <CategoryIcon name={b.icon} size={26} />
+                  </span>
+                )}
+                <p className="mx-prof__kicker">
+                  {[b.category_label || b.family_label || 'Local business', b.area_label || b.city]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  {b.distance_km !== null && b.distance_km !== undefined ? (
+                    <span className="lc-num"> · {b.distance_km < 1 ? 'under 1 km' : `${b.distance_km.toFixed(1)} km`} away</span>
+                  ) : null}
+                </p>
+              </div>
+              <h1 className="mx-prof__name">{b.display_name}</h1>
+              {b.tagline && b.tagline !== b.description && b.tagline !== b.display_name ? (
+                <p className="mx-prof__tag">{b.tagline}</p>
+              ) : null}
+              {b.description ? <p className="mx-prof__desc">{b.description}</p> : null}
+
+              <div className="mx-prof__actions">
+                {site.map((a, i) => (
+                  <ActionButton key={a.action} action={a} primary={i === 0} />
+                ))}
+                {direct.map((a, i) => (
+                  <ActionButton key={a.action} action={a} primary={site.length === 0 && i === 0} />
+                ))}
+                {visit ? <ActionButton action={visit} /> : null}
+              </div>
+              {site.length > 0 ? (
+                <p className="mx-prof__handoff">
+                  {handoffLine(site.map((a) => a.action))} on {b.display_name}&rsquo;s own website.
+                </p>
+              ) : null}
+            </div>
+            <div className="mx-prof__cover">
+              <ListingMedia listing={b} eager />
+            </div>
           </div>
-        </section>
+
+          {selected ? (
+            <section className="mx-prof__selected" aria-label="The item you were looking at">
+              <p>You were looking at</p>
+              <h2>{selected.title}</h2>
+              {selected.description ? <p>{selected.description}</p> : null}
+              <Link className="lc-btn lc-btn--primary" href={selected.handoff.href}>
+                Continue on their website
+              </Link>
+            </section>
+          ) : null}
+
+          {highlights.length > 0 || listed.length > 0 ? (
+            <section className="mx-prof__section" aria-labelledby="mx-hl">
+              <h2 id="mx-hl">{HIGHLIGHT_HEADING[variant]}</h2>
+              {highlights.length > 0 ? (
+                <ul className="mx-hl">
+                  {highlights.map((h) => (
+                    <li key={h.title}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={h.image_url} alt="" loading="lazy" decoding="async" />
+                      <span>{h.title}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {listed.length > 0 ? (
+                <ul className="mx-listed">
+                  {listed.map((h) => (
+                    <li key={h.title}>{h.title}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </section>
+          ) : null}
+
+          {offerings.length > 0 ? (
+            <section className="mx-prof__section" aria-labelledby="mx-off">
+              <h2 id="mx-off">Listed items</h2>
+              <ul className="mx-offers">
+                {offerings.map((o) => (
+                  <li key={o.id}>
+                    <Link href={o.handoff.href}>
+                      <span className="mx-offers__title">{o.title}</span>
+                      {o.description ? <span className="mx-offers__desc">{o.description}</span> : null}
+                      {money(o.price_from, o.currency) ? (
+                        <span className="mx-offers__price lc-num">{money(o.price_from, o.currency)}</span>
+                      ) : null}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <p className="mx-prof__fine">Prices are as {b.display_name} published them.</p>
+            </section>
+          ) : null}
+
+          <section className="mx-prof__facts" aria-label="Details">
+            <dl>
+              {b.category_label || b.family_label ? (
+                <div>
+                  <dt>Kind of business</dt>
+                  <dd>{b.category_label || b.family_label}</dd>
+                </div>
+              ) : null}
+              {b.area_label || b.city ? (
+                <div>
+                  <dt>Area</dt>
+                  <dd>
+                    {b.area_label || b.city}
+                    {b.postal_code ? `, ${b.postal_code}` : ''}
+                  </dd>
+                </div>
+              ) : null}
+              {since ? (
+                <div>
+                  <dt>Website published</dt>
+                  <dd>{since}</dd>
+                </div>
+              ) : null}
+              {visit ? (
+                <div>
+                  <dt>Website</dt>
+                  <dd>
+                    <Link className="lc-link lc-link--accent" href={visit.href}>
+                      Visit {b.display_name}
+                    </Link>
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+            <p className="mx-prof__trust">
+              Everything here is what {b.display_name} published on LOCAH. LOCAH does not add
+              ratings, reviews or opening hours of its own.
+            </p>
+          </section>
+
+          {data.related.length > 0 ? (
+            <section className="mx-prof__section" aria-labelledby="mx-rel">
+              <h2 id="mx-rel">More {b.family_label || 'businesses'}{b.city ? ' nearby' : ''}</h2>
+              <ul className="mx-rail__track">
+                {data.related.map((l) => (
+                  <li key={l.business_id}>
+                    <ListingCard listing={l} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+        <Remember family={b.family} category={b.category} />
       </main>
       <PublicFooter />
     </div>
