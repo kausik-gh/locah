@@ -42,12 +42,14 @@ const VARIANT_BY_FAMILY: Record<string, Variant> = {
 
 // Which action leads, per kind of business. Anything not listed falls back
 // to the order the API returned.
+// Every action appears in every order, so none is dropped: a developer that
+// takes site-visit bookings shows Book, a restaurant that takes tables too.
 const LEAD_ACTION: Record<Variant, string[]> = {
-  food: ['order', 'whatsapp', 'call'],
-  property: ['enquire', 'whatsapp', 'call'],
-  appointment: ['book', 'join', 'whatsapp', 'call'],
-  trade: ['enquire', 'call', 'whatsapp'],
-  general: ['order', 'book', 'enquire', 'whatsapp', 'call'],
+  food: ['order', 'book', 'whatsapp', 'call', 'enquire', 'join'],
+  property: ['enquire', 'book', 'whatsapp', 'call', 'order', 'join'],
+  appointment: ['book', 'join', 'whatsapp', 'call', 'enquire', 'order'],
+  trade: ['enquire', 'order', 'call', 'whatsapp', 'book', 'join'],
+  general: ['order', 'book', 'enquire', 'join', 'whatsapp', 'call'],
 }
 
 export function variantFor(listing: Pick<Listing, 'family'>): Variant {

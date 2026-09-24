@@ -177,6 +177,13 @@ PIN_PREFIXES: dict[str, str] = {
 }
 
 
+_LEAD_IN = re.compile(
+    r"^(?:(?:our|my)\s+(?:home|house|place|shop|kitchen|studio|store|office)\s+)?(?:is\s+)?(?:in|at)\s+",
+    re.IGNORECASE,
+)
+_LANDMARK = re.compile(r"^(?:near|opp\.?|opposite|behind|next to|beside)\b", re.IGNORECASE)
+
+
 def _word(name: str) -> re.Pattern[str]:
     return re.compile(r"(?<![a-z])" + re.escape(name.lower()) + r"(?![a-z])")
 
@@ -207,7 +214,15 @@ def place_from_address(text: str | None) -> ResolvedPlace | None:
         return None
     start, place, _ = best
     before = text[:start].strip(" ,-\n")
-    locality = before.split(",")[-1].strip() if before else None
+    parts = [p.strip() for p in before.split(",") if p.strip()] if before else []
+    # "Anna Nagar, near Madurai Road": a landmark, not the locality.
+    while len(parts) > 1 and _LANDMARK.match(parts[-1]):
+        parts.pop()
+    locality = parts[-1] if parts else None
+    if locality:
+        # "Our home in Saibaba Colony" is an address written as a sentence;
+        # the locality is the part after "in".
+        locality = _LEAD_IN.sub("", locality).strip(" ,-") or None
     if locality and (len(locality) < 3 or locality.isdigit()):
         locality = None
     return ResolvedPlace(place.city, place.state, place.lat, place.lng, locality or None)

@@ -71,6 +71,9 @@ def test_classify_reads_published_words_before_the_coarse_type() -> None:
     gym = classify("gym", [])
     assert (gym.family_id, gym.category_id) == ("fitness", "gyms")
 
+    tutors = classify("professional_service", ["We run small-group tutoring and exam preparation"])
+    assert (tutors.family_id, tutors.category_id) == ("learning", "tuition")
+
 
 def test_classify_leaves_a_silent_business_unplaced() -> None:
     placement = classify("other", ["", None])
@@ -100,6 +103,11 @@ def test_place_from_address_and_pin() -> None:
     assert (place.city, place.state) == ("Chennai", "Tamil Nadu")
     assert place.locality == "Nookampalayam Road"
     assert place_from_address("Somewhere with no known town") is None
+    # Addresses written as sentences, or ending on a landmark.
+    sentence = place_from_address("Our home in Saibaba Colony, Coimbatore")
+    assert sentence is not None and sentence.locality == "Saibaba Colony"
+    landmark = place_from_address("Anna Nagar, near Madurai Road, Chennai")
+    assert landmark is not None and landmark.locality == "Anna Nagar"
     pin = place_from_pin("641 004")
     assert pin is not None and pin.city == "Coimbatore"
     assert place_from_pin("12345") is None

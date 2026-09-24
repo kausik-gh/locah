@@ -106,7 +106,7 @@ CATEGORY_FAMILIES: tuple[CategoryFamily, ...] = (
         _c("therapy", "Physio & Therapy", "physiotherapy, physio, therapy, therapist, counselling, speech therapy"),
     )),
     CategoryFamily("learning", "Education & Classes", "Tuition, music, dance, languages and skills", (
-        _c("tuition", "Tuition & Coaching", "tuition, coaching, entrance, neet, jee, board exams, maths, science", "education"),
+        _c("tuition", "Tuition & Coaching", "tuition, tutoring, tutor, tutors, coaching, exam preparation, entrance, neet, jee, board exams, maths, science", "education"),
         _c("music-arts", "Music & Arts", "music, piano, guitar, violin, vocal, carnatic, art classes, drawing, painting"),
         _c("dance", "Dance", "dance, bharatanatyam, classical dance, zumba, choreography"),
         _c("languages", "Languages", "language, spoken english, hindi classes, french, german, ielts"),
