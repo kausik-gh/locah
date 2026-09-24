@@ -9,16 +9,15 @@
  * That structure is what makes the session work. Cookies are scoped by
  * registrable domain, not by origin, so `app.locah.in` can read a cookie that
  * `locah.in` wrote as long as the cookie names `.locah.in` as its Domain. Three
- * unrelated `*.vercel.app` hostnames cannot do this at all: `vercel.app` is on
- * the Public Suffix List, so a cookie scoped to it is rejected outright and
- * every surface is left with its own island of a session. Sign in on one, and
- * the next is still signed out.
+ * unrelated provider-generated hostnames cannot do this: their shared parent is
+ * a public suffix, so a cookie scoped to it is rejected outright and every
+ * surface is left with its own island of a session.
  *
  * Resolution runs in three tiers, most explicit first:
  *
- *   1. A per-surface override (`NEXT_PUBLIC_WEB_URL` and friends). This is what
- *      the current `*.vercel.app` deployment uses, and it keeps working
- *      untouched — the surfaces are simply reachable, not session-joined.
+ *   1. A per-surface override (`NEXT_PUBLIC_WEB_URL` and friends). Railway's
+ *      generated service domains use this mode: surfaces are reachable but not
+ *      session-joined until a custom registrable domain is configured.
  *   2. `NEXT_PUBLIC_PLATFORM_DOMAIN`, which derives all four surfaces and, with
  *      them, a shared cookie domain. This is the production target.
  *   3. Localhost defaults, so `pnpm dev` needs no configuration. Ports differ
@@ -38,11 +37,10 @@
  * app looks signed out for no reason — into a refusal we can see.
  */
 const PUBLIC_SUFFIXES = [
-  'vercel.app',
+  'railway.app',
   'netlify.app',
   'pages.dev',
   'github.io',
-  'onrender.com',
   'herokuapp.com',
   'fly.dev',
   'workers.dev',
@@ -148,8 +146,8 @@ export function supportsSharedSessionCookie(domain: string | null): boolean {
   if (PUBLIC_SUFFIXES.includes(domain)) {
     return false
   }
-  // `locah.vercel.app` is no better than `vercel.app` here: the cookie would be
-  // scoped below the public suffix but still could not reach a sibling project.
+  // A customer host below a provider-owned public suffix still cannot reach a
+  // sibling service through one cookie.
   return !PUBLIC_SUFFIXES.some((suffix) => domain.endsWith(`.${suffix}`))
 }
 

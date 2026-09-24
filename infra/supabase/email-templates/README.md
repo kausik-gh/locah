@@ -17,7 +17,7 @@ is no match it *silently substitutes Site URL* rather than failing. Verified
 against this project:
 
 ```
-request : redirect_to=https://locah-web.vercel.app/auth/callback
+request : redirect_to=https://locah-web-production.up.railway.app/auth/callback
 returned: redirect_to=http://localhost:3000
 ```
 
@@ -31,15 +31,15 @@ Authentication → URL Configuration:
 
 | Setting | Value |
 | --- | --- |
-| Site URL | `https://locah-web.vercel.app` |
-| Redirect URLs | `https://locah-web.vercel.app/**`<br>`https://locah-workspace.vercel.app/**`<br>`https://locah-admin.vercel.app/**`<br>`http://localhost:3000/**` |
+| Site URL | `https://locah-web-production.up.railway.app` |
+| Redirect URLs | `https://locah-web-production.up.railway.app/**`<br>`https://locah-workspace-production.up.railway.app/**`<br>`http://localhost:3000/**` |
 
 Site URL is what a link falls back to, so it must be the production web app.
 Keep the `localhost` entry so local signup still works — it is in the allowlist,
 which is checked, not in Site URL, which is the fallback.
 
-When a custom domain replaces `*.vercel.app`, update Site URL and add the new
-origin here; the old entries can stay until DNS has moved.
+When a custom domain replaces Railway's generated domains, update Site URL and
+add the new web and Workspace origins here.
 
 ## 2. Email templates
 
@@ -78,7 +78,7 @@ curl -s "$SUPABASE_URL/auth/v1/admin/generate_link" \
   -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"type":"signup","email":"probe@example.com","password":"<throwaway>",
-       "options":{"redirect_to":"https://locah-web.vercel.app/auth/callback"}}'
+       "options":{"redirect_to":"https://locah-web-production.up.railway.app/auth/callback"}}'
 ```
 
 `redirect_to` in the returned `action_link` must come back as the URL that was

@@ -45,10 +45,9 @@ function withEnv(vars, fn) {
 }
 
 test('a public suffix cannot carry a shared session cookie', () => {
-  assert.equal(supportsSharedSessionCookie('vercel.app'), false)
-  assert.equal(supportsSharedSessionCookie('locah.vercel.app'), false)
+  assert.equal(supportsSharedSessionCookie('railway.app'), false)
+  assert.equal(supportsSharedSessionCookie('locah-web-production.up.railway.app'), false)
   assert.equal(supportsSharedSessionCookie('pages.dev'), false)
-  assert.equal(supportsSharedSessionCookie('onrender.com'), false)
 })
 
 test('a single label, an IP or nothing cannot carry one either', () => {
@@ -63,23 +62,23 @@ test('a registrable domain can', () => {
   assert.equal(supportsSharedSessionCookie('staging.locah.in'), true)
 })
 
-test('the current vercel.app deployment gets no cookie domain', () => {
+test('provider-generated service domains get no shared cookie domain', () => {
   withEnv(
     {
-      NEXT_PUBLIC_WEB_URL: 'https://locah-web.vercel.app',
-      NEXT_PUBLIC_WORKSPACE_URL: 'https://locah-workspace.vercel.app',
+      NEXT_PUBLIC_WEB_URL: 'https://locah-web-production.up.railway.app',
+      NEXT_PUBLIC_WORKSPACE_URL: 'https://locah-workspace-production.up.railway.app',
     },
     () => {
       const origins = resolvePlatformOrigins()
       assert.equal(origins.sessionCookieDomain, null)
-      assert.equal(origins.web, 'https://locah-web.vercel.app')
-      assert.equal(origins.workspace, 'https://locah-workspace.vercel.app')
+      assert.equal(origins.web, 'https://locah-web-production.up.railway.app')
+      assert.equal(origins.workspace, 'https://locah-workspace-production.up.railway.app')
     }
   )
 })
 
-test('naming vercel.app as the platform domain is refused, not honoured', () => {
-  withEnv({ NEXT_PUBLIC_PLATFORM_DOMAIN: 'locah.vercel.app' }, () => {
+test('naming a Railway service domain as the platform domain is refused', () => {
+  withEnv({ NEXT_PUBLIC_PLATFORM_DOMAIN: 'locah-web-production.up.railway.app' }, () => {
     assert.equal(resolvePlatformOrigins().sessionCookieDomain, null)
   })
 })
@@ -149,8 +148,8 @@ test('platform subdomains are never read as a Business', () => {
 })
 
 test('without a platform domain, no host is a Business subdomain', () => {
-  withEnv({ NEXT_PUBLIC_WEB_URL: 'https://locah-web.vercel.app' }, () => {
-    assert.equal(businessSlugFromHost('saffron-house.locah-web.vercel.app'), null)
+  withEnv({ NEXT_PUBLIC_WEB_URL: 'https://locah-web-production.up.railway.app' }, () => {
+    assert.equal(businessSlugFromHost('saffron-house.locah-web-production.up.railway.app'), null)
   })
 })
 
@@ -159,11 +158,14 @@ test('a Business website URL follows whichever shape is available', () => {
     assert.equal(businessSiteUrl('saffron-house'), 'https://saffron-house.locah.in')
     assert.equal(businessSiteUrl('saffron-house', '/book'), 'https://saffron-house.locah.in/book')
   })
-  withEnv({ NEXT_PUBLIC_WEB_URL: 'https://locah-web.vercel.app' }, () => {
-    assert.equal(businessSiteUrl('saffron-house'), 'https://locah-web.vercel.app/saffron-house')
+  withEnv({ NEXT_PUBLIC_WEB_URL: 'https://locah-web-production.up.railway.app' }, () => {
+    assert.equal(
+      businessSiteUrl('saffron-house'),
+      'https://locah-web-production.up.railway.app/saffron-house'
+    )
     assert.equal(
       businessSiteUrl('saffron-house', '/book'),
-      'https://locah-web.vercel.app/saffron-house/book'
+      'https://locah-web-production.up.railway.app/saffron-house/book'
     )
   })
 })

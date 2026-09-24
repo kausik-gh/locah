@@ -135,7 +135,7 @@ def client_key(scope: Scope) -> str:
     """Public buckets must not trust a caller-supplied X-Forwarded-For.
 
     Direct connections use the socket peer. When the process sits behind a
-    reverse proxy (Render, Vercel), set RATE_LIMIT_TRUST_XFF=1 so the *last*
+    reverse proxy (Railway), set RATE_LIMIT_TRUST_XFF=1 so the *last*
     X-Forwarded-For hop — the one that proxy appended — is used. Left-hand
     spoofed hops are ignored.
     """
@@ -149,7 +149,7 @@ def client_key(scope: Scope) -> str:
     if trust and forwarded:
         hops = [part.strip() for part in forwarded.split(",") if part.strip()]
         if hops:
-            return hops[-1]
+            return str(hops[-1])
     return peer
 
 

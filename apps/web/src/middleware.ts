@@ -32,8 +32,8 @@ function isPlatformPath(pathname: string): boolean {
  *
  * The rewrite is invisible to the visitor — the address bar keeps the subdomain
  * — and it only ever applies when a platform domain is configured. On localhost
- * and on `*.vercel.app` there is no subdomain to read, so `businessSlugFromHost`
- * returns null and this is a plain session refresh.
+ * and provider-generated service domains there is no Business subdomain to read,
+ * so `businessSlugFromHost` returns null and this is a plain session refresh.
  */
 export async function middleware(request: NextRequest) {
   const sessionResponse = await updateSession(request, supabaseUrl, supabaseAnonKey)
