@@ -9,7 +9,7 @@ import { Wordmark } from './Wordmark'
 
 export type PublicNavProps = {
   /** Highlights the current destination. */
-  active?: 'marketplace' | 'business' | 'capabilities'
+  active?: 'marketplace' | 'business' | 'capabilities' | 'product' | 'how' | 'pricing'
   /** Signed-in visitors get "Your workspace" instead of "Get started". */
   signedIn?: boolean
   /** Consumer surfaces must not offer "Your businesses" — a customer who never
@@ -18,9 +18,10 @@ export type PublicNavProps = {
 }
 
 const LINKS: Array<{ href: string; label: string; key: PublicNavProps['active'] }> = [
+  { href: '/product', label: 'Product', key: 'product' },
+  { href: '/how-it-works', label: 'How it works', key: 'how' },
   { href: '/marketplace', label: 'Marketplace', key: 'marketplace' },
-  { href: '/for-businesses', label: 'For businesses', key: 'business' },
-  { href: '/capabilities', label: 'Capabilities', key: 'capabilities' },
+  { href: '/pricing', label: 'Pricing', key: 'pricing' },
 ]
 
 export function PublicNav({
@@ -69,6 +70,19 @@ export function PublicNav({
             </>
           )}
         </div>
+        <details className="lc-mobile-menu">
+          <summary aria-label="Menu">Menu <span aria-hidden="true">☰</span></summary>
+          <nav aria-label="Mobile main">
+            {LINKS.map((l) => (
+              <Link key={l.href} href={l.href} aria-current={active === l.key ? 'page' : undefined}>
+                {l.label}
+              </Link>
+            ))}
+            <Link href="/for-businesses">For businesses</Link>
+            <Link href="/login">Sign in</Link>
+            <Link href="/start">Get started</Link>
+          </nav>
+        </details>
       </div>
     </header>
   )

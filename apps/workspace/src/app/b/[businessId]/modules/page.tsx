@@ -11,6 +11,7 @@ type CatalogModule = {
   module_id: string
   display_name: string
   module_class: string
+  description?: string | null
 }
 
 type ModuleState = {
@@ -59,55 +60,33 @@ export default async function ModuleCatalogPage({ params }: { params: { business
   const core = catalog.filter((item) => item.module_class === 'platform_core')
 
   return (
-    <div>
+    <div className="ws-modules-page">
       <PageHeader
-        title="Modules"
-        subtitle="What this Business can turn on, and what is already running."
+        title="The tools that fit your business."
+        subtitle="Explore what is available, what is running and what is included in your plan."
       />
 
       <section>
-        <h2 >Available modules</h2>
-        <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.75rem' }}>
-          {optional.map((item) => {
+        <h2 className="ws-section-title">Available modules <span>{optional.length} to explore</span></h2>
+        <div className="ws-module-grid">
+          {optional.map((item, index) => {
             const state = states.get(item.module_id)
             const isEntitled = entitled.size === 0 || entitled.has(item.module_id)
             const operational = state === 'active' || state === 'ready'
             return (
-              <div
+              <article
                 key={item.module_id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  flexWrap: 'wrap',
-                  padding: '0.9rem 1.1rem',
-                  borderRadius: '10px',
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
-                }}
+                className="ws-module-card"
               >
-                <div>
-                  <Link href={`/b/${params.businessId}/modules/${item.module_id}`}>
-                    <strong>{item.display_name}</strong>
+                <div className="ws-module-card__head"><span className="ws-module-card__number">{String(index + 1).padStart(2, '0')}</span>{state ? <StatusPill value={state} /> : <span className="ws-module-card__state">{isEntitled ? 'Not enabled' : 'Not in plan'}</span>}</div>
+                <div className="ws-module-card__body">
+                  <Link href={`/b/${params.businessId}/modules/${item.module_id}`} className="ws-module-card__title">
+                    {item.display_name} <span aria-hidden="true">↗</span>
                   </Link>
-                  {/*
-                    The raw module id used to be printed here. It is a developer
-                    identifier — `offerings-catalog`, `customer-relationships` —
-                    and this page was the one place an owner saw the platform's
-                    internal vocabulary instead of its own. The display name is
-                    the whole of what they need; the id still addresses the
-                    detail page through the link above.
-                  */}
+                  {item.description ? <p>{item.description}</p> : <p>Explore what this module does and how it fits your business.</p>}
                 </div>
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                  {state ? (
-                    <StatusPill value={state} />
-                  ) : (
-                    <span style={{ opacity: 0.7, fontSize: '0.9rem' }}>
-                      {isEntitled ? 'not enabled' : 'not in plan'}
-                    </span>
-                  )}
+                <div className="ws-module-card__foot">
+                  <Link href={`/b/${params.businessId}/modules/${item.module_id}`}>View details</Link>
                   {isEntitled ? (
                     <form action={setModuleState}>
                       <input type="hidden" name="businessId" value={params.businessId} />
@@ -117,13 +96,13 @@ export default async function ModuleCatalogPage({ params }: { params: { business
                         name="action"
                         value={operational ? 'deactivate' : 'enable'}
                       />
-                      <button type="submit" style={BUTTON}>
+                      <button type="submit" className="btn-quiet">
                         {operational ? 'Turn off' : 'Turn on'}
                       </button>
                     </form>
                   ) : null}
                 </div>
-              </div>
+              </article>
             )
           })}
         </div>
@@ -132,7 +111,7 @@ export default async function ModuleCatalogPage({ params }: { params: { business
 
       {core.length > 0 ? (
         <section style={{ marginTop: '2rem' }}>
-          <h2 >Always included</h2>
+          <h2 className="ws-section-title">Always included <span>The foundation</span></h2>
           <p style={{ opacity: 0.8 }}>
             These are part of every Business and cannot be turned off.
           </p>
@@ -155,8 +134,4 @@ export default async function ModuleCatalogPage({ params }: { params: { business
       ) : null}
     </div>
   )
-}
-
-const BUTTON: React.CSSProperties = {
-  justifySelf: 'start',
 }

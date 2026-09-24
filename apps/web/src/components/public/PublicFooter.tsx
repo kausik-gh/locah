@@ -6,7 +6,9 @@ const COLUMNS: Array<{ title: string; links: Array<{ href: string; label: string
     title: 'For businesses',
     links: [
       { href: '/start', label: 'Set up your business' },
-      { href: '/for-businesses', label: 'How LOCAH works' },
+      { href: '/product', label: 'The product' },
+      { href: '/how-it-works', label: 'How LOCAH works' },
+      { href: '/pricing', label: 'Pricing' },
       { href: '/capabilities', label: 'Capabilities' },
       { href: '/login', label: 'Sign in' },
     ],

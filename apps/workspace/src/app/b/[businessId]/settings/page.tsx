@@ -58,14 +58,14 @@ export default async function SettingsPage({ params }: { params: { businessId: s
   const businessBase = `/b/${params.businessId}`
 
   return (
-    <div>
+    <div className="ws-settings-page">
       <PageHeader
         title="Settings"
         subtitle="Business-wide configuration. Module settings live on each module's own page."
       />
 
-      <section style={{ maxWidth: '32rem' }}>
-        <h2 >Region and formats</h2>
+      <section className="ws-settings-section">
+        <div><h2>Region and formats</h2><p>How dates, time and money appear across this business.</p></div>
         <form action={updateRegionalSettings} style={{ display: 'grid', gap: '0.6rem' }}>
           <input type="hidden" name="businessId" value={params.businessId} />
           <label style={LABEL}>
@@ -114,8 +114,8 @@ export default async function SettingsPage({ params }: { params: { businessId: s
         </form>
       </section>
 
-      <section style={{ marginTop: '2.25rem', maxWidth: '32rem' }}>
-        <h2 >Display preferences</h2>
+      <section className="ws-settings-section">
+        <div><h2>Display preferences</h2><p>Choose a format that feels familiar to your team.</p></div>
         <form action={updatePreferences} style={{ display: 'grid', gap: '0.6rem' }}>
           <input type="hidden" name="businessId" value={params.businessId} />
           <label style={LABEL}>
@@ -156,8 +156,8 @@ export default async function SettingsPage({ params }: { params: { businessId: s
         </form>
       </section>
 
-      <section style={{ marginTop: '2.25rem' }}>
-        <h2 >Elsewhere</h2>
+      <section className="ws-settings-section ws-settings-section--links">
+        <div><h2>More about your business</h2><p>These details live in their own areas of Workspace.</p></div>
         <ul style={{ paddingLeft: '1.1rem', lineHeight: 1.9 }}>
           <li>
             <Link href={`${businessBase}/profile`}>Business profile</Link> — name, description,

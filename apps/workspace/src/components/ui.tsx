@@ -126,7 +126,7 @@ export function PageHeader({
   breadcrumb?: ReactNode
 }) {
   return (
-    <header style={{ marginBottom: '1.5rem' }}>
+    <header className="ws-page-header" style={{ marginBottom: '1.5rem' }}>
       {breadcrumb ? (
         <div style={{ fontSize: '0.82rem', color: 'var(--color-muted)', marginBottom: '0.5rem' }}>
           {breadcrumb}
@@ -215,6 +215,7 @@ export function EmptyState({
 }) {
   return (
     <div
+      className="ws-empty"
       style={{
         border: '1px dashed var(--color-border-strong)',
         borderRadius: 'var(--radius)',
@@ -262,6 +263,7 @@ export function DataTable<T>({
   if (error) return <>{error}</>
   return (
     <div
+      className="ws-datatable"
       style={{
         border: '1px solid var(--color-border)',
         borderRadius: 'var(--radius)',
@@ -375,7 +377,7 @@ export function DetailShell({
 
 export function Section({ title, children, style }: { title?: string; children: ReactNode; style?: CSSProperties }) {
   return (
-    <section style={{ marginTop: '1.5rem', ...style }}>
+    <section className="ws-section" style={{ marginTop: '1.5rem', ...style }}>
       {title ? <h2 style={{ marginBottom: '0.75rem' }}>{title}</h2> : null}
       {children}
     </section>

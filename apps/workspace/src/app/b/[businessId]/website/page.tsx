@@ -57,7 +57,7 @@ export default async function WebsiteOverviewPage({
         : null
 
   return (
-    <div>
+    <div className="ws-website-overview">
       <PageHeader
         title="Your website"
         subtitle={
@@ -109,6 +109,7 @@ export default async function WebsiteOverviewPage({
         <p style={{ color: 'var(--color-muted)', marginBottom: '1.25rem' }}>{builtBy}</p>
       ) : null}
 
+      <h2 className="ws-section-title">Make it yours <span>Manage your website</span></h2>
       <div className="ws-actions">
         <Link className="ws-action" href={`${base}/templates`}>
           <span className="ws-action__title">Starting point</span>

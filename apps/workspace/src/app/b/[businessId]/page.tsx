@@ -394,7 +394,7 @@ export default async function WorkspaceHomePage({
   const stats: Array<{ label: string; value: string; note?: string }> = []
   if (wants.orders) {
     stats.push({
-      label: 'Revenue · 7 days',
+      label: 'Order value · 7 days',
       value: money(revenue7d, currency),
       note: `${recentOrders.length} order${recentOrders.length === 1 ? '' : 's'}`,
     })
@@ -441,7 +441,8 @@ export default async function WorkspaceHomePage({
     .slice(0, 6)
 
   return (
-    <div>
+    <div className="ws-home">
+      <p className="ws-overline">Workspace / Overview</p>
       <PageHeader
         title={business?.display_name ?? 'Workspace'}
         subtitle={
@@ -455,47 +456,53 @@ export default async function WorkspaceHomePage({
       {restrictedNotice}
 
       {stats.length > 0 ? (
-        <div className="ws-stats">
-          {stats.map((s) => (
-            <Stat key={s.label} label={s.label} value={s.value} note={s.note} />
-          ))}
-        </div>
+        <section aria-labelledby="ws-business-heading">
+          <h2 id="ws-business-heading" className="ws-section-title">Your business <span>At a glance</span></h2>
+          <div className="ws-stats">
+            {stats.map((s) => (
+              <Stat key={s.label} label={s.label} value={s.value} note={s.note} />
+            ))}
+          </div>
+        </section>
       ) : null}
 
       {cards.length > 0 ? (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(16rem, 1fr))',
-            gap: '0.9rem',
-          }}
-        >
-          {[...cards]
-            .sort((a, b) => Number(b.urgent ?? false) - Number(a.urgent ?? false))
-            .map((card) => (
-              <Link key={card.key} href={card.href} className="ws-card ws-card--interactive" style={{
-                background: 'var(--color-surface)',
-                border: `1px solid ${card.urgent ? 'var(--status-warn-bd)' : 'var(--color-border)'}`,
-                borderRadius: 'var(--radius)',
-                boxShadow: 'var(--shadow-card)',
-                padding: '1rem 1.1rem',
-                textDecoration: 'none',
-                color: 'var(--color-foreground)',
-                display: 'block',
-              }}>
-                <h2 style={{ fontSize: '1rem', marginBottom: '0.25rem' }}>{card.title}</h2>
-                <p style={{ color: 'var(--color-muted)', margin: '0 0 0.6rem' }}>{card.detail}</p>
-                <span style={{ color: 'var(--color-primary)', fontSize: '0.88rem', fontWeight: 500 }}>
-                  {card.cta} →
-                </span>
-              </Link>
-            ))}
-        </div>
+        <section aria-labelledby="ws-today-heading" className="ws-today">
+          <h2 id="ws-today-heading" className="ws-section-title">Today <span>What needs attention</span></h2>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(16rem, 1fr))',
+              gap: '0.9rem',
+            }}
+          >
+            {[...cards]
+              .sort((a, b) => Number(b.urgent ?? false) - Number(a.urgent ?? false))
+              .map((card) => (
+                <Link key={card.key} href={card.href} className="ws-card ws-card--interactive" style={{
+                  background: 'var(--color-surface)',
+                  border: `1px solid ${card.urgent ? 'var(--status-warn-bd)' : 'var(--color-border)'}`,
+                  borderRadius: 'var(--radius)',
+                  boxShadow: 'var(--shadow-card)',
+                  padding: '1rem 1.1rem',
+                  textDecoration: 'none',
+                  color: 'var(--color-foreground)',
+                  display: 'block',
+                }}>
+                  <h3 style={{ fontSize: '1rem', marginBottom: '0.25rem' }}>{card.title}</h3>
+                  <p style={{ color: 'var(--color-muted)', margin: '0 0 0.6rem' }}>{card.detail}</p>
+                  <span style={{ color: 'var(--color-primary)', fontSize: '0.88rem', fontWeight: 500 }}>
+                    {card.cta} →
+                  </span>
+                </Link>
+              ))}
+          </div>
+        </section>
       ) : null}
 
       {activity.length > 0 ? (
         <section style={{ marginTop: '1.75rem' }}>
-          <h2 style={{ fontSize: '1rem', marginBottom: '0.6rem' }}>Latest activity</h2>
+          <h2 className="ws-section-title">Latest activity <span>Recent movement</span></h2>
           <div className="ws-activity">
             {activity.map((a) => (
               <Link key={a.key} href={a.href} className="ws-activity__row">

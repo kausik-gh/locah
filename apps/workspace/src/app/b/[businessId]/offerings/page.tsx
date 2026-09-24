@@ -41,11 +41,13 @@ export default async function OfferingsPage({ params }: { params: { businessId: 
   const categories = catRes.ok ? catRes.data.data || [] : []
 
   return (
-    <div>
+    <div className="ws-catalogue-page">
       <PageHeader
-        title="Offerings"
-        subtitle="Everything this business sells or provides — products, services, and classes."
+        title="Your catalogue"
+        subtitle="What people can buy, book or enquire about. Keep the list current in one place."
       />
+
+      <div className="ws-catalogue-summary"><span>{offerings.length} offering{offerings.length === 1 ? '' : 's'}</span><span>{offerings.filter(o => o.status === 'active').length} active</span><a href="#add-offering">Add an offering ↓</a></div>
 
       <DataTable
         rows={offerings}
@@ -66,7 +68,7 @@ export default async function OfferingsPage({ params }: { params: { businessId: 
             key: 'price',
             header: 'Price',
             align: 'num',
-            render: (o) => (o.price_amount === null ? '—' : `${o.currency} ${o.price_amount}`),
+            render: (o) => (o.price_amount === null ? '—' : new Intl.NumberFormat('en-IN', { style: 'currency', currency: o.currency || 'INR', maximumFractionDigits: 2 }).format(o.price_amount)),
           },
           {
             key: 'stock',
@@ -116,26 +118,27 @@ export default async function OfferingsPage({ params }: { params: { businessId: 
         </Section>
       ) : null}
 
-      <Section title="Add an offering">
-        <form action={createOffering} style={{ display: 'grid', gap: '0.6rem', maxWidth: '32rem' }}>
+      <div id="add-offering" className="ws-catalogue-form"><Section title="Add an offering">
+        <p>Start with the essentials. You can keep the new offering as a draft.</p>
+        <form action={createOffering} className="ws-form-grid">
           <input type="hidden" name="businessId" value={params.businessId} />
-          <input name="title" placeholder="Title" required />
-          <textarea name="description" placeholder="Description" />
-          <select name="offering_type" defaultValue="product">
+          <label>Title<input name="title" placeholder="What is it called?" required /></label>
+          <label>Description<textarea name="description" placeholder="Describe this offering" /></label>
+          <label>Type<select name="offering_type" defaultValue="product">
             <option value="product">Product</option>
             <option value="service">Service</option>
             <option value="class_session">Class or session</option>
-          </select>
-          <input name="price_amount" type="number" step="0.01" placeholder="Price" />
-          <select name="status" defaultValue="draft">
+          </select></label>
+          <label>Price<input name="price_amount" type="number" min="0" step="0.01" placeholder="Optional" /></label>
+          <label>Visibility<select name="status" defaultValue="draft">
             <option value="draft">Save as draft</option>
             <option value="active">Publish as active</option>
-          </select>
+          </select></label>
           <button type="submit" style={{ justifySelf: 'start' }}>
             Add offering
           </button>
         </form>
-      </Section>
+      </Section></div>
     </div>
   )
 }

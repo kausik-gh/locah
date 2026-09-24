@@ -8,6 +8,7 @@ import { Plus_Jakarta_Sans, Instrument_Serif } from 'next/font/google'
 // LOCAH brand so a business's site looks like that business.
 import '@platform/ui/tokens.css'
 import '@platform/ui/public.css'
+import './platform-overhaul.css'
 import '@platform/ui/website.css'
 // A site's creative direction (profile, type system, cards, nav) on top.
 import '@platform/ui/site-studio.css'

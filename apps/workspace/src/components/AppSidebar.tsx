@@ -141,9 +141,8 @@ export function AppSidebar({
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
-  // Narrow screens are not a preference the owner expressed, so they are
-  // tracked separately from `collapsed`: a phone gets the rail whatever the
-  // stored choice was, and that choice is still there on a wide screen later.
+  const [mobileOpen, setMobileOpen] = useState(false)
+  // A phone uses a drawer independently of the owner's desktop collapse preference.
   const [narrow, setNarrow] = useState(false)
 
   useEffect(() => {
@@ -154,18 +153,20 @@ export function AppSidebar({
     }
   }, [])
 
+  useEffect(() => setMobileOpen(false), [pathname])
+
   useEffect(() => {
     // A 248px sidebar beside the page pushed Workspace to ~530px of content in
     // a 375px viewport, so every page scrolled sideways on a phone. Below this
-    // width the sidebar becomes the icon rail it already knows how to be.
+    // width it becomes an off-canvas drawer.
     const mq = window.matchMedia('(max-width: 720px)')
-    const apply = () => setNarrow(mq.matches)
+    const apply = () => { setNarrow(mq.matches); setMobileOpen(false) }
     apply()
     mq.addEventListener('change', apply)
     return () => mq.removeEventListener('change', apply)
   }, [])
 
-  const railed = collapsed || narrow
+  const railed = !narrow && collapsed
 
   const toggle = () => {
     setCollapsed((c) => {
@@ -190,8 +191,21 @@ export function AppSidebar({
   const activeModules = MODULE_NAV.filter((m) => OPERATIONAL.has(moduleStates[m.module] ?? ''))
 
   return (
+    <>
+    <div className="ws-mobile-bar">
+      <button type="button" className="ws-mobile-bar__toggle" aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={mobileOpen} aria-controls="ws-primary-navigation" onClick={() => setMobileOpen(v => !v)}>
+        <span aria-hidden="true">{mobileOpen ? '×' : '☰'}</span>
+      </button>
+      <span className="ws-mobile-bar__name">{current?.display_name ?? 'Workspace'}</span>
+      <Link href={`${base}/notifications`} className="ws-mobile-bar__alerts" aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}>Alerts{unreadCount > 0 ? <span>{unreadCount > 99 ? '99+' : unreadCount}</span> : null}</Link>
+    </div>
+    {narrow && mobileOpen ? <button type="button" className="ws-mobile-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} /> : null}
     <aside
+      id="ws-primary-navigation"
+      aria-label="Workspace navigation"
+      className="ws-sidebar"
       data-collapsed={railed || undefined}
+      data-mobile-open={mobileOpen || undefined}
       style={{
         width: railed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)',
         flex: 'none',
@@ -200,12 +214,11 @@ export function AppSidebar({
         display: 'flex',
         flexDirection: 'column',
         height: '100vh',
-        position: 'sticky',
-        top: 0,
       }}
     >
+      <button type="button" className="ws-sidebar__close" aria-label="Close navigation" onClick={() => setMobileOpen(false)}>×</button>
       {/* Business switcher */}
-      <div style={{ padding: railed ? '0.75rem 0.5rem' : '0.85rem 0.75rem', borderBottom: '1px solid var(--color-border)' }}>
+      <div className="ws-sidebar__business" style={{ padding: railed ? '0.75rem 0.5rem' : '0.85rem 0.75rem', borderBottom: '1px solid var(--color-border)' }}>
         {railed ? (
           <div
             title={current?.display_name}
@@ -294,7 +307,7 @@ export function AppSidebar({
       </nav>
 
       {/* Collapse toggle */}
-      <button
+      {!narrow ? <button
         type="button"
         onClick={toggle}
         aria-label={railed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -307,7 +320,8 @@ export function AppSidebar({
         }}
       >
         {railed ? '»' : '« Collapse'}
-      </button>
+      </button> : null}
     </aside>
+    </>
   )
 }

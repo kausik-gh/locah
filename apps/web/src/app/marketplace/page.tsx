@@ -52,7 +52,11 @@ export default async function MarketplaceHomePage({
   }
 
   const data = await fetchSearch({}).catch(() => null)
-  const businesses = data?.businesses || []
+  // The discovery index is ordered by profile completeness. This puts a
+  // business with useful details first without fabricating a paid placement.
+  const businesses = [...(data?.businesses || [])].sort(
+    (a, b) => (b.description?.length || 0) - (a.description?.length || 0)
+  )
   const offerings = (data?.offerings || []).slice(0, 8)
 
   // Only advertise a category that has something behind it.
@@ -63,14 +67,15 @@ export default async function MarketplaceHomePage({
     <div className="locah-public">
       <PublicNav active="marketplace" />
       <main>
-        <section className="lc-section lc-section--tight lc-ground-paper">
-          <div className="lc-container lc-container--wide">
+        <section className="lc-section lc-section--tight lc-ground-paper mk-intro">
+          <div className="lc-container lc-container--wide mk-intro__grid">
+            <div>
             <p className="lc-eyebrow">Marketplace</p>
             <h1 className="lc-display" style={{ maxWidth: '18ch' }}>
-              Everything open <span className="lc-mark">near you</span>.
+              Good things happen <span className="lc-mark">close to home.</span>
             </h1>
             <p className="lc-lead">
-              Search local businesses and what they offer — then order, book or enquire on their
+              Discover local businesses, explore what they offer and take the next step on their
               own site. No account needed to look around.
             </p>
 
@@ -88,6 +93,11 @@ export default async function MarketplaceHomePage({
               </button>
             </form>
 
+            </div>
+            <aside className="mk-intro__aside" aria-label="Explore categories">
+              <span className="mk-intro__index">{String(businesses.length).padStart(2, '0')}</span>
+              <p>Businesses to get to know</p>
+              <span className="mk-intro__aside-label">Explore by kind</span>
             {categories.length > 0 ? (
               <div className="lc-chiprail" style={{ marginTop: 'var(--sp-5)' }}>
                 {categories.map((c) => (
@@ -97,6 +107,7 @@ export default async function MarketplaceHomePage({
                 ))}
               </div>
             ) : null}
+            </aside>
           </div>
         </section>
 
@@ -117,9 +128,9 @@ export default async function MarketplaceHomePage({
               <>
                 <div className="lc-row lc-row--between" style={{ marginBottom: 'var(--sp-6)' }}>
                   <div>
-                    <p className="lc-eyebrow">Browse</p>
+                    <p className="lc-eyebrow">Discover / The local index</p>
                     <h2>
-                      {businesses.length} business{businesses.length === 1 ? '' : 'es'} on LOCAH
+                      Find your next local favourite.
                     </h2>
                   </div>
                   <Link className="lc-link lc-link--accent" href="/search">
@@ -127,9 +138,9 @@ export default async function MarketplaceHomePage({
                   </Link>
                 </div>
 
-                <div className="lc-grid lc-grid--3">
-                  {businesses.map((b) => (
-                    <BusinessCard key={b.business_id} business={b} />
+                <div className={`mk-business-grid${businesses.length === 1 ? ' mk-business-grid--single' : ''}`}>
+                  {businesses.map((b, i) => (
+                    <BusinessCard key={b.business_id} business={b} featured={i === 0} />
                   ))}
                 </div>
               </>
@@ -140,8 +151,8 @@ export default async function MarketplaceHomePage({
         {offerings.length > 0 ? (
           <section className="lc-section lc-ground-cream">
             <div className="lc-container lc-container--wide">
-              <p className="lc-eyebrow">On the shelves</p>
-              <h2 style={{ marginBottom: 'var(--sp-6)' }}>What you can buy right now.</h2>
+              <p className="lc-eyebrow">A closer look</p>
+              <h2 style={{ marginBottom: 'var(--sp-6)' }}>Made, taught and offered nearby.</h2>
               <div className="lc-grid lc-grid--4">
                 {offerings.map((o) => (
                   <Link
@@ -170,8 +181,8 @@ export default async function MarketplaceHomePage({
             <div className="lc-center">
               <h2>Run a business near here?</h2>
               <p className="lc-lead" style={{ marginInline: 'auto' }}>
-                Get a website, a listing in this Marketplace, and somewhere to manage what comes
-                back — set up in an afternoon.
+                Build your presence, connect the right tools and make it easier for people to
+                discover your business.
               </p>
               <div className="lc-row lc-row--center" style={{ marginTop: 'var(--sp-6)' }}>
                 <Link className="lc-btn lc-btn--primary lc-btn--lg" href="/start">

@@ -1,5 +1,6 @@
 import React from 'react'
 import './globals.css'
+import './platform-overhaul.css'
 import { generalSans } from './fonts/general-sans'
 
 export const metadata = {

@@ -48,12 +48,12 @@ export type MarketplaceBusiness = {
   capability_flags?: Record<string, boolean>
 }
 
-export function BusinessCard({ business }: { business: MarketplaceBusiness }) {
+export function BusinessCard({ business, featured = false }: { business: MarketplaceBusiness; featured?: boolean }) {
   const chips = capabilityChips(business.capability_flags)
   const initial = business.display_name.trim().slice(0, 1).toUpperCase()
 
   return (
-    <Link className="lc-mediacard" href={`/${business.slug}`}>
+    <Link className={`lc-mediacard${featured ? ' mk-featured-card' : ''}`} href={`/${business.slug}`}>
       {/* No photo yet: a monogram tinted by trade, so a gym and a bakery are
           visually distinct. Deliberately not a stock photo — the card should
           not imply imagery the business has not supplied. */}
@@ -67,6 +67,7 @@ export function BusinessCard({ business }: { business: MarketplaceBusiness }) {
         </div>
       </div>
       <div className="lc-mediacard__body">
+        {featured ? <p className="lc-eyebrow">In focus / Local business</p> : null}
         <h3 className="lc-mediacard__title">{business.display_name}</h3>
         <p className="lc-mediacard__meta">
           {typeLabel(business.business_type)}

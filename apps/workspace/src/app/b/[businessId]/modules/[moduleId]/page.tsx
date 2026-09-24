@@ -54,10 +54,11 @@ export default async function ModuleDetailPage({
   const isCore = moduleDetail.module_class === 'platform_core'
 
   return (
-    <div>
-      <Link href={`/b/${params.businessId}/modules`}>← Modules</Link>
+    <div className="ws-module-detail">
+      <Link className="ws-backlink" href={`/b/${params.businessId}/modules`}>← All modules</Link>
       <PageHeader title={moduleDetail.display_name} subtitle={moduleDetail.description ?? undefined} />
 
+      <div className="ws-module-detail__status">
       <p>
         {state ? (
           <>
@@ -73,13 +74,14 @@ export default async function ModuleDetailPage({
           Needs: {moduleDetail.dependencies.join(', ')}. Turning this on without them will not work.
         </p>
       ) : null}
+      </div>
 
       {isCore ? (
         <p style={{ opacity: 0.8, marginTop: '1.25rem' }}>
           This is part of every Business and is always on.
         </p>
       ) : (
-        <section style={{ marginTop: '1.5rem' }}>
+        <section className="ws-module-detail__action">
           <form action={setModuleState}>
             <input type="hidden" name="businessId" value={params.businessId} />
             <input type="hidden" name="moduleId" value={params.moduleId} />
@@ -99,7 +101,7 @@ export default async function ModuleDetailPage({
 
       {moduleDetail.features.length > 0 ? (
         <section style={{ marginTop: '2rem' }}>
-          <h2 >What it includes</h2>
+          <h2 className="ws-section-title">What it includes</h2>
           <ul style={{ paddingLeft: '1.1rem' }}>
             {moduleDetail.features.map((feature) => (
               <li key={feature.feature_id}>{feature.display_name || feature.feature_id}</li>

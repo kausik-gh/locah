@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { resolveDestinationIntent, siteUrl } from '@platform/auth'
@@ -46,7 +46,8 @@ function humanAuthError(message: string, intent: Intent): string {
     : 'We could not sign you in. Check the details and try again.'
 }
 
-export function LoginForm() {
+export function LoginForm({ initialMode = 'signin' }: { initialMode?: Intent }) {
+  const [mode, setMode] = useState<Intent>(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -57,14 +58,9 @@ export function LoginForm() {
   const supabase = createClient()
   const destination = resolveDestinationIntent(searchParams.get('destination'))
 
-  // Which button was pressed. Both are submit buttons so that the browser's own
-  // `required` and `type="email"` checks run first — as a plain click handler,
-  // "Create an account" sent an empty sign-up straight to the provider.
-  const intent = useRef<Intent>('signin')
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const action = intent.current
+    const action = mode
     setError(null)
     setNotice(null)
     setBusy(action)
@@ -110,12 +106,12 @@ export function LoginForm() {
         </div>
       </header>
 
-      <main className="lc-container" style={{ maxWidth: '27rem', paddingBlock: '3rem 4rem' }}>
-        <form className="lc-card" onSubmit={handleSubmit}>
-          <h1 style={{ fontSize: '1.6rem', marginBottom: '0.35rem' }}>Sign in</h1>
-          <p className="lc-muted lc-small" style={{ marginBottom: 'var(--sp-6)' }}>
-            Use your email to continue to your business.
-          </p>
+      <main className="lc-container lc-container--wide ui-auth-layout">
+        <div className="ui-auth-story"><p className="lc-eyebrow">Your business has a home here</p><h1>Good to have you <em>here.</em></h1><p>One place to shape your presence, connect your tools and keep the day moving.</p><div className="ui-auth-story__footer">Your business. Your pace. One connected place.</div></div>
+        <form className="ui-auth-form" onSubmit={handleSubmit}>
+          <div className="ui-auth-switch" role="group" aria-label="Account action"><button type="button" aria-pressed={mode === 'signin'} onClick={() => {setMode('signin'); setError(null); setNotice(null)}}>Sign in</button><button type="button" aria-pressed={mode === 'signup'} onClick={() => {setMode('signup'); setError(null); setNotice(null)}}>Create account</button></div>
+          <h2>{mode === 'signin' ? 'Welcome back.' : 'Let’s get started.'}</h2>
+          <p className="lc-muted lc-small" style={{ marginBottom: 'var(--sp-6)' }}>{mode === 'signin' ? 'Sign in to return to your business.' : 'Create an account to begin setting up your business.'}</p>
 
           {error ? (
             <div role="alert" className="ob-error" style={{ marginBottom: 'var(--sp-4)' }}>
@@ -151,7 +147,7 @@ export function LoginForm() {
             <input
               id="password"
               type="password"
-              autoComplete="current-password"
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -166,23 +162,10 @@ export function LoginForm() {
           <div style={{ display: 'grid', gap: '0.6rem' }}>
             <button
               type="submit"
-              onClick={() => {
-                intent.current = 'signin'
-              }}
               disabled={busy !== null}
               className="lc-btn lc-btn--primary lc-btn--block"
             >
-              {busy === 'signin' ? 'Signing in…' : 'Sign in'}
-            </button>
-            <button
-              type="submit"
-              onClick={() => {
-                intent.current = 'signup'
-              }}
-              disabled={busy !== null}
-              className="lc-btn lc-btn--ghost lc-btn--block"
-            >
-              {busy === 'signup' ? 'Creating your account…' : 'Create an account'}
+              {busy ? (mode === 'signin' ? 'Signing in…' : 'Creating your account…') : (mode === 'signin' ? 'Sign in' : 'Create account')}
             </button>
           </div>
         </form>

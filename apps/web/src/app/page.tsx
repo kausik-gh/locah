@@ -4,99 +4,34 @@ import { listMyBusinesses, type BusinessSummary } from '@/lib/platform-api'
 import { fetchSearch, type SearchResponse } from '@/lib/marketplace-api'
 import { PublicNav } from '@/components/public/PublicNav'
 import { PublicFooter } from '@/components/public/PublicFooter'
-import { businessSiteUrl, platformUrl } from '@platform/config'
+import { platformUrl } from '@platform/config'
 
 export const dynamic = 'force-dynamic'
 
 const WORKSPACE_URL = platformUrl('workspace')
 
-function money(amount?: number | null, currency?: string | null) {
-  if (amount === null || amount === undefined) return null
-  try {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: currency || 'INR',
-      maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
-    }).format(amount)
-  } catch {
-    return `${currency || 'INR'} ${amount}`
-  }
-}
-
-/**
- * How a Business's website address reads, without the scheme.
- *
- * `locah.app/...` used to be written in by hand here. It is not a domain LOCAH
- * owns, and it contradicts the address the platform actually issues, so it is
- * derived from the same place every other link is.
- */
-function siteAddress(slug: string): string {
-  return businessSiteUrl(slug).replace(/^https?:\/\//, '')
-}
-
 /* ---------------------------------------------------------------- hero ---- */
 
-/** A real business's real website, drawn small. Never mock copy: if the
- *  Marketplace is empty this falls back to the generic frame below. */
-function SitePreview({ live }: { live: SearchResponse | null }) {
-  // The business and the offerings are two separate lists on one search
-  // response, so taking the head of each put someone else's prices under this
-  // business's name — a music school advertising balayage. Prefer the first
-  // business that has offerings of its own in the same response, and show only
-  // those; the claim this frame is making is that the site is real.
-  const offerings = live?.offerings || []
-  const businesses = live?.businesses || []
-  const business =
-    businesses.find((b) => offerings.some((o) => o.business_id === b.business_id)) ??
-    businesses[0]
-  const items = business
-    ? offerings.filter((o) => o.business_id === business.business_id).slice(0, 3)
-    : []
+/** An honest product map, not a pretend customer website. When search is
+ * available the business and one offering come from the same real record. */
+function BusinessSystem({ live }: { live: SearchResponse | null }) {
+  const business = live?.businesses.find((b) =>
+    live.offerings.some((o) => o.business_id === b.business_id)
+  ) ?? live?.businesses[0]
+  const offering = business
+    ? live?.offerings.find((o) => o.business_id === business.business_id)
+    : undefined
 
-  return (
-    <div className="lc-frame" aria-hidden="true">
-      <div className="lc-frame__bar">
-        <span className="lc-frame__dot" />
-        <span className="lc-frame__dot" />
-        <span className="lc-frame__dot" />
-        <span className="lc-frame__addr">
-          {business?.slug ? siteAddress(business.slug) : siteAddress('your-business')}
-        </span>
-      </div>
-      <div className="lc-frame__body">
-        <div className="hp-mini">
-          <div className="hp-mini__nav">
-            <strong>{business?.display_name || 'Your Business'}</strong>
-            <span>Home</span>
-            <span>Menu</span>
-            <span>Contact</span>
-          </div>
-          <div className="hp-mini__hero">
-            <p className="hp-mini__eyebrow">
-              {(business?.business_type || 'local business').replace(/_/g, ' ')}
-            </p>
-            <h3>{business?.display_name || 'Everything you make, online'}</h3>
-            <span className="hp-mini__cta">Order now</span>
-          </div>
-          <div className="hp-mini__items">
-            {items.length > 0
-              ? items.map((o) => (
-                  <div className="hp-mini__item" key={o.id}>
-                    <span>{o.title}</span>
-                    <b>{money(o.price_from, o.currency)}</b>
-                  </div>
-                ))
-              : ['Your first product', 'Your second product', 'Your third product'].map((t) => (
-                  <div className="hp-mini__item" key={t}>
-                    <span>{t}</span>
-                    <b>—</b>
-                  </div>
-                ))}
-          </div>
-        </div>
-      </div>
+  return <div className="ui-system-map" aria-label="How a business connects across LOCAH">
+    <div className="ui-system-map__top"><span>01 / The business</span><strong>{business?.display_name ?? 'Your business'}</strong><p>{business?.description ?? 'Start by telling LOCAH what you do.'}</p></div>
+    <div className="ui-system-map__connector" aria-hidden="true"><span>↓</span></div>
+    <div className="ui-system-map__grid">
+      <div><span>02 / Presence</span><strong>Website</strong><p>Pages you can review and edit</p></div>
+      <div><span>03 / Discovery</span><strong>Marketplace</strong><p>Findable when you publish</p></div>
+      <div><span>04 / Operations</span><strong>Workspace</strong><p>{offering ? `One place to manage ${offering.title}` : 'The tools your business needs'}</p></div>
     </div>
-  )
+    <div className="ui-system-map__foot">One business record <span aria-hidden="true">↗</span> Connected places to work</div>
+  </div>
 }
 
 function Hero({ live }: { live: SearchResponse | null }) {
@@ -107,19 +42,18 @@ function Hero({ live }: { live: SearchResponse | null }) {
           <div className="lc-rise lc-rise-1">
             <p className="lc-eyebrow">Local Businesses. Limitless Possibilities.</p>
             <h1 className="lc-display">
-              Your business, <span className="lc-mark">fully digital</span> — in an afternoon.
+              Tell us about your business. <span className="lc-mark">We help you run it.</span>
             </h1>
             <p className="lc-lead">
-              Tell LOCAH what you do. You get a real website, a listing customers can find you
-              through, and working orders, bookings and payments — not a pile of tools to stitch
-              together yourself.
+              Start with a conversation. LOCAH turns what it learns into a website, a place to be
+              discovered and the tools to manage what happens next — together, not stitched together.
             </p>
             <div className="lc-row" style={{ marginTop: 'var(--sp-6)' }}>
               <Link className="lc-btn lc-btn--primary lc-btn--lg" href="/start">
                 Get started
               </Link>
-              <Link className="lc-btn lc-btn--ghost lc-btn--lg" href="/marketplace">
-                Explore the Marketplace
+              <Link className="lc-btn lc-btn--ghost lc-btn--lg" href="/how-it-works">
+                See how it works
               </Link>
             </div>
             <p className="lc-small lc-muted" style={{ marginTop: 'var(--sp-4)' }}>
@@ -127,23 +61,24 @@ function Hero({ live }: { live: SearchResponse | null }) {
             </p>
           </div>
 
-          <div className="lc-rise lc-rise-2" style={{ position: 'relative' }}>
-            <SitePreview live={live} />
-            {/* Sit outside the frame edges — overlapping the preview would
-                hide the very thing they are pointing at. */}
-            <div className="lc-float" style={{ right: '-1.75rem', top: '-1.25rem' }}>
-              <p className="lc-float__label">Website</p>
-              <p className="lc-float__value">Generated &amp; editable</p>
-            </div>
-            <div className="lc-float" style={{ left: '-2.25rem', bottom: '-2.75rem' }}>
-              <p className="lc-float__label">Orders</p>
-              <p className="lc-float__value">Live from day one</p>
-            </div>
-          </div>
+          <div className="lc-rise lc-rise-2"><BusinessSystem live={live} /></div>
         </div>
       </div>
     </section>
   )
+}
+
+function Transformation() {
+  return <section className="ui-transformation" aria-labelledby="transformation-title">
+    <div className="lc-container lc-container--wide">
+      <div className="ui-transformation__heading"><p className="lc-eyebrow">One conversation. A connected business.</p><h2 id="transformation-title">From what you know to what customers see.</h2></div>
+      <div className="ui-transformation__flow">
+        <div><span>01 / Tell us</span><strong>“Here is what my business does.”</strong><p>Speak in your own words.</p></div>
+        <div><span>02 / Make sense of it</span><strong>A clear business foundation.</strong><p>Review the details before they travel.</p></div>
+        <div><span>03 / Put it to work</span><strong>Presence and operations, connected.</strong><p>Website, discovery and relevant tools.</p></div>
+      </div>
+    </div>
+  </section>
 }
 
 /* ------------------------------------------------------------- journey ---- */
@@ -181,13 +116,13 @@ function Journey() {
       <div className="lc-container lc-container--wide">
         <div className="lc-center" style={{ marginBottom: 'var(--sp-8)' }}>
           <p className="lc-eyebrow">From &ldquo;I have a business&rdquo; to a business that runs</p>
-          <h2>Four things every local business needs. One platform that does all four.</h2>
+          <h2>Every part of the business should know the other parts.</h2>
         </div>
 
-        <div className="lc-grid lc-grid--2">
-          {JOURNEY.map((j) => (
-            <article className="lc-card" key={j.title}>
-              <p className="lc-eyebrow">{j.eyebrow}</p>
+        <div className="ui-journey-grid">
+          {JOURNEY.map((j, i) => (
+            <article className="ui-journey-card" key={j.title}>
+              <p className="lc-eyebrow">0{i + 1} / {j.eyebrow}</p>
               <h3 className="lc-card__title">{j.title}</h3>
               <p className="lc-card__body">{j.body}</p>
               <ul className="hp-ticks">
@@ -198,6 +133,7 @@ function Journey() {
             </article>
           ))}
         </div>
+        <Link className="lc-link lc-link--accent ui-journey-more" href="/product">Explore the connected product →</Link>
       </div>
     </section>
   )
@@ -226,8 +162,8 @@ function BuiltFor() {
             <p className="lc-eyebrow">Built for your kind of business</p>
             <h2>A café and a gym should not get the same website.</h2>
             <p className="lc-lead">
-              LOCAH models your business properly — what you sell, how people get it, and what you
-              need to run it. The website, the checkout and the Workspace all change to match.
+              LOCAH models what you offer, how people reach you and which tools you need to run it.
+              Your presence and Workspace can reflect the business you actually have.
             </p>
             <Link className="lc-btn lc-btn--primary" href="/start" style={{ marginTop: 'var(--sp-5)' }}>
               Set up your business
@@ -258,8 +194,8 @@ function HowItWorks() {
             <p className="lc-eyebrow">How it works</p>
             <h2>Four steps, and you are open.</h2>
             <p className="lc-lead" style={{ color: 'var(--locah-n-300)' }}>
-              Most owners are published the same day. Nothing you enter is thrown away — it becomes
-              your catalogue, your site and your storefront at once.
+              Your answers become a shared starting point for your business profile, website and
+              operating tools. You review them before anything is published.
             </p>
           </div>
           <ol className="lc-steps">
@@ -294,8 +230,8 @@ function HowItWorks() {
               <div>
                 <p className="lc-step__title">Start taking orders</p>
                 <p className="lc-step__body">
-                  You appear in the Marketplace, customers order or book, and the work arrives in
-                  your Workspace.
+                  When your business is published and its modules are enabled, customers can find
+                  you and their orders or bookings arrive in your Workspace.
                 </p>
               </div>
             </li>
@@ -358,8 +294,8 @@ function ClosingCta() {
         <div className="lc-center">
           <h2>Ready to take your business digital?</h2>
           <p className="lc-lead" style={{ marginInline: 'auto' }}>
-            Set it up once. Your website, your listing and your day-to-day all come from the same
-            place — so they never disagree.
+              Start with what makes your business yours. Build its presence, connect the right tools
+              and keep everything current from one Workspace.
           </p>
           <div className="lc-row lc-row--center" style={{ marginTop: 'var(--sp-6)' }}>
             <Link className="lc-btn lc-btn--primary lc-btn--lg" href="/start">
@@ -413,6 +349,7 @@ export default async function HomePage() {
       {businesses.length > 0 ? <ResumeBar businesses={businesses} /> : null}
       <main>
         <Hero live={live} />
+        <Transformation />
         <Journey />
         <BuiltFor />
         <HowItWorks />
