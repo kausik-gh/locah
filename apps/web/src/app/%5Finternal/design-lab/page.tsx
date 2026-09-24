@@ -135,7 +135,7 @@ export default function DesignLabPage() {
         <h2 className="lab-h">Listing cards, by kind of business</h2>
         <ul className="mx-grid">
           {CARDS.map((c) => (
-            <li key={c.note} style={{ flexDirection: 'column', gap: '0.5rem' }}>
+            <li key={c.note} style={{ display: 'grid', gap: '0.5rem', alignContent: 'start' }}>
               <code className="lab-note">{c.note}</code>
               <ListingCard listing={c.listing} />
             </li>

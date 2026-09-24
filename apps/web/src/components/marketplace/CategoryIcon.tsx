@@ -114,8 +114,13 @@ const GLYPHS: Record<string, JSX.Element> = {
   ),
   gear: (
     <>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" />
+      <circle cx="12" cy="12" r="5.5" />
+      <circle cx="12" cy="12" r="2" />
+      <path
+        d="M17.5 12H20M15.9 15.9l1.8 1.8M12 17.5V20M8.1 15.9l-1.8 1.8M6.5 12H4M8.1 8.1 6.3 6.3M12 6.5V4M15.9 8.1l1.8-1.8"
+        strokeWidth="3"
+        strokeLinecap="butt"
+      />
     </>
   ),
   boxes: (
