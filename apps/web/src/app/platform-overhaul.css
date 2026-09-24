@@ -214,3 +214,109 @@
 @media (prefers-reduced-motion: reduce) {
   .locah-public *, .locah-public *::before, .locah-public *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Commercial and legal pages belong to the public LOCAH visual context. */
+.ui-footer-grid { display: grid; grid-template-columns: minmax(15rem, 1.35fr) repeat(3, minmax(9rem, 1fr)); gap: clamp(2rem, 4vw, 5rem); }
+.ui-footer-address { display: grid; gap: .2rem; margin-top: 2rem; font-style: normal; line-height: 1.65; font-size: .79rem; }
+.lc-footer .ui-footer-address a { display: inline; padding: 0; overflow-wrap: anywhere; }
+
+.ui-commercial { padding-block: clamp(4rem, 8vw, 8rem); }
+.ui-commercial__intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(17rem, .55fr); gap: 1rem 5rem; align-items: end; margin-bottom: clamp(2.5rem, 5vw, 5rem); }
+.ui-commercial__intro .lc-eyebrow { grid-column: 1 / -1; }
+.ui-commercial__intro h2, .ui-contact-grid h2, .ui-contact-policies h2, .ui-policies-contact h2 { font-size: clamp(2.3rem, 4vw, 4.7rem); line-height: 1.05; letter-spacing: -.055em; }
+.ui-commercial__intro > p:last-child { color: var(--ui-copy); max-width: 46ch; line-height: 1.65; }
+.ui-plan-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: stretch; }
+.ui-plan-card { display: flex; flex-direction: column; border: 1px solid var(--ui-line); background: #fff; padding: clamp(1.4rem, 3vw, 3rem); min-width: 0; }
+.ui-plan-card--highlight { background: var(--ui-paper); border-color: var(--ui-ink); }
+.ui-plan-card__top { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--ui-line); padding-bottom: 1rem; margin-bottom: 2.5rem; font-size: .68rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.ui-plan-card h3 { font-size: clamp(2rem, 3vw, 3.5rem); letter-spacing: -.05em; line-height: 1.06; margin-bottom: .5rem; }
+.ui-plan-card > p:not(.ui-plan-card__fine) { color: var(--ui-copy); line-height: 1.55; }
+.ui-plan-card__price { font-family: var(--font-display); font-size: clamp(3.2rem, 5vw, 5.8rem); line-height: 1; margin: clamp(2rem, 4vw, 4rem) 0 1.5rem; white-space: nowrap; }
+.ui-plan-card__price span { font-family: var(--font-general-sans), sans-serif; font-size: .79rem; font-weight: 600; color: var(--ui-copy); letter-spacing: 0; }
+.ui-plan-card ul { list-style: none; padding: 0; margin: 0 0 2rem; border-top: 1px solid var(--ui-line); }
+.ui-plan-card li { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.05rem 0; border-bottom: 1px solid var(--ui-line); }
+.ui-plan-card li strong { display: block; font-size: .92rem; line-height: 1.4; }
+.ui-plan-card li small { display: block; color: var(--ui-copy); line-height: 1.5; margin-top: .3rem; }
+.ui-plan-card li > span:not(.ui-plan-card__tick) { text-align: right; white-space: nowrap; }
+.ui-plan-card li b { font-size: 1.2rem; }
+.ui-plan-card .ui-plan-card__tick { color: var(--locah-accent); font-weight: 800; margin-right: .5rem; }
+.ui-plan-card--highlight li { justify-content: flex-start; }
+.ui-plan-card__fine { color: var(--ui-copy); font-size: .8rem; line-height: 1.6; margin-top: auto; padding-top: 1rem; }
+.ui-plan-card .lc-btn { align-self: flex-start; margin-top: 1.6rem; }
+.locah-public .lc-btn--secondary { background: var(--ui-ink); color: #fff; }
+.locah-public .lc-btn--secondary:hover { background: var(--locah-accent); }
+.ui-commercial__activation { max-width: 78ch; color: var(--ui-copy); font-size: .9rem; line-height: 1.7; margin-top: 1.7rem; }
+.ui-commercial__activation a, .ui-faq__links a, .ui-policy-article a:not(.lc-btn), .ui-policy-help a:not(.lc-btn) { color: var(--locah-accent); text-decoration: underline; text-underline-offset: .18em; }
+.ui-pricing-note p:not(.lc-eyebrow) { font-family: var(--font-display); font-size: clamp(2rem, 3.4vw, 3.8rem); line-height: 1.13; max-width: 31ch; }
+.ui-pricing-note .ui-pricing-note__detail { font-family: var(--font-general-sans), sans-serif !important; font-size: .95rem !important; line-height: 1.65 !important; color: #d2d1dc; max-width: 76ch !important; margin-top: 2rem; }
+.ui-faq__links { margin-top: 1.6rem; font-size: .86rem; line-height: 1.6; color: var(--ui-copy); }
+
+.ui-contact-grid { display: grid; grid-template-columns: minmax(16rem, .7fr) minmax(0, 1.3fr); gap: clamp(2rem, 6vw, 8rem); padding-block: clamp(4rem, 8vw, 8rem); }
+.ui-contact-grid__intro > p:last-child { color: var(--ui-copy); line-height: 1.7; max-width: 43ch; margin-top: 1.5rem; }
+.ui-contact-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--ui-line); background: var(--ui-line); }
+.ui-contact-cards > div { min-width: 0; background: #fff; padding: clamp(1.4rem, 3vw, 2.5rem); }
+.ui-contact-cards > div:first-child { grid-column: 1 / -1; }
+.ui-contact-cards > div > span { font-size: .68rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ui-copy); }
+.ui-contact-cards h3 { font-size: clamp(1.45rem, 2.3vw, 2.4rem); letter-spacing: -.04em; margin: 1.5rem 0 .7rem; }
+.ui-contact-cards a { color: var(--locah-accent); font-weight: 700; overflow-wrap: anywhere; }
+.ui-contact-cards p { font-size: .86rem; color: var(--ui-copy); line-height: 1.6; margin-top: 1rem; }
+.ui-merchant-contact { display: grid; gap: .2rem; font-style: normal; line-height: 1.6; }
+.ui-merchant-contact a { margin-top: .35rem; overflow-wrap: anywhere; }
+.ui-merchant-contact--compact { font-size: .82rem; }
+.ui-contact-policies { background: var(--ui-paper); padding-block: clamp(4rem, 7vw, 7rem); }
+.ui-contact-policies > div { display: grid; grid-template-columns: .75fr 1.25fr; gap: clamp(2rem, 6vw, 7rem); }
+.ui-contact-policies ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ui-line); }
+.ui-contact-policies li { border-bottom: 1px solid var(--ui-line); }
+.ui-contact-policies li a { min-height: 4rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; font-size: 1.05rem; font-weight: 650; }
+.ui-contact-policies li a:hover, .ui-policies-index > a:hover h2 { color: var(--locah-accent); }
+
+.ui-policy-hero { background: var(--ui-paper); padding: clamp(5rem, 9vw, 10rem) 0 clamp(2.5rem, 5vw, 5rem); }
+.ui-policy-hero h1 { font-size: clamp(3.2rem, 6vw, 7rem); line-height: .98; letter-spacing: -.06em; max-width: 16ch; margin: .8rem 0 clamp(3rem, 6vw, 6rem); }
+.ui-policy-hero__bottom { border-top: 1px solid var(--ui-ink); padding-top: 1rem; display: flex; justify-content: space-between; align-items: flex-end; gap: 2rem; }
+.ui-policy-hero__bottom p { max-width: 57ch; font-size: clamp(1rem, 1.5vw, 1.25rem); color: var(--ui-copy); line-height: 1.55; }
+.ui-policy-hero__bottom span { color: var(--ui-copy); font-size: .78rem; white-space: nowrap; }
+.ui-policy-layout { display: grid; grid-template-columns: minmax(13rem, .33fr) minmax(0, .67fr); gap: clamp(3rem, 8vw, 10rem); padding-block: clamp(4rem, 8vw, 8rem); }
+.ui-policy-sidebar { position: sticky; top: calc(var(--nav-h) + 2rem); align-self: start; }
+.ui-policy-sidebar ul { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: .8rem; }
+.ui-policy-sidebar a { font-size: .84rem; color: var(--ui-copy); line-height: 1.35; }
+.ui-policy-sidebar a:hover { color: var(--locah-accent); }
+.ui-policy-sidebar__related { border-top: 1px solid var(--ui-line); margin-top: 2.5rem; padding-top: 1.8rem; }
+.ui-policy-article > section { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: 1rem; padding: 2.5rem 0; border-top: 1px solid var(--ui-line); scroll-margin-top: calc(var(--nav-h) + 1rem); }
+.ui-policy-article__number { color: var(--locah-accent); font-size: .72rem; font-weight: 700; padding-top: .5rem; }
+.ui-policy-article h2 { font-size: clamp(1.7rem, 2.5vw, 2.6rem); letter-spacing: -.04em; line-height: 1.15; margin-bottom: 1.15rem; }
+.ui-policy-article__body { max-width: 70ch; color: var(--ui-copy); line-height: 1.8; font-size: .94rem; }
+.ui-policy-article__body p + p { margin-top: 1rem; }
+.ui-policy-help { background: var(--ui-paper); padding: clamp(1.5rem, 3vw, 3rem); margin-top: 2.5rem; }
+.ui-policy-help > p:not(.lc-eyebrow) { color: var(--ui-copy); margin: 1rem 0; line-height: 1.6; }
+.ui-policy-help h2 { margin: .3rem 0; }
+.ui-policy-help .ui-merchant-contact { margin: 1.7rem 0; }
+.ui-policies-index { display: grid; padding-block: clamp(3rem, 6vw, 6rem); }
+.ui-policies-index > a { display: grid; grid-template-columns: 3rem 1fr 1.5rem; gap: clamp(1rem, 3vw, 3rem); padding: clamp(1.6rem, 3vw, 3rem) 0; border-bottom: 1px solid var(--ui-line); align-items: start; }
+.ui-policies-index > a:first-child { border-top: 1px solid var(--ui-line); }
+.ui-policies-index > a > span:first-child { color: var(--locah-accent); font-weight: 700; font-size: .75rem; padding-top: .45rem; }
+.ui-policies-index h2 { font-size: clamp(1.6rem, 2.6vw, 2.8rem); letter-spacing: -.045em; transition: color var(--ui-speed); }
+.ui-policies-index p { color: var(--ui-copy); max-width: 65ch; margin-top: .5rem; }
+.ui-policies-contact { padding-bottom: clamp(4rem, 8vw, 8rem); }
+.ui-policies-contact p:not(.lc-eyebrow) { color: var(--ui-copy); margin: 1rem 0 1.5rem; }
+
+@media (max-width: 900px) {
+  .ui-footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ui-contact-grid, .ui-contact-policies > div { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .ui-commercial__intro, .ui-plan-grid, .ui-policy-layout { grid-template-columns: 1fr; }
+  .ui-plan-card__price { white-space: normal; }
+  .ui-policy-sidebar { position: static; border-bottom: 1px solid var(--ui-line); padding-bottom: 2rem; }
+  .ui-policy-sidebar nav ul { display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; }
+  .ui-policy-sidebar__related { display: none; }
+  .ui-policy-hero__bottom { align-items: flex-start; flex-direction: column; gap: .8rem; }
+}
+@media (max-width: 520px) {
+  .ui-footer-grid, .ui-contact-cards { grid-template-columns: 1fr; }
+  .ui-contact-cards > div:first-child { grid-column: auto; }
+  .ui-plan-card li { flex-wrap: wrap; }
+  .ui-plan-card--highlight li { flex-wrap: nowrap; }
+  .ui-plan-card li > span:not(.ui-plan-card__tick) { margin-left: auto; }
+  .ui-policy-article > section { grid-template-columns: 1.8rem minmax(0, 1fr); gap: .6rem; }
+  .ui-policies-index > a { grid-template-columns: 2rem 1fr 1rem; gap: 1rem; }
+}

@@ -9,7 +9,7 @@ import { Wordmark } from './Wordmark'
 
 export type PublicNavProps = {
   /** Highlights the current destination. */
-  active?: 'marketplace' | 'business' | 'capabilities' | 'product' | 'how' | 'pricing'
+  active?: 'marketplace' | 'business' | 'capabilities' | 'product' | 'how' | 'pricing' | 'contact'
   /** Signed-in visitors get "Your workspace" instead of "Get started". */
   signedIn?: boolean
   /** Consumer surfaces must not offer "Your businesses" — a customer who never
@@ -22,6 +22,7 @@ const LINKS: Array<{ href: string; label: string; key: PublicNavProps['active'] 
   { href: '/how-it-works', label: 'How it works', key: 'how' },
   { href: '/marketplace', label: 'Marketplace', key: 'marketplace' },
   { href: '/pricing', label: 'Pricing', key: 'pricing' },
+  { href: '/contact', label: 'Contact', key: 'contact' },
 ]
 
 export function PublicNav({

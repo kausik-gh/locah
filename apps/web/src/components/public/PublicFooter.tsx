@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Wordmark } from './Wordmark'
+import { MERCHANT } from '@/lib/merchant-details'
 
 const COLUMNS: Array<{ title: string; links: Array<{ href: string; label: string }> }> = [
   {
@@ -21,19 +22,38 @@ const COLUMNS: Array<{ title: string; links: Array<{ href: string; label: string
       { href: '/activity', label: 'Your orders & bookings' },
     ],
   },
+  {
+    title: 'Help & policies',
+    links: [
+      { href: '/contact', label: 'Contact us' },
+      { href: '/policies', label: 'All policies' },
+      { href: '/terms', label: 'Terms & Conditions' },
+      { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/refunds', label: 'Refund & Cancellation Policy' },
+      { href: '/delivery', label: 'Shipping & Digital Delivery Policy' },
+      { href: '/disclaimer', label: 'Disclaimer' },
+    ],
+  },
 ]
 
 export function PublicFooter() {
   return (
     <footer className="lc-footer">
       <div className="lc-container lc-container--wide">
-        <div className="lc-grid lc-grid--3">
+        <div className="ui-footer-grid">
           <div>
             <Wordmark />
             <p className="lc-muted lc-small" style={{ marginTop: '0.9rem', maxWidth: '30ch' }}>
               The digital operating layer for local businesses. Build your presence, get
               discovered, and run the whole business in one place.
             </p>
+            <address className="ui-footer-address">
+              Operated by {MERCHANT.legalName}<br />
+              {MERCHANT.addressLine}<br />
+              {MERCHANT.cityLine}, {MERCHANT.country}<br />
+              <a href={`mailto:${MERCHANT.email}`}>{MERCHANT.email}</a><br />
+              <a href={MERCHANT.phoneHref}>{MERCHANT.phone}</a>
+            </address>
           </div>
 
           {COLUMNS.map((col) => (
@@ -54,7 +74,7 @@ export function PublicFooter() {
 
         <div className="lc-footer__bottom">
           <span className="lc-small lc-muted">
-            &copy; {new Date().getFullYear()} LOCAH — Local Businesses. Limitless Possibilities.
+            &copy; {new Date().getFullYear()} LOCAH. Operated by {MERCHANT.legalName}.
           </span>
         </div>
       </div>
