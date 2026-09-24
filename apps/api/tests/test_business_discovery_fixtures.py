@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -31,7 +32,7 @@ class Model:
     model_name = "fixture"
     last_usage = {"prompt_tokens": 1, "completion_tokens": 1}
 
-    def __init__(self, answer: dict) -> None:
+    def __init__(self, answer: dict[str, Any]) -> None:
         self.answer = answer
 
     async def generate_structured(self, prompt, schema, model_config, timeout_seconds):
@@ -42,7 +43,7 @@ class Model:
 class Fixture:
     name: str
     business_type: str
-    turns: list[tuple[str, dict]]
+    turns: list[tuple[str, dict[str, Any]]]
     strong: set[str]
     useful: set[str] = field(default_factory=set)
     never: set[str] = field(default_factory=set)  # must not be recommended at all
@@ -51,15 +52,15 @@ class Fixture:
     only_as_dependency: set[str] = field(default_factory=set)  # present only because another needs it
 
 
-def fact(name: str, quote: str) -> dict:
+def fact(name: str, quote: str) -> dict[str, Any]:
     return {"field": name, "quote": quote}
 
 
-def ans(target: str, summary: str, quote: str, status: str = "answered") -> dict:
+def ans(target: str, summary: str, quote: str, status: str = "answered") -> dict[str, Any]:
     return {"target": target, "summary": summary, "quote": quote, "status": status}
 
 
-def pat(pattern: str, quote: str) -> dict:
+def pat(pattern: str, quote: str) -> dict[str, Any]:
     return {"pattern": pattern, "quote": quote}
 
 

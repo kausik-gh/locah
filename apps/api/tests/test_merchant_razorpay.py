@@ -33,7 +33,7 @@ pytestmark = pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_
 def _async_url() -> str:
     url = get_database_url()
     assert url
-    return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return str(url).replace("postgresql://", "postgresql+asyncpg://", 1)
 
 
 def _token(sub: uuid.UUID, email: str) -> str:

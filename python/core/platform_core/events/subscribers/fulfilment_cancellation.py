@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from platform_core.events.registry import EventContext, subscribe
 
 
-@subscribe(
+@subscribe(  # type: ignore[untyped-decorator]  # see marketplace_index.py: mypy loses
+    # this decorator factory's return type once it wraps an `async def`.
     "fulfilment.order_cancellation",
     "order.cancelled",
     "order.rejected",

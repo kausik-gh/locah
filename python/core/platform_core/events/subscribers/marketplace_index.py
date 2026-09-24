@@ -37,7 +37,9 @@ _TRIGGERS = (
 )
 
 
-@subscribe(
+@subscribe(  # type: ignore[untyped-decorator]  # mypy loses the Callable[[EventHandler], EventHandler]
+    # return type of this decorator factory once it wraps an `async def`; every
+    # other @subscribe(...) site in the codebase hits the same false positive.
     "marketplace.index",
     *_TRIGGERS,
     description="Re-index the Marketplace projection for the affected business",

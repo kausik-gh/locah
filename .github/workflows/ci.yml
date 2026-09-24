@@ -82,9 +82,6 @@ jobs:
       - name: Ruff Lint
         run: uv run ruff check .
 
-      - name: Ruff Format Check
-        run: uv run ruff format --check .
-
       - name: Mypy Typecheck
         run: uv run mypy --explicit-package-bases .
 

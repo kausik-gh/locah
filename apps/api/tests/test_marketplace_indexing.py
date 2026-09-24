@@ -143,7 +143,7 @@ def test_ineligible_business_not_indexed(owner: tuple[dict[str, str], uuid.UUID]
                 )
             ).scalars().first()
             assert proj is None
-            return result
+            return dict(result)
         await engine.dispose()
 
     result = asyncio.run(_reindex())

@@ -421,7 +421,9 @@ def test_two_owners_can_give_their_businesses_the_same_name(monkeypatch: Any) ->
     slugs = []
     with TestClient(app) as client:
         for _ in range(2):
-            headers = auth_headers.__wrapped__(monkeypatch)  # a fresh owner each time
+            # a fresh owner each time; pytest's fixture stub doesn't declare
+            # __wrapped__ even though the real FixtureFunctionDefinition has it.
+            headers = auth_headers.__wrapped__(monkeypatch)  # type: ignore[attr-defined]
             response = client.post(
                 "/v1/platform/businesses",
                 json={"display_name": name, "business_type": "retail"},

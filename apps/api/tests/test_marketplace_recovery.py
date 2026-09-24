@@ -177,7 +177,7 @@ def test_reconcile_repairs_stale_projection(owner: tuple[dict[str, str], uuid.UU
             ).scalars().first()
             assert proj is not None
             assert proj.display_name == business["display_name"]
-            return result
+            return dict(result)
         await engine.dispose()
 
     result = asyncio.run(_corrupt_and_reconcile())

@@ -30,10 +30,12 @@ class WebsitePublishService:
         # Refuses the development default outside development: this signs the
         # token that lets a caller read an unpublished draft, so a constant
         # anyone can read in this repo would defeat the preview boundary.
-        return resolve_signing_secret(
-            "WEBSITE_PREVIEW_SECRET",
-            "preview-dev-secret",
-            fallback_env="SUPABASE_JWT_SECRET",
+        return str(
+            resolve_signing_secret(
+                "WEBSITE_PREVIEW_SECRET",
+                "preview-dev-secret",
+                fallback_env="SUPABASE_JWT_SECRET",
+            )
         )
 
     @staticmethod
@@ -208,7 +210,7 @@ class WebsitePublishService:
             },
         )
         aggregate = await WebsiteService.get_aggregate(session, business_id=business_id)
-        return aggregate
+        return dict(aggregate)
 
     @staticmethod
     async def load_public_page(

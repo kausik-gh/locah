@@ -120,7 +120,7 @@ def test_generation_fallback_always_produces_draft(owner: tuple[dict[str, str], 
             )
             assert outbox.scalars().first() is not None
         await engine.dispose()
-        return res
+        return dict(res)
 
     res = asyncio.run(_run())
     # No XAI_API_KEY in the suite (conftest) → deterministic fallback.
@@ -179,7 +179,7 @@ class _StubProvider:
 
     last_prompt: str = ""
 
-    async def generate_structured(self, prompt, schema, model_config, timeout_seconds):  # type: ignore[no-untyped-def]
+    async def generate_structured(self, prompt, schema, model_config, timeout_seconds):
         _StubProvider.last_prompt = prompt
         return {
             "pages": [
@@ -253,7 +253,7 @@ def test_generation_uses_ai_provider_and_intake(
             )
             await session.commit()
         await engine.dispose()
-        return res
+        return dict(res)
 
     res = asyncio.run(_run())
     assert res["generated_by"] == "ai_generation", res
@@ -268,7 +268,7 @@ class _InvalidProvider:
     provider_name = "xai"
     model_name = "invalid-grok"
 
-    async def generate_structured(self, prompt, schema, model_config, timeout_seconds):  # type: ignore[no-untyped-def]
+    async def generate_structured(self, prompt, schema, model_config, timeout_seconds):
         return {"pages": [], "navigation": [], "theme_hints": {}}
 
 
@@ -312,7 +312,7 @@ def test_invalid_ai_output_falls_back_to_deterministic_draft(
             )
             await session.commit()
         await engine.dispose()
-        return res
+        return dict(res)
 
     res = asyncio.run(_run())
     assert res["generated_by"] == "deterministic_fallback"
@@ -358,7 +358,7 @@ class _OverreachingProvider:
 
     last_prompt: str = ""
 
-    async def generate_structured(self, prompt, schema, model_config, timeout_seconds):  # type: ignore[no-untyped-def]
+    async def generate_structured(self, prompt, schema, model_config, timeout_seconds):
         _OverreachingProvider.last_prompt = prompt
         return {
             "pages": [

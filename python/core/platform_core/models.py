@@ -277,7 +277,7 @@ class WebsiteGenerationJob(Base):
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     fallback_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    intake: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    intake: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     result_version_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     triggered_by: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id")

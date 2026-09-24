@@ -463,7 +463,10 @@ class WebsiteGenerationService:
 
         if is_interview_job(job):
             from platform_core.services.business_interview import BusinessInterviewService
-            return await BusinessInterviewService.personalize_job(session, job, correlation_id)
+            # dict(...): the lazy import above resolves through a cycle mypy
+            # cannot fully type, so it sees personalize_job's return as Any
+            # despite its own `-> dict[str, Any]` signature.
+            return dict(await BusinessInterviewService.personalize_job(session, job, correlation_id))
 
         job.status = "running"
         job.started_at = datetime.now(timezone.utc)
@@ -478,12 +481,14 @@ class WebsiteGenerationService:
         )
 
         def _deterministic() -> dict[str, Any]:
-            return validate_generation_payload(
-                build_deterministic_draft(
-                    display_name=context["display_name"],
-                    business_type=context.get("business_type"),
-                    tagline=context.get("tagline"),
-                    description=context.get("description"),
+            return dict(
+                validate_generation_payload(
+                    build_deterministic_draft(
+                        display_name=context["display_name"],
+                        business_type=context.get("business_type"),
+                        tagline=context.get("tagline"),
+                        description=context.get("description"),
+                    )
                 )
             )
 

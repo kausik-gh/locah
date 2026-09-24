@@ -82,7 +82,7 @@ def _create_business(client: TestClient, headers: dict[str, str]) -> str:
     return cast(str, resp.json()["data"]["business"]["id"])
 
 
-_GEN_PAYLOAD = {
+_GEN_PAYLOAD: dict[str, Any] = {
     "navigation": [],
     "theme_hints": {},
     "pages": [

@@ -64,7 +64,7 @@ def _claims(**extra: object) -> dict[str, object]:
 
 
 def test_es256_token_verifies_against_the_jwks_key(
-    monkeypatch: pytest.MonkeyPatch, ec_keypair: tuple
+    monkeypatch: pytest.MonkeyPatch, ec_keypair: tuple[ec.EllipticCurvePrivateKey, ec.EllipticCurvePublicKey]
 ) -> None:
     priv, pub = ec_keypair
     _stub_jwks(monkeypatch, pub)
@@ -79,7 +79,7 @@ def test_es256_token_verifies_against_the_jwks_key(
 
 
 def test_es256_token_signed_by_a_different_key_is_rejected(
-    monkeypatch: pytest.MonkeyPatch, ec_keypair: tuple
+    monkeypatch: pytest.MonkeyPatch, ec_keypair: tuple[ec.EllipticCurvePrivateKey, ec.EllipticCurvePublicKey]
 ) -> None:
     _, pub = ec_keypair
     other_priv = ec.generate_private_key(ec.SECP256R1())
@@ -122,7 +122,7 @@ def test_hs256_token_with_the_wrong_secret_is_rejected(
 
 
 def test_expired_es256_token_raises_expired(
-    monkeypatch: pytest.MonkeyPatch, ec_keypair: tuple
+    monkeypatch: pytest.MonkeyPatch, ec_keypair: tuple[ec.EllipticCurvePrivateKey, ec.EllipticCurvePublicKey]
 ) -> None:
     priv, pub = ec_keypair
     _stub_jwks(monkeypatch, pub)

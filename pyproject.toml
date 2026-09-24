@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Canonical Multi-tenant Platform Root"
 requires-python = ">=3.12"
 dependencies = [
-    # Vercel API runtime: pulls platform-core + platform-domain-events from the workspace.
+    # API runtime: pulls platform-core + platform-domain-events from the workspace.
     "platform-api",
 ]
 
@@ -43,14 +43,17 @@ exclude = [
     "node_modules",
 ]
 
-# Vercel FastAPI deploy (monorepo): the API lives under apps/api/src, not at a
-# default entrypoint path. See https://vercel.com/docs/frameworks/backend/fastapi
-[tool.vercel]
-entrypoint = "platform_api.main:app"
+# Test modules keep every real check (unreachable code, wrong types, bad
+# overloads) but not "annotate this helper" — that rule exists for shipped
+# code with callers outside the file; a test's only caller is pytest, and
+# strict.md itself calls this override reasonable for test suites.
+[[tool.mypy.overrides]]
+module = ["apps.api.tests.*", "apps.worker.tests.*"]
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
 
-[tool.vercel.scripts]
-# Runtime-only install: workspace API package + its deps, no dev/test tooling.
-install = "uv sync --frozen --no-group dev"
 
 
 

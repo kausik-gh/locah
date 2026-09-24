@@ -12,6 +12,7 @@ for?" — twice.
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -32,7 +33,7 @@ class Model:
     model_name = "fixture"
     last_usage = {"prompt_tokens": 1, "completion_tokens": 1}
 
-    def __init__(self, *answers: dict) -> None:
+    def __init__(self, *answers: dict[str, Any]) -> None:
         self.answers = list(answers)
         self.payloads: list[str] = []
 
@@ -44,7 +45,7 @@ class Model:
 class Down:
     provider_name = "gemini"
     model_name = "gemini-3.8-flash"
-    last_usage: dict = {}
+    last_usage: dict[str, Any] = {}
 
     async def generate_structured(self, *args, **kwargs):
         raise RuntimeError("503 high demand")
@@ -59,7 +60,7 @@ def blueprint(name: str = "Ishant Proteins") -> BusinessBlueprint:
     return bp
 
 
-async def say(bp: BusinessBlueprint, text: str, answer: dict, *, image: bool = True,
+async def say(bp: BusinessBlueprint, text: str, answer: dict[str, Any], *, image: bool = True,
               business_type: str = "retail") -> BusinessBlueprint:
     bp = await Engine.turn(bp, text, provider=Model(answer), business_type=business_type,
                            image_available=image)
@@ -67,20 +68,20 @@ async def say(bp: BusinessBlueprint, text: str, answer: dict, *, image: bool = T
     return bp
 
 
-def fact(name: str, quote: str) -> dict:
+def fact(name: str, quote: str) -> dict[str, Any]:
     return {"field": name, "quote": quote}
 
 
-def ans(target: str, summary: str, quote: str, status: str = "answered") -> dict:
+def ans(target: str, summary: str, quote: str, status: str = "answered") -> dict[str, Any]:
     return {"target": target, "summary": summary, "quote": quote, "status": status}
 
 
-def pat(pattern: str, quote: str) -> dict:
+def pat(pattern: str, quote: str) -> dict[str, Any]:
     return {"pattern": pattern, "quote": quote}
 
 
 def reply(bp: BusinessBlueprint) -> str:
-    return bp.messages[-1].text
+    return str(bp.messages[-1].text)
 
 
 def recommended(bp: BusinessBlueprint, strength: str | None = None) -> set[str]:

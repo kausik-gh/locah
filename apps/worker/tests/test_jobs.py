@@ -361,8 +361,9 @@ async def test_a_deployed_worker_acknowledges_a_test_job_without_running_it(monk
 
     job = {"job_type": "interview.generate_logo", "payload": {"inert": True, "__force_fail": True}}
     monkeypatch.delenv("LOCAH_JOBS_INERT", raising=False)
-    await _execute_job(None, job)  # type: ignore[arg-type] — returns before touching the session
+    # None: inert jobs return before ever touching the session.
+    await _execute_job(None, job)
     # The test process itself (inert, no paid keys) still drains its own jobs.
     monkeypatch.setenv("LOCAH_JOBS_INERT", "1")
     with pytest.raises(RuntimeError, match="forced job failure"):
-        await _execute_job(None, job)  # type: ignore[arg-type]
+        await _execute_job(None, job)

@@ -335,7 +335,7 @@ def test_complete_marks_failed_when_object_absent(
             assert asset is not None
             value = asset.status
         await engine.dispose()
-        return value
+        return str(value)
 
     assert asyncio.run(_status()) == "failed"
 

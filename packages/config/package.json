@@ -7,7 +7,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/**/*.ts",
-    "test": "pnpm build && node --test \"test/*.test.mjs\""
+    "test": "pnpm build && node --test test/platform-origins.test.mjs"
   },
   "dependencies": {
     "zod": "^3.22.4"

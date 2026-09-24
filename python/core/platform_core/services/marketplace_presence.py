@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,13 +17,19 @@ from platform_core.services.audit import AuditService
 from platform_core.services.marketplace_indexing import MarketplaceIndexingService
 from platform_core.services.outbox import OutboxService
 
+if TYPE_CHECKING:
+    from platform_core.services.business import BusinessService as BusinessServiceType
+
 
 class MarketplacePresenceService:
     @staticmethod
-    def _business_service():
+    def _business_service() -> "type[BusinessServiceType]":
+        # Imported lazily, at call time, to break a circular import with
+        # platform_core.services.business (which reaches back into
+        # marketplace presence for opt-in/opt-out side effects).
         from platform_core.services.business import BusinessService
 
-        return BusinessService
+        return cast("type[BusinessServiceType]", BusinessService)
 
     @staticmethod
     async def get_settings(

@@ -36,7 +36,7 @@ def blueprint(*roles: str) -> BusinessBlueprint:
         value="A furniture workshop making custom wardrobes and sofas.", source="USER_STATEMENT")
     bp.template_preferences.template_id = None
     bp.completion_state.generation_job_id = uuid4()
-    bp.media_generation_requests = [MediaGenerationRequest(role=r, status="queued") for r in roles]  # type: ignore[arg-type]
+    bp.media_generation_requests = [MediaGenerationRequest(role=r, status="queued") for r in roles]
     return bp
 
 

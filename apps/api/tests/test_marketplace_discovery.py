@@ -373,8 +373,10 @@ def test_reconcile_sweeps_deleted_businesses_and_books_the_next_run(owner: dict[
         await session.execute(
             update(Business).where(Business.id == gone_id).values(deleted_at=datetime.now(timezone.utc))
         )
-        return await MarketplaceIndexingService.reconcile_all(
-            session, correlation_id=str(uuid.uuid4()), business_ids=[gone_id, kept_id]
+        return dict(
+            await MarketplaceIndexingService.reconcile_all(
+                session, correlation_id=str(uuid.uuid4()), business_ids=[gone_id, kept_id]
+            )
         )
 
     result = _run_db(_delete_and_reconcile)

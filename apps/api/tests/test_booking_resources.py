@@ -33,7 +33,7 @@ BASE = datetime(2027, 3, 1, 9, 0, tzinfo=timezone.utc)
 def _url() -> str:
     url = get_database_url()
     assert url
-    return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return str(url).replace("postgresql://", "postgresql+asyncpg://", 1)
 
 
 def _factory() -> Any:

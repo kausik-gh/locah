@@ -6,7 +6,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -173,7 +173,7 @@ class FulfilmentService:
     ) -> uuid.UUID:
         settings = await FulfilmentService.ensure_settings(session, business_id)
         if settings.delivery_fee_offering_id:
-            return settings.delivery_fee_offering_id
+            return cast(uuid.UUID, settings.delivery_fee_offering_id)
         offering = Offering(
             business_id=business_id,
             title="Delivery fee",
@@ -190,7 +190,7 @@ class FulfilmentService:
         settings.delivery_fee_offering_id = offering.id
         settings.updated_at = datetime.now(timezone.utc)
         await session.flush()
-        return offering.id
+        return cast(uuid.UUID, offering.id)
 
     @staticmethod
     async def create_zone(

@@ -6,6 +6,7 @@ import json
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -131,6 +132,7 @@ async def test_build_accepts_discovery_without_legacy_description(monkeypatch, w
             session, business, bp, actor_id=uuid4(), correlation_id=str(uuid4())
         )
     if with_phone:
+        assert patch_profile.await_args is not None
         assert patch_profile.await_args.kwargs["raw"] == {
             "contact": {"phone": "+919876543210"}
         }
@@ -757,7 +759,7 @@ async def test_gallery_resolves_only_ready_tenant_assets():
     result.scalars.return_value.all.return_value = [asset]
     session.execute.return_value = result
     tenant = uuid4()
-    sections = [{"content": {"image_asset_ids": [str(asset_id)]}}]
+    sections: list[dict[str, Any]] = [{"content": {"image_asset_ids": [str(asset_id)]}}]
     await MediaService.attach_section_asset_urls(session, sections, business_id=tenant)
     assert sections[0]["assets"]["image_asset_id_0"]["alt_text"] == "Our showroom"
     query = session.execute.call_args.args[0]
@@ -933,7 +935,7 @@ def test_interview_extraction_does_not_run_on_the_website_reasoning_model():
 @pytest.mark.asyncio
 async def test_the_turn_sends_the_fast_model_and_no_registry_dump():
     provider = MockProvider({"facts": [{"field": "description", "quote": "We make furniture"}]})
-    captured: dict = {}
+    captured: dict[str, Any] = {}
     original = provider.generate_structured
 
     async def spy(prompt, schema, model_config, timeout_seconds):

@@ -540,4 +540,7 @@ class BookingService:
         booking_id: uuid.UUID,
     ) -> list[BookingStatusHistory]:
         await BookingResolver.resolve(session, business_id=business_id, booking_id=booking_id)
-        return await BookingResolver.load_status_history(session, booking_id=booking_id)
+        return cast(
+            "list[BookingStatusHistory]",
+            await BookingResolver.load_status_history(session, booking_id=booking_id),
+        )

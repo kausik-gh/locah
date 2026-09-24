@@ -390,7 +390,7 @@ class InventoryService:
 
     @staticmethod
     async def _available_quantity(record: InventoryRecord) -> int:
-        return max(record.quantity_on_hand - record.quantity_reserved, 0)
+        return int(max(record.quantity_on_hand - record.quantity_reserved, 0))
 
     @staticmethod
     async def reserve_for_order(

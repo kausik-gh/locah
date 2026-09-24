@@ -70,7 +70,7 @@ def _owner(monkeypatch: Any) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 def test_every_registry_module_is_seeded() -> None:
-    async def _check() -> set[str]:
+    async def _check() -> dict[str, str]:
         url = get_database_url()
         assert url
         if url.startswith("postgresql://"):
@@ -81,9 +81,9 @@ def test_every_registry_module_is_seeded() -> None:
             rows = await session.execute(text("SELECT id, module_class FROM module_definitions"))
             db = {r[0]: r[1] for r in rows}
         await engine.dispose()
-        return db  # type: ignore[return-value]
+        return db
 
-    db_modules: dict[str, str] = asyncio.run(_check())  # type: ignore[assignment]
+    db_modules: dict[str, str] = asyncio.run(_check())
 
     registry_ids = set(_MODULES.keys())
     missing = registry_ids - set(db_modules)

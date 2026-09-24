@@ -11,6 +11,7 @@ cart language anywhere in the content.
 from __future__ import annotations
 
 import json
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -47,7 +48,7 @@ def _bp(name: str, facts: dict[str, str], patterns: list[tuple[str, str]],
         identity={"display_name": Fact(value=name, source="PLATFORM", confirmation="confirmed")},
     )
     bp.known_facts = {k: Fact(value=v, source="USER_STATEMENT", confirmation="confirmed") for k, v in facts.items()}
-    bp.operating_patterns = [PatternEvidence(pattern=p, quote=q) for p, q in patterns]  # type: ignore[arg-type]
+    bp.operating_patterns = [PatternEvidence(pattern=p, quote=q) for p, q in patterns]
     for target, (summary, quote) in answers.items():
         bp.discovery[target] = TargetState(status="answered", summary=summary, quote=quote)
     bp.taxonomy.groups = groups
@@ -120,13 +121,19 @@ def real_estate() -> BusinessBlueprint:
     )
 
 
-def compose(bp: BusinessBlueprint, copy: WebsiteCopy | None = None, contact: dict | None = None) -> dict:
-    return compose_site(bp, direct(bp, "other"), with_draft(bp, copy), business_type="other",
-                        contact=contact or {"phone": "+91" + bp.known_facts["phone"].value},
-                        active_modules=ACTIVE)
+def compose(
+    bp: BusinessBlueprint, copy: WebsiteCopy | None = None, contact: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    return dict(
+        compose_site(
+            bp, direct(bp, "other"), with_draft(bp, copy), business_type="other",
+            contact=contact or {"phone": "+91" + bp.known_facts["phone"].value},
+            active_modules=ACTIVE,
+        )
+    )
 
 
-def sections(payload: dict) -> dict[str, dict]:
+def sections(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {s["section_type_id"]: s for s in payload["pages"][0]["sections"]}
 
 

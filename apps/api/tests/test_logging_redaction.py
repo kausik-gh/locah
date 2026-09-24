@@ -8,12 +8,13 @@ processor directly (no DB, no app) and assert nothing sensitive survives.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from platform_core.logging import _redact, _redact_value, configure, get_logger
 
 
-def _run(event_dict: dict) -> dict:
-    return _redact(None, "info", event_dict)
+def _run(event_dict: dict[str, Any]) -> dict[str, Any]:
+    return dict(_redact(None, "info", event_dict))
 
 
 def test_credential_keys_are_redacted() -> None:
@@ -113,7 +114,7 @@ def test_full_chain_serializes_with_secrets_scrubbed() -> None:
 
     configure()
     chain = structlog.get_config()["processors"]
-    event_dict: dict = {
+    event_dict: dict[str, Any] = {
         "event": "payment_webhook.signature_rejected",
         "provider": "stripe",
         "signature": "v1=abcd",

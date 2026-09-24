@@ -12,6 +12,7 @@ from __future__ import annotations
 import inspect
 import json
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -47,11 +48,11 @@ def blueprint(**facts: str) -> BusinessBlueprint:
 class _Client:
     """Minimal httpx.AsyncClient stand-in. No network in the suite."""
 
-    def __init__(self, *, status: int = 200, payload: dict | None = None, raises=None):
+    def __init__(self, *, status: int = 200, payload: dict[str, Any] | None = None, raises=None):
         self.status = status
         self.payload = payload or {}
         self.raises = raises
-        self.sent: dict = {}
+        self.sent: dict[str, Any] = {}
 
     async def __aenter__(self):
         return self

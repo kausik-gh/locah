@@ -36,7 +36,7 @@ class OrderService:
         order: SalesOrder,
     ) -> dict[str, Any]:
         items = await OrderResolver.load_line_items(session, order_id=order.id)
-        return OrderResolver.serialize_order_detail(order, line_items=items)
+        return cast(dict[str, Any], OrderResolver.serialize_order_detail(order, line_items=items))
 
     @staticmethod
     def _generate_order_number() -> str:
@@ -397,4 +397,7 @@ class OrderService:
         order_id: uuid.UUID,
     ) -> list[OrderStatusHistory]:
         await OrderResolver.resolve(session, business_id=business_id, order_id=order_id)
-        return await OrderResolver.load_status_history(session, order_id=order_id)
+        return cast(
+            "list[OrderStatusHistory]",
+            await OrderResolver.load_status_history(session, order_id=order_id),
+        )

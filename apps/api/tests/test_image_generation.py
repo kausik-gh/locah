@@ -1,6 +1,7 @@
 """Image prompts and the image provider boundary. No live provider network."""
 
 import base64
+from typing import Any
 
 import httpx
 import pytest
@@ -108,7 +109,7 @@ def test_availability_follows_the_configured_provider(monkeypatch: pytest.Monkey
 class _Recorder:
     def __init__(self, response: httpx.Response) -> None:
         self.response = response
-        self.calls: list[tuple[str, dict, dict]] = []
+        self.calls: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
 
     def client(self, *args, **kwargs):  # noqa: ANN002, ANN003
         recorder = self

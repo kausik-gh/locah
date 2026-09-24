@@ -17,6 +17,7 @@ from platform_core.context_resolver import bind_booking_management_token, bind_p
 from platform_core.exceptions import ResourceNotFound, ValidationError
 from platform_core.models import (
     Booking,
+    Business,
     BusinessModuleState,
     Offering,
     WorkforceLocationAssignment,
@@ -38,7 +39,7 @@ ACTIVE_MODULE_STATES = frozenset({"enabled", "ready", "active"})
 
 class PublicBookingService:
     @staticmethod
-    async def _resolve_business(session: AsyncSession, slug: str):
+    async def _resolve_business(session: AsyncSession, slug: str) -> Business:
         business = await BusinessService.get_by_slug(session, slug)
         if business is None or business.deleted_at is not None:
             raise ResourceNotFound("Business")
@@ -232,7 +233,7 @@ class PublicBookingService:
                 result["available"] = False
                 result["code"] = "slot_conflict"
                 result["reason"] = "No resource is free for this time"
-        return result
+        return dict(result)
 
     @staticmethod
     async def create_public_booking(
@@ -314,7 +315,7 @@ class PublicBookingService:
             if booking.management_token_expires_at
             else None
         )
-        return data
+        return dict(data)
 
     @staticmethod
     async def _resolve_by_token(
@@ -366,7 +367,7 @@ class PublicBookingService:
             "business_id": str(booking.business_id),
             "location_id": str(booking.location_id),
         }
-        return data
+        return dict(data)
 
     @staticmethod
     async def cancel_by_token(
@@ -414,7 +415,7 @@ class PublicBookingService:
             correlation_id=correlation_id,
             payload={"status": "cancelled", "reason": reason or "Customer cancelled"},
         )
-        return BookingResolver.serialize_booking(updated)
+        return dict(BookingResolver.serialize_booking(updated))
 
     @staticmethod
     async def reschedule_by_token(
@@ -463,4 +464,4 @@ class PublicBookingService:
             correlation_id=correlation_id,
             payload={"starts_at": starts_at, "ends_at": ends_at, "reason": reason},
         )
-        return BookingResolver.serialize_booking(updated)
+        return dict(BookingResolver.serialize_booking(updated))

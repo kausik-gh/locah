@@ -15,7 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.context_resolver import bind_public_context
 from platform_core.exceptions import ResourceNotFound, ValidationError
-from platform_core.models import BusinessModuleState, MediaAsset, MerchantConnection, Offering
+from platform_core.models import (
+    Business,
+    BusinessModuleState,
+    MediaAsset,
+    MerchantConnection,
+    Offering,
+)
 from platform_core.services.business import BusinessService
 from platform_core.services.customer import CustomerService
 from platform_core.services.fulfilment import ACTIVE_MODULE_STATES, FulfilmentService
@@ -26,7 +32,7 @@ from platform_core.services.payment_attempt import PaymentAttemptService
 
 class CheckoutService:
     @staticmethod
-    async def _resolve_business(session: AsyncSession, slug: str):
+    async def _resolve_business(session: AsyncSession, slug: str) -> Business:
         business = await BusinessService.get_by_slug(session, slug)
         if business is None or business.deleted_at is not None:
             raise ResourceNotFound("Business")

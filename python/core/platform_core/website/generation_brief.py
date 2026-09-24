@@ -171,4 +171,4 @@ def build_generation_prompt(
     if context.get("description"):
         prompt += f"\nAbout: {context['description']}."
     prompt += build_intake_brief(context, intake)
-    return prompt
+    return str(prompt)
