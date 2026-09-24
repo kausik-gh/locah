@@ -18,7 +18,8 @@ const COLUMNS: Array<{ title: string; links: Array<{ href: string; label: string
     title: 'For customers',
     links: [
       { href: '/marketplace', label: 'Browse the Marketplace' },
-      { href: '/search', label: 'Search businesses' },
+      { href: '/marketplace/search', label: 'Search businesses' },
+      { href: '/marketplace/categories', label: 'All categories' },
       { href: '/activity', label: 'Your orders & bookings' },
     ],
   },
@@ -40,9 +41,12 @@ export function PublicFooter() {
   return (
     <footer className="lc-footer">
       <div className="lc-container lc-container--wide">
+        <p className="lc-footer__statement">
+          Local businesses. <em>Limitless possibilities.</em>
+        </p>
         <div className="ui-footer-grid">
           <div>
-            <Wordmark />
+            <span className="lc-footer__mark"><Wordmark /></span>
             <p className="lc-muted lc-small" style={{ marginTop: '0.9rem', maxWidth: '30ch' }}>
               The digital operating layer for local businesses. Build your presence, get
               discovered, and run the whole business in one place.
@@ -58,7 +62,7 @@ export function PublicFooter() {
 
           {COLUMNS.map((col) => (
             <div key={col.title}>
-              <h4 className="lc-eyebrow">{col.title}</h4>
+              <p className="lc-eyebrow">{col.title}</p>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.55rem' }}>
                 {col.links.map((l) => (
                   <li key={l.href}>

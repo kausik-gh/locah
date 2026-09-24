@@ -1,6 +1,6 @@
 import React from 'react'
 import type { Metadata } from 'next'
-import { Plus_Jakarta_Sans, Instrument_Serif } from 'next/font/google'
+import { Anek_Latin, Plus_Jakarta_Sans, Instrument_Serif } from 'next/font/google'
 
 // The design tokens must load before anything that reads them. `public.css`
 // styles LOCAH's own surfaces (marketing, Marketplace); `website.css` styles
@@ -9,6 +9,7 @@ import { Plus_Jakarta_Sans, Instrument_Serif } from 'next/font/google'
 import '@platform/ui/tokens.css'
 import '@platform/ui/public.css'
 import './platform-overhaul.css'
+import './locah-system.css'
 import '@platform/ui/website.css'
 // A site's creative direction (profile, type system, cards, nav) on top.
 import '@platform/ui/site-studio.css'
@@ -26,6 +27,16 @@ const display = Instrument_Serif({
   variable: '--font-display-serif',
 })
 
+// LOCAH's own headline face (EK Type, Mumbai). Only LOCAH pages use it, so it
+// is not preloaded: a published business website never downloads it.
+const headline = Anek_Latin({
+  subsets: ['latin'],
+  display: 'swap',
+  axes: ['wdth'],
+  preload: false,
+  variable: '--font-anek',
+})
+
 export const metadata: Metadata = {
   title: {
     default: 'LOCAH — Local Businesses. Limitless Possibilities.',
@@ -37,7 +48,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${sans.variable} ${display.variable}`}>
+    <html lang="en" className={`${sans.variable} ${display.variable} ${headline.variable}`}>
       <body>{children}</body>
     </html>
   )
