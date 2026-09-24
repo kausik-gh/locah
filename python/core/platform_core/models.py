@@ -313,7 +313,7 @@ class MarketplaceBusinessProjection(Base):
     capability_flags: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
-    # Discovery depth (20260924120000): placed by platform_core.business_categories
+    # Discovery depth (20260924082800): placed by platform_core.business_categories
     # and read from what the Business published.
     category_family: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str | None] = mapped_column(Text, nullable=True)
