@@ -265,6 +265,8 @@ def browse_sections(
     if _GENERIC_TITLE.match(title) and not _GENERIC_TITLE.match(default):
         title = default
     drafts = {o.name.casefold(): o for o in bp.website_draft.offerings}
+    # The owner's choice about prices wins: none, "on request", or starting prices only.
+    prices = bp.owner_choices.price_visibility or "show"
     items: list[dict[str, Any]] = []
     for group in groups:
         for item in group.items:
@@ -278,11 +280,13 @@ def browse_sections(
                 description = draft.description.text
             if description:
                 entry["description"] = description[:200]
-            if item.price:
+            if item.price and prices == "show":
                 entry["price"] = money(item.price)[:40]
                 if item.unit:
                     entry["unit"] = item.unit[:40]
-            elif group.price and arche == "real_estate_projects":
+            elif prices == "on_request" and (item.price or group.price):
+                entry["price"] = "Price on request"
+            elif group.price and arche == "real_estate_projects" and prices in {"show", "from"}:
                 # "Villas from 1.2 crore": the owner's starting price for the kind.
                 shown = money(group.price)
                 entry["price"] = (shown if shown.startswith("From ") else f"From {shown}")[:40]
@@ -302,7 +306,9 @@ def browse_sections(
         tags = [i.name for i in group.items if not normalise_name(i.name)[1]][:6]
         if tags:
             card["tags"] = tags
-        meta = _group_meta(group)
+        meta = _group_meta(group) if prices in {"show", "from"} else (
+            "Price on request" if prices == "on_request" and (group.price or any(i.price for i in group.items))
+            else "Sold by the kg" if re.search(r"\b(kg|kilo|weight)", group.sold_by, re.I) else "")
         if meta:
             card["meta"] = meta
         picture = picture_for(bp, f"category:{slug(group.name)}")
@@ -475,6 +481,14 @@ def compose_site(
         contact_section["hours_summary"] = facts["opening_hours"][:500]
     if len(contact_section) > 2:
         sections.append({"section_type_id": "contact", "layout_variant": "full", "content": contact_section})
+
+    lead = bp.website_prefs.lead_section
+    if lead:
+        # "Put delivery higher": the section the owner named comes right after the hero.
+        found = next((s for s in sections[1:] if s["section_type_id"] == lead), None)
+        if found:
+            sections.remove(found)
+            sections.insert(1, found)
 
     for section in sections:
         section["is_visible"] = True

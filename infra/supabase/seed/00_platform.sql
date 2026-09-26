@@ -45,13 +45,13 @@ INSERT INTO website_section_types (id, label, description, content_schema, allow
 
 -- Core sections (available to all businesses)
 ('hero', 'Hero / Banner', 'Main header section with headline, subheadline, and call-to-action',
- '{"type":"object","required":["headline"],"properties":{"headline":{"type":"string","maxLength":120},"headline_accent":{"type":"string","maxLength":60},"eyebrow":{"type":"string","maxLength":60},"subheadline":{"type":"string","maxLength":300},"cta_label":{"type":"string","maxLength":60},"cta_url":{"type":"string","maxLength":500},"image_asset_id":{"type":"string","format":"uuid"}}}',
- ARRAY['centered', 'left_aligned', 'image_left', 'image_right', 'full_width'],
+ '{"type":"object","required":["headline"],"properties":{"headline":{"type":"string","maxLength":120},"headline_accent":{"type":"string","maxLength":60},"eyebrow":{"type":"string","maxLength":60},"subheadline":{"type":"string","maxLength":300},"cta_label":{"type":"string","maxLength":60},"cta_url":{"type":"string","maxLength":500},"image_asset_id":{"type":"string","format":"uuid"},"badges":{"type":"array","maxItems":4,"items":{"type":"string","maxLength":40}}}}',
+ ARRAY['centered', 'left_aligned', 'image_left', 'image_right', 'full_width', 'commerce_split', 'editorial_overlay', 'cinematic', 'airy_split', 'editorial_split'],
  NULL, 10),
 
 ('about', 'About / Story', 'Business description, history, and mission',
- '{"type":"object","properties":{"title":{"type":"string","maxLength":120},"body":{"type":"string","maxLength":2000},"image_asset_id":{"type":"string","format":"uuid"}}}',
- ARRAY['text_only', 'image_left', 'image_right'],
+ '{"type":"object","properties":{"title":{"type":"string","maxLength":120},"body":{"type":"string","maxLength":2000},"image_asset_id":{"type":"string","format":"uuid"},"eyebrow":{"type":"string","maxLength":40},"quote":{"type":"string","maxLength":200},"anchor":{"type":"string","maxLength":30}}}',
+ ARRAY['text_only', 'image_left', 'image_right', 'story_split'],
  NULL, 20),
 
 ('contact', 'Contact Information', 'Contact details, address, and enquiry prompt',
@@ -112,8 +112,8 @@ INSERT INTO website_section_types (id, label, description, content_schema, allow
 
 -- Call-to-action / enquiry sections
 ('cta_band', 'Call to Action', 'Prominent call-to-action strip',
- '{"type":"object","required":["headline","cta_label"],"properties":{"headline":{"type":"string","maxLength":200},"body":{"type":"string","maxLength":500},"cta_label":{"type":"string","maxLength":60},"cta_url":{"type":"string","maxLength":500}}}',
- ARRAY['centered', 'left_aligned'],
+ '{"type":"object","required":["headline","cta_label"],"properties":{"headline":{"type":"string","maxLength":200},"body":{"type":"string","maxLength":500},"cta_label":{"type":"string","maxLength":60},"cta_url":{"type":"string","maxLength":500},"image_asset_id":{"type":"string","format":"uuid"}}}',
+ ARRAY['centered', 'left_aligned', 'image_banner'],
  NULL, 120),
 
 ('enquiry_form', 'Enquiry / Lead Capture', 'Contact/enquiry form for lead capture',

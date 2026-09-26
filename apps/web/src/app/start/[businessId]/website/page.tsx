@@ -3,9 +3,10 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/platform-api'
 import { OnboardingError, OnboardingShell, Steps } from '@/components/onboarding/Shell'
-import { LivePreview } from './LivePreview'
 import { SetupOfferings } from './SetupOfferings'
+import { WebsiteStudio } from './WebsiteStudio'
 import type { BusinessInterviewData } from '@platform/contracts'
+import '../interview/interview.css'
 import './preview.css'
 
 export const dynamic = 'force-dynamic'
@@ -108,11 +109,11 @@ export default async function WebsiteStepPage({ params }: { params: { businessId
       <Steps current={2} />
       <div className="lp-head">
         <div>
-          <h1 className="lp-title">Here is your website</h1>
+          <h1 className="lp-title">Your website is ready</h1>
           <p className="lp-lede">
-            {pages.length} {pages.length === 1 ? 'page' : 'pages'}, {totalSections}{' '}
-            {totalSections === 1 ? 'section' : 'sections'}, built from what you told us. It is a
-            draft — only you can see it until you publish.
+            Built from what you told LOCAH — {totalSections}{' '}
+            {totalSections === 1 ? 'section' : 'sections'} on your home page. Only you can see it
+            until you publish. Keep talking to LOCAH to change anything.
           </p>
         </div>
         <div className="lp-actions">
@@ -127,10 +128,13 @@ export default async function WebsiteStepPage({ params }: { params: { businessId
         </div>
       </div>
 
-      {interviewRes.ok ? <SetupOfferings data={interviewRes.data.data} /> : null}
-
       {previewHref ? (
-        <LivePreview businessId={params.businessId} src={previewHref} initialStatus={genStatus} />
+        <WebsiteStudio
+          businessId={params.businessId}
+          src={previewHref}
+          initialStatus={genStatus}
+          interview={interviewRes.ok ? interviewRes.data.data : null}
+        />
       ) : (
         <p className="lp-lede" role="status">
           Your draft is saved with {pages.length} {pages.length === 1 ? 'page' : 'pages'}, but the
@@ -138,6 +142,8 @@ export default async function WebsiteStepPage({ params }: { params: { businessId
           your Workspace.
         </p>
       )}
+
+      {interviewRes.ok ? <SetupOfferings data={interviewRes.data.data} /> : null}
 
       <ul className="lp-pages">
         {pages.map((p) => (

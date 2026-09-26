@@ -22,10 +22,13 @@ export function LivePreview({
   businessId,
   src,
   initialStatus,
+  refreshKey = 0,
 }: {
   businessId: string
   src: string
   initialStatus: string | null
+  /** Bumped when a conversation edit changed the draft: reload the frame. */
+  refreshKey?: number
 }) {
   const running = (status: string | null) => status === 'pending' || status === 'running'
   const [status, setStatus] = useState(initialStatus)
@@ -112,7 +115,7 @@ export function LivePreview({
       <div className={`lp-stage lp-stage--${device}`}>
         <iframe
           ref={frame}
-          key={refreshed}
+          key={`${refreshed}-${refreshKey}`}
           src={src}
           title="Preview of your website"
           loading="eager"

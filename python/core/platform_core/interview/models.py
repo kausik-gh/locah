@@ -338,6 +338,18 @@ class OwnerChoices(StrictModel):
     price_visibility: Literal["show", "from", "on_request", "hidden"] | None = None
 
 
+class WebsitePrefs(StrictModel):
+    """What the owner asked of the website in conversation. Their word wins over
+    every later generation pass."""
+
+    feel: Literal["warmer", "cooler", "darker", "lighter", "calmer", "bolder", "simpler", "premium",
+                  "playful"] | None = None
+    # A section type to place right after the hero ("put delivery higher").
+    lead_section: str | None = Field(default=None, max_length=40)
+    # "That isn't our story": the next message is the story.
+    awaiting_story: bool = False
+
+
 class Message(StrictModel):
     role: Literal["user", "assistant"]
     text: str
@@ -439,6 +451,8 @@ class BusinessBlueprint(StrictModel):
     # The business was started by talking, before it had a name: the name is
     # asked for (once) and the address follows it until then.
     name_pending: bool = False
+    # Website edits asked for in conversation after the site exists.
+    website_prefs: WebsitePrefs = Field(default_factory=WebsitePrefs)
 
 
 class ExtractedFact(StrictModel):

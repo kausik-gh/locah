@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from platform_core.interview.models import BusinessBlueprint
@@ -543,9 +544,20 @@ def choose(bp: BusinessBlueprint, dims: Dimensions, *, seed: str = "") -> Choice
     seed = seed or str(bp.business_id)
     ranked = sorted(scores, key=lambda k: (-scores[k], _stable(seed + k)))
     family = FAMILIES[ranked[0]]
+    feel = bp.website_prefs.feel
+    if feel:
+        # The owner asked for a feel: stay in this family if it has a palette
+        # for it, else move to the nearest family the evidence also supports.
+        best = max(scores.values()) or 1.0
+        supported = [k for k in ranked if scores[k] >= best * 0.55][:4]
+        for key in supported:
+            current = _palette(FAMILIES[key], dims, seed) if key == family.key else None
+            if [p for p in _feel_palettes(FAMILIES[key], feel) if current is None or p.key != current.key]:
+                family = FAMILIES[key]
+                break
 
     variant = _variant(family, dims)
-    palette = _palette(family, dims, seed)
+    palette = _palette(family, dims, seed, feel)
     def said(keys: object) -> str:
         # "offering: menu" — never "offering=menu", which the site's markup guard rightly refuses.
         return ", ".join(sorted(str(k).replace("=", ": ") for k in keys))  # type: ignore[attr-defined]
@@ -609,8 +621,39 @@ def _variant(family: Family, d: Dimensions) -> Variant:
     return chosen
 
 
-def _palette(family: Family, dims: Dimensions, seed: str) -> Palette:
-    """A palette from the family's recipes: the one the evidence leans to, else stable by business."""
+_WARM = {"orange", "red", "yellow", "pink"}
+_COOL = {"blue", "teal", "green", "violet"}
+
+
+def _feel_palettes(family: Family, feel: str) -> list[Palette]:
+    """The family's palettes that answer "make it …"."""
+    tests: dict[str, Callable[[Palette], bool]] = {
+        # Warmer means a warm colour on a light, soft ground — not a darker red.
+        "warmer": lambda p: p.mode == "light" and (
+            p.hue in _WARM or p.key in {"terracotta_olive", "forest_turmeric", "butter_green"}),
+        "cooler": lambda p: p.hue in _COOL,
+        "darker": lambda p: p.mode == "dark",
+        "lighter": lambda p: p.mode == "light",
+        "calmer": lambda p: p.hue in _COOL | {"neutral"} and p.mode == "light",
+        "bolder": lambda p: p.hue in {"red", "orange", "yellow", "violet"},
+        "simpler": lambda p: p.hue == "neutral" or p.mode == "light",
+        "premium": lambda p: p.mode == "dark" or p.hue == "neutral",
+        "playful": lambda p: p.hue in {"orange", "violet", "pink", "yellow"},
+    }
+    test = tests.get(feel)
+    return [p for p in family.palettes if test(p)] if test else []
+
+
+def _palette(family: Family, dims: Dimensions, seed: str, feel: str | None = None) -> Palette:
+    """A palette from the family's recipes: the owner's asked-for feel first, then
+    the one the evidence leans to, else stable by business."""
+    if feel:
+        asked = _feel_palettes(family, feel)
+        # Asking for a change should change something: not the palette it already had.
+        before = _palette(family, dims, seed)
+        fresh = [p for p in asked if p.key != before.key] or asked
+        if fresh:
+            return fresh[_stable(seed + feel) % len(fresh)]
     values = _dim_values(dims)
     for (fam, dim), key in _PALETTE_BY_EVIDENCE.items():
         if fam == family.key and dim in values:

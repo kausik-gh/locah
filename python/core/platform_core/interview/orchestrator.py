@@ -345,6 +345,8 @@ class BusinessInterviewOrchestrator:
         text = text.strip()
         if not text:
             raise ValueError("Tell us a little about your business first.")
+        # Once the website exists the conversation changes it; it no longer interviews.
+        built = bp.completion_state.status == "built"
         started = time.monotonic()
         provider = provider or get_ai_provider()
         fallback: str | None = None
@@ -496,7 +498,10 @@ class BusinessInterviewOrchestrator:
         next_item: planner.Ranked | None = None
         question = ""
         asked_name = False
-        if name_question and signal != "wants_to_finish":
+        if built and not off_topic:
+            reply = " ".join(p for p in (ack if understood else "", media_note,
+                                         planner.UPDATED[lang] if understood else planner.HELP_EDIT[lang]) if p)
+        elif name_question and signal != "wants_to_finish":
             reply = " ".join(p for p in (ack, media_note, name_question) if p)
             asked_name = True
         elif off_topic:

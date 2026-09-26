@@ -402,6 +402,19 @@ def so_far_line(bp: BusinessBlueprint, lang: str, *, first_shape: bool = False) 
     return SO_FAR[lang].format(text=text).strip() if text else ""
 
 
+# After the website exists: the conversation keeps going, and changes it.
+UPDATED = {
+    "en": "I've updated your website with that — have a look.",
+    "ta_en": "Website-la update pannitten — oru thadava paarunga.",
+    "ta": "வெப்சைட்டில் சேர்த்துட்டேன் — ஒருமுறை பாருங்க.",
+}
+HELP_EDIT = {
+    "en": "Tell me what to change — for example “make it warmer”, “don't show prices”, “put delivery "
+          "higher”, or “we also sell prawns”.",
+    "ta_en": "Enna maathanum-nu sollunga — “konjam warm-aa pannunga”, “price kaatta vendaam”, maadhiri.",
+    "ta": "என்ன மாத்தணும்னு சொல்லுங்க — “விலை காட்ட வேண்டாம்” மாதிரி.",
+}
+
 # Asked once, when the business was started by talking and has no name yet.
 NAME_QUESTION = {
     "en": "What's the {noun} called? That's the name the website will use.",

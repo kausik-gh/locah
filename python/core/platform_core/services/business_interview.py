@@ -507,9 +507,7 @@ class BusinessInterviewService:
             # turn. Keep what the worker wrote; everything else is this turn's.
             _carry_media(bp, proposed)
             bp = proposed
-            if bp.completion_state.status == "built":
-                bp.completion_state.status = "review"
-                BusinessInterviewOrchestrator.project(bp, business.business_type)
+            BusinessInterviewOrchestrator.project(bp, business.business_type)
         entitlement = await BusinessEntitlementResolver.resolve(
             session, business_id, business=business
         )
@@ -624,6 +622,10 @@ class BusinessInterviewService:
                 raise ValidationError(str(exc)) from exc
             if touched and bp.completion_state.status == "built":
                 await _sync_catalogue_into_draft(session, business.id, bp)
+        if initial.completion_state.status == "built" and command.action in {"turn", "media", "correct",
+                                                                               "catalogue"}:
+            await BusinessInterviewService.talk_to_website(
+                session, business, bp, command, actor_id=actor_id, correlation_id=correlation_id)
         await _queue_logo(session, business, bp, actor_id=actor_id)
         await _sync_business(session, business, bp)
         bp.revision += 1
@@ -650,6 +652,148 @@ class BusinessInterviewService:
         )
         await session.commit()
         return result
+
+    @staticmethod
+    async def talk_to_website(
+        session: AsyncSession,
+        business: Business,
+        bp: BusinessBlueprint,
+        command: InterviewCommand,
+        *,
+        actor_id: UUID,
+        correlation_id: str,
+    ) -> list[str]:
+        """After the website exists, talking to LOCAH changes it — through structured state.
+
+        The message is read for website edits (feel, prices, what leads, new
+        items, the story, the cover photo, the headline); each is applied to the
+        Blueprint, then only the touched parts of the live draft are updated
+        from a fresh deterministic composition. Wording the model wrote and
+        anything the owner edited by hand elsewhere on the page are kept.
+        """
+        from platform_core.interview import website_edits as we
+
+        done: list[str] = []
+        if command.action == "turn":
+            if we.take_story(bp, command.text):
+                done.append("story:set")
+            done += we.apply(bp, we.read(command.text))
+            said = we.reply(done, bp) if "story:set" not in done else \
+                "Thank you — that's your story on the website now. Have a look."
+            if said and bp.messages and bp.messages[-1].role == "assistant":
+                bp.messages[-1] = bp.messages[-1].model_copy(update={"text": said})
+            if not done and bp.last_turn is not None:
+                # A business fact said after building (a new number, new hours)
+                # still reaches the website.
+                done.append("facts")
+        elif command.action == "media":
+            done.append("photo:hero" if command.media and command.media.role == "hero" else "facts")
+        else:
+            done.append("facts")
+        if done:
+            await BusinessInterviewService._apply_to_draft(
+                session, business, bp, done, actor_id=actor_id)
+        return done
+
+    @staticmethod
+    async def _apply_to_draft(
+        session: AsyncSession, business: Business, bp: BusinessBlueprint, done: list[str], *, actor_id: UUID
+    ) -> None:
+        from platform_core.interview.creative_director import direct
+        from platform_core.interview.site_composer import compose_site
+        from platform_core.services.website import SectionService, WebsiteVersionService
+        from platform_core.services.website_composition import WebsiteCompositionService
+
+        kinds = {d.split(":", 1)[0] for d in done}
+        plan = await BusinessInterviewService.plan(session, business, bp)
+        fresh = compose_site(bp, direct(bp, business.business_type), with_draft(bp, None),
+                             business_type=business.business_type, contact=public_contact(bp),
+                             active_modules=plan.active_modules)
+        aggregate = await WebsiteService.get_aggregate(session, business_id=business.id)
+        pages = aggregate["draft"]["pages"]
+        if not pages:
+            return
+        page = next((p for p in pages if p.get("slug") == "home"), pages[0])
+        current: dict[str, dict[str, Any]] = {}
+        for section in page["sections"]:
+            current.setdefault(section["section_type_id"], section)
+        new: dict[str, dict[str, Any]] = {}
+        for section in fresh["pages"][0]["sections"]:
+            new.setdefault(section["section_type_id"], section)
+
+        async def patch(section_type: str, payload: dict[str, Any]) -> None:
+            if section_type in current and payload:
+                await SectionService.patch_section(session, business_id=business.id,
+                                                   section_id=UUID(str(current[section_type]["id"])),
+                                                   actor_id=actor_id, payload=payload)
+
+        if "feel" in kinds:
+            design_keys = {"primary_color", "accent_color", "background_color", "text_color", "surface_alt_color",
+                           "muted_color", "palette_mode", "design_family", "design_variant", "palette_key",
+                           "palette_hue", "rhythm", "image_treatment", "surface", "footer_style", "type_system",
+                           "reference_profile", "card_style", "nav_style", "hero_style", "personality",
+                           "creative_direction", "motion_intensity"}
+            theme = {**(aggregate["draft"].get("theme") or {}),
+                     **{k: v for k, v in fresh["theme_hints"].items() if k in design_keys}}
+            await WebsiteVersionService.update_draft_chrome(session, business_id=business.id, actor_id=actor_id,
+                                                            theme=theme)
+            for section_type in ("hero", "product_showcase", "category_showcase"):
+                if section_type in current and section_type in new and \
+                        current[section_type].get("layout_variant") != new[section_type].get("layout_variant"):
+                    await patch(section_type, {"layout_variant": new[section_type].get("layout_variant")})
+        if kinds & {"prices", "add", "facts"}:
+            for section_type in ("product_showcase", "category_showcase", "fulfilment_strip", "contact"):
+                if section_type in current and section_type in new:
+                    kept = dict(current[section_type].get("content") or {})
+                    fresh_content = dict(new[section_type].get("content") or {})
+                    written = {str(i.get("name")): i for i in kept.get("items") or [] if isinstance(i, dict)}
+                    for key in ("items", "categories"):
+                        if key in fresh_content:
+                            # Fresh structure (names, prices), the words already written kept.
+                            fresh_content[key] = [{**row, **({"description": written[str(row.get("name"))]
+                                                              ["description"]} if str(row.get("name")) in written
+                                                             and written[str(row.get("name"))].get("description")
+                                                             else {})}
+                                                  for row in fresh_content[key] if isinstance(row, dict)]
+                    for key in ("title", "subtitle"):
+                        if kept.get(key):
+                            fresh_content[key] = kept[key]
+                    await patch(section_type, {"content": fresh_content})
+                elif section_type in new and section_type not in current and "add" in kinds:
+                    await WebsiteCompositionService.add_section(
+                        session, business_id=business.id, page_id=UUID(str(page["id"])), actor_id=actor_id,
+                        section_type_id=section_type, content=new[section_type]["content"],
+                        layout_variant=new[section_type].get("layout_variant"), position=1)
+        if "story" in kinds:
+            if "story:reset" in done and "about" in current:
+                await patch("about", {"is_visible": False})
+            if "story:set" in done and "about" in new:
+                if "about" in current:
+                    await patch("about", {"content": new["about"]["content"], "is_visible": True,
+                                          "layout_variant": new["about"].get("layout_variant")})
+                else:
+                    await WebsiteCompositionService.add_section(
+                        session, business_id=business.id, page_id=UUID(str(page["id"])), actor_id=actor_id,
+                        section_type_id="about", content=new["about"]["content"],
+                        layout_variant=new["about"].get("layout_variant"))
+        if kinds & {"photo", "headline"} and "hero" in new:
+            hero = dict(current.get("hero", {}).get("content") or {})
+            for key in ("image_asset_id", "headline", "headline_accent"):
+                if key in new["hero"]["content"]:
+                    hero[key] = new["hero"]["content"][key]
+            await patch("hero", {"content": hero, "layout_variant": new["hero"].get("layout_variant")})
+        if "lead" in kinds and bp.website_prefs.lead_section:
+            refreshed = await WebsiteService.get_aggregate(session, business_id=business.id)
+            home = next((p for p in refreshed["draft"]["pages"] if p["id"] == page["id"]), None)
+            if home:
+                order = [s for s in home["sections"]]
+                lead = next((s for s in order[1:] if s["section_type_id"] == bp.website_prefs.lead_section), None)
+                if lead:
+                    order.remove(lead)
+                    order.insert(1, lead)
+                    await WebsiteCompositionService.reorder_sections(
+                        session, business_id=business.id, page_id=UUID(str(page["id"])), actor_id=actor_id,
+                        section_ids=[UUID(str(s["id"])) for s in order])
 
     @staticmethod
     async def setup_offerings(

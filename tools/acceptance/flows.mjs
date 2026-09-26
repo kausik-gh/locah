@@ -379,6 +379,45 @@ const FLOWS = {
   },
 }
 
+FLOWS.M = async function M(page) {
+  const flow = new Flow('M-talk-to-edit-the-website', 'After building: talk to LOCAH to change the website')
+  const persona = personas['meat-shop']
+  const { id } = await standardConversation(page, flow, persona)
+  await build(page, flow, id)
+  const before = await api(`/v1/b/${id}/website`)
+  await page.waitFor('#wt-input', { timeout: 30000 })
+  const edit = async (text) => {
+    const rev = (await interview(id)).blueprint.revision
+    await page.type('#wt-input', text)
+    await page.click('button.wt-send')
+    for (let i = 0; i < 100; i++) {
+      await sleep(200)
+      if ((await interview(id)).blueprint.revision > rev) break
+    }
+    await sleep(2500) // the preview reloads
+  }
+  await edit('Make the website warmer')
+  const warmer = await api(`/v1/b/${id}/website`)
+  flow.check('warmer: the palette changed', warmer.draft.theme.palette_key !== before.draft.theme.palette_key,
+    `${before.draft.theme.palette_key} → ${warmer.draft.theme.palette_key}`)
+  await flow.shot(page, 'after-warmer')
+  await edit('Don’t show prices on the website')
+  const hidden = await api(`/v1/b/${id}/website`)
+  flow.check('prices hidden', !JSON.stringify(hidden.draft.pages).includes('₹'))
+  await edit('Put delivery higher')
+  const order = (await api(`/v1/b/${id}/website`)).draft.pages[0].sections.map((s) => s.section_type_id)
+  flow.check('delivery moved up', order[1] === 'fulfilment_strip', order.join(','))
+  await edit('We also sell quail')
+  flow.check('quail added to Chicken', JSON.stringify((await api(`/v1/b/${id}/website`)).draft.pages).includes('Quail'))
+  const said = (await interview(id)).blueprint.messages.at(-1).text
+  flow.check('LOCAH says what it changed', said.startsWith('Done — added Quail'), said)
+  await flow.shot(page, 'after-edits')
+  const bp = (await interview(id)).blueprint
+  flow.check('still built — editing never un-builds', bp.completion_state.status === 'built')
+  flow.transcript = transcript(bp)
+  return flow
+}
+
 // ------------------------------------------------------------------- run
 
 const wanted = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(FLOWS)
