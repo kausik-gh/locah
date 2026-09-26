@@ -14,6 +14,9 @@ import pytest
 from platform_core.website import ai_provider
 from platform_core.website.ai_provider import AIProviderPermanentError, GeminiProvider
 
+# The HTTP client is a scripted stub in every test; the backstop stays on.
+pytestmark = pytest.mark.usefixtures("stubbed_ai_transport")
+
 OK = {
     "candidates": [{"content": {"parts": [{"text": json.dumps({"ok": True})}]}}],
     "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 3},

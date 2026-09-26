@@ -64,6 +64,10 @@ async def main() -> None:
     # AUD-11: configure structlog (redaction processor installed) before the
     # first log line ships.
     configure_logging()
+    from platform_core.ai_guard import install_transport_guard
+
+    # Inert unless LOCAH_TEST_NO_EXTERNAL_AI is set; then no paid call leaves.
+    install_transport_guard()
 
     if sys.platform != "win32":
         loop = asyncio.get_running_loop()

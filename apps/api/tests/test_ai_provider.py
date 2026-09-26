@@ -13,6 +13,10 @@ from platform_core.website.ai_provider import (
     get_ai_provider,
 )
 
+# Every provider here talks to a stubbed HTTP client — request building and
+# reply parsing only. The transport backstop still refuses any real AI host.
+pytestmark = pytest.mark.usefixtures("stubbed_ai_transport")
+
 
 def test_get_ai_provider_without_key_returns_unavailable(monkeypatch: Any) -> None:
     monkeypatch.delenv("XAI_API_KEY", raising=False)

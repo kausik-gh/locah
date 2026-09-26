@@ -18,6 +18,9 @@ from platform_core.website.image_generation import (
     offering_prompt,
 )
 
+# Image calls here go to a recording stub client; the backstop stays on.
+pytestmark = pytest.mark.usefixtures("stubbed_ai_transport")
+
 
 def test_restaurant_and_gym_hero_prompts_diverge() -> None:
     food = hero_prompt(

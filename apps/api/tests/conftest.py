@@ -16,9 +16,20 @@ imported by pytest before test collection, so it does.
 
 import os
 
+from platform_testing.ai_guard import (  # noqa: F401 — fixtures registered by import
+    enable_no_external_ai,
+    no_paid_ai_calls,
+    stubbed_ai_transport,
+)
 from platform_testing.database_guard import configure_test_database
 
 configure_test_database(os.environ)
+
+# No test may spend AI credits. With this switch every Gemini/xAI text, image
+# and voice call raises before it leaves the process, and `no_paid_ai_calls`
+# fails the test that attempted it. Provider-plumbing tests that replace the
+# HTTP client with a stub opt in with the `stubbed_ai_transport` fixture.
+enable_no_external_ai(os.environ)
 
 os.environ.setdefault("RATE_LIMIT_ENABLED", "0")
 

@@ -26,6 +26,7 @@ from typing import Any
 
 import httpx
 
+from platform_core.ai_guard import guard_external_ai
 from platform_core.logging import get_logger
 
 _log = get_logger("website.image_generation")
@@ -248,6 +249,9 @@ async def _generate_gemini(
     if not api_key:
         _log.info("website.image_generation.skipped", reason="no_image_provider_key")
         return None, "unavailable"
+    # Outside the try below on purpose: a refused paid call must surface, not
+    # read as an ordinary failed picture.
+    guard_external_ai("image", "gemini", "image")
     model = image_model()
     started = time.monotonic()
     try:
@@ -324,6 +328,7 @@ async def generate_image_bytes(
     if not api_key:
         _log.info("website.image_generation.skipped", reason="no_xai_api_key")
         return None
+    guard_external_ai("image", "xai", "image")
     model = image_model()
     started = time.monotonic()
     body: dict[str, Any] = {

@@ -28,6 +28,7 @@ from typing import Any
 
 import httpx
 
+from platform_core.ai_guard import guard_external_ai
 from platform_core.interview.models import BusinessBlueprint
 from platform_core.logging import get_logger
 
@@ -226,6 +227,7 @@ async def mint_client_secret(*, timeout_seconds: int = 12) -> dict[str, Any]:
     api_key = os.getenv("XAI_API_KEY", "").strip()
     if not api_key:
         raise VoiceSessionError("Voice is not configured on this server.")
+    guard_external_ai("voice", "xai", "realtime_client_secret")
     try:
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.post(
@@ -352,6 +354,7 @@ async def mint_gemini_token(
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise VoiceSessionError("Voice is not configured on this server.")
+    guard_external_ai("voice", "gemini", "live_token")
     now = datetime.now(timezone.utc)
     setup = gemini_setup(bp)
     body = {

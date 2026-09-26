@@ -27,6 +27,9 @@ from platform_core.interview.orchestrator import QUESTIONS
 
 KEY = "xai-secret-key-that-must-never-be-served"
 
+# Credential minting runs against a stub HTTP client; the backstop stays on.
+pytestmark = pytest.mark.usefixtures("stubbed_ai_transport")
+
 
 def blueprint(**facts: str) -> BusinessBlueprint:
     bp = BusinessBlueprint(

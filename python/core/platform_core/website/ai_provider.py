@@ -16,6 +16,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
+from platform_core.ai_guard import guard_external_ai
 from platform_core.logging import get_logger
 
 _log = get_logger("website.ai_provider")
@@ -114,6 +115,7 @@ class GrokProvider:
         timeout_seconds: int,
     ) -> dict[str, Any]:
         purpose = model_config.get("purpose")
+        guard_external_ai("text", self.provider_name, str(purpose or ""))
         model = str(model_config.get("model") or self.model_for(purpose))
         body = {
             "model": model,
@@ -469,6 +471,7 @@ class GeminiProvider:
         Only a credential failure skips it: another model cannot fix a bad key.
         """
         purpose = model_config.get("purpose")
+        guard_external_ai("text", self.provider_name, str(purpose or ""))
         primary = str(model_config.get("model") or self.model_for(purpose))
         fallbacks = (os.getenv("GEMINI_FALLBACK_MODEL") or GEMINI_FALLBACK_MODEL).split(",")
         models = [primary] + [m.strip() for m in fallbacks if m.strip() and m.strip() != primary]

@@ -64,8 +64,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[Any]:
     # AUD-11: structlog must be configured (redaction processor installed)
     # before the first line ships.
     configure_logging()
+    from platform_core.ai_guard import external_ai_disabled, install_transport_guard
+
+    # A backstop for LOCAH_TEST_NO_EXTERNAL_AI: it checks the switch on every
+    # request, so installing it in a process where the switch is off is inert.
+    install_transport_guard()
     get_logger("platform_api").info(
-        "api.startup", rate_limit=os.getenv("RATE_LIMIT_ENABLED", "1") != "0"
+        "api.startup", rate_limit=os.getenv("RATE_LIMIT_ENABLED", "1") != "0",
+        external_ai_disabled=external_ai_disabled(),
     )
 
     # Warm the Supabase JWKS cache so the first authenticated request doesn't
