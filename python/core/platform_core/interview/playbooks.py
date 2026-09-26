@@ -48,6 +48,10 @@ class Playbook:
     # What the owner most often means by "the main thing customers do" —
     # used only to phrase a question, never shown as the owner's answer.
     likely_actions: tuple[str, ...] = ()
+    # A trade whose website is built around booking time with someone or
+    # something (an appointment, a class, a room, a slot) — "book a pickup"
+    # from a transporter is not that.
+    booking_led: bool = False
 
 
 def _p(
@@ -222,6 +226,7 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
        families=("portfolio_sketchbook", "editorial_warm"), likely_actions=("order_whatsapp", "enquire"),
        elevate=("media.photos",)),
     _p("salon", "services", "service", "Services", "Services", media="high",
+       booking_led=True,
        families=("premium_dark", "calm_professional", "playful_editorial"), skip=_NO_DELIVERY,
        likely_actions=("book_online", "book_whatsapp", "call"),
        asks={
@@ -233,8 +238,10 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
                         "ta_en": "Customers oru particular stylist kepaangalaa, illa yaar free-o avangalaa?"},
        }),
     _p("spa", "treatments", "service", "Treatments", "Treatments", media="high",
+       booking_led=True,
        families=("calm_professional", "premium_dark"), skip=_NO_DELIVERY, likely_actions=("book_online", "call")),
     _p("makeup_artist", "looks", "portfolio_item", "Work", "Recent work", media="critical", portfolio=True,
+       booking_led=True,
        price_visibility="on_request", families=("portfolio_sketchbook", "premium_dark"), skip=_NO_DELIVERY,
        likely_actions=("check_dates", "whatsapp"), elevate=("media.photos",),
        asks={"conversion": {"en": "Do brides usually check your date first and then ask for a package quote?"},
@@ -252,14 +259,17 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
                      "ta_en": "Enna plans irukku — monthly, quarterly, personal training packs?"},
        }),
     _p("studio", "classes", "class", "Classes", "Classes & timings", media="high",
+       booking_led=True,
        families=("calm_professional", "playful_editorial", "monumental"), skip=_NO_DELIVERY,
        likely_actions=("book_trial", "join"), elevate=("memberships.plans",),
        asks={"plans": {"en": "Do people drop in for a class, buy a pack, or join monthly?"},
              "conversion": {"en": "Should people book a trial class on the website, or message you first?"}}),
     _p("coach", "programmes", "service", "Programmes", "Work with me", media="medium", story_matters=True,
+       booking_led=True,
        families=("calm_professional", "editorial_warm"), skip=_NO_DELIVERY,
        likely_actions=("book_consultation", "whatsapp")),
     _p("clinic", "treatments", "service", "Treatments", "Treatments", media="low",
+       booking_led=True,
        families=("calm_professional",), skip=_NO_DELIVERY + ("commerce.payment",),
        likely_actions=("book_call", "book_whatsapp", "book_online"),
        asks={
@@ -274,6 +284,7 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
                                  "varalaamaa?"},
        }),
     _p("hospital", "departments", "service", "Departments", "Departments & specialities", media="low",
+       booking_led=True,
        families=("calm_professional",), skip=_NO_DELIVERY + ("commerce.payment",),
        likely_actions=("book_call", "book_online", "call"),
        asks={
@@ -282,6 +293,7 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
                                 "have 24-hour emergency?"},
        }),
     _p("diagnostics", "tests", "service", "Tests", "Tests & packages", media="low", families=("calm_professional",),
+       booking_led=True,
        skip=("offerings.units", "operations.stock"), likely_actions=("book_online", "call"),
        asks={"fulfilment": {"en": "Do you offer home sample collection — and in which areas?"}}),
     _p("pharmacy", "products", "product", "Shop", "Shop", media="low",
@@ -290,6 +302,7 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
        families=("calm_professional", "editorial_warm"), skip=("offerings.units", "operations.stock"),
        likely_actions=("call", "enquire")),
     _p("therapy", "sessions", "service", "Sessions", "How I can help", media="low", story_matters=True,
+       booking_led=True,
        families=("calm_professional",), skip=_NO_DELIVERY, likely_actions=("book_online", "whatsapp")),
     _p("school", "programmes", "class", "Admissions", "Programmes", media="medium",
        families=("calm_professional", "playful_editorial"), skip=_NO_DELIVERY, likely_actions=("enquire", "visit")),
@@ -347,6 +360,7 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
        skip=_NO_DELIVERY + ("commerce.payment",), likely_actions=("whatsapp", "call", "book_site_visit"),
        asks={"offer": {"en": "Mostly rentals or sales — homes, plots or commercial spaces — and in which areas?"}}),
     _p("stay", "rooms", "room_type", "Rooms", "Rooms", media="high",
+       booking_led=True,
        families=("airy_property", "local_friendly"), skip=_NO_DELIVERY, likely_actions=("enquire", "call", "visit")),
     _p("design_studio", "projects", "portfolio_item", "Work", "Selected work", media="critical", portfolio=True,
        price_visibility="on_request", families=("portfolio_sketchbook", "airy_property"),
@@ -367,6 +381,7 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
        skip=_NO_DELIVERY + ("commerce.payment",), likely_actions=("request_quote", "call"),
        asks={"conversion": {"en": "Do clients call for a site visit and an estimate first?"}}),
     _p("home_service", "services", "service", "Services", "Services", media="low",
+       booking_led=True,
        families=("local_friendly", "calm_professional"), skip=("offerings.units", "operations.stock"),
        likely_actions=("book_whatsapp", "call"),
        asks={
@@ -386,10 +401,12 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
        skip=("offerings.units", "fulfilment.mode", "fulfilment.area"),
        likely_actions=("book_online", "whatsapp", "visit")),
     _p("auto_service", "services", "service", "Services", "Services", media="medium",
+       booking_led=True,
        families=("local_friendly", "technical_b2b"), skip=("offerings.units", "operations.stock"),
        likely_actions=("book_whatsapp", "call", "visit"),
        asks={"conversion": {"en": "Do people book a service slot and bring the vehicle in, or do you pick it up?"}}),
     _p("detailing", "packages", "service", "Packages", "Detailing packages", media="critical", portfolio=True,
+       booking_led=True,
        families=("premium_dark", "modern_commerce"), skip=("offerings.units", "operations.stock"),
        likely_actions=("book_whatsapp", "call"), elevate=("media.photos",),
        asks={
@@ -402,6 +419,7 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
     _p("auto_parts", "products", "product", "Products", "In stock", media="low",
        families=("modern_commerce", "technical_b2b"), likely_actions=("call", "visit", "whatsapp")),
     _p("rentals", "rentals", "rental_resource", "Rent", "Available to rent", media="high",
+       booking_led=True,
        families=("modern_commerce", "local_friendly"), skip=("offerings.units", "operations.stock"),
        likely_actions=("book_whatsapp", "call"),
        asks={"conversion": {"en": "Do people check availability for dates first, then pay a deposit?"}}),
@@ -416,6 +434,7 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
            "conversion": {"en": "Do businesses ask for a quote first, or book a pickup directly?"},
        }),
     _p("hotel", "rooms", "room_type", "Rooms", "Stay with us", media="critical",
+       booking_led=True,
        families=("airy_property", "premium_dark", "editorial_warm"), skip=_NO_DELIVERY,
        likely_actions=("book_online", "call", "whatsapp"),
        asks={
@@ -425,6 +444,7 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
                                 "the website take booking requests?"},
        }),
     _p("homestay", "rooms", "room_type", "Stay", "The stay", media="critical", story_matters=True,
+       booking_led=True,
        families=("editorial_warm", "airy_property"), skip=_NO_DELIVERY, likely_actions=("whatsapp", "book_online")),
     _p("travel", "packages", "package", "Packages", "Trips & packages", media="high", price_visibility="from",
        families=("airy_property", "playful_editorial"), skip=("offerings.units", "operations.stock"),
@@ -434,6 +454,7 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
        skip=("offerings.units", "operations.stock"), likely_actions=("check_dates", "request_quote", "whatsapp"),
        elevate=("media.photos",)),
     _p("banquet_hall", "halls", "rental_resource", "Halls", "The venue", media="critical",
+       booking_led=True,
        price_visibility="on_request", families=("premium_dark", "airy_property"),
        skip=_NO_DELIVERY, likely_actions=("check_dates", "call", "visit"),
        asks={"offer": {"en": "How many guests does the hall seat, and is catering or decoration included?"}}),
@@ -507,11 +528,13 @@ PLAYBOOKS: dict[str, Playbook] = {p.key: p for p in (
        skip=("offerings.units", "operations.stock"), likely_actions=("book_site_visit", "request_quote", "call"),
        asks={"conversion": {"en": "Does it usually start with a site survey and then a quote?"}}),
     _p("pet_care", "services", "service", "Services", "Care for your pet", media="high",
+       booking_led=True,
        families=("playful_editorial", "local_friendly"), skip=("offerings.units", "operations.stock"),
        likely_actions=("book_whatsapp", "call")),
     _p("daycare", "programmes", "class", "Programmes", "A day with us", media="high", story_matters=True,
        families=("playful_editorial", "calm_professional"), skip=_NO_DELIVERY, likely_actions=("visit", "enquire")),
     _p("coworking", "spaces", "rental_resource", "Spaces", "Spaces", media="high",
+       booking_led=True,
        families=("airy_property", "modern_commerce"), skip=_NO_DELIVERY, likely_actions=("book_online", "visit")),
     _p("security_facility", "services", "service", "Services", "Services", media="low",
        price_visibility="on_request", families=("technical_b2b", "monumental"), skip=_NO_DELIVERY,

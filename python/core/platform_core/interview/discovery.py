@@ -406,7 +406,7 @@ TARGETS: tuple[Target, ...] = (
                  "ta": "கஸ்டமர்ஸ் எந்த நம்பருக்கு கால் பண்ணணும்?"}),
     _t("brand.story", "What people should remember about you",
        "what the website should make people remember or trust — freshness, where things come "
-       "from, experience, speed, a family story", 60,
+       "from, experience, speed, a family story", 50,
        after=("offerings.main", "commerce.action"), once=True,
        fallback={"en": "For the website, what should people remember about {name}? Freshness, "
                        "where things come from, your experience — or something else?",

@@ -41,6 +41,12 @@ class Ask:
 
 
 ASKS: tuple[Ask, ...] = (
+    # Only when the opening answer did not say what the business is.
+    Ask("identity", ("business.identity",), {
+        "en": "Tell me a little more about {name} — what kind of business is it, and who is it for?",
+        "ta_en": "{name} pathi konjam sollunga — enna maadhiri business, yaarukkaaga?",
+        "ta": "{name} பத்தி கொஞ்சம் சொல்லுங்க — என்ன மாதிரி பிசினஸ், யாருக்காக?",
+    }),
     Ask("offer", ("offerings.main",), {
         "en": "What are the main things you sell or offer — the ones people should see first?",
         "ta_en": "Neenga enna sell / offer pannureenga — customers first-a edhai paakanum?",
@@ -83,6 +89,22 @@ ASKS: tuple[Ask, ...] = (
         "en": "Which kinds of businesses buy from you most — and do they usually ask for a quote first?",
         "ta_en": "Endha maadhiri businesses unga kitta adhigama vaanguvaanga — mudhalla quote kepaangalaa?",
         "ta": "எந்த மாதிரி நிறுவனங்கள் அதிகமா வாங்குவாங்க — முதல்ல கொட்டேஷன் கேப்பாங்களா?",
+    }),
+    # The second half of a pair, asked alone when the first half is already known.
+    Ask("process", ("b2b.process",), {
+        "en": "How does a business usually order from you — do they send a requirement and ask for a quote first?",
+        "ta_en": "Oru company eppadi order pannuvaanga — mudhalla requirement anuppi quote kepaangalaa?",
+        "ta": "ஒரு நிறுவனம் எப்படி ஆர்டர் பண்ணுவாங்க — முதல்ல கொட்டேஷன் கேப்பாங்களா?",
+    }),
+    Ask("providers", ("services.providers",), {
+        "en": "Do customers ask for a particular person, or whoever is free?",
+        "ta_en": "Customers oru particular aala kepaangalaa, illa yaar free-o avangalaa?",
+        "ta": "வாடிக்கையாளர்கள் குறிப்பிட்ட ஒருத்தரை கேப்பாங்களா, இல்ல யார் ஃப்ரீயோ அவங்களா?",
+    }),
+    Ask("units", ("offerings.units",), {
+        "en": "Do people order by weight, or in fixed packs or pieces?",
+        "ta_en": "Kg-la order pannuvaangalaa, illa fixed packs / pieces-aa?",
+        "ta": "எடைக்கு ஆர்டர் பண்ணுவாங்களா, இல்ல ஃபிக்ஸ்ட் பேக் / பீஸா?",
     }),
     Ask("plans", ("memberships.plans",), {
         "en": "Which plans can people choose from — monthly, yearly, packs of sessions?",
@@ -355,7 +377,7 @@ NEED_ONE_MORE = {
 def checkpoint_message(bp: BusinessBlueprint, lang: str, worth: list[str]) -> str:
     from platform_core.interview.understanding import synthesis
 
-    so_far = synthesis(bp)
+    so_far = synthesis(bp, lang)
     items = list(worth[:3])
     joined = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " or " + items[-1] if items else ""
     return CHECKPOINT[lang].format(
@@ -367,5 +389,5 @@ def checkpoint_message(bp: BusinessBlueprint, lang: str, worth: list[str]) -> st
 def so_far_line(bp: BusinessBlueprint, lang: str) -> str:
     from platform_core.interview.understanding import synthesis
 
-    text = synthesis(bp)
+    text = synthesis(bp, lang)
     return SO_FAR[lang].format(text=text).strip() if text else ""

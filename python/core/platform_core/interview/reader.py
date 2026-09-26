@@ -43,7 +43,7 @@ ACTION_LABELS: dict[str, str] = {
     "call": "Call",
     "whatsapp": "WhatsApp",
     "visit": "Visit in person",
-    "join": "Join or enrol",
+    "join": "Sign up",
     "subscribe": "Subscribe",
     "donate": "Donate",
     "get_app": "Get the app",
@@ -64,7 +64,23 @@ _QUOTE = re.compile(r"\b(quot\w*|estimate\w*|rfq|price (?:request|enquiry)|ask (
 _ENQUIRE = re.compile(r"\b(enquir\w*|inquir\w*|requirement\w*|get in touch|contact us|reach (?:out|us))\b", re.I)
 _CALL = re.compile(r"\b(call\w*|phone|ring|dial)\b", re.I)
 _WHATSAPP = re.compile(r"\b(whats\s?app\w*|wa\b|dm\b|message us|text us)|வாட்ஸ்\s?(?:அப்|ஆப்)", re.I)
-_ONLINE = re.compile(r"\b(online|website|site|app|internet|on the web|select|choose|pick)\b", re.I)
+_ONLINE = re.compile(r"\b(online|website|site|app|internet|on the web)\b", re.I)
+_TAMIL_SCRIPT = re.compile(r"[஀-௿]")
+_TANGLISH = re.compile(
+    r"\b(pannu\w*|panr\w*|pann\w*|illa|irukk\w*|venum|vendaam|venaam|sollunga|seri|romba|konjam|enna|"
+    r"eppadi|enga|naan|neenga|ellaam|kitta|munnaadi|dhaan|aamaa|vaangu\w*|varuvaanga|podhum|pathi)\b", re.I)
+
+
+def language_of(text: str) -> str:
+    """How the owner writes: Tamil script, Tamil in English letters mixed with English, or English."""
+    text = text or ""
+    letters = [c for c in text if c.isalpha()]
+    tamil = sum(1 for c in letters if _TAMIL_SCRIPT.match(c))
+    if letters and tamil / len(letters) > 0.4:
+        return "ta"
+    if len(_TANGLISH.findall(text)) >= 2 or tamil:
+        return "ta_en"
+    return "en"
 _VISIT = re.compile(r"\b(visit\w*|walk[- ]?in\w*|walk into|come (?:to|over)|drop by|showroom|in person|at the (?:shop|store|counter))\b", re.I)
 _JOIN = re.compile(r"\b(join\w*|enrol\w*|enroll\w*|admission\w*|sign(?:ing)? up|register\w*|membership\w*)\b", re.I)
 _SUBSCRIBE = re.compile(r"\b(subscri\w*)\b", re.I)
@@ -231,8 +247,9 @@ def group_items(text: str) -> list[tuple[str, list[str]]]:
 
 
 _OFFER_STATEMENT = re.compile(
-    r"\b(?:we|i)\s+(?:also\s+|mainly\s+|mostly\s+|only\s+)?(?:sell|make|offer|serve|supply|provide|stock|"
-    r"cook|bake|keep|have|do)\s+([^.;!?\n]+)", re.I)
+    r"\b(?:(?:we|i)\s+(?:also\s+|mainly\s+|mostly\s+|only\s+)?(?:sell|make|offer|serve|supply|provide|stock|"
+    r"cook|bake|keep|have|do)|(?:we(?:'re| are)\s+)?(?:known|famous)\s+for(?:\s+our)?|"
+    r"speciali[sz](?:e|es|ing)\s+in|our\s+special(?:ity|ty|ities)\s+(?:is|are))\s+([^.;!?\n]+)", re.I)
 
 
 def offer_statement(text: str) -> list[str]:

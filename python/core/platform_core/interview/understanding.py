@@ -85,8 +85,11 @@ def customer_actions(bp: BusinessBlueprint) -> list[str]:
     state = _state(bp, "commerce.action")
     said = state.quote if state.status in {"answered", "partial"} else ""
     sources = [said or _heard(bp, "commerce.action"), facts.get("customer_actions", "")]
-    sources += [e.quote for e in bp.operating_patterns
-                if e.pattern in {"order_led", "appointment_led", "quote_led", "lead_generation", "walk_in"}]
+    if not any(sources):
+        # Pattern quotes are fragments ("order pannuvaanga") that lose the
+        # channel; used only when nothing fuller was said.
+        sources += [e.quote for e in bp.operating_patterns
+                    if e.pattern in {"order_led", "appointment_led", "quote_led", "lead_generation", "walk_in"}]
     found: list[str] = []
     for text in sources:
         for action in canonical_actions(text):
@@ -178,10 +181,15 @@ def _join(names: list[str]) -> str:
 
 
 def offer_summary(bp: BusinessBlueprint) -> str:
-    groups = [g["name"] for g in offer_groups(bp)][:5]
+    found = offer_groups(bp)
+    groups = [g["name"] for g in found][:5]
     if not groups:
         return ""
-    text = _join([groups[0]] + [g[:1].lower() + g[1:] if not g.isupper() else g for g in groups[1:]])
+    # One generic group ("Projects") says less than what is in it.
+    if len(found) == 1 and found[0]["items"]:
+        groups = list(found[0]["items"])[:4]
+    # Names as the owner (or the range) has them — "Chettinad chicken", "Fish & Seafood".
+    text = _join(groups)
     how = sold_by(bp)
     return f"{text}, {how[:1].lower() + how[1:]}" if how else text
 
@@ -228,22 +236,30 @@ def actions(bp: BusinessBlueprint) -> list[dict[str, str]]:
     return [{"id": a, "label": ACTION_LABELS[a]} for a in customer_actions(bp)]
 
 
-def synthesis(bp: BusinessBlueprint) -> str:
-    """One short "so far" line, built only from typed understanding."""
+def synthesis(bp: BusinessBlueprint, lang: str = "") -> str:
+    """One short "so far" line, built only from typed understanding.
+
+    English gets a sentence ("customers can order on WhatsApp"); for an owner
+    writing Tamil or Tamil-English the typed parts are listed plainly rather
+    than wrapped in English connectors.
+    """
+    lang = lang or ("ta" if bp.language_style == "ta" else "ta_en" if bp.language_style.startswith("ta") else "en")
     parts: list[str] = []
     offer = offer_summary(bp)
     if offer:
         parts.append(offer)
-    acts = [ACTION_LABELS[a] if ACTION_LABELS[a].startswith("WhatsApp") else
-            ACTION_LABELS[a][:1].lower() + ACTION_LABELS[a][1:] for a in customer_actions(bp)[:2]]
-    if acts:
+    labels = [ACTION_LABELS[a] for a in customer_actions(bp)[:2]]
+    if labels and lang == "en":
+        acts = [label if label.startswith("WhatsApp") else label[:1].lower() + label[1:] for label in labels]
         parts.append("customers can " + " or ".join(acts))
+    elif labels:
+        parts.append(" / ".join(labels))
     for row in buying(bp):
         if row["kind"] in {"delivery", "pickup"}:
-            parts.append(row["text"][:1].lower() + row["text"][1:])
+            parts.append(row["text"][:1].lower() + row["text"][1:] if lang == "en" else row["text"])
     place = location(bp)
     if place and len(parts) < 4:
-        parts.append(f"in {place}")
+        parts.append(f"in {place}" if lang == "en" else place)
     return "; ".join(parts[:4])
 
 

@@ -90,6 +90,7 @@ OPENING = {
 }
 # The opening answers these at once; what it leaves open is asked after.
 OPENING_TARGETS = ("business.identity", "offerings.main", "commerce.action")
+NO_PROBLEM = {"en": "No problem.", "ta_en": "Paravaalla.", "ta": "பரவாயில்லை."}
 
 # Readable names for a typed correction that was the wrong kind of thing.
 _SLOT_HINT = {
@@ -355,6 +356,9 @@ class BusinessInterviewOrchestrator:
                 ti = TurnIntelligence(language=bp.language_style)
         if not field and fallback is None:
             bp.language_style = ti.language
+        elif not field:
+            # No model to tell the language: the owner's own script and words do.
+            bp.language_style = rd.language_of(text)
         _validate_extraction(ti)
         _contextual_signals(bp, ti, text)
         if not field:
@@ -430,16 +434,15 @@ class BusinessInterviewOrchestrator:
             question = planner.phrase(next_item.ask, bp, lang) if next_item else ""
             reply = REDIRECT[lang] + question
         elif signal == "wants_to_finish":
-            if floor_met(bp, business_type):
+            next_item = None if floor_met(bp, business_type) else planner.choose(bp, "", business_type)
+            if next_item is None:
                 bp.confirm_requested = True
-                reply = " ".join(p for p in (ack, planner.TO_CONFIRM[lang]) if p)
+                reply = planner.TO_CONFIRM[lang]
             else:
-                next_item = planner.choose(bp, "", business_type)
-                question = planner.phrase(next_item.ask, bp, lang) if next_item else ""
-                reply = planner.NEED_ONE_MORE[lang] + question
+                reply = planner.NEED_ONE_MORE[lang] + planner.phrase(next_item.ask, bp, lang)
         elif bp.readiness.ready and bp.checkpoint_turn is None:
             bp.checkpoint_turn = bp.turn_count + 1
-            worth = [w["short"] for w in worth_knowing(bp, business_type, limit=3)]
+            worth = [w["short_ta" if lang == "ta" else "short"] for w in worth_knowing(bp, business_type, limit=3)]
             reply = " ".join(p for p in (ack, media_note, planner.checkpoint_message(bp, lang, worth)) if p)
         elif bp.readiness.ready:
             if bp.refining:
@@ -447,17 +450,32 @@ class BusinessInterviewOrchestrator:
                 question = _question(bp, ti, next_item, text, lang) if next_item else planner.NOTHING_LEFT[lang]
             else:
                 question = planner.AFTER_READY[lang]
-            reply = " ".join(p for p in (ack, media_note, question) if p)
+            opener = NO_PROBLEM[lang] if reading.decline and all(a.status == "declined" for a in ti.answered) else ack
+            reply = " ".join(p for p in (opener, media_note, question) if p)
         else:
             next_item = planner.choose(bp, ti.next_target, business_type)
-            question = _question(bp, ti, next_item, text, lang) if next_item else planner.AFTER_READY[lang]
-            so_far = ""
-            if understood and bp.turn_count + 1 - bp.synthesis_turn >= 2 and len(bp.asks) >= 2:
-                so_far = planner.so_far_line(bp, lang)
-                if so_far:
-                    bp.synthesis_turn = bp.turn_count + 1
-            opener = ack if understood else (UNCLEAR[lang].strip() if not fallback else "")
-            reply = " ".join(p for p in (opener, media_note, so_far, question) if p)
+            if next_item is None and floor_met(bp, business_type):
+                # Nothing left worth asking before a first version: that IS
+                # enough. Never "build whenever you're ready" without a Build.
+                bp.completion_state.ready_at = now()
+                BusinessInterviewOrchestrator.project(bp, business_type)
+                bp.checkpoint_turn = bp.turn_count + 1
+                worth = [w["short_ta" if lang == "ta" else "short"] for w in worth_knowing(bp, business_type, limit=3)]
+                reply = " ".join(p for p in (ack, media_note, planner.checkpoint_message(bp, lang, worth)) if p)
+            else:
+                question = _question(bp, ti, next_item, text, lang) if next_item else planner.phrase(
+                    planner.ASKS_BY_ID["offer"], bp, lang)
+                if next_item is None:
+                    next_item = planner.Ranked(planner.ASKS_BY_ID["offer"], 0.0, "blocking")
+                so_far = ""
+                if understood and bp.turn_count + 1 - bp.synthesis_turn >= 2 and len(bp.asks) >= 2:
+                    so_far = planner.so_far_line(bp, lang)
+                    if so_far:
+                        bp.synthesis_turn = bp.turn_count + 1
+                declined_only = reading.decline and all(a.status == "declined" for a in ti.answered)
+                opener = NO_PROBLEM[lang] if declined_only else ack if understood else (
+                    UNCLEAR[lang].strip() if not fallback else "")
+                reply = " ".join(p for p in (opener, media_note, so_far, question) if p)
         if next_item:
             planner.record(bp, next_item.ask)
         elif bp.asks and bp.asks[-1].ask != "free":
@@ -779,6 +797,12 @@ def _read_for_question(
         if sentence in text:
             fact("description", sentence[:400])
         answer("business.identity", sentence[:240], evidence=sentence)
+        # "…a South Indian restaurant in Anna Nagar." — a capitalised place after "in".
+        placed = re.search(r"\b(?:in|at|near)\s+([A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,3})", " ".join(sentences[:2]))
+        place = rd.location_text(placed.group(1)) if placed else ""
+        if place and place in text and not _answered(ti, "contact.location"):
+            fact("locations", place)
+            answer("contact.location", place, evidence=place)
         offer(rd.offer_statement(text), rd.group_items(text))
         if reading.actions and not _answered(ti, "commerce.action"):
             evidence = rd.action_sentences(text)

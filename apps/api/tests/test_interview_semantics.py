@@ -113,7 +113,7 @@ async def test_the_wift_answers_keep_their_meaning_with_the_model_down() -> None
 )
 async def test_a_typed_correction_of_the_wrong_kind_is_refused(field: str, text: str) -> None:
     with pytest.raises(ValueError):
-        await Engine.turn(blueprint(), text, field=field, provider=Down())  # type: ignore[arg-type]
+        await Engine.turn(blueprint(), text, field=field, provider=Down())
 
 
 @pytest.mark.asyncio

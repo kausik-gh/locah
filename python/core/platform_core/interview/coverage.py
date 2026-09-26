@@ -155,8 +155,7 @@ def importance(target_id: str, prof: Profile, bp: BusinessBlueprint) -> Importan
         return "high_value" if b2b else "optional"
     if target_id == "memberships.plans":
         return "high_value" if prof.has("has_memberships") else "optional"
-    booked = pb.offer_kind in {"service", "class", "room_type", "rental_resource"} and prof.saw(
-        "accepts_appointments", "runs_classes")
+    booked = pb.booking_led and prof.saw("accepts_appointments", "runs_classes")
     if target_id == "bookings.format":
         # What is booked and how shapes a booking-led site; a restaurant that
         # also takes table bookings can say how later.
@@ -199,8 +198,15 @@ def coverage(bp: BusinessBlueprint, target_id: str) -> Coverage:
         # A business the owner named by kind, that has said what it offers, is identified.
         if bp.category and bp.category.source == "owner_picked" and _offer_known(bp):
             return "sufficient"
+    if target_id == "b2b.process" and s.status not in {"answered", "partial"} and \
+            {"request_quote", "enquire"} & set(_actions_said(bp)):
+        # "Buyers send an RFQ" already says how a business orders.
+        return "sufficient"
     if target_id == "offerings.structure" and s.status not in {"answered", "partial"}:
         groups = bp.taxonomy.groups
+        if playbook_for(bp).offer_kind == "property_project":
+            # Project names alone don't say what is ready, being built or coming.
+            return "partial" if groups else "unknown"
         if groups and any(g.items for g in groups) and not _catalogue_open(bp):
             return "sufficient"
         return "partial" if any(g.items for g in groups) else "unknown"
@@ -287,10 +293,14 @@ def assess(bp: BusinessBlueprint, business_type: str | None = None) -> Readiness
 
 
 def floor_met(bp: BusinessBlueprint, business_type: str | None = None) -> bool:
-    """Enough to build *something* honest right now, if the owner insists."""
+    """Enough to build *something* honest right now, if the owner insists:
+    what the business is, and either what it offers or what customers do."""
+    if bp.completion_state.ready_at is not None:
+        return True
     s_offer = state(bp, "offerings.main")
     identified = coverage(bp, "business.identity") != "unknown" or bool(bp.category)
-    return identified and (s_offer.status in {"answered", "partial"} or bool(bp.taxonomy.groups))
+    offered = s_offer.status in {"answered", "partial"} or bool(bp.taxonomy.groups)
+    return identified and (offered or state(bp, "commerce.action").status == "answered")
 
 
 def _website(bp: BusinessBlueprint) -> dict[str, bool]:
@@ -338,7 +348,14 @@ def worth_knowing(bp: BusinessBlueprint, business_type: str | None = None, limit
         rows.append((WEIGHT[imp] * target.value, target.id, imp))
     rows.sort(reverse=True)
     return [{"id": tid, "label": TARGETS_BY_ID[tid].label, "short": SHORT.get(tid, TARGETS_BY_ID[tid].label.lower()),
-             "importance": imp} for _, tid, imp in rows[:limit]]
+             "short_ta": SHORT_TA.get(tid, SHORT.get(tid, "")), "importance": imp} for _, tid, imp in rows[:limit]]
+
+
+SHORT_TA: dict[str, str] = {
+    "media.photos": "படங்கள்", "offerings.pricing": "விலை", "brand.story": "உங்க தனித்துவம்",
+    "operations.hours": "திறந்திருக்கும் நேரம்", "commerce.payment": "பணம் செலுத்தும் முறை",
+    "media.logo": "லோகோ", "bookings.format": "புக்கிங் விவரம்", "contact.location": "இருக்கும் இடம்",
+}
 
 
 # How an optional item reads inside a sentence: "I can also ask about photos,
