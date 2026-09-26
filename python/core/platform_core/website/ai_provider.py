@@ -605,7 +605,8 @@ def get_ai_provider() -> AIModelProvider:
         if replay_file and os.path.exists(replay_file):
             from platform_core.website.replay_provider import ReplayProvider
 
-            return ReplayProvider(replay_file)
+            replay: AIModelProvider = ReplayProvider(replay_file)
+            return replay
         return UnavailableAIProvider()
     if choice == "gemini":
         api_key = os.getenv("GEMINI_API_KEY", "").strip()
