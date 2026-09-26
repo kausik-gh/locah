@@ -85,6 +85,9 @@ class Persona:
     never_tools: set[str] = field(default_factory=set)
     follow_ups: tuple[int, int] = (2, 6)  # expected follow-up questions before the checkpoint
     language: str = "en"
+    # Started by talking: no category picked, no name typed — Locah reads the
+    # kind from what is said and asks the name once.
+    talk_first: bool = False
 
 
 class ScriptedModel:
@@ -147,10 +150,12 @@ class Run:
 def _blueprint(p: Persona) -> BusinessBlueprint:
     bp = BusinessBlueprint(
         business_id=uuid4(),
-        identity={"display_name": Fact(value=p.name, source="PLATFORM", confirmation="confirmed")},
+        identity={"display_name": Fact(value="New business" if p.talk_first else p.name, source="PLATFORM",
+                                       confirmation="confirmed")},
         language_style=p.language,
+        name_pending=p.talk_first,
     )
-    if p.category:
+    if p.category and not p.talk_first:
         bp.category = CategorySeed(category_key=p.category[0], subcategory_key=p.category[1], label=p.category[2])
     Engine.open(bp)
     return bp
@@ -188,12 +193,14 @@ async def run_persona(p: Persona, mode: str = "model", max_turns: int = 14) -> R
         ask = bp.asks[-1].ask if bp.asks else ""
         # An owner with nothing to say to a question says so; the reader
         # recognises it (in both modes) and does not ask it again.
-        message = p.answers[ask][0] if ask in p.answers else NOT_SURE
+        message = p.name if ask == "name" else p.answers[ask][0] if ask in p.answers else NOT_SURE
     # The owner asks to build.
     bp = await Engine.turn(bp, "That's all, build it.", provider=provider, business_type=p.business_type)
     transcript += [("OWNER", "That's all, build it."), ("LOCAH", bp.messages[-1].text)]
     from platform_core.interview.capabilities import resolve_recommendations
 
+    if bp.name_pending:
+        red.append("never learned the business name")
     resolve_recommendations(bp, every_module_entitled(), p.business_type)
     history.append(bool(bp.completion_state.ready_at is not None or floor_met(bp, p.business_type)))
     asks = [a.ask for a in bp.asks if a.ask not in {"opening", "free"}]
@@ -228,7 +235,9 @@ def red_flags(bp: BusinessBlueprint, asks: list[str], transcript: list[tuple[str
         if speaker != "LOCAH":
             continue
         if "?" in text:
-            run_ = 0 if ("So far:" in text or "Ippo varaikkum" in text or "இதுவரை" in text) else run_ + 1
+            said_back = any(marker in text for marker in (
+                "So far:", "Ippo varaikkum", "இதுவரை", "Got it — ", "the shape of it", "I've got enough"))
+            run_ = 0 if said_back else run_ + 1
             if run_ >= 4:
                 flags.append("4 questions without a summary")
                 break
@@ -333,9 +342,9 @@ async def run_all(personas: list[Persona], out: Path | None = None) -> list[Run]
 
 
 def main(out: str = "docs/phase-a/interview-transcripts") -> None:  # pragma: no cover
-    from platform_testing.interview_personas import PERSONAS
+    from platform_testing.interview_personas import ALL_PERSONAS
 
-    runs = asyncio.run(run_all(PERSONAS, Path(out)))
+    runs = asyncio.run(run_all(ALL_PERSONAS, Path(out)))
     for run in runs:
         print(f"{run.persona.business:28} {run.mode:5} asks={len(run.asks):2} checkpoint={run.checkpoint_after} "
               f"score={run.score:3} flags={run.red_flags}")

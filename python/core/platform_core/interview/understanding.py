@@ -263,6 +263,158 @@ def synthesis(bp: BusinessBlueprint, lang: str = "") -> str:
     return "; ".join(parts[:4])
 
 
+# ------------------------------------------------------------- the read-back
+#
+# Locah says back what it understood in one plain sentence before asking
+# anything — the way an expert shows they were listening. Built only from the
+# typed understanding above: nothing in it was not said (or picked) by the
+# owner, and an assumption the owner did not make ("with delivery") is never
+# added. English only; an owner writing Tamil gets the typed parts listed.
+
+_PLACE_NOUNS = ("shop", "store", "gym", "salon", "clinic", "kitchen", "studio", "restaurant", "cafe",
+                "café", "bakery", "hotel", "school", "centre", "center", "academy", "agency", "hospital",
+                "spa", "boutique", "club", "resort", "homestay", "lab", "pharmacy")
+
+
+def place_noun(bp: BusinessBlueprint) -> str:
+    """"shop", "gym", "studio"… — what the owner would call the place; else "business"."""
+    label = (bp.category.label if bp.category else "").casefold()
+    label = _PRACTICE.get(label, label)
+    for noun in reversed(label.replace("/", " ").split()):
+        if noun in _PLACE_NOUNS:
+            return "café" if noun == "cafe" else noun
+    return "business"
+
+
+def kind_phrase(bp: BusinessBlueprint) -> str:
+    """"a meat shop", "an industrial supplier" — from the category, never invented."""
+    label = bp.category.label if bp.category and bp.category.label else ""
+    label = re.sub(r"\s*/.*$", "", label).strip()
+    if not label or bp.category is None or bp.category.category_key == "other":
+        return ""
+    words = [w if (w[:1].isupper() and w[1:2].isupper()) or w in {"CrossFit", "ENT", "PG", "IT"}
+             else w.lower() for w in label.split()]
+    text = " ".join(words)
+    # A practice is not a place: "a physiotherapy" reads wrong.
+    text = _PRACTICE.get(text.casefold(), text)
+    return ("an " if text[:1].lower() in "aeiou" else "a ") + text
+
+
+_PRACTICE = {
+    "physiotherapy": "physiotherapy centre", "yoga": "yoga studio", "pilates": "pilates studio",
+    "powerlifting": "powerlifting gym", "crossfit": "CrossFit gym", "martial arts": "martial arts academy",
+    "dance fitness": "dance fitness studio", "dermatology": "dermatology clinic",
+    "paediatrics": "paediatric clinic", "home nursing": "home nursing service", "dairy": "dairy",
+    "snacks": "snacks business", "sweets": "sweets business", "spices": "spice business",
+    "eggs": "egg business", "pickles & podi": "pickles and podi business", "catering": "catering business",
+    "photography": "photography studio", "interior design": "interior design studio",
+}
+
+
+_GOALS = {
+    "order": "see what you have and order",
+    "book": "see what you offer and book",
+    "trial": "understand the {noun}, see the plans and take the first step",
+    "quote": "understand what you supply and ask for a quote",
+    "site_visit": "see the projects and arrange a visit",
+    "dates": "see your work and check your dates",
+    "contact": "find you and get in touch",
+}
+
+
+def _goal(actions_: list[str]) -> str:
+    first = actions_[0] if actions_ else ""
+    if first.startswith("order"):
+        return _GOALS["order"]
+    if first in {"book_trial", "join", "subscribe"}:
+        return _GOALS["trial"]
+    if first.startswith("book"):
+        return _GOALS["book"]
+    if first in {"request_quote", "enquire"}:
+        return _GOALS["quote"]
+    if first == "book_site_visit":
+        return _GOALS["site_visit"]
+    if first == "check_dates":
+        return _GOALS["dates"]
+    return _GOALS["contact"] if first else ""
+
+
+# How an action reads inside a sentence about the business.
+_DOES = {
+    "order_online": "order online", "order_whatsapp": "order on WhatsApp", "order_call": "call to order",
+    "book_online": "book online", "book_whatsapp": "book on WhatsApp", "book_call": "call to book",
+    "book_table": "book a table", "book_trial": "book a trial", "book_site_visit": "book a site visit",
+    "book_consultation": "book a consultation", "check_dates": "check your dates",
+    "request_quote": "ask for a quote", "enquire": "send an enquiry", "call": "call you",
+    "whatsapp": "message you on WhatsApp", "visit": "come in person", "join": "sign up",
+    "subscribe": "subscribe", "donate": "donate", "get_app": "get the app", "browse": "browse the range",
+}
+
+
+def _lower_first(text: str) -> str:
+    return text[:1].lower() + text[1:] if text[:2] != text[:2].upper() else text
+
+
+def _titled(place: str) -> str:
+    """"nookampalayam road" -> "Nookampalayam Road"; the owner's own casing otherwise."""
+    if not place or place != place.lower():
+        return place
+    small = {"and", "of", "the", "near", "to", "in", "on", "or"}
+    return " ".join(w if i and w in small else w[:1].upper() + w[1:] for i, w in enumerate(place.split()))
+
+
+def read_back(bp: BusinessBlueprint, stage: str = "first") -> str:
+    """One sentence of what Locah understood — "first", "shape" or "checkpoint"."""
+    kind = kind_phrase(bp)
+    place = ", ".join(_titled(p.strip()) for p in location(bp).split(","))
+    area_titled = True
+    acts = customer_actions(bp)
+    modes = fulfilment(bp)
+    area = _titled(delivery_area(bp)) if area_titled else delivery_area(bp)
+    groups = [g["name"] for g in offer_groups(bp)][:4]
+    how = sold_by(bp)
+    offer = _join([_lower_first(g) for g in groups]) if groups else ""
+    subject = kind or ("a business" if not offer else "")
+    if not subject and not offer:
+        return ""
+    sentence = subject
+    if place:
+        sentence += f" in {place}"
+    if offer and kind:
+        verb = "built around" if bp.category and place_noun(bp) in {"gym", "studio", "club", "academy"} \
+            else "offering" if kind else ""
+        sentence += f" {verb} {offer}"
+    elif offer:
+        sentence = f"you offer {offer}" + (f" in {place}" if place else "")
+    tail: list[str] = []
+    does = " or ".join(_DOES[a] for a in acts[:2] if a in _DOES)
+    if how == "By the kg" and does:
+        tail.append(f"where people choose what they want by the kg and {does}")
+    elif how == "By the kg":
+        tail.append("sold by the kg")
+    elif does:
+        tail.append(f"where people {does}")
+    if "delivery" in modes and "pickup" not in modes:
+        tail.append(f"with delivery around {area}" if area else "with delivery as part of the service")
+    elif "delivery" in modes and "pickup" in modes:
+        tail.append(f"delivering around {area} or ready for pickup" if area else "with delivery or pickup")
+    elif "pickup" in modes and "delivery" not in modes:
+        tail.append("collected from you")
+    elif "shipping" in modes:
+        tail.append(f"shipped {('across ' + area) if area else 'to customers'}")
+    if tail:
+        sentence += " " + ", ".join(tail) if tail[0].startswith("where") else ", " + ", ".join(tail)
+    sentence = sentence.strip()
+    if stage == "first":
+        return f"Got it — {sentence}."
+    goal = _goal(acts).format(noun=place_noun(bp))
+    you = sentence if sentence.startswith("you ") else f"you're {sentence}"
+    if stage == "shape":
+        line = f"Okay — I have the shape of it now: {you}."
+        return line + (f" The website should mainly help people {goal}." if goal else "")
+    return f"{you[:1].upper()}{you[1:]}." + (f" The website will help people {goal}." if goal else "")
+
+
 # ------------------------------------------------------------------ the panel
 
 
@@ -289,8 +441,19 @@ def understanding(
         for m in bp.recommended_modules if m.strength != "dependency"
     ][:5]
     return {
-        "business": {"name": name, "kind": identity_line(bp),
-                     "category": bp.category.label if bp.category else ""},
+        "business": {
+            "name": "" if bp.name_pending else name, "kind": identity_line(bp),
+            "category": bp.category.label if bp.category else "",
+            "category_key": bp.category.category_key if bp.category else "",
+            "subcategory_key": bp.category.subcategory_key if bp.category else "",
+            "category_group": bp.category.group if bp.category else "",
+            # "inferred": shown as "Looks like…" with a one-tap correction.
+            "category_source": bp.category.source if bp.category else "",
+            "place": location(bp),
+            "name_pending": bp.name_pending,
+        },
+        # One sentence: what Locah understood, for the confirmation screen.
+        "read_back": read_back(bp, "checkpoint") if bp.language_style == "en" else synthesis(bp),
         "offer": {"summary": offer_summary(bp), "groups": offer_groups(bp)},
         "actions": actions(bp),
         "buying": buying(bp),

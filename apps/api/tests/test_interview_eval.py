@@ -10,7 +10,7 @@ import pytest
 
 from platform_core.ai_guard import blocked_calls
 from platform_testing.interview_eval import run_persona
-from platform_testing.interview_personas import PERSONAS
+from platform_testing.interview_personas import ALL_PERSONAS as PERSONAS
 
 
 @pytest.mark.asyncio

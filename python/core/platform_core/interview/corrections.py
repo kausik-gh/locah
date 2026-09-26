@@ -123,4 +123,27 @@ def apply_correction(bp: BusinessBlueprint, slot: str, values: list[str], text: 
         _fact(bp, "description", text)
         _answer(bp, "business.identity", text[:240], text)
         return
+    if slot == "name":
+        name = " ".join(text.split()).strip(" .\"'“”")
+        if not name or len(name) > 120 or rd.phone_number(name) or rd.looks_like_hours(name):
+            raise CorrectionError("Type the business's name as customers should see it.")
+        bp.identity["display_name"] = Fact(value=name, source="USER_STATEMENT", confirmation="confirmed",
+                                           evidence=name)
+        bp.name_pending = False
+        return
+    if slot == "category":
+        # [category_key, subcategory_key] from the taxonomy search. Changing
+        # the kind reshapes questions, tools and the website's direction — but
+        # never what the owner already said, and never readiness once reached.
+        from platform_core.catalog.taxonomy import resolve
+        from platform_core.interview.models import CategorySeed
+
+        found = resolve(clean[0] if clean else None, clean[1] if len(clean) > 1 else None)
+        if not found:
+            raise CorrectionError("Choose the kind of business from the list.")
+        category, sub = found
+        bp.category = CategorySeed(
+            category_key=category.key, subcategory_key=sub.key if sub.key != category.key else "",
+            label=sub.label, source="owner_picked", group=category.label)
+        return
     raise CorrectionError("That part can't be changed here yet.")

@@ -325,7 +325,8 @@ CATEGORIES: tuple[Category, ...] = (
         _s("polyclinic", "Polyclinic", "clinic", CLINIC, "poly clinic", "multi-speciality clinic"),
         _s("dental", "Dental clinic", "clinic", CLINIC, "dentist", "dental care", "teeth", "orthodontist"),
         _s("physiotherapy", "Physiotherapy", "clinic", CLINIC | _t("subscription_led"), "physio",
-           "physiotherapist"),
+           "physiotherapist", "physiotherapy centre", "physiotherapy center", "physio clinic",
+           "rehab centre", "sports rehab"),
         _s("diagnostic_centre", "Diagnostic centre", "diagnostics", LAB, "diagnostics", "scan centre",
            "blood test", "lab tests", "pathology lab"),
         _s("pharmacy", "Pharmacy", "pharmacy", PHARMACY, "medical shop", "chemist", "medicals",
@@ -792,6 +793,36 @@ def _singular(text: str) -> str:
                     for w in text.split())
 
 
+# What an owner *does* sometimes names the kind of business better than any
+# noun they use: "we build villas" is a developer, not a villa rental; "we sell
+# chicken, mutton and seafood" is a meat shop. Each is only a prior, shown as
+# "Looks like…" and corrected with one tap — never a fact on the website.
+_DOING: tuple[tuple[re.Pattern[str], str, float], ...] = (
+    (re.compile(r"\b(?:sell|selling|sold|supply)\w*\b[^.]{0,50}\b(?:chicken|mutton|seafood|prawns?|"
+                r"fish|meat|crabs?|squid)\b", re.I), "meat_shop", 0.78),
+    (re.compile(r"\b(?:chicken|mutton|seafood|meat)\b[^.]{0,40}\b(?:by (?:the )?kg|per kg|kilo)", re.I),
+     "meat_shop", 0.78),
+    (re.compile(r"\b(?:builds?|building|construct\w*|develop\w*)\b[^.]{0,30}\b(?:villas?|apartments?|"
+                r"flats?|homes|houses|gated communit\w*)\b", re.I), "developer", 0.82),
+    (re.compile(r"\b(?:sell|selling)\b[^.]{0,30}\b(?:plots?|layouts?)\b", re.I), "plots", 0.8),
+    (re.compile(r"\b(?:supply|supplies|supplying|manufactur\w*)\b[^.]{0,60}\b(?:factories|industr\w*|"
+                r"plants?|oems?|fasteners|valves|bearings|pipes|fittings)\b", re.I), "industrial_supplier", 0.8),
+)
+# "…a physiotherapy centre with a small gym": what comes after "with a small"
+# is the lesser part of the business.
+_SECONDARY = re.compile(r"\b(?:with|and|plus|also)\s+(?:a\s+|an\s+)?(?:small|little|tiny)?\s*$")
+# A word used for HOW they work, not WHAT they are: "we courier them" is a
+# pickle maker that ships, not a courier company.
+_MEANS: dict[str, re.Pattern[str]] = {
+    # "book a site visit" is a verb, not a bookshop.
+    "books": re.compile(r"\bbook(?:s|ed|ing)?\s+(?:a|an|the|your|their|our|now|online|appointments?|slots?|"
+                        r"tables?|trials?|site|visits?|sessions?|classes|rooms?|dates?|tickets?)\b", re.I),
+    "taxi": re.compile(r"\bwe travel\b|\btravel (?:anywhere|across|all over)", re.I),
+    "courier": re.compile(r"\b(?:by|via|through)\s+courier|\bcouriers?\s+(?:them|it|across|to|all|"
+                          r"everywhere|anywhere|orders?)\b|\b(?:and|we)\s+courier\b", re.I),
+}
+
+
 def infer_from_text(text: str) -> tuple[str, float] | None:
     """The subcategory an owner's own words most clearly name, with a confidence.
 
@@ -805,10 +836,32 @@ def infer_from_text(text: str) -> tuple[str, float] | None:
     for phrase, key, weight in _index():
         if weight == 0 or len(phrase) < 3:
             continue
-        if f" {_singular(phrase)} " in haystack:
+        at = haystack.find(f" {_singular(phrase)} ")
+        means = _MEANS.get(key)
+        if at >= 0 and not (means and means.search(text or "")):
             # The longer phrase is the more specific reading: "gym app" is a
-            # software business, not a gym.
+            # software business, not a gym. Between equals, the first said.
             score = 0.6 + 0.08 * len(phrase.split()) + weight * 0.03
+            if _SECONDARY.search(haystack[:at + 1]):
+                score -= 0.12
             if best is None or score > best[1]:
                 best = (key, score)
+    for pattern, key, confidence in _DOING:
+        if pattern.search(text or "") and (best is None or confidence > best[1]):
+            best = (key, confidence)
+    if best is None:
+        # Tamil script is not in the latin index: a few trade words an owner
+        # writing Tamil actually uses.
+        for word, key in _TAMIL_TRADES:
+            if word in (text or ""):
+                return key, 0.76
     return best
+
+
+_TAMIL_TRADES: tuple[tuple[str, str], ...] = (
+    ("சலூன்", "salon"), ("பியூட்டி பார்லர்", "salon"), ("ஜிம்", "gym"),
+    ("கறிக்கடை", "meat_shop"), ("இறைச்சி", "meat_shop"), ("மீன் கடை", "fish_market"),
+    ("உணவகம்", "restaurant"), ("ஹோட்டல்", "restaurant"), ("பேக்கரி", "bakery"),
+    ("மருத்துவமனை", "hospital"), ("கிளினிக்", "clinic"), ("டியூஷன்", "tuition_centre"),
+    ("தையல்", "tailor"), ("மளிகை", "grocery"), ("ஊறுகாய்", "pickles_podi"),
+)

@@ -375,19 +375,36 @@ NEED_ONE_MORE = {
 
 
 def checkpoint_message(bp: BusinessBlueprint, lang: str, worth: list[str]) -> str:
-    from platform_core.interview.understanding import synthesis
+    from platform_core.interview.understanding import read_back, synthesis
 
-    so_far = synthesis(bp, lang)
+    so_far = ""
+    if lang == "en":
+        said = read_back(bp, "checkpoint")
+        so_far = f" {said}" if said else ""
+    if not so_far:
+        text = synthesis(bp, lang)
+        so_far = SO_FAR[lang].format(text=text) if text else ""
     items = list(worth[:3])
     joined = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " or " + items[-1] if items else ""
-    return CHECKPOINT[lang].format(
-        so_far=SO_FAR[lang].format(text=so_far) if so_far else "",
-        more=MORE[lang].format(items=joined) if joined else "",
-    )
+    return CHECKPOINT[lang].format(so_far=so_far, more=MORE[lang].format(items=joined) if joined else "")
 
 
-def so_far_line(bp: BusinessBlueprint, lang: str) -> str:
-    from platform_core.interview.understanding import synthesis
+def so_far_line(bp: BusinessBlueprint, lang: str, *, first_shape: bool = False) -> str:
+    """The "here's what I understand" line: the shape of the business the first
+    time, a short "so far" after that."""
+    from platform_core.interview.understanding import read_back, synthesis
 
+    if lang == "en" and first_shape:
+        said = str(read_back(bp, "shape"))
+        if said:
+            return said
     text = synthesis(bp, lang)
     return SO_FAR[lang].format(text=text).strip() if text else ""
+
+
+# Asked once, when the business was started by talking and has no name yet.
+NAME_QUESTION = {
+    "en": "What's the {noun} called? That's the name the website will use.",
+    "ta_en": "{noun}-oda per enna? Website-la adha dhaan podanum.",
+    "ta": "உங்க {noun} பெயர் என்ன? வெப்சைட்ல அதைத்தான் போடுவோம்.",
+}

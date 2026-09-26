@@ -252,10 +252,18 @@ _OFFER_STATEMENT = re.compile(
     r"speciali[sz](?:e|es|ing)\s+in|our\s+special(?:ity|ty|ities)\s+(?:is|are))\s+([^.;!?\n]+)", re.I)
 
 
+# "…a strength gym in Velachery — powerlifting, strength classes and personal
+# training." / "Mostly monthly memberships, personal training and group classes."
+_OFFER_LIST = re.compile(
+    r"(?:\bis an? [^—–.;!?\n]{2,60}?\s+[—–-]\s+|(?:^|[.!?]\s+)(?:mostly|mainly|primarily)\s+)([^.;!?\n]+)", re.I)
+
+
 def offer_statement(text: str) -> list[str]:
     """What an owner says they sell, from "We sell chicken, mutton and fish."."""
     names: list[str] = []
-    for match in _OFFER_STATEMENT.finditer(" ".join((text or "").split())):
+    flat = " ".join((text or "").split())
+    matches = list(_OFFER_STATEMENT.finditer(flat)) or list(_OFFER_LIST.finditer(flat))
+    for match in matches:
         clause = re.split(r"\b(?:to|for|in|at|from|since|with|which|who|and (?:we|people|customers))\b",
                           match.group(1), maxsplit=1, flags=re.I)[0]
         for name in offering_names(clause):
@@ -418,6 +426,56 @@ def location_text(text: str) -> str:
     if re.fullmatch(r"(?:yes|no|fixed|both|only deliver|deliver|all india|all over india)", raw, re.I):
         return ""
     return raw
+
+
+# ------------------------------------------------------------ the name
+
+# "It's called Grit Barbell Club", "the shop's name is Ishant Proteins".
+_NAME_SAID = re.compile(
+    r"\b(?:called|named|name is|name's|naming it)\s+[\"“']?(?P<name>[^\"”.,;!?\n]{2,70})", re.I)
+# "Grit Barbell Club is a strength gym…", "We are Ishant Proteins, a meat shop".
+_NAME_LEADS = re.compile(
+    r"^\s*(?:(?i:we are|we're|this is|i run|we run|i own|we own|i'm from|we're from)\s+)?"
+    r"(?P<name>(?:[A-Z0-9][\w&'’.-]*)(?:\s+(?:&\s+|of\s+|and\s+)?[A-Z0-9][\w&'’.-]*){0,5})"
+    r"(?=\s*(?:,|\s+is\s+an?\b|\s+is\s+the\b|\s+are\s+an?\b|\s+—|\s+-\s|"
+    r"\s+(?:builds|makes|sells|runs|serves|offers|supplies|designs|bakes|cooks)\b))")
+_NAME_END = re.compile(r"\s+(?:and|in|at|near|on|from|which|that|where|—|-|,)\b.*$", re.I)
+_NOT_A_NAME = re.compile(
+    r"^(?:we|i|our|my|this|it|the|a|an|they|people|customers|yes|no|ok|hi|hello|mostly|mainly|"
+    r"chicken|mutton|fish|monthly|daily)$", re.I)
+
+
+def business_name(text: str) -> str:
+    """The business's own name, only when the owner plainly says it."""
+    raw = " ".join((text or "").split())
+    found = _NAME_SAID.search(raw)
+    name = _NAME_END.sub("", found.group("name")) if found else ""
+    # "This is Kavya, I make cakes" introduces a person, not the business.
+    if not name and not re.match(r"^\s*(?:this is|i'?m|i am)\s+\S+\s*,\s*i\b", raw, re.I):
+        lead = _NAME_LEADS.match(raw)
+        name = lead.group("name") if lead else ""
+    name = name.strip(" .,'\"“”")
+    words = name.split()
+    if not words or len(words) > 6 or len(name) > 60 or _NOT_A_NAME.match(words[0]):
+        return ""
+    if canonical_actions(name) or looks_like_hours(name) or phone_number(name):
+        return ""
+    return name
+
+
+# "No, actually we're mainly a physiotherapy centre" — the owner correcting
+# what kind of business it is, not adding a detail.
+_KIND_CORRECTION = re.compile(
+    # "No, …" / "Actually, …" at the start of the message…
+    r"^\s*(?:no|nope|not really|actually)\b"
+    # …or a statement of what the business IS: "we're mainly a…", "it's actually a…"
+    r"|\b(?:we'?re|we are|it'?s|it is|this is|i'?m|i am)\s+(?:(?:actually|mainly|mostly|primarily|really|"
+    r"more of|more like|basically)\s+)+(?:a|an|the)\b"
+    r"|\bnot (?:a|an)\s+[\w ]{2,30}?[,;]?\s+(?:but|we'?re|it'?s)\b", re.I)
+
+
+def corrects_kind(text: str) -> bool:
+    return bool(_KIND_CORRECTION.search(text or ""))
 
 
 # ---------------------------------------------------------- owner signals

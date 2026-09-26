@@ -96,9 +96,11 @@ MEAT = Fixture(
     # brief: media before the transaction model is a red flag).
     never_asked={"bookings.format", "b2b.customers", "memberships.plans", "offerings.main",
                  "operations.hours", "media.photos", "media.logo", "offerings.pricing"},
-    # How an order reaches the customer is worth asking once the range and
-    # the ordering are known — the model proposed it and it is right.
-    asked={"fulfilment.mode"},
+    # "We sell chicken, mutton and fish… by the kg" now reads as a meat shop
+    # (it read as "other" before), and a meat shop's first expert question is
+    # the cuts. Delivery was then volunteered in the next answer, so it is
+    # understood without being asked — asking it would be asking twice.
+    asked={"offerings.structure"},
 )
 
 FURNITURE = Fixture(
@@ -247,7 +249,11 @@ GYM = Fixture(
     useful={"workforce"},
     never={"inventory", "fulfilment", "quotes"},
     never_asked={"fulfilment.mode", "offerings.units", "operations.stock", "b2b.customers"},
-    asked={"bookings.format"},
+    # "A gym … plus zumba and yoga classes" is a gym (it read as a yoga studio
+    # before, from "yoga classes"). A gym's website is built around joining,
+    # and class booking was said in the next answer — the number is what's
+    # missing.
+    asked={"contact.phone"},
 )
 
 SUPPLIER = Fixture(
@@ -312,7 +318,11 @@ async def run(fx: Fixture) -> tuple[BusinessBlueprint, list[str], list[str | Non
                                image_available=False)
         resolve_recommendations(bp, entitlements(), fx.business_type)
         replies.append(bp.messages[-1].text)
-        targets.append(bp.last_asked_target)
+        # What THIS turn asked — None when it asked nothing (the checkpoint):
+        # `last_asked_target` keeps the previous question and would read as a repeat.
+        latest = bp.asks[-1] if bp.asks else None
+        asked_now = latest is not None and latest.turn == bp.turn_count and latest.targets
+        targets.append(latest.targets[0] if asked_now and latest else None)
     return bp, replies, targets
 
 

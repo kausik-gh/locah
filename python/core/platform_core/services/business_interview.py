@@ -257,7 +257,28 @@ def _category_seed(business: Business) -> CategorySeed | None:
         return None
     category, sub = found
     return CategorySeed(category_key=category.key, subcategory_key=sub.key if sub.key != category.key else "",
-                        label=sub.label, source="owner_picked")
+                        label=sub.label, source="owner_picked", group=category.label)
+
+
+async def _sync_business(session: AsyncSession, business: Business, bp: BusinessBlueprint) -> None:
+    """What the conversation settled about the Business itself: its name and kind.
+
+    The name the owner said becomes the Business's name (and, while it was
+    pending, its address). The kind — picked, inferred or corrected — is kept
+    as the Business's classification seed; it is never a module grant.
+    """
+    from platform_core.services.business import BusinessService
+
+    said = bp.identity.get("display_name")
+    if said and not bp.name_pending and said.value != business.display_name:
+        await BusinessService.adopt_name(session, business, said.value)
+    meta = dict(business.metadata_ or {})
+    if bp.category:
+        wanted = {"category_key": bp.category.category_key, "subcategory_key": bp.category.subcategory_key,
+                  "source": bp.category.source}
+        if meta.get("classification") != wanted:
+            meta["classification"] = wanted
+            business.metadata_ = meta
 
 
 async def _queue_logo(
@@ -316,6 +337,7 @@ class BusinessInterviewService:
             remaining_questions=list(QUESTIONS),
         )
         bp.category = _category_seed(business)
+        bp.name_pending = bool((business.metadata_ or {}).get("name_pending"))
         BusinessInterviewOrchestrator.open(bp)
         return bp
 
@@ -464,6 +486,7 @@ class BusinessInterviewService:
                     initial, command.text, field=command.field,
                     business_type=business.business_type,
                     image_available=image_generation_available(),
+                    via=command.via,
                 )
             except ValueError as exc:
                 raise ValidationError(str(exc)) from exc
@@ -602,6 +625,7 @@ class BusinessInterviewService:
             if touched and bp.completion_state.status == "built":
                 await _sync_catalogue_into_draft(session, business.id, bp)
         await _queue_logo(session, business, bp, actor_id=actor_id)
+        await _sync_business(session, business, bp)
         bp.revision += 1
         bp.applied_requests = (bp.applied_requests + [command.request_id])[-30:]
         await BusinessInterviewService.save(session, business, bp)
@@ -689,6 +713,8 @@ class BusinessInterviewService:
         BusinessInterviewOrchestrator.project(bp, business.business_type)
         if bp.completion_state.ready_at is None and not floor_met(bp, business.business_type):
             raise ValidationError("Tell Locah what you sell or offer first — then it can build.")
+        if bp.name_pending:
+            raise ValidationError("Add your business's name first — it's what the website shows.")
         # Pressing Build on the summary is the confirmation. Tool choices never
         # hold the website back: tools not chosen stay off and can be set up later.
         BusinessInterviewOrchestrator.confirm(bp, business.business_type)

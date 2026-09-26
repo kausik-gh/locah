@@ -654,6 +654,90 @@ class BusinessService:
         }
 
     @staticmethod
+    async def start_conversation(
+        session: AsyncSession,
+        *,
+        identity_id: uuid.UUID,
+        correlation_id: str,
+        display_name: str | None = None,
+        category_key: str | None = None,
+        subcategory_key: str | None = None,
+    ) -> tuple[Business, bool]:
+        """A Business to talk to LOCAH about — before it has to have a name.
+
+        "Talk to LOCAH" needs a Business (the conversation is its Blueprint), but
+        an owner who opens the page and leaves must not leave a trail of empty
+        businesses behind. So an untouched draft this owner already started
+        (no name yet, nothing said yet) is reused; only otherwise is a new one
+        created, with a placeholder address that follows the real name later.
+        Returns (business, created).
+        """
+        name = " ".join((display_name or "").split())[:200]
+        classification = (
+            {"category_key": category_key, "subcategory_key": subcategory_key or ""}
+            if category_key else None
+        )
+        for existing in await BusinessService.list_for_identity(session, identity_id):
+            meta = existing.metadata_ or {}
+            interview = meta.get("interview") or {}
+            untouched = not any(m.get("role") == "user" for m in interview.get("messages") or [])
+            if (existing.primary_owner_identity_id == identity_id and existing.state == "draft"
+                    and meta.get("name_pending") and untouched):
+                updated = dict(meta)
+                updated.pop("interview", None)  # re-opened with this category / name
+                if classification:
+                    updated["classification"] = classification
+                existing.metadata_ = updated
+                if name:
+                    await BusinessService.adopt_name(session, existing, name)
+                await session.flush()
+                return existing, False
+        payload: dict[str, Any] = {"display_name": name or "New business"}
+        if classification:
+            payload.update({k: v for k, v in classification.items() if v})
+        if not name:
+            payload["slug"] = f"draft-{uuid.uuid4().hex[:10]}"
+        business, *_ = await BusinessService.create_business(
+            session, identity_id=identity_id, correlation_id=correlation_id, payload=payload,
+        )
+        if not name:
+            business.metadata_ = {**(business.metadata_ or {}), "name_pending": True}
+            await session.flush()
+        return business, True
+
+    @staticmethod
+    async def adopt_name(session: AsyncSession, business: Business, name: str) -> None:
+        """The owner said what the business is called.
+
+        While the name was pending, the public address was a placeholder; it
+        now follows the real name. After that, the address never changes on
+        its own — a later rename is the owner's settings change, not this.
+        """
+        name = " ".join(name.split())[:200]
+        if not name:
+            return
+        meta = dict(business.metadata_ or {})
+        business.display_name = name
+        if meta.get("name_pending"):
+            base = slugify(name)
+            if base in RESERVED_SLUGS:
+                base = f"biz-{base}"
+            candidate = await BusinessService._allocate_slug(session, display_name=name, requested_slug=None)
+            for attempt in range(1, 26):
+                try:
+                    async with session.begin_nested():
+                        business.slug = candidate
+                        await session.flush()
+                    break
+                except IntegrityError as exc:
+                    if "businesses_slug_active_key" not in str(exc.orig):
+                        raise
+                    candidate = f"{base}-{attempt}" if attempt < 6 else f"{base}-{uuid.uuid4().hex[:4]}"
+            meta["name_pending"] = False
+            business.metadata_ = meta
+        await session.flush()
+
+    @staticmethod
     async def update_business(
         session: AsyncSession,
         business: Business,

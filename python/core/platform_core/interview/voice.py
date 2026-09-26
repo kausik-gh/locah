@@ -81,9 +81,34 @@ VOICE_TOOLS: list[dict[str, Any]] = [
 ]
 
 
+def _replay_script() -> list[str] | None:
+    """Recorded utterances for a test run (VOICE_PROVIDER=replay), else None.
+
+    Test-only, by construction: it answers only while every paid AI call is
+    refused (LOCAH_TEST_NO_EXTERNAL_AI=1), so it can never stand in for real
+    voice on a deployed server. What it "hears" is a fixture file of what an
+    owner said; each utterance goes through the ordinary interview command.
+    """
+    import json
+
+    from platform_core.ai_guard import ENV
+
+    if os.getenv(ENV, "").strip() != "1":
+        return None
+    path = os.getenv("LOCAH_VOICE_REPLAY_FILE", "").strip()
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as fh:
+        loaded = json.load(fh)
+    lines = loaded.get("utterances") if isinstance(loaded, dict) else loaded
+    return [str(line)[:1000] for line in (lines or []) if str(line).strip()][:20]
+
+
 def is_configured() -> bool:
     """Whether voice can work at all, without revealing anything about the key."""
     provider = os.getenv("VOICE_PROVIDER", "gemini").strip().lower() or "gemini"
+    if provider == "replay":
+        return _replay_script() is not None
     if provider == "gemini":
         return bool(os.getenv("GEMINI_API_KEY", "").strip())
     return provider in {"xai", "grok"} and bool(os.getenv("XAI_API_KEY", "").strip())
@@ -108,7 +133,7 @@ def _compact_state(bp: BusinessBlueprint) -> str:
         lines += [f"  - {key.replace('_', ' ')}: {fact.value[:220]}" for key, fact in facts.items()]
     else:
         lines.append("Nothing known yet.")
-    if bp.completion_state.sufficient:
+    if bp.completion_state.sufficient or bp.completion_state.ready_at is not None:
         lines.append(
             "ENOUGH INFORMATION HAS BEEN COLLECTED. Stop interviewing. Say one short "
             "sentence such as 'I've got enough to build a strong first version', then "
@@ -394,6 +419,12 @@ async def mint_gemini_token(
 
 async def create_voice_session(bp: BusinessBlueprint) -> dict[str, Any]:
     """A short-lived credential and session description for the configured provider."""
+    if voice_provider() == "replay":
+        script = _replay_script()
+        if script is None:
+            raise VoiceSessionError("Voice isn't available on this server.")
+        # No credential and no socket: the browser "hears" these lines one by one.
+        return {"provider": "replay", "utterances": script, "expires_at": None}
     if voice_provider() == "gemini":
         return await mint_gemini_token(bp)
     minted = await mint_client_secret()

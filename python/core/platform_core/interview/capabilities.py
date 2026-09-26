@@ -165,6 +165,14 @@ def classification_seed(bp: BusinessBlueprint) -> str:
     for phrase, seed in candidates.items():
         if re.search(r"\b" + re.escape(phrase) + r"\b", text):
             return str(seed)
+    # Nothing said names a profile: the kind the owner picked (or that their
+    # words were read as) still carries its legacy template key.
+    if bp.category and bp.category.category_key:
+        from platform_core.catalog.taxonomy import resolve
+
+        found = resolve(bp.category.category_key, bp.category.subcategory_key or None)
+        if found and found[0].template:
+            return str(found[0].template)
     return "other"
 
 

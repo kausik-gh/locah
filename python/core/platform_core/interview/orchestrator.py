@@ -19,7 +19,7 @@ import json
 import os
 import re
 import time
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from platform_core.business_type_profiles.registry import BusinessTypeProfileRegistry
 from platform_core.interview import planner
@@ -57,6 +57,7 @@ from platform_core.interview.models import (
     BusinessBlueprint,
     DraftUpdate,
     ExtractedFact,
+    Fact,
     FactKey,
     GroupProposal,
     ItemProposal,
@@ -88,6 +89,30 @@ OPENING = {
     "ta": "{name} பத்தி உங்க வார்த்தைகளில் சொல்லுங்க — என்ன விற்கிறீங்க அல்லது என்ன சேவை, வாடிக்கையாளர்கள் "
           "எப்படி வாங்குவாங்க அல்லது தொடர்பு கொள்வாங்க, வெப்சைட் எதை எளிதாக்கணும்?",
 }
+# Started by talking, before the business has a name.
+OPENING_UNNAMED = {
+    "en": "Tell me about your business in your own words — what you sell or provide, how customers usually "
+          "buy, book or contact you, and anything you'd like the website to make easier.",
+    "ta_en": "Unga business pathi unga words-la sollunga — enna sell pannureenga illa enna service, customers "
+             "eppadi vaanguvaanga, book pannuvaanga illa contact pannuvaanga, website enna easy pannanum?",
+    "ta": "உங்க பிசினஸ் பத்தி உங்க வார்த்தைகளில் சொல்லுங்க — என்ன விற்கிறீங்க அல்லது என்ன சேவை, "
+          "வாடிக்கையாளர்கள் எப்படி வாங்குவாங்க அல்லது தொடர்பு கொள்வாங்க, வெப்சைட் எதை எளிதாக்கணும்?",
+}
+# The owner picked the kind of business first: acknowledge it, then ask.
+OPENING_PICKED = {
+    "en": "Got it — {kind}. Tell me a little about {subject} — what you sell or offer, how customers "
+          "normally buy from you, and anything you'd like the website to make easier.",
+    "ta_en": "Seri — {kind}. {subject} pathi konjam sollunga — enna sell / offer pannureenga, customers "
+             "eppadi vaanguvaanga, website enna easy pannanum?",
+    "ta": "சரி — {kind}. {subject} பத்தி கொஞ்சம் சொல்லுங்க — என்ன விற்கிறீங்க, வாடிக்கையாளர்கள் எப்படி "
+          "வாங்குவாங்க, வெப்சைட் எதை எளிதாக்கணும்?",
+}
+KIND_UPDATED = {
+    "en": "Got it — {kind}. I've updated that.",
+    "ta_en": "Seri — {kind}. Maathitten.",
+    "ta": "சரி — {kind}. மாத்திட்டேன்.",
+}
+NAME_THANKS = {"en": "{name} — lovely.", "ta_en": "{name} — nalla per.", "ta": "{name} — நல்ல பெயர்."}
 # The opening answers these at once; what it leaves open is asked after.
 OPENING_TARGETS = ("business.identity", "offerings.main", "commerce.action")
 NO_PROBLEM = {"en": "No problem.", "ta_en": "Paravaalla.", "ta": "பரவாயில்லை."}
@@ -236,8 +261,18 @@ class BusinessInterviewOrchestrator:
 
     @staticmethod
     def opening_question(bp: BusinessBlueprint) -> str:
-        name = bp.identity["display_name"].value if "display_name" in bp.identity else "your business"
-        return OPENING[_lang(bp.language_style)].format(name=name)
+        from platform_core.interview.understanding import kind_phrase, place_noun
+
+        lang = _lang(bp.language_style)
+        named = "display_name" in bp.identity and not bp.name_pending
+        name = bp.identity["display_name"].value if named else ""
+        kind = kind_phrase(bp) if lang == "en" else (bp.category.label if bp.category else "")
+        if kind and bp.category and bp.category.source == "owner_picked":
+            subject = name or f"the {place_noun(bp)}"
+            return OPENING_PICKED[lang].format(kind=kind, subject=subject)
+        if not named:
+            return OPENING_UNNAMED[lang]
+        return OPENING[lang].format(name=name)
 
     @staticmethod
     def open(bp: BusinessBlueprint) -> None:
@@ -304,6 +339,7 @@ class BusinessInterviewOrchestrator:
         provider: AIModelProvider | None = None,
         business_type: str | None = None,
         image_available: bool = False,
+        via: str = "text",
     ) -> BusinessBlueprint:
         bp = bp.model_copy(deep=True)
         text = text.strip()
@@ -363,6 +399,17 @@ class BusinessInterviewOrchestrator:
         _contextual_signals(bp, ti, text)
         if not field:
             _read_for_question(bp, ti, text, answering_targets, reading, model_ok=fallback is None)
+        answering_name = bool(bp.asks) and bp.asks[-1].ask == "name"
+        named_now = not field and _capture_name(bp, ti, text, answering_name)
+        if named_now:
+            understood_name = 1
+        else:
+            understood_name = 0
+        kind_note = "" if field else _update_category(bp, text)
+        if kind_note:
+            # "No, actually we're a physiotherapy centre" is a correction, not a "no".
+            reading.decline = False
+            understood_name += 1
         # This check applies even if the model misclassifies a common off-topic query.
         off_topic = ti.off_topic or bool(re.search(
             r"\b(weather|tell me a joke|who is the president|who won|cricket match|"
@@ -374,7 +421,7 @@ class BusinessInterviewOrchestrator:
             signal = "wants_to_finish" if reading.finish else "redundant" if reading.redundant else "none"
         if reading.refine:
             bp.refining = True
-        understood = 0
+        understood = understood_name
         media_note = ""
         # With no model, every fact is the owner's own words read by rule.
         source = "USER_STATEMENT" if field or fallback else "AI_EXTRACTION"
@@ -427,12 +474,34 @@ class BusinessInterviewOrchestrator:
         lang = _lang(bp.language_style)
         ack = (REDUNDANT[lang] if signal == "redundant" and not govern_acknowledgement(ti.acknowledgement, text)
                else acknowledgement(bp, ti.acknowledgement, text, bp.language_style))
+        from platform_core.interview.understanding import place_noun, read_back
+
+        opening_answer = bool(bp.asks) and bp.asks[-1].ask == "opening"
+        if opening_answer and lang == "en" and not off_topic and understood:
+            # Understand first: say back what the business is before asking anything.
+            ack = read_back(bp, "first") or ack
+        if kind_note and not opening_answer:
+            ack = kind_note
+        elif named_now and answering_name:
+            ack = NAME_THANKS[lang].format(name=bp.identity["display_name"].value)
+        # The name is asked once, right after the first answer and before the
+        # checkpoint — the website cannot be built without one.
+        ask_name = (bp.name_pending and not answering_name and not off_topic
+                    and not any(a.ask == "name" for a in bp.asks))
+        name_question = planner.NAME_QUESTION[lang].format(noun=place_noun(bp)) if ask_name else ""
         next_item: planner.Ranked | None = None
         question = ""
-        if off_topic:
+        asked_name = False
+        if name_question and signal != "wants_to_finish":
+            reply = " ".join(p for p in (ack, media_note, name_question) if p)
+            asked_name = True
+        elif off_topic:
             next_item = planner.choose(bp, "", business_type) if not bp.readiness.ready else None
             question = planner.phrase(next_item.ask, bp, lang) if next_item else ""
             reply = REDIRECT[lang] + question
+        elif signal == "wants_to_finish" and bp.name_pending:
+            reply = planner.NEED_ONE_MORE[lang] + planner.NAME_QUESTION[lang].format(noun=place_noun(bp))
+            asked_name = True
         elif signal == "wants_to_finish":
             next_item = None if floor_met(bp, business_type) else planner.choose(bp, "", business_type)
             if next_item is None:
@@ -469,21 +538,25 @@ class BusinessInterviewOrchestrator:
                     next_item = planner.Ranked(planner.ASKS_BY_ID["offer"], 0.0, "blocking")
                 so_far = ""
                 if understood and bp.turn_count + 1 - bp.synthesis_turn >= 2 and len(bp.asks) >= 2:
-                    so_far = planner.so_far_line(bp, lang)
+                    so_far = planner.so_far_line(bp, lang, first_shape=bp.synthesis_turn == 0)
                     if so_far:
                         bp.synthesis_turn = bp.turn_count + 1
                 declined_only = reading.decline and all(a.status == "declined" for a in ti.answered)
                 opener = NO_PROBLEM[lang] if declined_only else ack if understood else (
                     UNCLEAR[lang].strip() if not fallback else "")
                 reply = " ".join(p for p in (opener, media_note, so_far, question) if p)
-        if next_item:
+        if asked_name:
+            bp.asks = (bp.asks + [AskRecord(ask="name", targets=[], turn=bp.turn_count + 1)])[-60:]
+        elif next_item:
             planner.record(bp, next_item.ask)
         elif bp.asks and bp.asks[-1].ask != "free":
             # No question this time: the next message answers nothing in
             # particular, and must not be read against the last question again.
             bp.asks = (bp.asks + [AskRecord(ask="free", targets=[], turn=bp.turn_count + 1)])[-60:]
         _remaining(bp)
-        bp.messages.extend([Message(role="user", text=text), Message(role="assistant", text=reply)])
+        spoken: Literal["text", "voice"] = "voice" if via == "voice" else "text"
+        bp.messages.extend([Message(role="user", text=text, via=spoken),
+                            Message(role="assistant", text=reply, via=spoken)])
         bp.messages = bp.messages[-60:]
         bp.turn_count += 1
         usage = getattr(provider, "last_usage", None) or {}
@@ -574,6 +647,74 @@ class BusinessInterviewOrchestrator:
                 setattr(wd, field, current.model_copy(update={"provenance": "ai_suggestion"}))
         govern_draft(bp, only, "")
         return bp
+
+
+def _capture_name(bp: BusinessBlueprint, ti: TurnIntelligence, text: str, answering: bool) -> bool:
+    """Keep the business's name when the owner says it — only then."""
+    if not bp.name_pending:
+        return False
+    said = ti.business_name.strip()
+    candidate = said if said and said.casefold() in text.casefold() else ""
+    candidate = candidate or rd.business_name(text)
+    reading = rd.read(text)
+    if not candidate and answering and not (reading.finish or reading.refine or reading.decline):
+        # Answering "What's it called?": the reply is the name.
+        short = re.sub(r"^\s*(?:it'?s|it is|we'?re|we are|the name is|name is|called|its)\s+", "",
+                       text.strip(), flags=re.I).strip(" .!\"'“”")
+        if (1 <= len(short.split()) <= 6 and len(short) <= 60 and not rd.read(short).decline
+                and not rd.canonical_actions(short) and not rd.phone_number(short)):
+            candidate = short
+    if not candidate:
+        return False
+    bp.identity["display_name"] = Fact(value=candidate[:120], source="USER_STATEMENT",
+                                       confirmation="unconfirmed", evidence=text[:400])
+    bp.name_pending = False
+    return True
+
+
+def _update_category(bp: BusinessBlueprint, text: str) -> str:
+    """Read what kind of business this is from what the owner says.
+
+    An owner-picked category stands unless the owner plainly corrects it ("no,
+    actually we're mainly a physiotherapy centre"); an inferred one follows
+    what they describe. Returns the line to say when the owner corrected it.
+    """
+    from platform_core.catalog.taxonomy import SUBCATEGORIES, infer_from_text
+    from platform_core.interview.models import CategorySeed
+    from platform_core.interview.understanding import kind_phrase
+
+    def seed(key: str, source: Literal["owner_picked", "inferred"]) -> CategorySeed:
+        category, sub = SUBCATEGORIES[key]
+        return CategorySeed(category_key=category.key, subcategory_key=sub.key, label=sub.label,
+                            source=source, group=category.label)
+
+    current = bp.category
+    # The business's own name is not evidence of its kind: "Grit Barbell Club"
+    # is a gym, not a powerlifting club, because the owner said "a gym".
+    name = bp.identity["display_name"].value if "display_name" in bp.identity else ""
+
+    def unnamed(words: str) -> str:
+        return re.sub(re.escape(name), " ", words, flags=re.I) if name and not bp.name_pending else words
+
+    text = unnamed(text)
+    said_now = infer_from_text(text)
+    if said_now and said_now[1] >= 0.72 and rd.corrects_kind(text) and (
+            current is None or current.subcategory_key != said_now[0]):
+        bp.category = seed(said_now[0], "owner_picked")
+        if current is None:
+            return ""
+        lang = _lang(bp.language_style)
+        return KIND_UPDATED[lang].format(kind=kind_phrase(bp) if lang == "en" else bp.category.label)
+    if current is None:
+        # Read once, from what they have said so far; after that the kind only
+        # changes when the owner corrects it — a later answer that mentions
+        # "textile mills" (their customers) or "book a site visit" (a verb)
+        # must not turn a pump supplier into a clothes shop or a bookshop.
+        said = " ".join([unnamed(m.text) for m in bp.messages if m.role == "user"][:3] + [text])
+        guess = infer_from_text(said)
+        if guess and guess[1] >= 0.72:
+            bp.category = seed(guess[0], "inferred")
+    return ""
 
 
 def _remaining(bp: BusinessBlueprint) -> None:

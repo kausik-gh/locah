@@ -310,7 +310,9 @@ async def test_the_ishant_proteins_conversation():
     # with a summary and the choice to build or keep refining.
     assert bp.readiness.ready and bp.checkpoint_turn == bp.turn_count
     assert "enough to make a strong first version" in reply(bp)
-    assert "So far:" in reply(bp) and "Nookampalayam and Perumbakkam" in reply(bp)
+    # The summary is a read-back of the business, not a "So far:" list.
+    assert "You're a meat shop in Nookampalayam Road" in reply(bp)
+    assert "Nookampalayam and Perumbakkam" in reply(bp)
     for never in ("operations.hours", "media.logo", "media.photos", "offerings.pricing", "commerce.payment"):
         assert bp.discovery[never].asked == 0, never
 

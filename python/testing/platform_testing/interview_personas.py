@@ -8,6 +8,8 @@ against the owner's message by `intel()`.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from platform_testing.interview_eval import Persona, intel
 
 MEAT_OPEN = ("We sell chicken, mutton, fish, crab and squid. Fish different varieties also there. "
@@ -515,3 +517,16 @@ PERSONAS: list[Persona] = [
         core={"business.identity"}, actions={"order_online", "book_online", "call"}, tools=set(), follow_ups=(1, 6),
     ),
 ]
+
+
+# The same owners starting by TALKING (Create Business → "Talk to LOCAH"): no
+# category picked and no name typed. Locah must read the kind of business from
+# what they say, ask the name once, and still reach a strong first version in
+# about the same number of questions (the name question is one more).
+TALK_FIRST: list[Persona] = [
+    replace(p, key=f"{p.key}-talk", business=f"{p.business} (talk first)", talk_first=True,
+            follow_ups=(p.follow_ups[0], p.follow_ups[1] + 1))
+    for p in PERSONAS
+    if p.key in {"meat-shop", "gym", "salon", "real-estate", "photographer", "industrial"}
+]
+ALL_PERSONAS: list[Persona] = PERSONAS + TALK_FIRST

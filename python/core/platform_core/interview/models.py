@@ -313,7 +313,12 @@ class CategorySeed(StrictModel):
     category_key: str = Field(max_length=40)
     subcategory_key: str = Field(default="", max_length=60)
     label: str = Field(default="", max_length=80)
+    # owner_picked: chosen from the search, or said plainly ("we're mainly a
+    # physiotherapy centre"); inferred: read from what they described — shown
+    # as "Looks like…", correctable, never a fact on the website.
     source: Literal["owner_picked", "inferred"] = "owner_picked"
+    # The category group's own name ("Fitness & wellness"), for "Looks like".
+    group: str = Field(default="", max_length=80)
 
 
 class AskRecord(StrictModel):
@@ -337,6 +342,8 @@ class Message(StrictModel):
     role: Literal["user", "assistant"]
     text: str
     at: datetime = Field(default_factory=now)
+    # Spoken or typed — one conversation either way; kept only to show it.
+    via: Literal["text", "voice"] = "text"
 
 
 class TurnTelemetry(StrictModel):
@@ -429,6 +436,9 @@ class BusinessBlueprint(StrictModel):
     owner_choices: OwnerChoices = Field(default_factory=OwnerChoices)
     # Whether the owner has already been told the model is reading slowly.
     degraded_notice: bool = False
+    # The business was started by talking, before it had a name: the name is
+    # asked for (once) and the address follows it until then.
+    name_pending: bool = False
 
 
 class ExtractedFact(StrictModel):
@@ -498,6 +508,8 @@ class TurnIntelligence(StrictModel):
     draft: DraftUpdate = Field(default_factory=DraftUpdate)
     catalogue: list[GroupProposal] = Field(default_factory=list, max_length=12)
     acknowledgement: str = Field(default="", max_length=140)
+    # The business's own name, only if the owner said it in this message.
+    business_name: str = Field(default="", max_length=120)
     next_target: str = Field(default="none", max_length=40)
     next_question: str = Field(default="", max_length=300)
 
@@ -540,10 +552,12 @@ class InterviewCommand(StrictModel):
         "keep_tools",
     ]
     text: str = Field(default="", max_length=4000)
+    # A spoken turn arrives as its transcript, through this same command.
+    via: Literal["text", "voice"] = "text"
     # For action="correct": which part of the understanding, and its new value.
     slot: Literal[
         "offerings", "actions", "fulfilment", "area", "payment", "location", "phone", "hours",
-        "story", "description", "price_visibility",
+        "story", "description", "price_visibility", "category", "name",
     ] | None = None
     values: list[str] = Field(default_factory=list, max_length=12)
     # Explicit correction also works without an AI provider.

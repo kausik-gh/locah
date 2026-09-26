@@ -31,6 +31,16 @@ class CreateBusinessRequest(BaseModel):
     language: str | None = None
 
 
+class StartConversationRequest(BaseModel):
+    """Create Business by talking: everything is optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, max_length=200)
+    category_key: str | None = Field(default=None, max_length=40)
+    subcategory_key: str | None = Field(default=None, max_length=60)
+
+
 class SwitchBusinessRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -69,6 +79,31 @@ async def create_business(
         preferences=prefs,
     )
     return hydrated
+
+
+@router.post("/start")
+async def start_conversation(
+    body: StartConversationRequest,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Start (or resume an untouched) Business to talk to LOCAH about.
+
+    No form first: a name and a category are welcome but not required. The
+    interview asks for the name if it was not given.
+    """
+    business, created = await BusinessService.start_conversation(
+        session,
+        identity_id=ctx.identity_id,
+        correlation_id=ctx.correlation_id,
+        display_name=body.display_name,
+        category_key=body.category_key,
+        subcategory_key=body.subcategory_key,
+    )
+    await session.commit()
+    return {"data": {"business": {"id": str(business.id), "slug": business.slug,
+                                  "display_name": business.display_name}, "created": created},
+            "meta": {"correlation_id": ctx.correlation_id}}
 
 
 @router.post("/{business_id}/switch")
