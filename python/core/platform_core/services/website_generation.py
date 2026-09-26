@@ -460,6 +460,14 @@ class WebsiteGenerationService:
             raise ValidationError("Generation job not found")
         if job.status in {"completed", "fallback_used", "superseded"}:
             return {"status": job.status, "job_id": str(job.id), "duplicate": True}
+        if await BusinessService.get_by_id(session, job.business_id) is None:
+            # Deleted while the build waited in the queue: there is nothing to
+            # build for, and retrying would only end in the dead-letter queue.
+            job.status = "superseded"
+            job.error_detail = "business deleted before the build ran"
+            job.completed_at = datetime.now(timezone.utc)
+            await session.flush()
+            return {"status": job.status, "job_id": str(job.id), "business_deleted": True}
 
         if is_interview_job(job):
             from platform_core.services.business_interview import BusinessInterviewService

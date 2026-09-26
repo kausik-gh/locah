@@ -143,6 +143,49 @@ def test_generation_fallback_always_produces_draft(owner: tuple[dict[str, str], 
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+def test_a_build_queued_for_a_deleted_business_closes_instead_of_retrying(
+    owner: tuple[dict[str, str], uuid.UUID],
+) -> None:
+    """A business deleted while its build waits used to crash the job three
+    times and land it in the dead-letter queue. It now closes cleanly."""
+    import platform_core.services.website_generation as gen_mod
+    from sqlalchemy import update
+
+    from platform_core.models import Business
+
+    headers, user_id = owner
+    biz_uuid = uuid.UUID(_create_business(TestClient(app), headers))
+
+    async def _run() -> tuple[dict[str, Any], str, str | None]:
+        url = get_database_url()
+        assert url
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        engine = create_async_engine(url, echo=False, poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as session:
+            job = WGJ(business_id=biz_uuid, status="pending", prompt_version="v1", triggered_by=user_id)
+            session.add(job)
+            await session.execute(
+                update(Business).where(Business.id == biz_uuid).values(deleted_at=datetime.now(timezone.utc))
+            )
+            await session.commit()
+            res = await gen_mod.WebsiteGenerationService.execute_job(
+                session, generation_job_id=job.id, correlation_id=str(uuid.uuid4())
+            )
+            await session.commit()
+            await session.refresh(job)
+            status, detail = job.status, job.error_detail
+        await engine.dispose()
+        return dict(res), status, detail
+
+    res, status, detail = asyncio.run(_run())
+    assert res["business_deleted"] is True
+    assert status == "superseded"
+    assert detail == "business deleted before the build ran"
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 def test_manual_generate_idempotent_while_running(
     owner: tuple[dict[str, str], uuid.UUID],
 ) -> None:
