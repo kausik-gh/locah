@@ -1,13 +1,13 @@
-# Aranya Homes — Real estate developer (model unreachable)
+# Aranya Homes — Real estate developer (talk first) (model unreachable)
 
-- Follow-up questions before the checkpoint: **4** (expected 2–6)
+- Follow-up questions before the checkpoint: **4** (expected 2–7)
 - Questions asked: conversion, photos, structure, contact
 - Score: **91/100** · core coverage 26, customer actions 15, question count 15, readiness 10, tools 10, no red flags 15
 - Red flags: none
 
 ## Conversation
 
-**LOCAH:** Got it — a property developer. Tell me a little about Aranya Homes — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
+**LOCAH:** Tell me about your business in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
 
 **OWNER:** Aranya Homes builds villas and apartments on OMR. We have three projects — Aranya Greens villas, Aranya Heights apartments and Aranya Meadows plots.
 

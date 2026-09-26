@@ -1,13 +1,13 @@
-# Torque Flow Pumps — Industrial pump supplier (scripted model)
+# Torque Flow Pumps — Industrial pump supplier (talk first) (scripted model)
 
-- Follow-up questions before the checkpoint: **2** (expected 2–6)
+- Follow-up questions before the checkpoint: **2** (expected 2–7)
 - Questions asked: conversion, contact
 - Score: **100/100** · core coverage 35, customer actions 15, question count 15, readiness 10, tools 10, no red flags 15
 - Red flags: none
 
 ## Conversation
 
-**LOCAH:** Got it — an industrial supplier. Tell me a little about Torque Flow Pumps — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
+**LOCAH:** Tell me about your business in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
 
 **OWNER:** Torque Flow supplies centrifugal pumps, valves and motors to factories and apartment builders around Chennai and Hosur.
 

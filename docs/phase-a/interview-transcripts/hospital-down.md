@@ -1,29 +1,29 @@
 # Meridian Care — Hospital (model unreachable)
 
 - Follow-up questions before the checkpoint: **3** (expected 1–5)
-- Questions asked: offer, conversion, bookings
-- Score: **88/100** · core coverage 23, customer actions 15, question count 15, readiness 10, tools 10, no red flags 15
+- Questions asked: conversion, bookings, phone
+- Score: **100/100** · core coverage 35, customer actions 15, question count 15, readiness 10, tools 10, no red flags 15
 - Red flags: none
 
 ## Conversation
 
-**LOCAH:** Tell me about Meridian Care in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
+**LOCAH:** Got it — a hospital. Tell me a little about Meridian Care — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
 
 **OWNER:** Meridian Care is a 120-bed multispeciality hospital in Tambaram — cardiology, orthopaedics, paediatrics and a 24-hour emergency department.
 
-**LOCAH:** Right. Which departments and specialities should people find first?
-
-**OWNER:** Not sure about that — you decide.
-
-**LOCAH:** No problem. So far: in Tambaram. Should patients book an OP appointment online, or call the front desk? Do you have 24-hour emergency?
+**LOCAH:** Got it — a hospital in Tambaram offering cardiology, orthopaedics, paediatrics and A 24-hour emergency department. Should patients book an OP appointment online, or call the front desk? Do you have 24-hour emergency?
 
 **OWNER:** Patients book an OP appointment online or call the front desk.
 
-**LOCAH:** Understood. What do people usually book — and do they ask for a particular person, or whoever is free?
+**LOCAH:** Okay, that helps. What do people usually book — and do they ask for a particular person, or whoever is free?
 
 **OWNER:** OP consultations with a specific doctor, about 15 minutes.
 
-**LOCAH:** Perfect. I've got enough to make a strong first version. So far: customers can call to book or book online; in Tambaram. You can build it now, or keep refining — a little more detail only makes it more yours. If you like, I can also ask about your number, photos or prices.
+**LOCAH:** Understood. Okay — I have the shape of it now: you're a hospital in Tambaram offering cardiology, orthopaedics, paediatrics and A 24-hour emergency department where people call to book or book online. The website should mainly help people see what you offer and book. Which number should customers call or WhatsApp?
+
+**OWNER:** 04422334455
+
+**LOCAH:** Perfect. I've got enough to make a strong first version. You're a hospital in Tambaram offering cardiology, orthopaedics, paediatrics and A 24-hour emergency department where people call to book or book online. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 
@@ -32,10 +32,10 @@
 ## What Locah understood
 
 - Business: Meridian Care is a 120-bed multispeciality hospital in Tambaram — cardiology, orthopaedics, paediatrics and a 24-hour emergency department.
-- Offers: —
+- Offers: Cardiology, Orthopaedics, Paediatrics and A 24-hour emergency department
 - Customers can: Call to book, Book online
 - How they buy: —
-- Place: Tambaram · Phone: — · Hours: —
+- Place: Tambaram · Phone: +91 04422 33445 · Hours: —
 - Website parts asked for: —
 - Recommended tools: Bookings & appointments, Staff & schedules
-- Still worth knowing: Phone or WhatsApp number, Photos for your website, Prices or price range, What people should remember about you
+- Still worth knowing: Photos for your website, Prices or price range, What people should remember about you, Opening hours

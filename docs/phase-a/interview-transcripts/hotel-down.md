@@ -7,19 +7,19 @@
 
 ## Conversation
 
-**LOCAH:** Tell me about Kodai Pines in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
+**LOCAH:** Got it — a resort. Tell me a little about Kodai Pines — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
 
 **OWNER:** Kodai Pines is a 20-room resort in Kodaikanal with valley-view cottages, a restaurant and a campfire lawn.
 
-**LOCAH:** Right. Which room types do you have — and is there a restaurant or anything nearby guests come for?
+**LOCAH:** Got it — a resort in Kodaikanal. Which room types do you have — and is there a restaurant or anything nearby guests come for?
 
 **OWNER:** Not sure about that — you decide.
 
-**LOCAH:** No problem. So far: in Kodaikanal. Do guests book directly with you, or mostly through travel sites — and should the website take booking requests?
+**LOCAH:** No problem. Do guests book directly with you, or mostly through travel sites — and should the website take booking requests?
 
 **OWNER:** Guests call or WhatsApp us to book, some come through travel sites. We'd like booking requests on the website.
 
-**LOCAH:** Understood. Do you have photos of your rooms or your place to add? Real photos always come first — you can attach them any time.
+**LOCAH:** Understood. Okay — I have the shape of it now: you're a resort in Kodaikanal where people book on WhatsApp or call to book. The website should mainly help people see what you offer and book. Do you have photos of your rooms or your place to add? Real photos always come first — you can attach them any time.
 
 **OWNER:** Yes, we have professional photos of the rooms.
 
@@ -27,11 +27,11 @@
 
 **OWNER:** Rooms by the night, two-night minimum on weekends.
 
-**LOCAH:** Ah, okay. So far: customers can book on WhatsApp or call to book; in Kodaikanal. Which number should customers call or WhatsApp?
+**LOCAH:** Ah, okay. So far: you're a resort in Kodaikanal where people book on WhatsApp or call to book. Which number should customers call or WhatsApp?
 
 **OWNER:** 9443012345
 
-**LOCAH:** Got it. I've got enough to make a strong first version. So far: customers can book on WhatsApp or call to book; in Kodaikanal. You can build it now, or keep refining — a little more detail only makes it more yours. If you like, I can also ask about prices, what makes you different or opening hours.
+**LOCAH:** Got it. I've got enough to make a strong first version. You're a resort in Kodaikanal where people book on WhatsApp or call to book. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 

@@ -7,27 +7,27 @@
 
 ## Conversation
 
-**LOCAH:** Tell me about Petal & Stem in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
+**LOCAH:** Got it — a florist. Tell me a little about Petal & Stem — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
 
 **OWNER:** Petal & Stem is a florist in Adyar — bouquets, flower baskets and wedding decoration.
 
-**LOCAH:** Right. Do people order a bouquet on WhatsApp for the same day, or pre-order for an event?
+**LOCAH:** Got it — a florist in Adyar offering bouquets, flower baskets and wedding decoration. Do people order a bouquet on WhatsApp for the same day, or pre-order for an event?
 
 **OWNER:** People order bouquets on WhatsApp or call, and wedding enquiries come on WhatsApp.
 
-**LOCAH:** Okay, that helps. So far: Bouquets, Flower baskets and Wedding decoration; customers can order on WhatsApp or call to order; in Adyar. Do you have photos of your flowers or your place to add? Real photos always come first — you can attach them any time.
+**LOCAH:** Okay, that helps. Do you have photos of your flowers or your place to add? Real photos always come first — you can attach them any time.
 
 **OWNER:** Yes, lots of photos of our bouquets and weddings.
 
-**LOCAH:** Understood. Do you deliver bouquets — and to which areas?
+**LOCAH:** Understood. Okay — I have the shape of it now: you're a florist in Adyar offering bouquets, flower baskets and wedding decoration where people order on WhatsApp or call to order. The website should mainly help people see what you have and order. Do you deliver bouquets — and to which areas?
 
 **OWNER:** Same-day bouquet delivery across South Chennai, and pickup from the shop.
 
-**LOCAH:** Perfect. So far: Bouquets, Flower baskets and Wedding decoration; customers can order on WhatsApp or call to order; delivery around South Chennai; pickup. Which number should customers call or WhatsApp?
+**LOCAH:** Perfect. Which number should customers call or WhatsApp?
 
 **OWNER:** 9500098765
 
-**LOCAH:** Ah, okay. I've got enough to make a strong first version. So far: Bouquets, Flower baskets and Wedding decoration; customers can order on WhatsApp or call to order; delivery around South Chennai; pickup. You can build it now, or keep refining — a little more detail only makes it more yours. If you like, I can also ask about prices, how people pay or what makes you different.
+**LOCAH:** Ah, okay. I've got enough to make a strong first version. You're a florist in Adyar offering bouquets, flower baskets and wedding decoration where people order on WhatsApp or call to order, delivering around South Chennai or ready for pickup. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 

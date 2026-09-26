@@ -1,17 +1,17 @@
-# Grit Barbell Club — Gym (model unreachable)
+# Grit Barbell Club — Gym (talk first) (model unreachable)
 
-- Follow-up questions before the checkpoint: **3** (expected 2–6)
+- Follow-up questions before the checkpoint: **3** (expected 2–7)
 - Questions asked: conversion, plans, phone
 - Score: **100/100** · core coverage 35, customer actions 15, question count 15, readiness 10, tools 10, no red flags 15
 - Red flags: none
 
 ## Conversation
 
-**LOCAH:** Got it — a gym. Tell me a little about Grit Barbell Club — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
+**LOCAH:** Tell me about your business in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
 
 **OWNER:** Grit Barbell Club is a strength gym in Velachery — powerlifting, strength classes and personal training.
 
-**LOCAH:** Got it — a gym in Velachery built around powerlifting, strength classes and personal training. Do people usually come for a trial first, then join a plan — and should they book that trial on WhatsApp or on the website?
+**LOCAH:** Got it — a powerlifting gym in Velachery built around powerlifting, strength classes and personal training. Do people usually come for a trial first, then join a plan — and should they book that trial on WhatsApp or on the website?
 
 **OWNER:** People WhatsApp us for a free trial session and then join a plan.
 
@@ -19,11 +19,11 @@
 
 **OWNER:** Monthly 2500, quarterly 6500, and PT packs of 12 sessions.
 
-**LOCAH:** Understood. Okay — I have the shape of it now: you're a gym in Velachery built around powerlifting, strength classes and personal training where people book a trial or message you on WhatsApp. The website should mainly help people understand the gym, see the plans and take the first step. Which number should customers call or WhatsApp?
+**LOCAH:** Understood. Okay — I have the shape of it now: you're a powerlifting gym in Velachery built around powerlifting, strength classes and personal training where people book a trial or message you on WhatsApp. The website should mainly help people understand the gym, see the plans and take the first step. Which number should customers call or WhatsApp?
 
 **OWNER:** 9003012345
 
-**LOCAH:** Perfect. I've got enough to make a strong first version. You're a gym in Velachery built around powerlifting, strength classes and personal training where people book a trial or message you on WhatsApp. Build it now, or keep refining — a little more detail only makes it more yours.
+**LOCAH:** Perfect. I've got enough to make a strong first version. You're a powerlifting gym in Velachery built around powerlifting, strength classes and personal training where people book a trial or message you on WhatsApp. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 

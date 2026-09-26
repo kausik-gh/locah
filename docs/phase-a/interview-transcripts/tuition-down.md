@@ -7,23 +7,23 @@
 
 ## Conversation
 
-**LOCAH:** Tell me about Apex Tuition Centre in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
+**LOCAH:** Got it — a tuition centre. Tell me a little about Apex Tuition Centre — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
 
 **OWNER:** Apex Tuition Centre teaches maths and science for classes 8 to 12, plus JEE foundation, in Anna Nagar.
 
-**LOCAH:** Right. Which classes and subjects do you teach — and for which exams?
+**LOCAH:** Got it — a tuition centre in Anna Nagar. Which classes and subjects do you teach — and for which exams?
 
 **OWNER:** Not sure about that — you decide.
 
-**LOCAH:** No problem. So far: in Anna Nagar. Do parents usually enquire first or ask for a demo class before joining?
+**LOCAH:** No problem. Do parents usually enquire first or ask for a demo class before joining?
 
 **OWNER:** Parents call or visit to enrol; we offer a free demo class first.
 
-**LOCAH:** Understood. Are fees monthly or per term — and are there morning and evening batches?
+**LOCAH:** Understood. Okay — I have the shape of it now: you're a tuition centre in Anna Nagar where people sign up or come in person. The website should mainly help people understand the centre, see the plans and take the first step. Are fees monthly or per term — and are there morning and evening batches?
 
 **OWNER:** Monthly fees, morning and evening batches.
 
-**LOCAH:** Perfect. I've got enough to make a strong first version. So far: customers can sign up or visit in person; in Anna Nagar. You can build it now, or keep refining — a little more detail only makes it more yours. If you like, I can also ask about your number, photos or prices.
+**LOCAH:** Perfect. I've got enough to make a strong first version. You're a tuition centre in Anna Nagar where people sign up or come in person. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 

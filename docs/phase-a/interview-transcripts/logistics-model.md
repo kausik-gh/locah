@@ -7,19 +7,19 @@
 
 ## Conversation
 
-**LOCAH:** Tell me about Swift Route Logistics in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
+**LOCAH:** Got it — a trucking. Tell me a little about Swift Route Logistics — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
 
 **OWNER:** Swift Route is a logistics company — part-load and full truckload transport, plus warehousing, for businesses in South India.
 
-**LOCAH:** Right. Do businesses ask for a quote first, or book a pickup directly?
+**LOCAH:** Got it — a trucking offering part-load, full truckload transport and warehousing. Do businesses ask for a quote first, or book a pickup directly?
 
 **OWNER:** Businesses call or WhatsApp us for a quote, then book a pickup.
 
-**LOCAH:** Okay, that helps. So far: Part-load, Full truckload transport and Warehousing; customers can ask for a quote or WhatsApp. Where are you, and which number should customers call or WhatsApp?
+**LOCAH:** Okay, that helps. Where are you, and which number should customers call or WhatsApp?
 
 **OWNER:** Madhavaram, Chennai. 9345012345.
 
-**LOCAH:** Understood. I've got enough to make a strong first version. So far: Part-load, Full truckload transport and Warehousing; customers can ask for a quote or WhatsApp; in Madhavaram, Chennai. You can build it now, or keep refining — a little more detail only makes it more yours. If you like, I can also ask about photos, prices or what makes you different.
+**LOCAH:** Understood. I've got enough to make a strong first version. You're a trucking in Madhavaram, Chennai offering part-load, full truckload transport and warehousing where people ask for a quote or message you on WhatsApp. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 

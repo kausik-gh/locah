@@ -1,13 +1,13 @@
-# Golden Hour — Wedding photographer (scripted model)
+# Golden Hour — Wedding photographer (talk first) (scripted model)
 
-- Follow-up questions before the checkpoint: **3** (expected 1–5)
+- Follow-up questions before the checkpoint: **3** (expected 1–6)
 - Questions asked: conversion, photos, contact
 - Score: **100/100** · core coverage 35, customer actions 15, question count 15, readiness 10, tools 10, no red flags 15
 - Red flags: none
 
 ## Conversation
 
-**LOCAH:** Got it — a wedding photographer. Tell me a little about Golden Hour — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
+**LOCAH:** Tell me about your business in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
 
 **OWNER:** Golden Hour is a wedding photography studio — candid weddings, pre-wedding shoots and wedding films across Tamil Nadu.
 

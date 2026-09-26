@@ -7,27 +7,27 @@
 
 ## Conversation
 
-**LOCAH:** Tell me about Crumb & Co in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
+**LOCAH:** Got it — a bakery. Tell me a little about Crumb & Co — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
 
 **OWNER:** We are a small bakery in Adyar. Breads, puffs, cookies and custom cakes. People walk in, and cake orders come on WhatsApp.
 
-**LOCAH:** Right. Do people collect from the shop, or do you deliver too?
+**LOCAH:** Got it — a bakery in Adyar offering breads, puffs, cookies and custom cakes where people order on WhatsApp or come in person. Do people collect from the shop, or do you deliver too?
 
 **OWNER:** Pickup from the shop, and we deliver cakes within Adyar.
 
-**LOCAH:** Okay, that helps. So far: Breads, Puffs, Cookies and Custom cakes; customers can order on WhatsApp or visit in person; delivery around Adyar; pickup. What should people remember about Crumb & Co — what makes you different?
+**LOCAH:** Okay, that helps. What should people remember about Crumb & Co — what makes you different?
 
 **OWNER:** Everything is baked fresh every morning, eggless options too.
 
-**LOCAH:** Understood. Do you take custom cake orders — for a date, with a message or a photo — and how early should people order?
+**LOCAH:** Understood. Okay — I have the shape of it now: you're a bakery in Adyar offering breads, puffs, cookies and custom cakes where people order on WhatsApp or come in person, delivering around Adyar or ready for pickup. The website should mainly help people see what you have and order. Do you take custom cake orders — for a date, with a message or a photo — and how early should people order?
 
 **OWNER:** Yes, custom cakes for birthdays with name and photo, order two days before.
 
-**LOCAH:** Perfect. So far: Breads, Puffs, Cookies and Custom cakes; customers can order on WhatsApp or visit in person; delivery around Adyar; pickup. Which number should customers call or WhatsApp?
+**LOCAH:** Perfect. Which number should customers call or WhatsApp?
 
 **OWNER:** 9841098410
 
-**LOCAH:** Ah, okay. I've got enough to make a strong first version. So far: Breads, Puffs, Cookies and Custom cakes; customers can order on WhatsApp or visit in person; delivery around Adyar; pickup. You can build it now, or keep refining — a little more detail only makes it more yours. If you like, I can also ask about photos, prices or how people pay.
+**LOCAH:** Ah, okay. I've got enough to make a strong first version. You're a bakery in Adyar offering breads, puffs, cookies and custom cakes where people order on WhatsApp or come in person, delivering around Adyar or ready for pickup. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 

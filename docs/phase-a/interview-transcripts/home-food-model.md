@@ -7,7 +7,7 @@
 
 ## Conversation
 
-**LOCAH:** Nalla Veedu Kitchen pathi unga words-la sollunga — enna sell pannureenga illa enna service, customers eppadi vaanguvaanga, book pannuvaanga illa contact pannuvaanga, website enna easy pannanum?
+**LOCAH:** Seri — Home kitchen. Nalla Veedu Kitchen pathi konjam sollunga — enna sell / offer pannureenga, customers eppadi vaanguvaanga, website enna easy pannanum?
 
 **OWNER:** Naan veetla irundhu home food pannuren. Sambar rice, kootu, poriyal, and Sunday chicken biryani. Customers WhatsApp-la order pannuvaanga, oru naal munnaadi.
 

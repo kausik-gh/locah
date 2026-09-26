@@ -7,23 +7,23 @@
 
 ## Conversation
 
-**LOCAH:** Tell me about Meridian Care in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
+**LOCAH:** Got it — a hospital. Tell me a little about Meridian Care — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
 
 **OWNER:** Meridian Care is a 120-bed multispeciality hospital in Tambaram — cardiology, orthopaedics, paediatrics and a 24-hour emergency department.
 
-**LOCAH:** Right. Should patients book an OP appointment online, or call the front desk? Do you have 24-hour emergency?
+**LOCAH:** Got it — a hospital in Tambaram offering cardiology, orthopaedics and paediatrics. Should patients book an OP appointment online, or call the front desk? Do you have 24-hour emergency?
 
 **OWNER:** Patients book an OP appointment online or call the front desk.
 
-**LOCAH:** Okay, that helps. So far: Cardiology, Orthopaedics and Paediatrics; customers can call to book or book online; in Tambaram. What do people usually book — and do they ask for a particular person, or whoever is free?
+**LOCAH:** Okay, that helps. What do people usually book — and do they ask for a particular person, or whoever is free?
 
 **OWNER:** OP consultations with a specific doctor, about 15 minutes.
 
-**LOCAH:** Understood. Which number should customers call or WhatsApp?
+**LOCAH:** Understood. Okay — I have the shape of it now: you're a hospital in Tambaram offering cardiology, orthopaedics and paediatrics where people call to book or book online. The website should mainly help people see what you offer and book. Which number should customers call or WhatsApp?
 
 **OWNER:** 04422334455
 
-**LOCAH:** Perfect. I've got enough to make a strong first version. So far: Cardiology, Orthopaedics and Paediatrics; customers can call to book or book online; in Tambaram. You can build it now, or keep refining — a little more detail only makes it more yours. If you like, I can also ask about photos, prices or what makes you different.
+**LOCAH:** Perfect. I've got enough to make a strong first version. You're a hospital in Tambaram offering cardiology, orthopaedics and paediatrics where people call to book or book online. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 

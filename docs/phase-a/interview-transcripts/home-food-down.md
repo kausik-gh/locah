@@ -7,7 +7,7 @@
 
 ## Conversation
 
-**LOCAH:** Nalla Veedu Kitchen pathi unga words-la sollunga — enna sell pannureenga illa enna service, customers eppadi vaanguvaanga, book pannuvaanga illa contact pannuvaanga, website enna easy pannanum?
+**LOCAH:** Seri — Home kitchen. Nalla Veedu Kitchen pathi konjam sollunga — enna sell / offer pannureenga, customers eppadi vaanguvaanga, website enna easy pannanum?
 
 **OWNER:** Naan veetla irundhu home food pannuren. Sambar rice, kootu, poriyal, and Sunday chicken biryani. Customers WhatsApp-la order pannuvaanga, oru naal munnaadi.
 
@@ -23,7 +23,7 @@
 
 **OWNER:** Ellaam en amma recipe, dhinamum fresh-aa samaippen.
 
-**LOCAH:** Perfect. I've got enough to make a strong first version. So far: La order pannuvaanga and Oru naal munnaadi; customers can order on WhatsApp; delivery around Veetla vandhu pickup pannalaam, 3 km kulla naan deliver pannuven; pickup. You can build it now, or keep refining — a little more detail only makes it more yours. If you like, I can also ask about photos, prices or how people pay.
+**LOCAH:** Perfect. I've got enough to make a strong first version. You're a home kitchen in Saibaba Colony, Coimbatore offering Customers WhatsApp where people order on WhatsApp, delivering around Veetla vandhu pickup pannalaam, 3 km kulla naan deliver pannuven or ready for pickup. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 

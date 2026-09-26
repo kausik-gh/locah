@@ -12,7 +12,7 @@
 **OWNER:** Wift is a gym app, which allows user to track their exercises by adding exercies to routines.
 See analytics of their workouts and track their weights and stuff.
 
-**LOCAH:** Right. What are the main things you sell or offer — the ones people should see first?
+**LOCAH:** Got it — a saas product. What are the main things you sell or offer — the ones people should see first?
 
 **OWNER:** See the analytics about weight,streak and all.
 then they mut be able to start workouts.
@@ -22,13 +22,13 @@ And add exercies
 
 **OWNER:** They must be able to order a equipment, book slots for trainsers, call
 
-**LOCAH:** Understood. So far: customers can order online or book online. What are the main things you sell or offer — the ones people should see first?
+**LOCAH:** Understood. Okay — I have the shape of it now: you're a saas product where people choose what they want by the kg and order online or book online. The website should mainly help people see what you have and order. What are the main things you sell or offer — the ones people should see first?
 
 **OWNER:** See the analytics about weight,streak and all.
 then they mut be able to start workouts.
 And add exercies
 
-**LOCAH:** Perfect. I've got enough to make a strong first version. So far: customers can order online or book online. You can build it now, or keep refining — a little more detail only makes it more yours. If you like, I can also ask about your plans, where you are or your number.
+**LOCAH:** Perfect. I've got enough to make a strong first version. You're a saas product where people choose what they want by the kg and order online or book online. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 

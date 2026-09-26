@@ -7,23 +7,23 @@
 
 ## Conversation
 
-**LOCAH:** Tell me about Saffron & Salt in your own words — what you sell or provide, how customers usually buy, book or contact you, and anything you'd like the website to make easier.
+**LOCAH:** Got it — a restaurant. Tell me a little about Saffron & Salt — what you sell or offer, how customers normally buy from you, and anything you'd like the website to make easier.
 
 **OWNER:** Saffron & Salt is a South Indian restaurant in Anna Nagar. We're known for our Chettinad chicken, dosas and full meals. Most people walk in, some call to book a table for weekends.
 
-**LOCAH:** Right. Do you deliver yourselves, or is takeaway enough for now?
+**LOCAH:** Got it — a restaurant in Anna Nagar offering chettinad chicken, dosas and full meals where people book a table or call you. Do you deliver yourselves, or is takeaway enough for now?
 
 **OWNER:** Takeaway only, we don't deliver ourselves.
 
-**LOCAH:** Okay, that helps. So far: Chettinad chicken, Dosas and Full meals; customers can book a table or call; pickup; in Anna Nagar. What should people remember about Saffron & Salt — what makes you different?
+**LOCAH:** Okay, that helps. What should people remember about Saffron & Salt — what makes you different?
 
 **OWNER:** Our recipes are from my grandmother's Karaikudi kitchen.
 
-**LOCAH:** Understood. Which number should customers call or WhatsApp?
+**LOCAH:** Understood. Okay — I have the shape of it now: you're a restaurant in Anna Nagar offering chettinad chicken, dosas and full meals where people book a table or call you, collected from you. The website should mainly help people see what you offer and book. Which number should customers call or WhatsApp?
 
 **OWNER:** Call us on 9840012345.
 
-**LOCAH:** Perfect. I've got enough to make a strong first version. So far: Chettinad chicken, Dosas and Full meals; customers can book a table or call; pickup; in Anna Nagar. You can build it now, or keep refining — a little more detail only makes it more yours. If you like, I can also ask about photos, prices or how people pay.
+**LOCAH:** Perfect. I've got enough to make a strong first version. You're a restaurant in Anna Nagar offering chettinad chicken, dosas and full meals where people book a table or call you, collected from you. Build it now, or keep refining — a little more detail only makes it more yours.
 
 **OWNER:** That's all, build it.
 
