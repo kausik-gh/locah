@@ -156,10 +156,46 @@ export function WebsitePageView({
       'calm_care',
       'technical_b2b',
       'friendly_local',
+      // design system v3
+      'premium_serif',
+      'modern_grotesk',
+      'playful_grotesk',
+      'calm_serif',
+      'monumental_condensed',
+      'portfolio_serif',
+      'technical_mono',
     ],
     ''
   )
-  const cards = finite(theme.card_style, ['sharp', 'soft', 'editorial', 'glass'], '')
+  const cards = finite(theme.card_style, ['sharp', 'soft', 'editorial', 'glass', 'outline', 'tile'], '')
+  // Design system v3: the family and its composition. Finite values only.
+  const family = finite(
+    theme.design_family,
+    [
+      'editorial_warm',
+      'premium_dark',
+      'modern_commerce',
+      'playful_editorial',
+      'calm_professional',
+      'monumental',
+      'portfolio_sketchbook',
+      'technical_b2b',
+      'airy_property',
+      'local_friendly',
+    ],
+    ''
+  )
+  const designVariant = /^[a-z_]{2,24}$/.test(String(theme.design_variant || ''))
+    ? String(theme.design_variant)
+    : ''
+  const rhythm = finite(theme.rhythm, ['compact', 'balanced', 'spacious'], '')
+  const imageTreatment = finite(
+    theme.image_treatment,
+    ['full', 'rounded', 'arch', 'framed', 'duotone', 'plain'],
+    ''
+  )
+  const surface = finite(theme.surface, ['sharp', 'soft', 'round'], '')
+  const footerStyle = finite(theme.footer_style, ['simple', 'columns', 'statement'], 'columns')
   const navStyle = finite(
     theme.nav_style,
     ['commerce', 'editorial', 'cinematic', 'airy', 'standard'],
@@ -235,6 +271,12 @@ export function WebsitePageView({
       data-cards={cards || undefined}
       data-nav={navStyle}
       data-motion-intensity={motionIntensity}
+      data-family={family || undefined}
+      data-variant={designVariant || undefined}
+      data-rhythm={rhythm || undefined}
+      data-image={imageTreatment || undefined}
+      data-surface={surface || undefined}
+      data-footer={family ? footerStyle : undefined}
       style={styleVars}
     >
       {data.is_preview ? (
@@ -368,6 +410,11 @@ export function WebsitePageView({
       ) : null}
 
       <footer className={`ls-foot ${reachable ? 'ls-foot--with-bar' : ''}`}>
+        {family && footerStyle === 'statement' ? (
+          <p className="ls-foot__statement" aria-hidden="true">
+            {name}
+          </p>
+        ) : null}
         <div className="ls-foot__inner">
           <div>
             <p className="ls-foot__name">{name}</p>

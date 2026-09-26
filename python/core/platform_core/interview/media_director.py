@@ -15,6 +15,15 @@ Rules:
   of random images. The budget depends on the archetype.
 * The prompt carries the trade and the owner's own item names — never the
   transcript, never people, text, logos or prices.
+
+The truth rule (Phase A): a drawn picture may set a mood; it may never stand
+in for evidence. So nothing a visitor could take as proof of THIS business is
+ever drawn — not a named dish or product ("our Vazhaipoo thokku"), not a
+project or a completed home, not a photographer's or architect's work, not a
+doctor or a team, not a certificate, award or review. Portfolio-led trades and
+property developers get no drawn pictures at all: their site is typographic
+until the owner's own photos arrive. What may be drawn is decorative and
+generic — a category's produce, a kind of room — and is labelled a draft.
 """
 
 from __future__ import annotations
@@ -74,8 +83,27 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[\d₹$]+", "", text)).strip(" ,.-")[:80]
 
 
+# Trades whose pictures ARE the evidence: nothing is drawn for them, ever.
+_EVIDENCE_LED_ARCHETYPES = frozenset({"real_estate_projects", "project_portfolio"})
+
+
+def may_draw(bp: BusinessBlueprint, direction: CreativeDirection) -> bool:
+    """Whether any draft visual is allowed for this business (the truth rule)."""
+    from platform_core.interview.playbooks import playbook_for
+
+    if direction.archetype in _EVIDENCE_LED_ARCHETYPES or playbook_for(bp).portfolio:
+        return False
+    return direction.dimensions.get("offering") not in {"portfolio", "property"}
+
+
 def plan_slots(bp: BusinessBlueprint, direction: CreativeDirection) -> list[Slot]:
-    """The pictures this site should have, most important first."""
+    """The pictures this site should have, most important first.
+
+    Only decorative, generic subjects: the hero, a picture per category and
+    where the work happens. Never a named item or project (see the truth rule).
+    """
+    if not may_draw(bp, direction):
+        return []
     groups = bp.taxonomy.groups
     names = [_clean(g.name) for g in groups if _clean(g.name)]
     hero_subject = (
@@ -85,20 +113,8 @@ def plan_slots(bp: BusinessBlueprint, direction: CreativeDirection) -> list[Slot
     slots = [Slot("hero", hero_subject, "16:9" if direction.hero in {
         "cinematic", "editorial_overlay"} else "4:3", "hero", "Draft visual · cover")]
     budget = BUDGET.get(direction.archetype, 3)
-    if direction.archetype in {"menu_commerce", "real_estate_projects"}:
-        # Dishes and projects are what visitors choose between: picture them.
-        kind = "item" if direction.archetype == "menu_commerce" else "project"
-        picked = 0
-        for depth in range(3):
-            for group in groups:
-                if depth < len(group.items) and picked < budget:
-                    item = group.items[depth]
-                    subject = _clean(f"{item.name} ({group.name})") if kind == "item" else _clean(item.name)
-                    slots.append(Slot(f"{kind}:{slug(item.name)}", subject, "4:3", "offering",
-                                      f"Draft visual · {item.name}"[:120]))
-                    picked += 1
-        if picked:
-            return _with_story(slots, direction)
+    # A named dish or project is never drawn: a drawn "Vazhaipoo thokku" would
+    # read as a photograph of theirs. Categories are generic enough to illustrate.
     for group in groups[:budget]:
         members = ", ".join(_clean(i.name) for i in group.items[:4] if _clean(i.name))
         subject = _clean(group.name) + (f" — {members}" if members else "")
@@ -119,10 +135,12 @@ def prompt_for(slot: Slot, direction: CreativeDirection, trade: str) -> str:
     framing = {
         "cinematic": "Wide composition with calm, darker space on the left for a headline.",
         "editorial_overlay": "Wide composition with calm space on the left for a headline.",
+        "full_width": "Wide composition with calm space on the left for a headline.",
         "commerce_split": "The subject fills the frame, centred, photographed close.",
         "airy_split": "Architecture on the right, open bright sky on the left.",
         "editorial_split": "The subject fills the frame, softly lit.",
-    }[direction.hero] if slot.key == "hero" else "The subject fills the frame, centred."
+    }.get(direction.hero, "The subject fills the frame, softly lit.") if slot.key == "hero" \
+        else "The subject fills the frame, centred."
     subject = slot.subject or trade
     return (
         f"A realistic, professional draft photograph for a small business website ({trade}). "

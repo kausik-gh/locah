@@ -1,0 +1,587 @@
+/* ==========================================================================
+   LOCAH — design families for tenant websites (design system v3)
+
+   The creative director reasons from the business's dimensions to one of ten
+   families and a composition inside it (platform_core/interview/
+   design_system.py). The renderer puts that decision on the site root:
+
+     data-family   editorial_warm | premium_dark | modern_commerce |
+                   playful_editorial | calm_professional | monumental |
+                   portfolio_sketchbook | technical_b2b | airy_property |
+                   local_friendly
+     data-variant  the composition inside the family
+     data-rhythm   compact | balanced | spacious      (section spacing)
+     data-surface  sharp | soft | round               (geometry)
+     data-image    full | rounded | arch | framed | duotone | plain
+     data-footer   simple | columns | statement
+
+   This file only adds to website.css and site-studio.css. HARD RULE (as
+   theirs): no LOCAH colour. Every colour is the business's own palette via
+   --site-*; families differ by type, geometry, rhythm, texture and
+   composition — not by a stock colour.
+   ========================================================================== */
+
+/* ------------------------------------------------------ type systems (v3) */
+
+[data-locah-site][data-type='premium_serif'] {
+  --site-font: var(--font-site-clean, system-ui), var(--site-tamil), system-ui, sans-serif;
+  --site-display-font: var(--font-site-cormorant, Georgia), var(--site-tamil), Georgia, serif;
+  --site-heading-weight: 600;
+  --site-display-tracking: -0.01em;
+}
+[data-locah-site][data-type='modern_grotesk'] {
+  --site-display-font: var(--font-site-archivo, system-ui), var(--site-tamil), system-ui, sans-serif;
+  --site-heading-weight: 750;
+  --site-display-tracking: -0.04em;
+}
+[data-locah-site][data-type='playful_grotesk'] {
+  --site-font: var(--font-site-dm, system-ui), var(--site-tamil), system-ui, sans-serif;
+  --site-display-font: var(--font-site-bricolage, system-ui), var(--site-tamil), system-ui, sans-serif;
+  --site-heading-weight: 750;
+  --site-display-tracking: -0.035em;
+}
+[data-locah-site][data-type='calm_serif'] {
+  --site-font: var(--font-site-clean, system-ui), var(--site-tamil), system-ui, sans-serif;
+  --site-display-font: var(--font-site-warm, Georgia), var(--site-tamil), Georgia, serif;
+  --site-heading-weight: 500;
+  --site-display-tracking: -0.02em;
+}
+[data-locah-site][data-type='monumental_condensed'] {
+  --site-font: var(--font-site-outfit, system-ui), var(--site-tamil), system-ui, sans-serif;
+  --site-display-font: var(--font-site-bold, Impact), var(--site-tamil), Impact, sans-serif;
+  --site-heading-weight: 400;
+  --site-display-case: uppercase;
+  --site-display-tracking: 0.005em;
+}
+[data-locah-site][data-type='portfolio_serif'] {
+  --site-font: var(--font-site-dm, system-ui), var(--site-tamil), system-ui, sans-serif;
+  --site-display-font: var(--font-site-newsreader, Georgia), var(--site-tamil), Georgia, serif;
+  --site-heading-weight: 400;
+  --site-display-tracking: -0.02em;
+  --site-caption-font: var(--font-site-mono, ui-monospace), ui-monospace, monospace;
+}
+[data-locah-site][data-type='technical_mono'] {
+  --site-font: var(--font-site-plex, system-ui), var(--site-tamil), system-ui, sans-serif;
+  --site-display-font: var(--font-site-plex, system-ui), var(--site-tamil), system-ui, sans-serif;
+  --site-heading-weight: 600;
+  --site-caption-font: var(--font-site-mono, ui-monospace), ui-monospace, monospace;
+}
+[data-locah-site][data-type] :is(h1, h2, h3) {
+  font-weight: var(--site-heading-weight, 600);
+}
+
+/* ------------------------------------------------ geometry, rhythm, cards */
+
+[data-locah-site][data-surface='sharp'] {
+  --site-radius: 2px;
+  --site-btn-radius: 2px;
+}
+[data-locah-site][data-surface='soft'] {
+  --site-radius: 14px;
+  --site-btn-radius: 12px;
+}
+[data-locah-site][data-surface='round'] {
+  --site-radius: 22px;
+  --site-btn-radius: 999px;
+}
+[data-locah-site][data-surface] .ls-btn,
+[data-locah-site][data-surface] .ls-nav__cta {
+  border-radius: var(--site-btn-radius);
+}
+[data-locah-site][data-rhythm='compact'] {
+  --site-section-y: clamp(2.5rem, 1.8rem + 3vw, 4.5rem);
+}
+[data-locah-site][data-rhythm='balanced'] {
+  --site-section-y: clamp(3.25rem, 2.2rem + 4.5vw, 6rem);
+}
+[data-locah-site][data-rhythm='spacious'] {
+  --site-section-y: clamp(4.25rem, 2.8rem + 6vw, 8.5rem);
+}
+[data-locah-site][data-cards='outline'] {
+  --site-card-shadow: none;
+}
+[data-locah-site][data-cards='outline'] :is(.ls-category, .ls-board, .ls-fact, .ls-offer-card) {
+  background: transparent;
+  border: 1.5px solid color-mix(in srgb, var(--site-ink) 16%, transparent);
+  box-shadow: none;
+}
+[data-locah-site][data-cards='tile'] {
+  --site-card-shadow: none;
+}
+[data-locah-site][data-cards='tile'] :is(.ls-category, .ls-board) {
+  border: 0;
+  background: color-mix(in srgb, var(--site-primary) 8%, var(--site-bg));
+}
+
+/* -------------------------------------------------------- image treatment */
+
+[data-locah-site][data-image='rounded'] :is(.ls-hero__media img, .ls-story__media img, .ls-board__media) {
+  border-radius: 24px;
+  overflow: hidden;
+}
+[data-locah-site][data-image='arch'] :is(.ls-hero__media, .ls-story__media) {
+  border-radius: 999px 999px 18px 18px;
+  overflow: hidden;
+}
+[data-locah-site][data-image='framed'] :is(.ls-hero__media img, .ls-story__media img, .ls-category__img) {
+  outline: 1px solid color-mix(in srgb, var(--site-ink) 22%, transparent);
+  outline-offset: 10px;
+}
+[data-locah-site][data-image='duotone'] :is(.ls-hero--hasimage, .ls-category__img, .ls-story__media img) {
+  filter: grayscale(1) contrast(1.08);
+}
+
+/* --------------------------------------------- shared: light no-photo heroes
+   Families whose voice is type on paper, not a colour slab: the hero sits on
+   the page's own ground, ink headline, the accent used once. */
+
+[data-locah-site]:is([data-family='editorial_warm'], [data-family='modern_commerce'],
+    [data-family='calm_professional'], [data-family='portfolio_sketchbook'],
+    [data-family='technical_b2b'], [data-family='local_friendly'], [data-family='playful_editorial'])
+  .ls-hero--noimage:is(.ls-hero--centered, .ls-hero--left_aligned, .ls-hero--full_width) {
+  color: var(--site-ink);
+  background: var(--site-bg);
+  min-height: clamp(460px, 64vh, 700px);
+}
+[data-locah-site]:is([data-family='editorial_warm'], [data-family='modern_commerce'],
+    [data-family='calm_professional'], [data-family='portfolio_sketchbook'],
+    [data-family='technical_b2b'], [data-family='local_friendly'], [data-family='playful_editorial'])
+  .ls-hero--noimage:is(.ls-hero--centered, .ls-hero--left_aligned, .ls-hero--full_width)
+  .ls-btn:not(.ls-btn--ghost-onmedia):not(.ls-btn--outline) {
+  background: var(--site-primary);
+  color: var(--site-primary-fg);
+}
+[data-locah-site]:is([data-family='editorial_warm'], [data-family='modern_commerce'],
+    [data-family='calm_professional'], [data-family='portfolio_sketchbook'],
+    [data-family='technical_b2b'], [data-family='local_friendly'], [data-family='playful_editorial'])
+  .ls-hero--noimage :is(.ls-hero__sub, .ls-hero__badges li) {
+  color: var(--site-muted);
+}
+[data-locah-site]:is([data-family='editorial_warm'], [data-family='modern_commerce'],
+    [data-family='calm_professional'], [data-family='portfolio_sketchbook'],
+    [data-family='technical_b2b'], [data-family='local_friendly'], [data-family='playful_editorial'])
+  .ls-hero--noimage .ls-accent {
+  color: var(--site-primary);
+}
+
+/* ======================================================= EDITORIAL WARM */
+
+[data-locah-site][data-family='editorial_warm'] .ls-hero--noimage::after {
+  /* a letterpress rule, twice, under the masthead */
+  opacity: 1;
+  inset: auto 0 0 0;
+  height: 7px;
+  background: none;
+  border-top: 1px solid color-mix(in srgb, var(--site-ink) 30%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--site-ink) 30%, transparent);
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+[data-locah-site][data-family='editorial_warm'] .ls-hero__headline {
+  font-size: clamp(2.8rem, 1.6rem + 5vw, 5.6rem);
+  line-height: 0.98;
+}
+[data-locah-site][data-family='editorial_warm'] .ls-hero__headline .ls-accent,
+[data-locah-site][data-family='editorial_warm'] .ls-title em {
+  font-style: italic;
+  color: var(--site-accent);
+}
+[data-locah-site][data-family='editorial_warm'] .ls-hero__eyebrow {
+  font-family: var(--site-display-font);
+  font-style: italic;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--site-accent);
+}
+[data-locah-site][data-family='editorial_warm'] .ls-head .ls-title::after {
+  content: '';
+  display: block;
+  width: 3.5rem;
+  height: 2px;
+  margin-top: 0.9rem;
+  background: var(--site-accent);
+}
+[data-locah-site][data-family='editorial_warm'] .ls-head--center .ls-title::after {
+  margin-inline: auto;
+}
+
+/* ========================================================= PREMIUM DARK */
+
+[data-locah-site][data-family='premium_dark'] {
+  --site-hairline: color-mix(in srgb, var(--site-primary) 38%, transparent);
+}
+[data-locah-site][data-family='premium_dark'] .ls-hero--noimage:is(.ls-hero--centered, .ls-hero--left_aligned) {
+  color: var(--site-ink);
+  background:
+    radial-gradient(70% 60% at 50% 0%, color-mix(in srgb, var(--site-primary) 16%, transparent), transparent 70%),
+    var(--site-bg);
+  min-height: clamp(520px, 78vh, 820px);
+}
+[data-locah-site][data-family='premium_dark'] .ls-hero--noimage:is(.ls-hero--centered, .ls-hero--left_aligned)::after {
+  inset: 2rem;
+  opacity: 1;
+  background: none;
+  border: 1px solid var(--site-hairline);
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+[data-locah-site][data-family='premium_dark'] .ls-hero--noimage .ls-btn:not(.ls-btn--ghost-onmedia):not(.ls-btn--outline) {
+  background: var(--site-primary);
+  color: var(--site-primary-fg);
+}
+[data-locah-site][data-family='premium_dark'] .ls-hero__headline {
+  font-size: clamp(3rem, 1.6rem + 5.6vw, 6.2rem);
+  line-height: 0.95;
+  font-weight: 500;
+}
+[data-locah-site][data-family='premium_dark'] .ls-hero__eyebrow,
+[data-locah-site][data-family='premium_dark'] .ls-eyebrow {
+  letter-spacing: 0.32em;
+  font-size: 0.72rem;
+  color: var(--site-primary);
+}
+[data-locah-site][data-family='premium_dark'] .ls-title {
+  font-weight: 500;
+  font-size: clamp(2rem, 1.4rem + 2.2vw, 3.2rem);
+}
+[data-locah-site][data-family='premium_dark'] :is(.ls-category, .ls-board) {
+  background: transparent;
+  border: 1px solid var(--site-hairline);
+  box-shadow: none;
+}
+[data-locah-site][data-family='premium_dark'] .ls-btn--primary {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+[data-locah-site][data-family='premium_dark'] .ls-hero--editorial_split.ls-hero--noimage .ls-hero__media {
+  background: transparent;
+  border: 1px solid var(--site-hairline);
+  outline: 1px solid var(--site-hairline);
+  outline-offset: 14px;
+  color: var(--site-primary);
+  aspect-ratio: 4 / 5;
+}
+
+/* ====================================================== MODERN COMMERCE */
+
+[data-locah-site][data-family='modern_commerce'] .ls-hero--noimage:is(.ls-hero--left_aligned, .ls-hero--centered) {
+  background:
+    linear-gradient(90deg, var(--site-bg) 0 58%, color-mix(in srgb, var(--site-primary) 9%, var(--site-bg)) 58%);
+}
+[data-locah-site][data-family='modern_commerce'] .ls-hero--noimage.ls-hero--centered {
+  background: color-mix(in srgb, var(--site-primary) 7%, var(--site-bg));
+}
+[data-locah-site][data-family='modern_commerce'] .ls-hero--noimage::after {
+  /* a signal block, not a texture */
+  inset: auto 6% 12% auto;
+  width: clamp(120px, 18vw, 260px);
+  height: clamp(120px, 18vw, 260px);
+  opacity: 1;
+  border-radius: 28%;
+  background: var(--site-primary);
+  -webkit-mask-image: none;
+  mask-image: none;
+  transform: rotate(-8deg);
+}
+[data-locah-site][data-family='modern_commerce'] .ls-hero__headline {
+  font-size: clamp(2.8rem, 1.5rem + 5vw, 5.4rem);
+  line-height: 0.95;
+  max-width: 12ch;
+}
+[data-locah-site][data-family='modern_commerce'] .ls-hero__headline .ls-accent {
+  color: var(--site-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 0.12em;
+  text-underline-offset: 0.12em;
+}
+[data-locah-site][data-family='modern_commerce'] .ls-category__initial {
+  font-size: 6rem;
+  color: color-mix(in srgb, var(--site-primary) 55%, transparent);
+}
+[data-locah-site][data-family='modern_commerce'] .ls-title {
+  font-size: clamp(1.9rem, 1.3rem + 2.2vw, 3rem);
+}
+
+/* ==================================================== PLAYFUL EDITORIAL */
+
+[data-locah-site][data-family='playful_editorial'] .ls-hero__headline {
+  font-size: clamp(2.8rem, 1.5rem + 5vw, 5.4rem);
+  line-height: 0.96;
+}
+[data-locah-site][data-family='playful_editorial'] .ls-hero--noimage .ls-hero__media {
+  border-radius: 58% 42% 55% 45% / 45% 55% 45% 55%;
+  background: var(--site-accent);
+  color: var(--site-primary-fg);
+  aspect-ratio: 1;
+  box-shadow: 14px 14px 0 var(--site-primary);
+}
+[data-locah-site][data-family='playful_editorial'] .ls-hero--noimage::after {
+  background-image: radial-gradient(var(--site-accent) 2px, transparent 2.6px);
+  background-size: 26px 26px;
+  opacity: 0.5;
+}
+[data-locah-site][data-family='playful_editorial'] :is(.ls-category, .ls-board):nth-child(odd) {
+  transform: rotate(-0.8deg);
+}
+[data-locah-site][data-family='playful_editorial'] :is(.ls-category, .ls-board):nth-child(even) {
+  transform: rotate(0.8deg);
+}
+[data-locah-site][data-family='playful_editorial'] .ls-btn--primary {
+  box-shadow: 4px 4px 0 var(--site-ink);
+}
+[data-locah-site][data-family='playful_editorial'] .ls-title {
+  font-size: clamp(2rem, 1.3rem + 2.6vw, 3.2rem);
+}
+
+/* ==================================================== CALM PROFESSIONAL */
+
+[data-locah-site][data-family='calm_professional'] .ls-hero--noimage:is(.ls-hero--left_aligned, .ls-hero--centered) {
+  background: linear-gradient(180deg, var(--site-bg-alt), var(--site-bg) 85%);
+}
+[data-locah-site][data-family='calm_professional'] .ls-hero--noimage::after {
+  inset: 18% auto 18% 0;
+  width: 6px;
+  opacity: 1;
+  background: var(--site-primary);
+  border-radius: 0 6px 6px 0;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+[data-locah-site][data-family='calm_professional'] .ls-hero__headline {
+  font-size: clamp(2.4rem, 1.5rem + 3.6vw, 4.2rem);
+  line-height: 1.05;
+  max-width: 16ch;
+}
+[data-locah-site][data-family='calm_professional'] .ls-eyebrow,
+[data-locah-site][data-family='calm_professional'] .ls-hero__eyebrow {
+  color: var(--site-primary);
+  letter-spacing: 0.12em;
+}
+
+/* =========================================================== MONUMENTAL */
+
+[data-locah-site][data-family='monumental'] .ls-hero--noimage:is(.ls-hero--centered, .ls-hero--left_aligned) {
+  color: var(--site-ink);
+  background: var(--site-bg);
+  min-height: clamp(560px, 86vh, 900px);
+}
+[data-locah-site][data-family='monumental'] .ls-hero--noimage::after {
+  background-image: repeating-linear-gradient(-55deg, var(--site-primary) 0 2px, transparent 2px 22px);
+  opacity: 0.16;
+}
+[data-locah-site][data-family='monumental'] .ls-hero--noimage .ls-btn:not(.ls-btn--ghost-onmedia):not(.ls-btn--outline) {
+  background: var(--site-primary);
+  color: var(--site-primary-fg);
+}
+[data-locah-site][data-family='monumental'] .ls-hero__headline {
+  font-size: clamp(3.6rem, 1.2rem + 10vw, 10rem);
+  line-height: 0.86;
+  letter-spacing: 0;
+  max-width: none;
+}
+[data-locah-site][data-family='monumental'] .ls-hero__headline .ls-accent {
+  color: var(--site-primary);
+  font-style: normal;
+}
+[data-locah-site][data-family='monumental'] .ls-title {
+  font-size: clamp(2.4rem, 1.2rem + 4.4vw, 5rem);
+  line-height: 0.9;
+}
+[data-locah-site][data-family='monumental'] .ls-btn {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+
+/* ================================================ PORTFOLIO / SKETCHBOOK */
+
+[data-locah-site][data-family='portfolio_sketchbook'] .ls-hero--noimage::after {
+  /* ruled like a notebook page */
+  opacity: 0.5;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 39px,
+    color-mix(in srgb, var(--site-ink) 12%, transparent) 39px 40px
+  );
+  -webkit-mask-image: linear-gradient(to left, #000 0%, transparent 80%);
+  mask-image: linear-gradient(to left, #000 0%, transparent 80%);
+}
+[data-locah-site][data-family='portfolio_sketchbook'] .ls-hero__headline {
+  font-size: clamp(2.8rem, 1.4rem + 5.2vw, 5.8rem);
+  line-height: 1;
+  font-style: italic;
+  max-width: 14ch;
+}
+[data-locah-site][data-family='portfolio_sketchbook'] :is(.ls-hero__eyebrow, .ls-eyebrow, .ls-category__meta) {
+  font-family: var(--site-caption-font, ui-monospace), monospace;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+  font-size: 0.8rem;
+}
+[data-locah-site][data-family='portfolio_sketchbook'] .ls-title {
+  font-style: italic;
+  font-weight: 400;
+}
+[data-locah-site][data-family='portfolio_sketchbook'] :is(.ls-category, .ls-board) {
+  border-radius: 0;
+  box-shadow: none;
+  border-top: 1px solid color-mix(in srgb, var(--site-ink) 30%, transparent);
+  background: transparent;
+}
+
+/* ======================================================== TECHNICAL B2B */
+
+[data-locah-site][data-family='technical_b2b'] .ls-hero--noimage::after {
+  /* a drawing grid */
+  opacity: 0.55;
+  background:
+    linear-gradient(color-mix(in srgb, var(--site-primary) 14%, transparent) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, color-mix(in srgb, var(--site-primary) 14%, transparent) 1px, transparent 1px) 0 0 / 32px 32px;
+  -webkit-mask-image: linear-gradient(to left, #000 10%, transparent 75%);
+  mask-image: linear-gradient(to left, #000 10%, transparent 75%);
+}
+[data-locah-site][data-family='technical_b2b'] .ls-hero__headline {
+  font-size: clamp(2.4rem, 1.4rem + 3.8vw, 4.4rem);
+  line-height: 1.02;
+  max-width: 15ch;
+}
+[data-locah-site][data-family='technical_b2b'] :is(.ls-hero__eyebrow, .ls-eyebrow, .ls-category__meta, .ls-board__meta) {
+  font-family: var(--site-caption-font, var(--font-site-mono, ui-monospace)), ui-monospace, monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.74rem;
+  color: var(--site-primary);
+}
+[data-locah-site][data-family='technical_b2b'] :is(.ls-category, .ls-board, .ls-fact) {
+  border-radius: 0;
+  border: 1px solid color-mix(in srgb, var(--site-ink) 14%, transparent);
+  box-shadow: none;
+}
+[data-locah-site][data-family='technical_b2b'] .ls-head .ls-title::before {
+  content: '';
+  display: block;
+  width: 28px;
+  height: 4px;
+  margin-bottom: 0.9rem;
+  background: var(--site-accent);
+}
+
+/* ========================================================= AIRY PROPERTY */
+
+[data-locah-site][data-family='airy_property'] .ls-hero--airy_split.ls-hero--noimage .ls-hero__media {
+  -webkit-mask-image: none;
+  mask-image: none;
+  background:
+    linear-gradient(180deg, transparent 62%, color-mix(in srgb, var(--site-ink) 10%, transparent) 62% 63%, transparent 63%),
+    repeating-linear-gradient(90deg, transparent 0 46px, color-mix(in srgb, var(--site-ink) 7%, transparent) 46px 48px),
+    linear-gradient(180deg, color-mix(in srgb, var(--site-primary) 22%, var(--site-bg)) 0%, var(--site-bg-alt) 70%);
+  border-radius: 28px 0 0 28px;
+  color: color-mix(in srgb, var(--site-primary) 55%, transparent);
+}
+[data-locah-site][data-family='airy_property'] .ls-hero__headline {
+  font-size: clamp(2.6rem, 1.5rem + 4.4vw, 5rem);
+  line-height: 1;
+}
+[data-locah-site][data-family='airy_property'] .ls-title {
+  font-size: clamp(1.9rem, 1.3rem + 2.2vw, 3rem);
+}
+
+/* ======================================================== LOCAL FRIENDLY */
+
+[data-locah-site][data-family='local_friendly'] .ls-hero--noimage .ls-hero__media {
+  border-radius: 50%;
+  aspect-ratio: 1;
+  max-width: 420px;
+  justify-self: center;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 58%, color-mix(in srgb, var(--site-accent) 70%, transparent) 58% 60%, transparent 60%),
+    var(--site-primary);
+  color: var(--site-primary-fg);
+}
+[data-locah-site][data-family='local_friendly'] .ls-hero__headline {
+  font-size: clamp(2.5rem, 1.5rem + 4vw, 4.6rem);
+  line-height: 1.02;
+}
+[data-locah-site][data-family='local_friendly'] .ls-hero__headline .ls-accent {
+  color: var(--site-primary);
+  font-style: italic;
+}
+
+/* ----------------------------------------------------- statement footer */
+
+.ls-foot__statement {
+  margin: 0;
+  padding: clamp(2rem, 1rem + 4vw, 4rem) clamp(1.25rem, 0.5rem + 3vw, 3rem) 0;
+  font-family: var(--site-display-font);
+  font-weight: var(--site-heading-weight, 700);
+  font-size: clamp(3rem, 1rem + 9vw, 9rem);
+  line-height: 0.9;
+  letter-spacing: -0.03em;
+  text-transform: var(--site-display-case, none);
+  color: color-mix(in srgb, var(--site-ink) 90%, transparent);
+  overflow-wrap: anywhere;
+}
+[data-locah-site][data-family='premium_dark'] .ls-foot__statement,
+[data-locah-site][data-family='editorial_warm'] .ls-foot__statement,
+[data-locah-site][data-family='portfolio_sketchbook'] .ls-foot__statement {
+  font-weight: 400;
+  font-style: italic;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-locah-site][data-family='playful_editorial'] :is(.ls-category, .ls-board) {
+    transform: none;
+  }
+}
+
+/* --------------------------------------------- honest cards without photos
+   Most first websites have no pictures yet. A tall tile with a giant faded
+   letter reads as a missing image; a compact card with the name first, a
+   small monogram and what is inside reads as designed. */
+
+.ls-category:not(.ls-category--image) {
+  min-height: 0;
+  justify-content: flex-start;
+  padding-top: 4.4rem;
+}
+.ls-category:not(.ls-category--image) .ls-category__initial {
+  top: 1.2rem;
+  left: 1.3rem;
+  right: auto;
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: calc(var(--site-radius) * 0.8 + 4px);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--site-primary-fg);
+  background: var(--site-primary);
+}
+.ls-category:not(.ls-category--image) .ls-category__name {
+  font-size: clamp(1.25rem, 1.05rem + 0.6vw, 1.55rem);
+}
+.ls-board:not(:has(.ls-board__media img)) {
+  min-height: 0;
+  grid-template-columns: 1fr;
+}
+.ls-board:not(:has(.ls-board__media img)) .ls-board__media {
+  display: none;
+}
+.ls-boards__list:not(:has(.ls-board__media img)) {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+.ls-board:not(:has(.ls-board__media img)) .ls-board__body {
+  border-top: 4px solid var(--site-primary);
+}
+
+/* A secondary action next to the main one stays secondary on every hero. */
+[data-locah-site][data-family] .ls-hero .ls-btn--outline {
+  background: transparent;
+  color: var(--site-ink);
+  border-color: color-mix(in srgb, var(--site-ink) 28%, transparent);
+}

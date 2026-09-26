@@ -470,6 +470,9 @@ def understanding(
         "options": _options(bp),
         "choices": {"actions": customer_actions(bp), "fulfilment": fulfilment(bp), "payment": payments(bp),
                     "area": delivery_area(bp)},
+        # How the website will feel — the design family's words, once there is
+        # enough to decide (never shown as "template" or "family").
+        "direction": _direction(bp, business_type),
         # One sentence: what Locah understood, for the confirmation screen.
         "read_back": read_back(bp, "checkpoint") if bp.language_style == "en" else synthesis(bp),
         "offer": {"summary": offer_summary(bp), "groups": offer_groups(bp)},
@@ -492,6 +495,17 @@ def understanding(
 
 _FULFILMENT_LABELS = (("delivery", "Delivery"), ("pickup", "Pickup"), ("shipping", "Shipping / courier"),
                       ("dine_in", "Dine-in"), ("on_site", "At the customer's place"))
+
+
+def _direction(bp: BusinessBlueprint, business_type: str | None) -> dict[str, Any] | None:
+    from platform_core.interview.coverage import floor_met
+
+    if not floor_met(bp, business_type):
+        return None
+    from platform_core.interview.design_system import choose, read_dimensions
+
+    picked = choose(bp, read_dimensions(bp, business_type))
+    return {"family": picked.family.key, "words": list(picked.family.words)}
 
 
 def _relevant_actions(bp: BusinessBlueprint) -> list[str]:

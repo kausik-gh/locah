@@ -29,7 +29,7 @@ from platform_core.interview.taxonomy import normalise_name
 from platform_core.interview.website_copy import WebsiteCopy
 from platform_core.validation.website import validate_generation_payload
 
-COMPOSER_VERSION = "creative-composer-v2"
+COMPOSER_VERSION = "creative-composer-v3"
 
 # What the browse section is called, by archetype. "What we do" is for services
 # only — for a shop it hides the fact that there are things to buy.
@@ -258,9 +258,12 @@ def browse_sections(
     if not groups:
         return []
     arche = direction.archetype
-    title = copy.products_title or copy.categories_title or BROWSE_TITLE[arche]
-    if _GENERIC_TITLE.match(title) and arche not in {"service_appointment", "local_service"}:
-        title = BROWSE_TITLE[arche]
+    # The trade's own heading first ("Our menu", "Treatments", "Classes & timings");
+    # the archetype's only when the trade is unknown.
+    default = _trade_heading(bp, arche)
+    title = copy.products_title or copy.categories_title or default
+    if _GENERIC_TITLE.match(title) and not _GENERIC_TITLE.match(default):
+        title = default
     drafts = {o.name.casefold(): o for o in bp.website_draft.offerings}
     items: list[dict[str, Any]] = []
     for group in groups:
@@ -368,11 +371,11 @@ def compose_site(
         order_label = "Enquire on WhatsApp" if whatsapp else "Call to enquire" if phone else ""
     browse = browse_sections(bp, direction, copy, order_label)
     booking = "bookings" in active_modules and arche in {"service_appointment", "membership_fitness"}
+    dims = direction.dimensions or {}
     if booking:
-        primary = (copy_cta(bp) or "Book now", "/book")
+        primary = (copy_cta(bp) or _BOOK_LABEL.get(str(dims.get("primary_action", "")), "Book now"), "/book")
     elif browse:
-        default = {"menu_commerce": "See the menu", "real_estate_projects": "View projects",
-                   "membership_fitness": "See programmes"}.get(arche, "Shop now")
+        default = _browse_cta(bp, arche, str(dims.get("offering", "")), str(dims.get("audience", "")))
         label = copy_cta(bp)
         # A label that names a channel ("Order on WhatsApp") must not scroll to
         # the menu: that button is the browse one; Call and WhatsApp sit beside it.
@@ -479,7 +482,7 @@ def compose_site(
     anchors = {s["content"].get("anchor") for s in sections}
     navigation = [{"label": "Home", "path": "/"}]
     if "shop" in anchors:
-        navigation.append({"label": NAV_BROWSE[arche], "path": "/#shop"})
+        navigation.append({"label": _trade_nav(bp, arche), "path": "/#shop"})
     if "story" in anchors:
         navigation.append({"label": "About", "path": "/#story"})
     if any(s["section_type_id"] == "contact" for s in sections):
@@ -498,6 +501,15 @@ def compose_site(
         "palette_mode": palette.mode,
         "site_archetype": arche,
         "reference_profile": direction.reference_profile,
+        # design-system v3 — read by the renderer as data-family / data-variant / …
+        "design_family": direction.family,
+        "design_variant": direction.variant,
+        "palette_key": direction.palette_key,
+        "palette_hue": direction.palette_hue,
+        "rhythm": direction.rhythm,
+        "image_treatment": direction.image_treatment,
+        "surface": direction.surface,
+        "footer_style": direction.footer,
         "type_system": direction.type_system,
         "hero_style": direction.hero,
         "card_style": direction.cards,
@@ -530,12 +542,59 @@ def compose_site(
         "seo_title": name[:160],
         "seo_description": (hero.get("subheadline") or facts.get("description", ""))[:300],
     }
-    payload: dict[str, Any] = validate_generation_payload(
-        {"pages": [home], "navigation": navigation, "theme_hints": theme}
-    )
+    from platform_core.interview.semantic_design import validate as validate_semantics
+
+    checked, findings = validate_semantics(
+        {"pages": [home], "navigation": navigation, "theme_hints": theme}, bp, direction)
+    payload: dict[str, Any] = validate_generation_payload(checked)
     issues = quality_issues(payload, arche)
-    payload["theme_hints"]["quality"] = {"valid": not issues, "issues": issues, "repair_count": 0}
+    payload["theme_hints"]["quality"] = {
+        "valid": not issues, "issues": issues,
+        "repair_count": sum(1 for f in findings if f.severity == "fail"),
+        # Business semantics vs navigation, calls to action, titles and media.
+        "semantic": [f.as_dict() for f in findings],
+    }
     return payload
+
+
+# The main button says what this visitor does next — not a generic verb.
+_BOOK_LABEL = {
+    "book_table": "Book a table", "book_trial": "Book a free trial", "book_consultation": "Book a consultation",
+    "book_site_visit": "Book a site visit", "check_dates": "Check dates", "book_online": "Book now",
+    "book_whatsapp": "Book now", "book_call": "Book now",
+}
+
+
+def _browse_cta(bp: BusinessBlueprint, arche: str, offering: str, audience: str) -> str:
+    """The button that takes a visitor to what the business offers, in its own terms."""
+    from platform_core.interview.playbooks import playbook_for
+
+    label = playbook_for(bp).browse_label
+    by_offering = {
+        "menu": "See the menu", "weighed_product": "Shop now", "plan": "See plans", "property": "View projects",
+        "portfolio": "See the work", "stay": "See the rooms", "b2b_catalogue": "See the range",
+        "product": "See the range" if audience == "b2b" else "Shop now",
+    }
+    if offering in by_offering:
+        return by_offering[offering]
+    if label and label not in {"Services", "Shop"}:
+        return f"See {label.lower()}"[:40]
+    return {"menu_commerce": "See the menu", "real_estate_projects": "View projects",
+            "membership_fitness": "See plans"}.get(arche, "See what we do")
+
+
+def _trade_heading(bp: BusinessBlueprint, arche: str) -> str:
+    from platform_core.interview.playbooks import playbook_for
+
+    pb = playbook_for(bp)
+    return pb.browse_title if pb.key != "other" else BROWSE_TITLE[arche]
+
+
+def _trade_nav(bp: BusinessBlueprint, arche: str) -> str:
+    from platform_core.interview.playbooks import playbook_for
+
+    pb = playbook_for(bp)
+    return pb.browse_label if pb.key != "other" else NAV_BROWSE[arche]
 
 
 WHATSAPP = "whatsapp:"

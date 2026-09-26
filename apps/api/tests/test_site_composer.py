@@ -17,7 +17,6 @@ from uuid import uuid4
 import pytest
 
 from platform_core.interview.creative_director import (
-    PROFILES_FOR,
     CreativeChoices,
     contrast,
     derive_archetype,
@@ -138,31 +137,37 @@ def sections(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def test_four_businesses_get_four_different_websites():
+    # Design system v3: the family follows the business's dimensions (what it
+    # offers, how customers act, how it describes itself), not a fixed profile
+    # per archetype.
     looks = {}
-    for build, arche, profile in (
-        (meat, "product_commerce", "bold_food_commerce"),
-        (home_food, "menu_commerce", "editorial_home_food"),
-        (gym, "membership_fitness", "cinematic_fitness"),
-        (real_estate, "real_estate_projects", "airy_real_estate"),
+    for build, arche, family in (
+        (meat, "product_commerce", "modern_commerce"),
+        (home_food, "menu_commerce", "editorial_warm"),
+        (gym, "membership_fitness", "monumental"),
+        (real_estate, "real_estate_projects", "airy_property"),
     ):
         bp = build()
         assert derive_archetype(bp, "other") == arche
         payload = compose(bp)
         theme = payload["theme_hints"]
-        assert theme["reference_profile"] == profile
+        assert theme["design_family"] == family
         assert theme["quality"]["valid"], theme["quality"]["issues"]
-        looks[arche] = (theme["hero_style"], theme["type_system"], theme["palette_mode"],
+        looks[arche] = (theme["design_family"], theme["type_system"], theme["palette_key"],
                         sections(payload)["hero"]["layout_variant"])
-    # Not one site in four colours: hero, type and ground all differ.
+    # Not one site in four colours: family, type and palette all differ.
     assert len({v[0] for v in looks.values()}) == 4
     assert len({v[1] for v in looks.values()}) == 4
+    assert len({v[2] for v in looks.values()}) == 4
 
 
 def test_the_meat_shop_is_a_shop():
     payload = compose(meat())
     found = sections(payload)
     hero = found["hero"]
-    assert hero["layout_variant"] == "commerce_split"
+    # No photos yet: Modern Commerce's type-led storefront, not an empty photo frame.
+    assert payload["theme_hints"]["design_family"] == "modern_commerce"
+    assert hero["layout_variant"] in {"left_aligned", "centered", "commerce_split"}
     assert hero["content"]["eyebrow"] == "Nookampalayam Road"
     assert hero["content"]["badges"] == ["Sold by the kg", "Home delivery", "Store pickup"]
     assert hero["content"]["cta_url"] == "#shop"
@@ -203,7 +208,8 @@ def test_home_food_shows_a_priced_menu():
     menu = {i["name"]: i for i in shop["content"]["items"]}
     assert menu["Vazhaipoo thokku"]["price"] == "₹250" and menu["Vazhaipoo thokku"]["unit"] == "250g"
     assert shop["content"]["filters"] == ["Thokku", "Podi", "Pickles"]
-    assert shop["content"]["title"] == "Our menu"
+    # The trade's own heading (the home-food playbook), not the archetype's.
+    assert shop["content"]["title"] == "What's cooking"
 
 
 def test_whatsapp_only_when_the_owner_said_it():
@@ -213,13 +219,18 @@ def test_whatsapp_only_when_the_owner_said_it():
 
 def test_the_palette_keeps_buttons_readable():
     bp = meat()
-    for colour in ("#1a1a1a", "#222222"):  # would vanish on the charcoal ground
-        direction = direct(bp, "other", CreativeChoices(reference_profile="bold_food_commerce",
+    ground = direct(bp, "other").palette.surface
+    for colour in (ground, ground[:-1] + ("0" if ground[-1] != "0" else "1")):  # would vanish on its own ground
+        direction = direct(bp, "other", CreativeChoices(reference_profile="modern_commerce",
                                                         primary_color=colour))
         assert contrast(direction.palette.primary, direction.palette.surface) >= 3.0
         assert "primary_contrast" in direction.repairs
-    wrong = direct(bp, "other", CreativeChoices(reference_profile="cinematic_fitness"))
-    assert wrong.reference_profile in PROFILES_FOR["product_commerce"]
+    # The model may pick only among families the evidence supports: a gym's
+    # look for a meat shop is refused.
+    from platform_core.interview.creative_director import allowed_families
+
+    wrong = direct(bp, "other", CreativeChoices(reference_profile="monumental"))
+    assert "family_not_allowed" in wrong.repairs and wrong.family in allowed_families(bp, "other")
 
 
 PNG = GeneratedImage(mime_type="image/png", bytes=b"png", model="m", latency_ms=1, prompt="p")
@@ -261,7 +272,9 @@ async def test_draft_visuals_need_consent_and_are_drawn_once():
 
 
 def test_media_budget_follows_the_archetype():
-    for build, count in ((meat, 5), (home_food, 6), (gym, 2), (real_estate, 5)):
+    # Truth rule: named dishes and projects are never drawn; a developer's
+    # site gets no drawn pictures at all (its pictures would read as its homes).
+    for build, count in ((meat, 5), (home_food, 5), (gym, 2), (real_estate, 0)):
         bp = build()
         assert len(plan_slots(bp, direct(bp, "other"))) == count, build.__name__
 

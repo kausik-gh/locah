@@ -1,10 +1,14 @@
 import {
   Anton,
   Archivo,
+  Bricolage_Grotesque,
+  Cormorant_Garamond,
   DM_Sans,
   Fraunces,
+  IBM_Plex_Mono,
   IBM_Plex_Sans,
   Manrope,
+  Newsreader,
   Noto_Sans_Tamil,
   Outfit,
   Playfair_Display,
@@ -25,6 +29,16 @@ import {
  *   technical_b2b      IBM Plex Sans — precise, engineered
  *   calm_care          Manrope — plain, calm, clear
  *   friendly_local     Fraunces over Manrope — warm and local
+ *
+ * Design system v3 adds four faces for families the first seven could not voice:
+ *
+ *   premium_serif         Cormorant Garamond over Manrope — quiet luxury
+ *   playful_grotesk       Bricolage Grotesque — characterful, friendly
+ *   portfolio_serif       Newsreader, with IBM Plex Mono captions — a work notebook
+ *   technical_mono        IBM Plex Sans with Plex Mono specs
+ *   monumental_condensed  Anton over Outfit — poster weight
+ *   modern_grotesk        Archivo at normal width over DM Sans
+ *   calm_serif            Fraunces (soft) over Manrope
  *
  * Older personalities keep their faces (Fraunces, Anton, Manrope). None of
  * these is LOCAH's own brand face. Noto Sans Tamil sits behind all of them as
@@ -87,6 +101,34 @@ export const plex = IBM_Plex_Sans({
   variable: '--font-site-plex',
 })
 
+export const cormorant = Cormorant_Garamond({
+  subsets: ['latin'],
+  weight: ['500', '600', '700'],
+  style: ['normal', 'italic'],
+  display: 'swap',
+  variable: '--font-site-cormorant',
+})
+
+export const bricolage = Bricolage_Grotesque({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-site-bricolage',
+})
+
+export const newsreader = Newsreader({
+  subsets: ['latin'],
+  style: ['normal', 'italic'],
+  display: 'swap',
+  variable: '--font-site-newsreader',
+})
+
+export const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  display: 'swap',
+  variable: '--font-site-mono',
+})
+
 export const notoTamil = Noto_Sans_Tamil({
   subsets: ['tamil'],
   display: 'swap',
@@ -102,6 +144,10 @@ export const siteFontVariables = [
   archivo,
   outfit,
   plex,
+  cormorant,
+  bricolage,
+  newsreader,
+  plexMono,
   notoTamil,
 ]
   .map((font) => font.variable)
