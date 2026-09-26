@@ -1,9 +1,16 @@
 """One conversation engine for chat and voice. No DB or HTTP dependencies.
 
-Per owner message: ONE model call returns a TurnIntelligence; Locah validates
-and merges it; the discovery planner decides what is still worth knowing and
-whether the model's proposed question may be asked; the reply is short enough
-to be spoken. Voice calls exactly this through its single tool.
+Per owner message: ONE model call returns a TurnIntelligence. Locah then
+
+1. reads the message in the light of the question it answers (the reader),
+   which checks every extraction for its semantic type and is the whole of
+   the understanding when the model cannot be reached;
+2. merges what survived into the Blueprint;
+3. judges coverage for THIS business and decides — the checkpoint when there
+   is enough for a strong first version, the summary when the owner wants to
+   build, otherwise the single most informative next question (planner).
+
+Replies stay short enough to be spoken. Voice calls exactly this.
 """
 from __future__ import annotations
 
@@ -15,48 +22,44 @@ import time
 from typing import Any, Protocol
 
 from platform_core.business_type_profiles.registry import BusinessTypeProfileRegistry
+from platform_core.interview import planner
+from platform_core.interview import reader as rd
 from platform_core.interview.conversation import (
-    ANYTHING_ELSE,
     LOGO_QUEUED,
     LOGO_UNAVAILABLE,
-    VISUALS_QUEUED,
     LOGO_UPLOAD,
-    READY,
     REDIRECT,
     REDUNDANT,
     SYSTEM_PROMPT,
-    UNAVAILABLE,
     UNCLEAR,
+    VISUALS_QUEUED,
     _lang,
     accept_answers,
     accept_highlights,
     accept_patterns,
     acknowledgement,
-    drafted_parts,
     govern_acknowledgement,
     govern_draft,
     govern_question,
     mark_redundant,
     merge_fact,
 )
+from platform_core.interview.coverage import assess, floor_met, worth_knowing
 from platform_core.interview.discovery import (
     TARGETS,
-    TARGETS_BY_ID,
-    candidates,
     characteristics,
-    choose,
     fallback_question,
     profile_type,
-    rank,
-    readiness,
     sync_from_facts,
 )
 from platform_core.interview.models import (
+    AskRecord,
     BusinessBlueprint,
     DraftUpdate,
     ExtractedFact,
     FactKey,
     GroupProposal,
+    ItemProposal,
     MediaGenerationRequest,
     Message,
     Question,
@@ -69,13 +72,34 @@ from platform_core.interview.models import (
 from platform_core.logging import get_logger
 from platform_core.website.ai_provider import AIModelProvider, get_ai_provider
 
-# Kept for callers that seed a new Blueprint; the planner decides what is
-# actually asked.
+# Kept for callers that seed a new Blueprint; the planner decides what is asked.
 QUESTIONS = (
     Question(field="description",
-             text="Tell me a little about your business — what kind of business is it?",
+             text="Tell me about your business in your own words.",
              reason="Your website needs a truthful introduction."),
 )
+
+OPENING = {
+    "en": "Tell me about {name} in your own words — what you sell or provide, how customers usually "
+          "buy, book or contact you, and anything you'd like the website to make easier.",
+    "ta_en": "{name} pathi unga words-la sollunga — enna sell pannureenga illa enna service, customers "
+             "eppadi vaanguvaanga, book pannuvaanga illa contact pannuvaanga, website enna easy "
+             "pannanum?",
+    "ta": "{name} பத்தி உங்க வார்த்தைகளில் சொல்லுங்க — என்ன விற்கிறீங்க அல்லது என்ன சேவை, வாடிக்கையாளர்கள் "
+          "எப்படி வாங்குவாங்க அல்லது தொடர்பு கொள்வாங்க, வெப்சைட் எதை எளிதாக்கணும்?",
+}
+# The opening answers these at once; what it leaves open is asked after.
+OPENING_TARGETS = ("business.identity", "offerings.main", "commerce.action")
+
+# Readable names for a typed correction that was the wrong kind of thing.
+_SLOT_HINT = {
+    "opening_hours": "That doesn't look like opening hours — try something like "
+                     "\"9 am to 8 pm, Monday to Saturday\".",
+    "phone": "That doesn't look like a phone number — a 10-digit mobile number works best.",
+    "customer_actions": "Tell me what a customer does — for example \"order on WhatsApp\" or "
+                        "\"book a table\".",
+    "locations": "That doesn't look like a place — the area and city is enough.",
+}
 
 
 def _retain_explicit_multilingual_actions(extraction: TurnIntelligence, text: str) -> None:
@@ -190,16 +214,8 @@ class BusinessInterviewOrchestrator:
         bp.website_content = {k: v for k, v in facts.items() if k in {
             "description", "opening_hours", "phone", "email",
         }}
-        bp.readiness = readiness(bp, business_type)
-        # The few still-open essentials that map onto a business-truth field, so
-        # the "save this answer as…" fallback always has somewhere to put it.
-        open_fields: list[Question] = []
-        for item in rank(bp, business_type):
-            fact = item.target.fact
-            if fact and fact not in facts and all(q.field != fact for q in open_fields):
-                open_fields.append(Question(field=fact, text=fallback_question(
-                    item.target.id, bp, bp.language_style), reason=item.target.learn))
-        bp.remaining_questions = open_fields[:3]
+        bp.readiness = assess(bp, business_type)
+        _remaining(bp)
         sufficient = bp.readiness.ready
         bp.completion_state.sufficient = sufficient
         bp.completion_state.confirmed = sufficient and not bp.unconfirmed_facts
@@ -219,7 +235,14 @@ class BusinessInterviewOrchestrator:
 
     @staticmethod
     def opening_question(bp: BusinessBlueprint) -> str:
-        return str(fallback_question("business.identity", bp, bp.language_style))
+        name = bp.identity["display_name"].value if "display_name" in bp.identity else "your business"
+        return OPENING[_lang(bp.language_style)].format(name=name)
+
+    @staticmethod
+    def open(bp: BusinessBlueprint) -> None:
+        """Start the conversation with its one high-information question."""
+        bp.messages = [Message(role="assistant", text=BusinessInterviewOrchestrator.opening_question(bp))]
+        bp.asks = [AskRecord(ask="opening", targets=list(OPENING_TARGETS), turn=0)]
 
     @staticmethod
     def payload(bp: BusinessBlueprint, text: str, business_type: str | None) -> dict[str, Any]:
@@ -232,27 +255,29 @@ class BusinessInterviewOrchestrator:
             for tid, state in bp.discovery.items()
             if state.status in {"answered", "partial"}
         }
-        recent = sorted(
-            (tid for tid, state in bp.discovery.items() if state.last_asked_turn is not None),
-            key=lambda tid: -(bp.discovery[tid].last_asked_turn or 0),
-        )[:3]
+        recent = [a.ask for a in bp.asks[-3:]]
         wd = bp.website_draft
         locked = [f for f in ("hero_headline", "hero_subheadline", "about", "cta_label")
                   if getattr(wd, f) and getattr(wd, f).provenance in {"owner_edited", "owner_approved"}]
         last_question = next((m.text for m in reversed(bp.messages) if m.role == "assistant"), "")
+        last = planner.last_ask(bp)
         return {
             "business_name": bp.identity["display_name"].value if "display_name" in bp.identity else "",
             "profile_hint": {
-                "type": profile.display_name,
+                "type": bp.category.label if bp.category and bp.category.label else profile.display_name,
                 "observed": sorted(c for c, how in chars.items() if how == "observed"),
             },
             "known": {k: v.value[:400] for k, v in facts.items()},
             "understood": understood,
             "asked_recently": recent,
             "declined": [tid for tid, s in bp.discovery.items() if s.status in {"declined", "deferred"}],
-            "candidates": candidates(bp, business_type),
+            "candidates": [
+                {"id": item.ask.id, "covers": list(item.ask.targets),
+                 "learn": "; ".join(t.learn for t in TARGETS if t.id in item.ask.targets)[:300]}
+                for item in planner.rank(bp, business_type)[:5]
+            ],
             "last_question": last_question[:300],
-            "last_target": bp.last_asked_target or "",
+            "last_target": ",".join(last.targets) if last else "",
             "draft": {
                 "fields": [f for f in ("hero_headline", "hero_subheadline", "about", "cta_label")
                            if getattr(wd, f)],
@@ -287,9 +312,20 @@ class BusinessInterviewOrchestrator:
         provider = provider or get_ai_provider()
         fallback: str | None = None
         sync_from_facts(bp)
-        was_ready = bp.readiness.ready
-        # Explicit edits are user data, not a model task. This is also the offline path.
+        if not bp.asks:
+            # A Blueprint from before asks were recorded: the last question it
+            # asked is what this message answers; with none, the opening.
+            legacy = planner.ask_for_target(bp.last_asked_target or "")
+            bp.asks = [AskRecord(ask=legacy.id, targets=[bp.last_asked_target or ""], turn=bp.turn_count)
+                       if legacy and bp.last_asked_target
+                       else AskRecord(ask="opening", targets=list(OPENING_TARGETS), turn=0)]
+        answering_targets = tuple(bp.asks[-1].targets) if bp.asks else ()
+        reading = rd.read(text)
+        # Explicit edits are user data, not a model task — and they are checked
+        # for their type: "All india" is never saved as opening hours.
         if field:
+            if not rd.valid_for(field, text):
+                raise ValueError(_SLOT_HINT.get(field, "That doesn't fit there — try saying it another way."))
             ti = TurnIntelligence(
                 facts=[ExtractedFact(field=field, quote=text, mode="replace")],
                 language=bp.language_style,
@@ -319,24 +355,33 @@ class BusinessInterviewOrchestrator:
                 ti = TurnIntelligence(language=bp.language_style)
         if not field and fallback is None:
             bp.language_style = ti.language
+        _validate_extraction(ti)
         _contextual_signals(bp, ti, text)
+        if not field:
+            _read_for_question(bp, ti, text, answering_targets, reading, model_ok=fallback is None)
         # This check applies even if the model misclassifies a common off-topic query.
         off_topic = ti.off_topic or bool(re.search(
             r"\b(weather|tell me a joke|who is the president|who won|cricket match|"
             r"write (?:a|some) code|ignore .*instructions)\b",
             text, re.I,
         ))
+        signal = ti.owner_signal
+        if signal == "none":
+            signal = "wants_to_finish" if reading.finish else "redundant" if reading.redundant else "none"
+        if reading.refine:
+            bp.refining = True
         understood = 0
         media_note = ""
+        # With no model, every fact is the owner's own words read by rule.
+        source = "USER_STATEMENT" if field or fallback else "AI_EXTRACTION"
         if not off_topic:
-            understood += _merge_facts(bp, ti, text, "USER_STATEMENT" if field else "AI_EXTRACTION")
+            understood += _merge_facts(bp, ti, text, source)
             if field:
                 target = next((t for t in TARGETS if t.fact == field), None)
                 if target:
                     ti.answered.append(TargetAnswer(target=target.id, quote=text[:600],
                                                     summary=text[:240]))
-            understood += accept_answers(bp, ti.answered, text,
-                                         source="USER_STATEMENT" if field else "AI_EXTRACTION")
+            understood += accept_answers(bp, ti.answered, text, source=source)
             # Unknown intents are retained as evidence, NEVER interpreted as module IDs.
             from platform_core.interview.capabilities import canonical_intent
 
@@ -349,11 +394,12 @@ class BusinessInterviewOrchestrator:
             bp.requested_capabilities = bp.requested_capabilities[-40:]
             understood += accept_patterns(bp, ti.operating_patterns, text)
             accept_highlights(bp, ti.highlights, text)
-            if ti.owner_signal == "redundant":
+            for wish in reading.content:
+                if all(wish.casefold() != w.casefold() for w in bp.content_wishes):
+                    bp.content_wishes = (bp.content_wishes + [wish])[-8:]
+                    understood += 1
+            if signal == "redundant":
                 mark_redundant(bp)
-                understood += 1
-            elif ti.owner_signal == "wants_to_finish":
-                _defer_open_targets(bp, business_type)
                 understood += 1
             media_note = _record_media_intent(bp, ti.media_intent, image_available)
             if media_note:
@@ -374,40 +420,51 @@ class BusinessInterviewOrchestrator:
                 understood += 1
         BusinessInterviewOrchestrator.project(bp, business_type)
 
-        style = bp.language_style
-        lang = _lang(style)
-        if bp.readiness.ready:
-            question = (READY[lang].format(drafted=drafted_parts(bp)) if not was_ready
-                        else ANYTHING_ELSE[lang])
-            asked_target = None
-        else:
-            asked_target = choose(bp, ti.next_target, business_type)
-            question = ""
-            if asked_target and asked_target == ti.next_target:
-                question = govern_question(ti.next_question, text, bp) or ""
-            if asked_target and not question:
-                question = fallback_question(asked_target, bp, style)
-            if not asked_target:
-                question = ANYTHING_ELSE[lang]
-        if asked_target:
-            state = bp.discovery.setdefault(asked_target, TargetState())
-            state.asked += 1
-            state.last_asked_turn = bp.turn_count + 1
-            if state.status == "open":
-                state.status = "asked"
-        bp.last_asked_target = asked_target
-
+        lang = _lang(bp.language_style)
+        ack = (REDUNDANT[lang] if signal == "redundant" and not govern_acknowledgement(ti.acknowledgement, text)
+               else acknowledgement(bp, ti.acknowledgement, text, bp.language_style))
+        next_item: planner.Ranked | None = None
+        question = ""
         if off_topic:
+            next_item = planner.choose(bp, "", business_type) if not bp.readiness.ready else None
+            question = planner.phrase(next_item.ask, bp, lang) if next_item else ""
             reply = REDIRECT[lang] + question
-        elif fallback and not understood:
-            reply = UNAVAILABLE[lang] + question
-        elif not understood:
-            reply = UNCLEAR[lang] + question
+        elif signal == "wants_to_finish":
+            if floor_met(bp, business_type):
+                bp.confirm_requested = True
+                reply = " ".join(p for p in (ack, planner.TO_CONFIRM[lang]) if p)
+            else:
+                next_item = planner.choose(bp, "", business_type)
+                question = planner.phrase(next_item.ask, bp, lang) if next_item else ""
+                reply = planner.NEED_ONE_MORE[lang] + question
+        elif bp.readiness.ready and bp.checkpoint_turn is None:
+            bp.checkpoint_turn = bp.turn_count + 1
+            worth = [w["short"] for w in worth_knowing(bp, business_type, limit=3)]
+            reply = " ".join(p for p in (ack, media_note, planner.checkpoint_message(bp, lang, worth)) if p)
+        elif bp.readiness.ready:
+            if bp.refining:
+                next_item = planner.choose(bp, ti.next_target, business_type)
+                question = _question(bp, ti, next_item, text, lang) if next_item else planner.NOTHING_LEFT[lang]
+            else:
+                question = planner.AFTER_READY[lang]
+            reply = " ".join(p for p in (ack, media_note, question) if p)
         else:
-            ack = (REDUNDANT[lang] if ti.owner_signal == "redundant"
-                   and not govern_acknowledgement(ti.acknowledgement, text)
-                   else acknowledgement(bp, ti.acknowledgement, text, style))
-            reply = " ".join(part for part in (ack, media_note, question) if part)
+            next_item = planner.choose(bp, ti.next_target, business_type)
+            question = _question(bp, ti, next_item, text, lang) if next_item else planner.AFTER_READY[lang]
+            so_far = ""
+            if understood and bp.turn_count + 1 - bp.synthesis_turn >= 2 and len(bp.asks) >= 2:
+                so_far = planner.so_far_line(bp, lang)
+                if so_far:
+                    bp.synthesis_turn = bp.turn_count + 1
+            opener = ack if understood else (UNCLEAR[lang].strip() if not fallback else "")
+            reply = " ".join(p for p in (opener, media_note, so_far, question) if p)
+        if next_item:
+            planner.record(bp, next_item.ask)
+        elif bp.asks and bp.asks[-1].ask != "free":
+            # No question this time: the next message answers nothing in
+            # particular, and must not be read against the last question again.
+            bp.asks = (bp.asks + [AskRecord(ask="free", targets=[], turn=bp.turn_count + 1)])[-60:]
+        _remaining(bp)
         bp.messages.extend([Message(role="user", text=text), Message(role="assistant", text=reply)])
         bp.messages = bp.messages[-60:]
         bp.turn_count += 1
@@ -421,9 +478,27 @@ class BusinessInterviewOrchestrator:
         )
         get_logger("business.interview").info(
             "interview.turn", business_id=str(bp.business_id), session_id=str(bp.session_id),
-            turn_count=bp.turn_count, language=bp.language_style, next_target=asked_target,
+            turn_count=bp.turn_count, language=bp.language_style,
+            next_ask=next_item.ask.id if next_item else None,
             ready=bp.readiness.ready, **bp.last_turn.model_dump(),
         )
+        return bp
+
+    @staticmethod
+    def refine(bp: BusinessBlueprint, business_type: str | None = None) -> BusinessBlueprint:
+        """"Keep refining first": the next most useful question, asked now."""
+        bp = bp.model_copy(deep=True)
+        bp.refining = True
+        bp.confirm_requested = False
+        BusinessInterviewOrchestrator.project(bp, business_type)
+        lang = _lang(bp.language_style)
+        item = planner.choose(bp, "", business_type)
+        if item:
+            planner.record(bp, item.ask)
+            text = planner.phrase(item.ask, bp, lang)
+        else:
+            text = planner.NOTHING_LEFT[lang]
+        bp.messages = (bp.messages + [Message(role="assistant", text=text)])[-60:]
         return bp
 
     @staticmethod
@@ -483,6 +558,234 @@ class BusinessInterviewOrchestrator:
         return bp
 
 
+def _remaining(bp: BusinessBlueprint) -> None:
+    """The business-truth fields the question on screen would fill — only that question.
+
+    The old list was "the most valuable open fields", and a client used its
+    first entry to save an answer to a *different* question: that is how a
+    delivery area became opening hours.
+    """
+    facts = {**bp.known_facts, **bp.unconfirmed_facts}
+    asked = planner.last_ask(bp)
+    open_fields: list[Question] = []
+    for target_id in (asked.targets if asked else ()):
+        fact = next((t.fact for t in TARGETS if t.id == target_id), None)
+        if fact and fact not in facts and all(q.field != fact for q in open_fields):
+            open_fields.append(Question(field=fact, text=fallback_question(
+                target_id, bp, bp.language_style), reason="The question just asked."))
+    bp.remaining_questions = open_fields[:3]
+
+
+def _question(
+    bp: BusinessBlueprint, ti: TurnIntelligence, item: planner.Ranked, heard: str, lang: str
+) -> str:
+    """The model's wording when it proposed this very question and it reads well; else ours."""
+    proposed = planner.ASKS_BY_ID.get(ti.next_target) or planner.ask_for_target(ti.next_target)
+    if proposed and proposed.id == item.ask.id:
+        governed = govern_question(ti.next_question, heard, bp)
+        if governed:
+            return str(governed)
+    return str(planner.phrase(item.ask, bp, lang))
+
+
+# -------------------------------------------------------- semantic validation
+
+# Slots whose value has a type the reader can check.
+_TYPED_FACTS = {"opening_hours", "phone", "customer_actions", "locations"}
+_TYPED_TARGETS = {"operations.hours", "contact.phone", "commerce.action", "contact.location",
+                  "fulfilment.mode", "commerce.payment", "offerings.units"}
+
+
+def _validate_extraction(ti: TurnIntelligence) -> None:
+    """Drop what the model filed under the wrong kind of slot.
+
+    "All india" is never opening hours, "Freshness and energy" never a phone
+    number, "Gym equipment, dumbbells, contact section" never what a customer
+    does. Better unknown than wrong: an unknown piece is asked, a wrong one is
+    shown to the owner and built into their website.
+    """
+    ti.facts = [f for f in ti.facts if f.field not in _TYPED_FACTS or rd.valid_for(f.field, f.quote)]
+    kept: list[TargetAnswer] = []
+    for answer in ti.answered:
+        evidence = answer.quote or answer.summary
+        if answer.status == "declined" or answer.target not in _TYPED_TARGETS or rd.valid_for(answer.target, evidence):
+            kept.append(answer)
+    ti.answered = kept
+
+
+def _answered(ti: TurnIntelligence, target: str) -> bool:
+    return any(a.target == target for a in ti.answered)
+
+
+# Questions whose answer is the owner's own sentence, with no type to check.
+_FREE_TEXT = frozenset({
+    "brand.story", "memberships.plans", "bookings.format", "b2b.customers", "b2b.process",
+    "offerings.customisation", "services.providers", "operations.team", "operations.stock",
+    "fulfilment.operator", "offerings.pricing",
+})
+
+
+def _read_for_question(
+    bp: BusinessBlueprint,
+    ti: TurnIntelligence,
+    text: str,
+    targets: tuple[str, ...],
+    reading: rd.Reading,
+    *,
+    model_ok: bool,
+) -> None:
+    """Understand the answer as an answer to the question actually asked.
+
+    With the model working this fills only what it missed; without it, this
+    is the understanding. Every value is checked for its type first, so an
+    answer is never filed under a question it does not answer.
+    """
+    words = re.findall(r"\w+", text)
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", " ".join(text.split())) if s]
+
+    def answer(target: str, summary: str, status: str = "answered", evidence: str = "") -> None:
+        # The evidence is the part of the message that answers THIS target — a
+        # whole opening paragraph must never become the customer actions.
+        if not _answered(ti, target):
+            ti.answered.append(TargetAnswer(target=target, quote=(evidence or text)[:600],
+                                            summary=summary[:240], status=status))
+
+    def fact(field: str, value: str, mode: str = "replace") -> None:
+        if value and value in text and not any(f.field == field for f in ti.facts):
+            ti.facts.append(ExtractedFact(field=field, quote=value, mode=mode))
+
+    def sentence_with(pattern_check: Any) -> str:
+        return next((s for s in sentences if pattern_check(s)), "")
+
+    # A phone number is a phone number whatever was asked.
+    if reading.phone and not any(f.field == "phone" for f in ti.facts):
+        digits = rd.phone_number(text)
+        raw = next((m.group(0).strip() for m in rd._PHONE.finditer(text)
+                    if re.sub(r"\D", "", m.group(0)).endswith(digits)), "")
+        if raw:
+            fact("phone", raw)
+            answer("contact.phone", "Your number", evidence=raw)
+    if reading.finish or (reading.decline and not reading.phone):
+        # "No, just this much" / "skip" — the pieces just asked are declined, not answered.
+        if reading.decline and not reading.finish:
+            for target in targets[:2]:
+                if not _answered(ti, target) and target not in {"business.identity"}:
+                    answer(target, "", status="declined")
+        return
+    def offer(names: list[str], groups: list[tuple[str, list[str]]]) -> bool:
+        """What is sold, as groups with their items when the owner listed them."""
+        if groups:
+            if not ti.catalogue:
+                ti.catalogue = [GroupProposal(group=g, items=[ItemProposal(name=i) for i in items])
+                                for g, items in groups]
+            if not _answered(ti, "offerings.main"):
+                fact("offerings", text if len(text) <= 400 else ", ".join(g for g, _ in groups), mode="add")
+                answer("offerings.main", ", ".join(g for g, _ in groups))
+            if not _answered(ti, "offerings.structure"):
+                answer("offerings.structure",
+                       "; ".join(f"{g}: {', '.join(items[:4])}" for g, items in groups))
+            return True
+        if names:
+            if not ti.catalogue:
+                ti.catalogue = [GroupProposal(group=n) for n in names][:12]
+            clause = next((m.group(0) for m in rd._OFFER_STATEMENT.finditer(" ".join(text.split()))), "")
+            evidence = clause if clause and clause in text else text
+            fact("offerings", evidence, mode="add")
+            answer("offerings.main", ", ".join(names), evidence=evidence)
+            return True
+        return False
+
+    understood_any = False
+    lead = targets[0] if targets else ""
+    for target in targets:
+        if _answered(ti, target):
+            understood_any = True
+            continue
+        if target == "commerce.action" and reading.actions:
+            evidence = rd.action_sentences(text)
+            fact("customer_actions", evidence, mode="add")
+            answer(target, ", ".join(rd.action_labels(reading.actions)), evidence=evidence)
+        elif target == "fulfilment.mode" and reading.fulfilment:
+            answer(target, ", ".join(reading.fulfilment),
+                   evidence=sentence_with(rd.fulfilment_modes) or text)
+        elif target == "fulfilment.area" and rd.service_area(text) and (reading.fulfilment or lead == "fulfilment.area"
+                                                                         or "fulfilment.mode" in targets):
+            answer(target, rd.service_area(text))
+        elif target == "contact.location" and rd.location_text(text):
+            place = rd.location_text(text)
+            if place in text:
+                fact("locations", place)
+            answer(target, place, evidence=place)
+        elif target == "commerce.payment" and reading.payment:
+            answer(target, ", ".join(reading.payment), evidence=sentence_with(rd.payment_methods) or text)
+        elif target == "offerings.units" and reading.units:
+            answer(target, "By the kg" if reading.units == "weight" else "In fixed packs",
+                   evidence=sentence_with(rd.units) or text)
+        elif target == "operations.hours" and rd.looks_like_hours(text):
+            fact("opening_hours", text)
+            answer(target, text[:120])
+        elif target in {"offerings.main", "offerings.structure"} and lead in {"offerings.main", "offerings.structure"} \
+                and not model_ok:
+            if not offer(rd.offer_statement(text) or rd.offering_names(text), rd.group_items(text)):
+                continue
+        elif target in _FREE_TEXT and target == lead and not text.rstrip().endswith("?") \
+                and len(words) >= (2 if not model_ok else 3):
+            # A real reply to the question just asked answers it, even when the
+            # model filed it elsewhere — the gym was asked "what do people book?"
+            # twice. Only for questions whose answer is free text.
+            answer(target, text[:240])
+        else:
+            continue
+        understood_any = True
+    # What the owner volunteered beyond the question — only the unambiguous
+    # kinds, so an answer is never stretched to fit a question it didn't answer.
+    if reading.fulfilment and not _answered(ti, "fulfilment.mode") and re.search(
+            r"\b(we|i|people|customers|they|you can)\b|\bonly\b", text, re.I):
+        said = sentence_with(rd.fulfilment_modes) or text
+        answer("fulfilment.mode", ", ".join(reading.fulfilment), evidence=said)
+        area = rd.service_area(said)
+        if area and "delivery" in reading.fulfilment and not _answered(ti, "fulfilment.area"):
+            answer("fulfilment.area", area, evidence=said)
+        understood_any = True
+    if reading.payment and not _answered(ti, "commerce.payment") and (
+            "commerce.payment" in targets or re.search(r"\b(pay|payment|upi|cash|cod|gpay)\b", text, re.I)):
+        answer("commerce.payment", ", ".join(reading.payment), evidence=sentence_with(rd.payment_methods) or text)
+        understood_any = True
+    if reading.units == "weight" and not _answered(ti, "offerings.units"):
+        answer("offerings.units", "By the kg", evidence=sentence_with(rd.units) or text)
+        understood_any = True
+    known_action = (bp.discovery.get("commerce.action") or TargetState()).status == "answered"
+    if reading.actions and not known_action and not _answered(ti, "commerce.action"):
+        # "Select meat, select kg and order" says what customers do, whatever was asked.
+        evidence = rd.action_sentences(text)
+        fact("customer_actions", evidence, mode="add")
+        answer("commerce.action", ", ".join(rd.action_labels(reading.actions)), evidence=evidence)
+        understood_any = True
+    if not model_ok and lead not in {"offerings.main", "offerings.structure"} and rd.group_items(text):
+        # "Chicken - curry cut, boneless. Mutton - chops" is the range, whatever was asked.
+        understood_any = offer([], rd.group_items(text)) or understood_any
+    has_place_cue = re.search(r"\b(located|based|we are in|we're in|shop is (?:in|at|on)|address)\b", text, re.I)
+    if not _answered(ti, "contact.location") and lead != "contact.location" and (
+            has_place_cue or (reading.phone and rd._PLACE_WORDS.search(text))):
+        place = rd.location_text(re.split(r"(?<=[.!?])\s+", text)[0] if not has_place_cue else text)
+        if place and place in text:
+            fact("locations", place)
+            answer("contact.location", place, evidence=place)
+            understood_any = True
+    if not model_ok and lead == "business.identity":
+        # The opening answer with no model: the owner's own description, what
+        # they said they sell and what customers do.
+        sentence = sentences[0] if sentences else text
+        if sentence in text:
+            fact("description", sentence[:400])
+        answer("business.identity", sentence[:240], evidence=sentence)
+        offer(rd.offer_statement(text), rd.group_items(text))
+        if reading.actions and not _answered(ti, "commerce.action"):
+            evidence = rd.action_sentences(text)
+            fact("customer_actions", evidence, mode="add")
+            answer("commerce.action", ", ".join(rd.action_labels(reading.actions)), evidence=evidence)
+
+
 _GENERATE = re.compile(r"\b(generate|create|make|design|draw)\b.{0,20}\b(one|it|logo|for me)?", re.I)
 _DECLINE = re.compile(r"^\s*(no|nope|skip|later|not now|don'?t know|no idea|nothing|illa|venaam)\b", re.I)
 _YES = re.compile(r"^\s*(yes|yeah|yep|sure|ok(?:ay)?|please|go ahead|do it|seri|aamaa|ama|haan)\b", re.I)
@@ -492,15 +795,11 @@ _OWN_PHOTOS = re.compile(
 
 
 def _contextual_signals(bp: BusinessBlueprint, ti: TurnIntelligence, text: str) -> None:
-    """Read a short reply in the light of the question it answers.
-
-    "Generate one" means nothing on its own and everything after "should I
-    create a logo?". The model usually gets this; this makes sure of it.
-    """
-    last = bp.last_asked_target
-    if last == "media.logo" and ti.media_intent == "none" and _GENERATE.search(text):
+    """Read a short reply to a picture question in the light of that question."""
+    asked = set(bp.asks[-1].targets) if bp.asks else set()
+    if "media.logo" in asked and ti.media_intent == "none" and _GENERATE.search(text):
         ti.media_intent = "generate_logo"
-    if last == "media.photos" and ti.media_intent == "none":
+    if "media.photos" in asked and ti.media_intent == "none":
         # "No photos yet, you can create them" is a yes to drafts, not a no.
         refused = re.search(r"\b(?:don'?t|do not|no need to|not)\b[^.]{0,20}\b(?:create|generate|make)",
                             text, re.I)
@@ -510,26 +809,6 @@ def _contextual_signals(bp: BusinessBlueprint, ti: TurnIntelligence, text: str) 
             ti.media_intent = "generate_visuals"
         elif refused or (_DECLINE.search(text) and len(text) < 40):
             ti.media_intent = "no_visuals"
-    if last and _DECLINE.search(text) and len(text) < 40 and not ti.answered and ti.media_intent == "none":
-        ti.answered.append(TargetAnswer(target=last, status="declined"))
-    # A real reply to the question just asked answers it, even when the model
-    # filed it elsewhere — otherwise the same question came back a few turns
-    # later ("What do people usually book with you?", asked twice).
-    words = re.findall(r"\w+", text)
-    # Only for targets that write no fact: a reply credited to "contact.phone"
-    # that was really about delivery must never become the phone number.
-    target = TARGETS_BY_ID.get(last or "")
-    if (
-        last
-        and target is not None
-        and target.fact is None
-        and last not in {"media.photos", "media.logo"}
-        and not ti.off_topic
-        and len(words) >= 3
-        and not text.rstrip().endswith("?")
-        and all(answer.target != last for answer in ti.answered)
-    ):
-        ti.answered.append(TargetAnswer(target=last, summary=text[:240], quote=text[:600]))
 
 
 def _merge_facts(bp: BusinessBlueprint, ti: TurnIntelligence, text: str, source: str) -> int:
@@ -583,10 +862,11 @@ def _merge_facts(bp: BusinessBlueprint, ti: TurnIntelligence, text: str, source:
 
 def _defer_open_targets(bp: BusinessBlueprint, business_type: str | None) -> None:
     """"That's all, build it" — the owner decides when enough is enough."""
-    for item in rank(bp, business_type):
-        state = bp.discovery.setdefault(item.target.id, TargetState())
-        if state.status in {"open", "asked"}:
-            state.status = "deferred"
+    for item in planner.rank(bp, business_type):
+        for target in item.ask.targets:
+            state = bp.discovery.setdefault(target, TargetState())
+            if state.status in {"open", "asked"}:
+                state.status = "deferred"
 
 
 def _record_media_intent(bp: BusinessBlueprint, intent: str, image_available: bool) -> str:

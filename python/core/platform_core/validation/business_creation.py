@@ -46,6 +46,7 @@ class BusinessCreationInput:
         currency: str,
         country: str,
         language: str,
+        classification: dict[str, str] | None = None,
     ) -> None:
         self.display_name = display_name
         self.business_type = business_type
@@ -55,6 +56,8 @@ class BusinessCreationInput:
         self.currency = currency
         self.country = country
         self.language = language
+        # The kind of business the owner picked from the taxonomy — a seed.
+        self.classification = classification
 
 
 def validate_business_creation_payload(raw: dict[str, Any]) -> BusinessCreationInput:
@@ -172,6 +175,32 @@ def validate_business_creation_payload(raw: dict[str, Any]) -> BusinessCreationI
             if language not in SUPPORTED_LANGUAGES:
                 errors.append(_field_error("language", f"Unsupported language '{language}'"))
 
+    classification: dict[str, str] | None = None
+    category_key = raw.get("category_key")
+    subcategory_key = raw.get("subcategory_key")
+    if category_key is not None or subcategory_key is not None:
+        from platform_core.catalog.taxonomy import TAXONOMY_VERSION, resolve
+
+        found = resolve(
+            category_key if isinstance(category_key, str) else None,
+            subcategory_key if isinstance(subcategory_key, str) else None,
+        )
+        if found is None:
+            errors.append(_field_error("subcategory_key", "Unknown kind of business"))
+        else:
+            category, sub = found
+            classification = {
+                "category_key": category.key,
+                "subcategory_key": sub.key if sub.key != category.key else "",
+                "label": sub.label,
+                "taxonomy_version": TAXONOMY_VERSION,
+                "source": "owner_picked",
+            }
+            # The legacy template key follows the pick unless one was given.
+            if "business_type" not in raw or raw.get("business_type") in (None, DEFAULT_BUSINESS_TYPE):
+                business_type = category.template if category.template in SUPPORTED_BUSINESS_TYPES \
+                    else DEFAULT_BUSINESS_TYPE
+
     if errors:
         raise ValidationError("Business creation validation failed", details={"errors": errors})
 
@@ -184,4 +213,5 @@ def validate_business_creation_payload(raw: dict[str, Any]) -> BusinessCreationI
         currency=currency,
         country=country,
         language=language,
+        classification=classification,
     )

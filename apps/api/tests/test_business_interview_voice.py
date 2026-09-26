@@ -246,6 +246,12 @@ def test_completion_tells_the_voice_to_stop_interviewing():
     bp.discovery["brand.story"] = TargetState(status="answered", summary="Made to last.")
     bp.discovery["media.logo"] = TargetState(status="declined", asked=1)
     bp.discovery["media.photos"] = TargetState(status="declined", asked=1)
+    # Readiness is judged per business now (a furniture maker is still worth one
+    # question about custom work); what matters here is that once there is
+    # enough, the voice stops interviewing — and "enough" never goes away.
+    from platform_core.interview.models import now
+
+    bp.completion_state.ready_at = now()
     Engine.project(bp)
     assert bp.completion_state.sufficient
     instructions = voice.build_session_instructions(bp)

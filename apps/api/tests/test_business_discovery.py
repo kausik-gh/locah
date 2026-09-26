@@ -21,7 +21,7 @@ from platform_core.interview.capabilities import resolve_recommendations
 from platform_core.interview.discovery import TARGETS_BY_ID, rank, readiness
 from platform_core.interview.models import BusinessBlueprint, Fact, TargetState
 from platform_core.interview.orchestrator import BusinessInterviewOrchestrator as Engine
-from platform_core.interview.understanding import understanding
+from platform_core.interview.understanding import customer_actions, understanding
 
 from test_business_interview import entitlements
 
@@ -297,35 +297,41 @@ async def test_the_ishant_proteins_conversation():
     assert [i.name for i in groups["Chicken"].items] == ["Whole chicken", "Curry cut", "Boneless"]
     assert "Fish different varieties" not in [i.name for i in groups["Fish & Seafood"].items]
     assert "cuts" not in groups["Chicken"].needs
-    # Hours can wait: the photos question shapes the website more.
-    assert bp.last_asked_target == "media.photos"
-    assert "draft visuals" in reply(bp)
+    # How it reaches the customer shapes the first website; photos, prices,
+    # hours and the logo can come after it (the model proposed hours).
+    assert bp.last_asked_target == "fulfilment.mode"
+    assert "?" in reply(bp) and "photo" not in reply(bp).lower()
 
-    # 3. Draft visuals, with consent.
-    bp = await say_(bp, "No photos yet, you can create them", N3)
-    assert bp.visual_consent == "draft_visuals"
-    assert "draft visuals" in reply(bp)
-    assert bp.last_asked_target == "brand.story"
-
-    bp = await say_(bp, STORY, T8)
-    assert bp.last_asked_target == "fulfilment.mode"  # operations now, after the website shape
     bp = await say_(bp, "We deliver ourselves around Nookampalayam and Perumbakkam, people can pick up too", N5)
-    bp = await say_(bp, "Both online and cash on delivery", N6)
+    assert bp.last_asked_target == "contact.location"
     bp = await say_(bp, "In nookampalayam road", N7)
-    bp = await say_(bp, "8754722026", N8)
-    assert bp.last_asked_target == "offerings.pricing"
 
-    # 4. Prices only as the owner said them — an invented one is dropped.
+    # 3. Enough for a strong first version after three follow-ups — said once,
+    # with a summary and the choice to build or keep refining.
+    assert bp.readiness.ready and bp.checkpoint_turn == bp.turn_count
+    assert "enough to make a strong first version" in reply(bp)
+    assert "So far:" in reply(bp) and "Nookampalayam and Perumbakkam" in reply(bp)
+    for never in ("operations.hours", "media.logo", "media.photos", "offerings.pricing", "commerce.payment"):
+        assert bp.discovery[never].asked == 0, never
+
+    # Saying more after that adds detail; Build is never taken away.
+    bp = await say_(bp, "8754722026", N8)
+    assert bp.readiness.ready and "?" not in reply(bp)
+    assert bp.unconfirmed_facts["phone"].value == "8754722026"
+
+    # 4. Keep refining: the most useful optional things, one at a time.
+    bp = Engine.refine(bp, "other")
+    assert bp.refining and bp.readiness.ready
+    first_optional = bp.last_asked_target
+    assert first_optional in {"media.photos", "brand.story", "offerings.pricing"}
+    bp = await say_(bp, "No photos yet, you can create them", N3)
+    bp = await say_(bp, STORY, T8)
     bp = await say_(bp, "Chicken 240 per kg, mutton 800 per kg. Fish I'll fill later.", N9)
+    # Prices only as the owner said them — an invented one is dropped.
     groups = {g.name: g for g in bp.taxonomy.groups}
     assert (groups["Chicken"].price, groups["Chicken"].unit) == ("₹240", "per kg")
     assert groups["Fish & Seafood"].price == "" and "price" in groups["Fish & Seafood"].needs
-    assert bp.last_asked_target == "media.logo"
-
-    bp = await say_(bp, "Generate one", T10)
-    assert bp.readiness.ready
-    assert all(bp.readiness.website.values())
-    assert bp.discovery["operations.hours"].asked == 0  # never needed for a first website
+    assert bp.discovery["operations.hours"].asked <= 1
     asked = [t for t, s in bp.discovery.items() if s.asked]
     assert all(bp.discovery[t].asked <= 2 for t in asked)
 
@@ -347,8 +353,14 @@ async def test_with_no_model_the_question_still_comes_from_what_is_known():
     bp = await Engine.turn(bp, "Select meat and then select kg and then order", provider=Down(),
                            business_type="retail")
     text = reply(bp)
-    assert text.startswith("I've saved what you said")  # a system problem, said as one
+    # Read by rule without the model: sold by the kg, ordered online — and no
+    # "I'm having trouble" repeated on every turn when the answer was understood.
+    assert bp.discovery["offerings.units"].status == "answered"
+    assert "order_online" in customer_actions(bp)
+    assert "trouble" not in text.lower() and "saved what you said" not in text.lower()
     assert GENERIC not in text.lower()
+    # "Select meat and then select kg" describes buying, not a product.
+    assert all("select" not in g.name.lower() for g in bp.taxonomy.groups)
 
 
 @pytest.mark.asyncio
@@ -404,8 +416,11 @@ def test_readiness_is_about_this_business_not_three_fields():
                        "locations": "Chennai", "phone": "8754722026"}.items():
         shop.known_facts[key] = Fact(value=value, source="USER_STATEMENT")
     Engine.project(shop, "retail")
-    # Orders are online, so how they are sold, delivered and paid for matter.
-    assert {"offerings.units", "fulfilment.mode", "commerce.payment"} <= set(readiness(shop, "retail").missing)
+    # Orders are online, so how they are sold and how they reach people shape
+    # the first website. How people pay is set up with the payment tool, after it.
+    missing = set(readiness(shop, "retail").missing)
+    assert {"offerings.units", "fulfilment.mode"} <= missing
+    assert "commerce.payment" not in missing
 
 
 def test_every_target_has_owner_facing_words():
@@ -496,12 +511,19 @@ def test_owner_wording_wins_over_personalisation_on_the_built_site():
 
 
 def test_confirming_covers_every_detail_the_panel_shows():
-    """Live: after "These details are correct", delivery and payment still said "Needs confirmation"."""
+    """Live: after "These details are correct", delivery and payment still said "Needs confirmation".
+
+    The panel no longer tags rows one by one — pressing Build on the summary is
+    the confirmation — but confirming must still cover everything it shows.
+    """
     bp = blueprint()
-    bp.discovery["commerce.payment"] = TargetState(status="answered", summary="Online and cash on delivery.")
-    assert understanding(bp, "retail")["items"][0]["status"] == "from_you"
-    bp.completion_state.confirmed = True
-    assert understanding(bp, "retail")["items"][0]["status"] == "confirmed"
+    bp.unconfirmed_facts["offerings"] = Fact(value="Chicken and mutton", source="AI_EXTRACTION")
+    bp.discovery["commerce.payment"] = TargetState(status="answered", summary="Online and cash on delivery.",
+                                                   quote="Both online and cash on delivery")
+    assert {"kind": "payment", "text": "Online and cash on delivery"} in understanding(bp, "retail")["buying"]
+    Engine.confirm(bp, "retail")
+    assert not bp.unconfirmed_facts and bp.known_facts["offerings"].confirmation == "confirmed"
+    assert {"kind": "payment", "text": "Online and cash on delivery"} in understanding(bp, "retail")["buying"]
 
 
 def test_food_made_in_small_batches_is_not_a_class_to_book() -> None:
@@ -521,19 +543,22 @@ def test_food_made_in_small_batches_is_not_a_class_to_book() -> None:
 
 def test_a_reply_to_the_question_just_asked_answers_it() -> None:
     """The gym was asked "What do people usually book with you?" twice."""
+    from platform_core.interview import reader
     from platform_core.interview.models import TurnIntelligence
-    from platform_core.interview.orchestrator import _contextual_signals
+    from platform_core.interview.orchestrator import _read_for_question
 
     bp = BusinessBlueprint(business_id=uuid4())
-    bp.last_asked_target = "bookings.format"
+    text = "Trial sessions are booked on WhatsApp."
     ti = TurnIntelligence()
-    _contextual_signals(bp, ti, "Trial sessions are booked on WhatsApp.")
-    assert [(a.target, a.status) for a in ti.answered] == [("bookings.format", "answered")]
-    # A target that writes a fact is never credited by position alone.
-    bp.last_asked_target = "contact.phone"
+    _read_for_question(bp, ti, text, ("bookings.format", "services.providers"), reader.read(text), model_ok=True)
+    assert ("bookings.format", "answered") in [(a.target, a.status) for a in ti.answered]
+    # A slot with a type is never credited by position alone: a delivery
+    # sentence is not a phone number, and never becomes one.
+    text = "We deliver all over Chennai."
     ti = TurnIntelligence()
-    _contextual_signals(bp, ti, "We deliver all over Chennai.")
-    assert ti.answered == []
+    _read_for_question(bp, ti, text, ("contact.phone",), reader.read(text), model_ok=True)
+    assert "contact.phone" not in {a.target for a in ti.answered}
+    assert not any(f.field == "phone" for f in ti.facts)
 
 
 def test_a_developer_is_asked_for_its_projects_not_for_customisation() -> None:

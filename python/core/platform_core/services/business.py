@@ -56,12 +56,17 @@ def _default_settings(input_data: BusinessCreationInput) -> dict[str, Any]:
 
 
 def _default_metadata(input_data: BusinessCreationInput) -> dict[str, Any]:
-    return {
+    metadata: dict[str, Any] = {
         "creation": {
             "source": "platform_create_business",
             "business_type": input_data.business_type,
         }
     }
+    if input_data.classification:
+        # Read by the interview as a seed (BusinessInterviewService.read). The
+        # P1 migration moves this to category_key / subcategory_key columns.
+        metadata["classification"] = dict(input_data.classification)
+    return metadata
 
 
 class BusinessService:

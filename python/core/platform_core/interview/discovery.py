@@ -37,8 +37,23 @@ CHARACTERISTICS = frozenset({
     "sells_products", "provides_services", "accepts_appointments", "accepts_orders",
     "has_physical_locations", "delivers", "pickup", "has_team", "has_memberships",
     "runs_classes", "online_only", "serves_businesses", "quote_led", "made_to_order",
-    "stock_based", "walk_in", "enquiry_led", "sells_property",
+    "stock_based", "walk_in", "enquiry_led", "sells_property", "on_site", "portfolio_led",
 })
+
+# Capability Universe §4.3 operating traits -> the characteristics above. Used
+# for the category the owner picked: a prior of the same strength as a
+# Business-Type Profile, never "observed".
+TRAIT_CHARACTERISTICS: dict[str, tuple[str, ...]] = {
+    "sells_products": ("sells_products",), "sells_services": ("provides_services",),
+    "sells_access": ("has_memberships",), "order_led": ("accepts_orders",),
+    "booking_led": ("accepts_appointments",), "quote_led": ("quote_led",),
+    "enquiry_led": ("enquiry_led",), "subscription_led": ("has_memberships",),
+    "project_led": ("made_to_order",), "class": ("runs_classes",),
+    "walk_in": ("walk_in", "has_physical_locations"), "pickup": ("pickup",),
+    "local_delivery": ("delivers",), "shipping": ("delivers",), "on_site_service": ("on_site",),
+    "made_to_order": ("made_to_order",), "provider_based": ("has_team",), "field_team": ("has_team",),
+    "portfolio_led": ("portfolio_led",), "stay": ("accepts_appointments",),
+}
 
 CHARACTERISTICS_BY_PATTERN: dict[str, tuple[str, ...]] = {
     "b2b": ("serves_businesses",),
@@ -120,13 +135,45 @@ def profile_type(bp: BusinessBlueprint, business_type: str | None = None) -> str
     return stored or "other"
 
 
+def _category_priors(bp: BusinessBlueprint) -> tuple[str, ...]:
+    """What the business's kind usually means — the more specific prior.
+
+    The owner's pick first; else the kind their own words most clearly name
+    ("a gym app" is software, not a gym). Still only a prior.
+    """
+    from platform_core.catalog.taxonomy import SUBCATEGORIES, infer_from_text
+
+    key = bp.category.subcategory_key if bp.category and bp.category.subcategory_key else ""
+    if not key and not bp.category:
+        facts = {**bp.known_facts, **bp.unconfirmed_facts}
+        said = " ".join([facts[k].value for k in ("classification", "description", "offerings") if k in facts]
+                        + [m.text for m in bp.messages if m.role == "user"][:2])
+        guess = infer_from_text(said)
+        key = guess[0] if guess and guess[1] >= 0.7 else ""
+    found = SUBCATEGORIES.get(key) if key else None
+    if not found:
+        return ()
+    traits = found[1].traits
+    chars: list[str] = []
+    for trait in sorted(traits):
+        chars.extend(TRAIT_CHARACTERISTICS.get(trait, ()))
+    # Only a business that sells to businesses alone is "B2B" by default; a
+    # caterer who also does corporate lunches is asked, not assumed.
+    if "b2b" in traits and "b2c" not in traits:
+        chars.append("serves_businesses")
+    if found[1].playbook in {"real_estate_developer", "real_estate_broker"}:
+        chars.append("sells_property")
+    return tuple(dict.fromkeys(chars))
+
+
 def characteristics(
     bp: BusinessBlueprint, business_type: str | None = None
 ) -> dict[str, str]:
     """characteristic -> "observed" | "profile"."""
     found: dict[str, str] = {}
-    profile = BusinessTypeProfileRegistry.get_or_default(profile_type(bp, business_type))
-    for item in profile.characteristics:
+    for item in _category_priors(bp) or BusinessTypeProfileRegistry.get_or_default(
+        profile_type(bp, business_type)
+    ).characteristics:
         if item in CHARACTERISTICS:
             found[item] = "profile"
     for evidence in bp.operating_patterns:
@@ -139,6 +186,8 @@ def characteristics(
     spoken += [state.summary + " " + state.quote for state in bp.discovery.values()
                if state.status in {"answered", "partial"}]
     for text in spoken:
+        # "Cash on delivery" is how people pay, not a delivery service.
+        text = re.sub(r"\b(?:cash|pay(?:ment)?)\s+on\s+delivery\b|\bcod\b", " ", text, flags=re.I)
         for name, pattern in _SIGNALS:
             for match in pattern.finditer(text):
                 before = text[max(0, match.start() - 25): match.start()]
@@ -520,7 +569,17 @@ def rank(bp: BusinessBlueprint, business_type: str | None = None) -> list[Ranked
 
 
 def readiness(bp: BusinessBlueprint, business_type: str | None = None) -> Readiness:
-    """Enough for a strong first website — judged for THIS business."""
+    """Enough for a strong first website — judged for THIS business, by coverage.
+
+    One notion of readiness only: see `coverage.assess`.
+    """
+    from platform_core.interview.coverage import assess
+
+    return assess(bp, business_type)
+
+
+def _checklist_readiness(bp: BusinessBlueprint, business_type: str | None = None) -> Readiness:
+    """The old checklist rule, kept only to show what it asked for (see coverage.py)."""
     chars = characteristics(bp, business_type)
     floor = ("business.identity", "offerings.main", "commerce.action")
     missing: list[str] = []

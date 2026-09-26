@@ -92,10 +92,13 @@ MEAT = Fixture(
     ],
     strong={"offerings-catalog", "orders", "payments", "inventory", "fulfilment"},
     never={"bookings", "workforce", "quotes", "memberships", "projects"},
+    # Photos, logo, prices and hours come after the first version (Phase A
+    # brief: media before the transaction model is a red flag).
     never_asked={"bookings.format", "b2b.customers", "memberships.plans", "offerings.main",
-                 "operations.hours", "fulfilment.mode"},
-    # Website-shaping first: pictures before delivery, even though the model proposed delivery.
-    asked={"media.photos"},
+                 "operations.hours", "media.photos", "media.logo", "offerings.pricing"},
+    # How an order reaches the customer is worth asking once the range and
+    # the ordering are known — the model proposed it and it is right.
+    asked={"fulfilment.mode"},
 )
 
 FURNITURE = Fixture(
@@ -174,8 +177,10 @@ RESTAURANT = Fixture(
     strong={"offerings-catalog", "bookings", "orders", "payments", "fulfilment"},
     # Food is sold, but nobody said stock — inventory only as what pickup needs.
     never={"workforce", "quotes", "memberships"},
-    never_asked={"b2b.customers", "memberships.plans", "offerings.customisation"},
-    asked={"bookings.format"},
+    # Seats and weekend-only tables are booking setup, after the first version.
+    never_asked={"b2b.customers", "memberships.plans", "offerings.customisation", "offerings.units",
+                 "operations.hours"},
+    asked={"commerce.action"},
 )
 
 CLINIC = Fixture(

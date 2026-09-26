@@ -19,6 +19,10 @@ class CreateBusinessRequest(BaseModel):
 
     display_name: str = Field(..., min_length=1, max_length=200)
     business_type: str | None = None
+    # The kind of business the owner picked (search-first taxonomy). A seed for
+    # the interview and recommendations — never a module grant.
+    category_key: str | None = Field(default=None, max_length=40)
+    subcategory_key: str | None = Field(default=None, max_length=60)
     slug: str | None = None
     logo_asset_id: UUID | None = None
     timezone: str | None = None

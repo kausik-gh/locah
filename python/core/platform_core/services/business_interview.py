@@ -38,11 +38,11 @@ from platform_core.interview.design_strategy import (
 )
 from platform_core.interview.models import (
     BusinessBlueprint,
+    CategorySeed,
     DraftCommand,
     DraftText,
     Fact,
     InterviewCommand,
-    Message,
     MediaGenerationRequest,
     OfferingDraft,
     TargetState,
@@ -247,6 +247,19 @@ def _apply_draft(bp: BusinessBlueprint, command: DraftCommand) -> None:
             wd.dismissed.append(command.field)
 
 
+def _category_seed(business: Business) -> CategorySeed | None:
+    """The category the owner picked when creating the business, if any."""
+    from platform_core.catalog.taxonomy import resolve
+
+    picked = (business.metadata_ or {}).get("classification") or {}
+    found = resolve(picked.get("category_key"), picked.get("subcategory_key"))
+    if not found:
+        return None
+    category, sub = found
+    return CategorySeed(category_key=category.key, subcategory_key=sub.key if sub.key != category.key else "",
+                        label=sub.label, source="owner_picked")
+
+
 async def _queue_logo(
     session: AsyncSession, business: Business, bp: BusinessBlueprint, *, actor_id: UUID
 ) -> None:
@@ -302,7 +315,8 @@ class BusinessInterviewService:
             },
             remaining_questions=list(QUESTIONS),
         )
-        bp.messages = [Message(role="assistant", text=BusinessInterviewOrchestrator.opening_question(bp))]
+        bp.category = _category_seed(business)
+        BusinessInterviewOrchestrator.open(bp)
         return bp
 
     @staticmethod
@@ -372,9 +386,15 @@ class BusinessInterviewService:
                     session, business_id=business.id, asset_id=logo.asset_id))["url"]
             except Exception:  # noqa: BLE001 — a missing picture never breaks the page
                 logo_url = None
+        from platform_core.interview.coverage import floor_met
+
         return {
             "blueprint": bp.model_dump(mode="json"),
             "understanding": understanding(bp, business.business_type, logo_url),
+            # Build is offered as soon as there is something honest to build —
+            # and never taken away once offered.
+            "build_available": bp.completion_state.ready_at is not None
+            or floor_met(bp, business.business_type),
             "available_modules": [
                 item.model_dump(mode="json") for item in available_modules(bp, entitlement)
             ],
@@ -453,6 +473,8 @@ class BusinessInterviewService:
                 initial, command.draft.field, command.draft.offering_name,
                 business_type=business.business_type,
             )
+        elif command.action == "refine":
+            proposed = BusinessInterviewOrchestrator.refine(initial, business.business_type)
         business = await BusinessInterviewService.load_business(session, business_id, lock=True)
         bp = BusinessInterviewService.read(business)
         if not BusinessInterviewService.check_revision(bp, command):
@@ -476,6 +498,33 @@ class BusinessInterviewService:
             surface_new_unsupported_requests(bp, previous_unsupported)
         if command.action == "confirm":
             BusinessInterviewOrchestrator.confirm(bp, business.business_type)
+        elif command.action == "review":
+            from platform_core.interview.coverage import floor_met
+
+            if not floor_met(bp, business.business_type):
+                raise ValidationError("Tell Locah what you sell or offer first — then it can build.")
+            bp.confirm_requested = True
+        elif command.action == "correct":
+            from platform_core.interview.corrections import CorrectionError, apply_correction
+
+            if command.slot is None:
+                raise ValidationError("Choose what to change")
+            try:
+                apply_correction(bp, command.slot, command.values, command.text)
+            except CorrectionError as exc:
+                raise ValidationError(str(exc)) from exc
+            BusinessInterviewOrchestrator.project(bp, business.business_type)
+            resolve_recommendations(bp, entitlement, business.business_type)
+        elif command.action == "keep_tools":
+            # "Keep recommended": the owner's approval of what was recommended and
+            # is included in their access. Approval is not activation — tools are
+            # switched on at build, and only those the business is entitled to.
+            for item in bp.recommended_modules:
+                if item.status == "NOT_CURRENTLY_AVAILABLE" or item.module_id in bp.declined_modules:
+                    continue
+                if item.module_id not in bp.approved_modules:
+                    bp.approved_modules.append(item.module_id)
+            resolve_recommendations(bp, entitlement, business.business_type)
         elif command.action == "draft":
             if command.draft is None:
                 raise ValidationError("Nothing to change")
@@ -635,13 +684,15 @@ class BusinessInterviewService:
         actor_id: UUID,
         correlation_id: str,
     ) -> None:
+        from platform_core.interview.coverage import floor_met
+
         BusinessInterviewOrchestrator.project(bp, business.business_type)
-        if not bp.completion_state.confirmed:
-            raise ValidationError("Review and confirm your business details before building")
-        if any(r.choice == "pending" for r in bp.recommended_modules):
-            raise ValidationError(
-                "Choose or decline the suggested tools first. You can skip all of them."
-            )
+        if bp.completion_state.ready_at is None and not floor_met(bp, business.business_type):
+            raise ValidationError("Tell Locah what you sell or offer first — then it can build.")
+        # Pressing Build on the summary is the confirmation. Tool choices never
+        # hold the website back: tools not chosen stay off and can be set up later.
+        BusinessInterviewOrchestrator.confirm(bp, business.business_type)
+        bp.confirm_requested = False
         existing = (
             (
                 await session.execute(
@@ -676,9 +727,9 @@ class BusinessInterviewService:
                 if set(ModuleRegistry.get_or_raise(mid).dependencies) <= active
             }
             if not ready:
-                raise ValidationError(
-                    "A selected tool needs another tool you haven't approved. Adjust your choices."
-                )
+                # A chosen tool whose prerequisite isn't chosen stays approved but
+                # off; the website is built regardless and says only what works.
+                break
             for mid in sorted(ready):
                 if mid not in active:
                     await ModuleService.enable_module(

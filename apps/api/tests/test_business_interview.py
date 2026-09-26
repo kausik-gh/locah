@@ -332,7 +332,15 @@ async def test_off_topic_never_becomes_a_fact():
     )
     assert not bp.known_facts and not bp.unconfirmed_facts
     assert "stay with" in bp.messages[-1].text
-    assert len(bp.remaining_questions) == 3
+    # The redirect carries one real question, and the only "save this answer
+    # as" fields offered belong to that question — never to another one (a
+    # delivery area saved as opening hours came from exactly that).
+    from platform_core.interview.discovery import TARGETS
+
+    assert bp.messages[-1].text.count("?") == 1
+    asked = set(bp.asks[-1].targets)
+    assert bp.remaining_questions
+    assert all(any(t.fact == q.field and t.id in asked for t in TARGETS) for q in bp.remaining_questions)
 
 
 @pytest.mark.asyncio

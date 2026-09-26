@@ -302,6 +302,35 @@ class CompletionState(StrictModel):
     completed_at: datetime | None = None
     first_preview_at: datetime | None = None
     generation_job_id: UUID | None = None
+    # The first time there was enough for a strong first version. Once set,
+    # the Build action never disappears again — saying more only adds detail.
+    ready_at: datetime | None = None
+
+
+class CategorySeed(StrictModel):
+    """The kind of business the owner picked when creating it — a seed, not a fact."""
+
+    category_key: str = Field(max_length=40)
+    subcategory_key: str = Field(default="", max_length=60)
+    label: str = Field(default="", max_length=80)
+    source: Literal["owner_picked", "inferred"] = "owner_picked"
+
+
+class AskRecord(StrictModel):
+    """One question Locah asked: which ask, which targets it covered, and when."""
+
+    ask: str = Field(max_length=40)
+    targets: list[str] = Field(default_factory=list, max_length=4)
+    turn: int = 0
+
+
+class OwnerChoices(StrictModel):
+    """Structured corrections from the side panel's "Change". The owner's word wins."""
+
+    actions: list[str] | None = Field(default=None, max_length=8)
+    fulfilment: list[str] | None = Field(default=None, max_length=5)
+    payment: list[str] | None = Field(default=None, max_length=6)
+    price_visibility: Literal["show", "from", "on_request", "hidden"] | None = None
 
 
 class Message(StrictModel):
@@ -380,6 +409,26 @@ class BusinessBlueprint(StrictModel):
     # Owner-approved draft catalogue items created from the interview. Never
     # infer this from website copy or create sellable items automatically.
     applied_setup_offerings: list[str] = Field(default_factory=list, max_length=12)
+    # What kind of business the owner picked at creation (search-first
+    # taxonomy). It seeds questions and recommendations; it is never a fact.
+    category: CategorySeed | None = None
+    # Every question asked, by ask — the question budget and the "never ask
+    # the same thing twice" rule both read this.
+    asks: list[AskRecord] = Field(default_factory=list, max_length=60)
+    # The owner chose "Keep refining" at the checkpoint: more questions are
+    # welcome now, one at a time, most useful first.
+    refining: bool = False
+    # Turn at which "I've got enough for a strong first version" was said.
+    checkpoint_turn: int | None = None
+    # The owner asked to build ("that's all, build it"): show the summary.
+    confirm_requested: bool = False
+    # Turn of the last "so far" summary, so one comes every two or three answers.
+    synthesis_turn: int = 0
+    # Website sections the owner asked for by name ("a contact section").
+    content_wishes: list[str] = Field(default_factory=list, max_length=8)
+    owner_choices: OwnerChoices = Field(default_factory=OwnerChoices)
+    # Whether the owner has already been told the model is reading slowly.
+    degraded_notice: bool = False
 
 
 class ExtractedFact(StrictModel):
@@ -480,8 +529,23 @@ class InterviewCommand(StrictModel):
     action: Literal[
         "turn", "confirm", "choices", "template", "media", "image", "build", "draft", "setup",
         "catalogue",
+        # The checkpoint's "Keep refining first" and the build summary's
+        # "Keep talking": more questions, most useful first.
+        "refine",
+        # "Build my website" pressed in the chat: show the summary to confirm.
+        "review",
+        # A structured "Change" from the side panel: one slot, typed values.
+        "correct",
+        # "Keep recommended": approve every recommended tool the business may use.
+        "keep_tools",
     ]
     text: str = Field(default="", max_length=4000)
+    # For action="correct": which part of the understanding, and its new value.
+    slot: Literal[
+        "offerings", "actions", "fulfilment", "area", "payment", "location", "phone", "hours",
+        "story", "description", "price_visibility",
+    ] | None = None
+    values: list[str] = Field(default_factory=list, max_length=12)
     # Explicit correction also works without an AI provider.
     field: FactKey | None = None
     choices: dict[str, Literal["approved", "declined"]] = Field(default_factory=dict)

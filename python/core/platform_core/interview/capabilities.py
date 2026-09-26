@@ -84,6 +84,16 @@ _THE_PLATFORM = frozenset({
 })
 
 
+# Canonical customer actions (interview.reader) -> the supported intent they evidence.
+ACTION_INTENTS = {
+    "order_online": "orders", "order_whatsapp": "orders", "order_call": "orders",
+    "book_online": "bookings", "book_whatsapp": "bookings", "book_call": "bookings",
+    "book_table": "bookings", "book_trial": "bookings", "book_site_visit": "bookings",
+    "book_consultation": "bookings", "request_quote": "quotes", "enquire": "enquiries",
+    "check_dates": "enquiries", "join": "memberships", "subscribe": "memberships",
+}
+
+
 def canonical_intent(intent: str) -> str:
     """The supported intent an owner's wording means, or the wording itself."""
     key = re.sub(r"[^a-z0-9]+", "_", intent.casefold()).strip("_")
@@ -265,6 +275,11 @@ def recommend(
     if action_text and not re.search(r"\b(no|not|don't|without)\b", action_text, re.I):
         intents |= {name for name, (_, _, pattern) in INTENTS.items()
                     if re.search(pattern, action_text, re.I)}
+    # The typed actions (reader-checked) are evidence too: "order on WhatsApp",
+    # "book a site visit", "ask for a quote".
+    from platform_core.interview.understanding import customer_actions
+
+    intents |= {ACTION_INTENTS[a] for a in customer_actions(bp) if a in ACTION_INTENTS}
     items = _short(facts["offerings"].value) if "offerings" in facts else ""
     units = (state.get("offerings.units").summary if state.get("offerings.units") else "") or ""
     payment = (state.get("commerce.payment").summary if state.get("commerce.payment") else "") or ""
