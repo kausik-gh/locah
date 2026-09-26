@@ -599,6 +599,14 @@ def get_ai_provider() -> AIModelProvider:
     `UnavailableAIProvider` and take their existing deterministic path.
     """
     choice = configured_provider_name()
+    if choice == "replay":
+        # Recorded answers for tests and local acceptance runs only.
+        replay_file = os.getenv("LOCAH_AI_REPLAY_FILE", "").strip()
+        if replay_file and os.path.exists(replay_file):
+            from platform_core.website.replay_provider import ReplayProvider
+
+            return ReplayProvider(replay_file)
+        return UnavailableAIProvider()
     if choice == "gemini":
         api_key = os.getenv("GEMINI_API_KEY", "").strip()
         if api_key:
