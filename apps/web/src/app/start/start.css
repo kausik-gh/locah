@@ -1,0 +1,260 @@
+/* Create Business — "Tell LOCAH what you do."
+   One column, one card, one clear action. The kind-of-business search sits
+   underneath as optional context, never as a gate. Colours come from the
+   LOCAH public system (locah-system.css): paper ground, navy ink, the darker
+   action orange for the single primary button. */
+
+.st {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 1rem + 5vw, 4.5rem) 0 4rem;
+}
+.st-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lc-muted, #67646f);
+  margin: 0 0 1rem !important;
+}
+.locah-public .st-title {
+  font-size: clamp(2.4rem, 1.5rem + 4vw, 4.2rem);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  margin: 0 0 1.1rem;
+  max-width: 13ch;
+}
+.st-title em {
+  font-family: var(--lc-font-serif, Georgia, serif);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--lc-action, #c2461a);
+  letter-spacing: -0.01em;
+}
+.st-lede {
+  font-size: 1.12rem;
+  line-height: 1.6;
+  color: var(--lc-copy, #4a4852);
+  max-width: 34rem;
+  margin: 0 0 2.2rem !important;
+}
+
+.st-card {
+  background: var(--lc-card, #fff);
+  border: 1px solid var(--lc-line, rgba(27, 31, 59, 0.12));
+  border-radius: 22px;
+  box-shadow: 0 1px 2px rgba(27, 31, 59, 0.05), 0 18px 48px -24px rgba(27, 31, 59, 0.22);
+  padding: 1.1rem 1.1rem 0.9rem;
+  transition: border-color var(--lc-ui, 220ms) var(--lc-ease, ease), box-shadow var(--lc-ui, 220ms) var(--lc-ease, ease);
+}
+.st-card:focus-within {
+  border-color: var(--lc-line-strong, rgba(27, 31, 59, 0.24));
+  box-shadow: 0 1px 2px rgba(27, 31, 59, 0.05), 0 22px 56px -22px rgba(27, 31, 59, 0.28);
+}
+.st-input {
+  display: block;
+  width: 100%;
+  min-height: 7.5rem;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 1.08rem;
+  line-height: 1.6;
+  color: var(--lc-ink, #1b1f3b);
+  padding: 0.35rem 0.4rem;
+}
+.st-input::placeholder {
+  color: #9a97a0;
+}
+.st-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--lc-line, rgba(27, 31, 59, 0.12));
+  margin-top: 0.4rem;
+}
+.st-talk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 44px;
+  padding: 0 1.1rem 0 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--lc-line-strong, rgba(27, 31, 59, 0.24));
+  background: var(--lc-paper, #faf7f1);
+  color: var(--lc-ink, #1b1f3b);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background var(--lc-fast, 140ms) ease, transform var(--lc-fast, 140ms) ease;
+}
+.st-talk:hover:not(:disabled) {
+  background: #f1ebe0;
+}
+.st-talk:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.st-talk:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+.st-send span {
+  margin-left: 0.15rem;
+}
+.st-error {
+  margin: 0.9rem 0 0 !important;
+  color: #9f2d1a;
+  font-size: 0.95rem;
+}
+
+.st-kind {
+  margin-top: 2.2rem;
+}
+.st-hint {
+  margin: 0.7rem 0 0 !important;
+  font-size: 0.92rem;
+  color: var(--lc-muted, #67646f);
+}
+.st-foot {
+  margin: 3rem 0 0 !important;
+  font-size: 0.85rem;
+  color: var(--lc-muted, #67646f);
+}
+
+/* ---- Kind-of-business search (shared with the side panel) ------------ */
+
+.ks {
+  position: relative;
+}
+.ks-label,
+.ks-picked__label {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--lc-ink, #1b1f3b);
+  margin-bottom: 0.5rem;
+}
+.ks-label span {
+  font-weight: 450;
+  color: var(--lc-muted, #67646f);
+  margin-left: 0.35rem;
+}
+.ks-field {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 48px;
+  padding: 0 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--lc-line-strong, rgba(27, 31, 59, 0.24));
+  background: var(--lc-card, #fff);
+  color: var(--lc-muted, #67646f);
+}
+.ks-field:focus-within {
+  outline: 3px solid rgba(194, 70, 26, 0.22);
+  outline-offset: 1px;
+}
+.ks-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--lc-ink, #1b1f3b);
+}
+.ks-results {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem;
+  border-radius: 16px;
+  background: var(--lc-card, #fff);
+  border: 1px solid var(--lc-line, rgba(27, 31, 59, 0.12));
+  box-shadow: 0 24px 60px -24px rgba(27, 31, 59, 0.35);
+  max-height: 20rem;
+  overflow-y: auto;
+}
+.ks-results li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 11px;
+  cursor: pointer;
+}
+.ks-results li[aria-selected='true'] {
+  background: var(--lc-paper, #faf7f1);
+}
+.ks-results strong {
+  font-weight: 600;
+  color: var(--lc-ink, #1b1f3b);
+}
+.ks-results span {
+  font-size: 0.85rem;
+  color: var(--lc-muted, #67646f);
+  text-align: right;
+}
+.ks-none {
+  margin: 0.6rem 0 0 !important;
+  font-size: 0.9rem;
+  color: var(--lc-muted, #67646f);
+}
+.ks-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.45rem 0.45rem 1rem;
+  border-radius: 999px;
+  background: var(--lc-tint-indigo, #dee2f3);
+  color: var(--lc-ink, #1b1f3b);
+}
+.ks-chip strong {
+  font-weight: 600;
+}
+.ks-chip span {
+  font-size: 0.85rem;
+  color: #4b5078;
+}
+.ks-chip button {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(27, 31, 59, 0.08);
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.ks-chip button:hover {
+  background: rgba(27, 31, 59, 0.16);
+}
+
+@media (max-width: 640px) {
+  .st-actions {
+    flex-wrap: wrap;
+  }
+  .st-talk,
+  .st-send {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-card,
+  .st-talk {
+    transition: none;
+  }
+}

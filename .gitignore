@@ -54,3 +54,6 @@ out/
 Thumbs.db
 
 infra/supabase/email-templates/dist/
+
+# Local browser-acceptance output (screenshots, transcripts)
+acceptance-out/

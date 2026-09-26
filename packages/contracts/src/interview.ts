@@ -64,19 +64,71 @@ export type CatalogueLine = {
   needs: CatalogueNeed[]
 }
 export type CatalogueEdit = { group: string; item?: string; price?: string; unit?: string; add_items?: string[] }
-/** The side panel: built from state by the server, never a fact dump. */
+/** A canonical customer action ("order_whatsapp") and how it reads ("Order on WhatsApp"). */
+export type InterviewAction = { id: string; label: string }
+/** One typed line of how buying works. */
+export type InterviewBuyingLine = {
+  kind: 'units' | 'delivery' | 'pickup' | 'dine_in' | 'on_site' | 'payment'
+  text: string
+}
+export type InterviewCoverage = 'unknown' | 'partial' | 'sufficient' | 'high_confidence'
+/**
+ * The side panel: typed understanding built by the server, never a fact dump.
+ * Offerings, customer actions, website content, operating facts, place, hours
+ * and tools are separate types and never mixed.
+ */
 export type InterviewUnderstanding = {
-  kind: string
+  business: {
+    /** Empty while the name is still to be asked. */
+    name: string
+    kind: string
+    category: string
+    category_key: string
+    subcategory_key: string
+    /** "Fitness & wellness" — for "Looks like: Fitness & wellness → Gym". */
+    category_group: string
+    /** "inferred": read from what the owner said, shown as "Looks like…". */
+    category_source: '' | 'owner_picked' | 'inferred'
+    place: string
+    name_pending: boolean
+  }
+  /** One sentence of what Locah understood, for the confirmation moment. */
+  read_back: string
+  /** What the side panel's "Change" can choose from. */
+  options: {
+    /** The ones that fit this business; `all_actions` behind "More". */
+    actions: { id: string; label: string }[]
+    all_actions: { id: string; label: string }[]
+    fulfilment: { id: string; label: string }[]
+    payment: { id: string; label: string }[]
+  }
+  /** What is chosen now, as ids (for the editors). */
+  choices: { actions: string[]; fulfilment: string[]; payment: string[]; area: string }
+  /** How the website will feel, once there is enough to say (design family words). */
+  direction?: { family: string; words: string[] } | null
+  offer: {
+    summary: string
+    groups: { name: string; items: string[]; price: string; needs: CatalogueNeed[] }[]
+  }
+  actions: InterviewAction[]
+  buying: InterviewBuyingLine[]
+  contact: { location: string; phone: string; hours: string }
+  /** Parts of the website the owner asked for ("Contact section"). */
+  content: string[]
   traits: string[]
-  customer_steps: string[]
-  items: { label: string; value: string; status: 'confirmed' | 'from_you'; target: string }[]
-  still_worth_knowing: { id: string; label: string; essential: boolean }[]
+  worth_knowing: { id: string; label: string; short: string; importance: 'blocking' | 'high_value' | 'enrichment' | 'optional' }[]
+  tools: { id: string; label: string; why: string; choice: 'pending' | 'approved' | 'declined' }[]
+  /** Quiet progress by dimension — never "question 12 of 19". */
+  progress: { dimension: string; label: string; coverage: InterviewCoverage }[]
   readiness: InterviewReadiness
-  catalogue: CatalogueLine[]
   logo:
     | { state: 'none' }
     | { state: 'ready'; source: 'USER_UPLOAD' | 'AI_GENERATED'; url: string | null }
     | { state: 'requested' | 'unavailable' | 'queued' | 'failed'; reason: string | null }
+  /** One "so far" line, from typed understanding only. */
+  synthesis: string
+  kind: string
+  catalogue: CatalogueLine[]
 }
 export type BusinessBlueprint = {
   schema_version: 1; business_id: string; session_id: string; revision: number
@@ -103,8 +155,10 @@ export type BusinessBlueprint = {
     closest_supported_capabilities: string[]; why_unsupported: string; required_mechanics: string[]; session_reference: string }[]
   remaining_questions: { field: InterviewFactKey; text: string; reason: string }[]
   completion_state: { status: 'collecting' | 'review' | 'ready' | 'built'; sufficient: boolean; confirmed: boolean
-    completed_at: string | null; first_preview_at: string | null; generation_job_id: string | null }
-  messages: { role: 'user' | 'assistant'; text: string; at: string }[]
+    completed_at: string | null; first_preview_at: string | null; generation_job_id: string | null
+    /** First time there was enough for a strong first version. Build never disappears after. */
+    ready_at?: string | null }
+  messages: { role: 'user' | 'assistant'; text: string; at: string; via?: 'text' | 'voice' }[]
   last_turn: { provider: string; model: string; latency_ms: number; input_tokens: number | null
     output_tokens: number | null; cost: number | null; retries: number; fallback_reason: string | null } | null
   applied_requests: string[]
@@ -123,10 +177,23 @@ export type BusinessBlueprint = {
   taxonomy: { groups: CatalogueGroup[] }
   /** Whether the owner agreed to draft visuals for the website. */
   visual_consent: 'unknown' | 'draft_visuals' | 'own_photos' | 'none'
+  /** The kind of business picked at creation — a seed for questions, never a fact. */
+  category?: { category_key: string; subcategory_key: string; label: string; source: 'owner_picked' | 'inferred' } | null
+  asks?: { ask: string; targets: string[]; turn: number }[]
+  /** The owner chose "Keep refining first". */
+  refining?: boolean
+  checkpoint_turn?: number | null
+  /** The owner asked to build: show the summary to confirm. */
+  confirm_requested?: boolean
+  content_wishes?: string[]
+  /** Started by talking, before the business had a name: the name is asked once. */
+  name_pending?: boolean
 }
 export type BusinessInterviewData = {
   blueprint: BusinessBlueprint; classification_seed: string
   understanding: InterviewUnderstanding
+  /** Build is offered as soon as there is something honest to build, and never withdrawn. */
+  build_available?: boolean
   available_modules: InterviewModule[]
   templates: { id: string; name: string; description: string; primary_color: string; accent_color: string
     available: boolean; look: string[]; page_count: number }[]
@@ -136,7 +203,14 @@ export type BusinessInterviewData = {
 export type InterviewCommand = {
   revision: number; request_id: string
   action: 'turn' | 'confirm' | 'choices' | 'template' | 'media' | 'image' | 'build' | 'draft' | 'setup' | 'catalogue'
+    | 'refine' | 'review' | 'correct' | 'keep_tools'
   text?: string; field?: InterviewFactKey; choices?: Record<string, 'approved' | 'declined'>
+  /** For action 'correct': which part of the understanding, and its typed new value. */
+  slot?: 'offerings' | 'actions' | 'fulfilment' | 'area' | 'payment' | 'location' | 'phone' | 'hours'
+    | 'story' | 'description' | 'price_visibility' | 'category' | 'name'
+  values?: string[]
+  /** A spoken turn arrives as its transcript, through this same command. */
+  via?: 'text' | 'voice'
   template_id?: string; media?: InterviewMedia
   /** For action 'image': what to draw. */
   image_role?: 'hero' | 'logo'
@@ -144,4 +218,20 @@ export type InterviewCommand = {
   draft?: DraftCommand
   /** For action 'catalogue': prices, units and varieties the owner typed. */
   catalogue?: CatalogueEdit[]
+}
+
+/** POST /v1/platform/businesses/start — a Business to talk to LOCAH about. */
+export type StartConversationResult = {
+  business: { id: string; slug: string; display_name: string }
+  /** false: an untouched draft this owner had already started was reused. */
+  created: boolean
+}
+/** GET /v1/public/taxonomy/search */
+export type TaxonomyMatch = {
+  category_key: string
+  category_label: string
+  subcategory_key: string
+  subcategory_label: string
+  template: string
+  playbook: string
 }

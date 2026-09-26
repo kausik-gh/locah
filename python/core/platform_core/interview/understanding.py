@@ -373,7 +373,19 @@ def read_back(bp: BusinessBlueprint, stage: str = "first") -> str:
     area = _titled(delivery_area(bp)) if area_titled else delivery_area(bp)
     groups = [g["name"] for g in offer_groups(bp)][:4]
     how = sold_by(bp)
-    offer = _join([_lower_first(g) for g in groups]) if groups else ""
+    # LOCAH's own group labels ("Fish & Seafood") read in lower case inside a
+    # sentence; the owner's names keep their capitals ("Aranya Greens").
+    ours = {g.name for g in bp.taxonomy.groups if g.label_source == "ai_suggestion"}
+    def phrase(name: str) -> str:
+        if name in ours:
+            return name.lower()
+        words = name.split()
+        # "Aranya Greens" is a name; "Strength classes" is not.
+        if len(words) > 1 and all(w[:1].isupper() for w in words if w[:1].isalpha()):
+            return name
+        return _lower_first(name)
+
+    offer = _join([phrase(g) for g in groups]) if groups else ""
     subject = kind or ("a business" if not offer else "")
     if not subject and not offer:
         return ""
@@ -412,7 +424,9 @@ def read_back(bp: BusinessBlueprint, stage: str = "first") -> str:
     if stage == "shape":
         line = f"Okay — I have the shape of it now: {you}."
         return line + (f" The website should mainly help people {goal}." if goal else "")
-    return f"{you[:1].upper()}{you[1:]}." + (f" The website will help people {goal}." if goal else "")
+    if stage == "so_far":
+        return f"So far: {you}."
+    return f"{you[:1].upper()}{you[1:]}."
 
 
 # ------------------------------------------------------------------ the panel
@@ -452,6 +466,10 @@ def understanding(
             "place": location(bp),
             "name_pending": bp.name_pending,
         },
+        # What the side panel's "Change" can set, and what is set now (typed ids).
+        "options": _options(bp),
+        "choices": {"actions": customer_actions(bp), "fulfilment": fulfilment(bp), "payment": payments(bp),
+                    "area": delivery_area(bp)},
         # One sentence: what Locah understood, for the confirmation screen.
         "read_back": read_back(bp, "checkpoint") if bp.language_style == "en" else synthesis(bp),
         "offer": {"summary": offer_summary(bp), "groups": offer_groups(bp)},
@@ -469,6 +487,51 @@ def understanding(
         # Kept for older clients: the same typed facts, flattened.
         "kind": identity_line(bp)[:160],
         "catalogue": _with_photo_needs(bp),
+    }
+
+
+_FULFILMENT_LABELS = (("delivery", "Delivery"), ("pickup", "Pickup"), ("shipping", "Shipping / courier"),
+                      ("dine_in", "Dine-in"), ("on_site", "At the customer's place"))
+
+
+def _relevant_actions(bp: BusinessBlueprint) -> list[str]:
+    """What a customer of THIS business might do — the owner's own first, then
+    the trade's usual ones, then the ways any business can be reached."""
+    from platform_core.interview.playbooks import playbook_for
+
+    pb = playbook_for(bp)
+    wanted = list(customer_actions(bp)) + list(pb.likely_actions)
+    kind = pb.offer_kind
+    if pb.booking_led:
+        wanted += ["book_online", "book_whatsapp", "book_call"]
+    elif kind in {"weighed_product", "product", "menu_item", "digital_product"}:
+        wanted += ["order_whatsapp", "order_online", "order_call"]
+    elif kind == "property_project":
+        wanted += ["book_site_visit", "enquire", "request_quote"]
+    elif kind in {"portfolio_item", "package", "service"}:
+        wanted += ["request_quote", "check_dates", "enquire"]
+    elif kind in {"plan", "class"}:
+        wanted += ["book_trial", "join"]
+    elif kind in {"room_type", "rental_resource", "vehicle"}:
+        wanted += ["check_dates", "book_online", "book_whatsapp"]
+    elif kind == "cause":
+        wanted += ["donate", "join"]
+    wanted += ["call", "whatsapp", "visit", "enquire"]
+    out: list[str] = []
+    for action in wanted:
+        if action in ACTION_LABELS and action not in out:
+            out.append(action)
+    return out[:9]
+
+
+def _options(bp: BusinessBlueprint) -> dict[str, list[dict[str, str]]]:
+    from platform_core.interview.corrections import PAYMENTS
+
+    return {
+        "actions": [{"id": k, "label": ACTION_LABELS[k]} for k in _relevant_actions(bp)],
+        "all_actions": [{"id": k, "label": v} for k, v in ACTION_LABELS.items()],
+        "fulfilment": [{"id": k, "label": v} for k, v in _FULFILMENT_LABELS],
+        "payment": [{"id": p, "label": p} for p in PAYMENTS],
     }
 
 

@@ -478,8 +478,12 @@ class BusinessInterviewOrchestrator:
 
         opening_answer = bool(bp.asks) and bp.asks[-1].ask == "opening"
         if opening_answer and lang == "en" and not off_topic and understood:
-            # Understand first: say back what the business is before asking anything.
-            ack = read_back(bp, "first") or ack
+            # Understand first: say back what the business is before asking
+            # anything. It is the first summary, so the next comes later.
+            said_back = read_back(bp, "first")
+            if said_back:
+                ack = said_back
+                bp.synthesis_turn = bp.turn_count + 1
         if kind_note and not opening_answer:
             ack = kind_note
         elif named_now and answering_name:
@@ -538,7 +542,10 @@ class BusinessInterviewOrchestrator:
                     next_item = planner.Ranked(planner.ASKS_BY_ID["offer"], 0.0, "blocking")
                 so_far = ""
                 if understood and bp.turn_count + 1 - bp.synthesis_turn >= 2 and len(bp.asks) >= 2:
-                    so_far = planner.so_far_line(bp, lang, first_shape=bp.synthesis_turn == 0)
+                    # The first mid-way summary is "the shape of it"; after that, short.
+                    shaped = any(a.ask == "shape" for a in bp.asks) or "the shape of it" in " ".join(
+                        m.text for m in bp.messages if m.role == "assistant")
+                    so_far = planner.so_far_line(bp, lang, first_shape=not shaped)
                     if so_far:
                         bp.synthesis_turn = bp.turn_count + 1
                 declined_only = reading.decline and all(a.status == "declined" for a in ti.answered)

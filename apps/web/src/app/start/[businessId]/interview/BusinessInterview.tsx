@@ -1,14 +1,9 @@
 'use client'
 
-import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import type {
-  BusinessInterviewData,
-  InterviewCommand,
-  InterviewFactKey,
-  InterviewModule,
-} from '@platform/contracts'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import type { BusinessInterviewData, InterviewCommand } from '@platform/contracts'
+import { ClipIcon, MicIcon, SendIcon, StopIcon } from '@/components/onboarding/icons'
 import {
   finishInterviewUpload,
   interviewAction,
@@ -16,158 +11,63 @@ import {
   startInterviewUpload,
 } from './actions'
 import { ROLE_LABELS, ROLE_ORDER, roleFromText, type MediaRole } from './attachment'
-import { UnderstandingPanel } from './UnderstandingPanel'
-import { VoicePanel } from './voice/VoicePanel'
+import { BuildOverlay, ConfirmSheet } from './ConfirmSheet'
+import { Progress, UnderstandingPanel, type Correct } from './UnderstandingPanel'
+import { useVoice } from './voice/useVoice'
 
-const LABELS: Record<InterviewFactKey, string> = {
-  description: 'Your business',
-  classification: 'Kind of business',
-  operating_model: 'How you work',
-  locations: 'Where to find you',
-  offerings: 'What you sell or do',
-  customer_actions: 'What visitors should do',
-  operational_characteristics: 'How it works',
-  brand: 'Your brand',
-  tone: 'Your voice',
-  colours: 'Your colours',
-  opening_hours: 'Opening hours',
-  phone: 'Phone',
-  email: 'Email',
-  website_priorities: 'What matters most',
-}
 type Change = Omit<InterviewCommand, 'revision' | 'request_id'>
 /** An image that is uploaded and waiting only for the owner to say what it is. */
 type Staged = { assetId: string; filename: string }
 
-/** One tool the owner can switch on. Choosing is always the owner's. */
-function ToolCard({
-  module,
-  busy,
-  compact = false,
-  labels,
-  onChoose,
-}: {
-  module: InterviewModule
-  busy: boolean
-  compact?: boolean
-  /** Owner-facing names by module id, so a dependency never shows as an id. */
-  labels: Record<string, string>
-  onChoose: (choice: 'approved' | 'declined') => void
-}) {
-  const extra = module.dependencies
-    .filter((id) => !id.startsWith('core-'))
-    .map((id) => labels[id] ?? id.replaceAll('-', ' '))
-  const said = module.evidence?.find((e) => e.kind === 'owner_said')
-  return (
-    <article className={`bi-tool${compact ? ' bi-tool--compact' : ''}`}>
-      <h4>{module.label}</h4>
-      {module.strength && !compact ? (
-        <span className="bi-tag bi-tag--tool">
-          {module.strength === 'dependency'
-            ? `Needed for ${module.needed_by?.join(', ') || 'another tool'}`
-            : module.strength === 'useful'
-              ? 'Useful'
-              : 'Strong fit'}
-        </span>
-      ) : null}
-      <p className={module.reason.startsWith('Because you said') ? 'bi-tool__why' : undefined}>
-        {module.reason}
-      </p>
-      {said && !compact && !module.reason.includes(said.text) ? (
-        <p className="bi-evidence">You said: “{said.text}”</p>
-      ) : null}
-      {module.configuration_needed && !compact ? (
-        <p className="ob-help">To set up: {module.configuration_needed}</p>
-      ) : null}
-      {!compact ? <p className="ob-help">{module.availability_reason}</p> : null}
-      {extra.length > 0 && !compact ? (
-        <p className="ob-help">May also need: {extra.join(', ')}.</p>
-      ) : null}
-      <div className="bi-choices">
-        <button
-          className="lc-btn"
-          disabled={busy}
-          aria-pressed={module.choice === 'approved'}
-          onClick={() => onChoose('approved')}
-        >
-          {module.choice === 'approved' ? '✓ Using this' : 'Use this'}
-        </button>
-        <button
-          className="lc-btn"
-          disabled={busy}
-          aria-pressed={module.choice === 'declined'}
-          onClick={() => onChoose('declined')}
-        >
-          Not now
-        </button>
-      </div>
-    </article>
-  )
-}
+const VOICE_LABEL = {
+  off: 'Talk to LOCAH',
+  connecting: 'Connecting…',
+  listening: 'Listening…',
+  understanding: 'Understanding…',
+  speaking: 'LOCAH is speaking…',
+  failed: 'Voice stopped',
+} as const
 
+/**
+ * Talk to LOCAH — the one conversation behind Create Business.
+ *
+ * Typing and talking post the same command and read back the same state, so
+ * the owner can talk, type, talk again and attach a photo without losing
+ * anything. Build is offered as soon as there is something honest to build
+ * and never withdrawn; pressing it shows the understanding once, whole, then
+ * builds. The side panel is typed understanding with structured corrections.
+ */
 export function BusinessInterview({ initial }: { initial: BusinessInterviewData }) {
   const [data, setData] = useState(initial)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [field, setField] = useState<InterviewFactKey | ''>('')
-  const [lastAnswer, setLastAnswer] = useState('')
-  // The owner's own words, shown the instant they send them. Replaced by server
-  // state on the next response — never a fabricated assistant reply.
   const [sending, setSending] = useState('')
   const [staged, setStaged] = useState<Staged | null>(null)
-  const [mode, setMode] = useState<'chat' | 'voice'>('chat')
   const [uploading, setUploading] = useState(false)
-  const input = useRef<HTMLTextAreaElement>(null)
-  const busyRef = useRef(false)
-  // Spoken turns can overlap: the owner keeps talking while the last sentence
-  // is still being saved. They run one after another, and each reads the
-  // revision the previous one produced — not the one from the last render.
+  const [confirming, setConfirming] = useState(false)
+  const [sheet, setSheet] = useState(false) // mobile "What I understand"
+  const [build, setBuild] = useState<{ stage: number; error: string } | null>(null)
   const latest = useRef(initial)
+  const busyRef = useRef(false)
   const voiceChain = useRef<Promise<unknown>>(Promise.resolve())
   const stream = useRef<HTMLDivElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const params = useSearchParams()
   const bp = data.blueprint
+  const u = data.understanding
   latest.current = data
-  const pendingChoices = bp.recommended_modules.some((m) => m.choice === 'pending')
-  const logoState = data.understanding.logo.state
-  const requested = (role: 'hero' | 'logo') =>
-    bp.media_generation_requests.some((r) => r.role === role)
-  // Recommended tools are shown once, with the owner's own words as the reason;
-  // everything else they could use is listed after, grouped by who it serves.
-  const recommendedIds = new Set(bp.recommended_modules.map((m) => m.module_id))
-  const others = data.available_modules.filter((m) => !recommendedIds.has(m.module_id))
-  const forCustomers = others.filter((m) => (m.group ?? 'customer') === 'customer')
-  const forRunning = others.filter((m) => m.group === 'operations')
-  const toolLabels = Object.fromEntries(
-    [...bp.recommended_modules, ...data.available_modules].map((m) => [m.module_id, m.label])
-  )
-  const choose = (moduleId: string, choice: 'approved' | 'declined') =>
-    void send({ action: 'choices', choices: { [moduleId]: choice } })
+  const buildable = Boolean(data.build_available)
+  const built = bp.completion_state.status === 'built'
 
-  useEffect(() => {
-    stream.current?.scrollTo({ top: stream.current.scrollHeight, behavior: 'smooth' })
-  }, [bp.messages.length, sending])
+  const apply = useCallback((next: BusinessInterviewData) => {
+    latest.current = next
+    setData(next)
+  }, [])
 
-  // A logo is drawn in the background while the owner carries on. Look again
-  // every few seconds until it arrives or fails — never for more than 3 minutes.
-  useEffect(() => {
-    if (logoState !== 'queued' && logoState !== 'requested') return
-    let tries = 0
-    const timer = window.setInterval(async () => {
-      tries += 1
-      if (tries > 36) window.clearInterval(timer)
-      if (busyRef.current) return
-      const res = await reloadInterview(bp.business_id)
-      if (!res.ok || busyRef.current) return
-      if (res.data.blueprint.revision < latest.current.blueprint.revision) return
-      latest.current = res.data
-      setData(res.data)
-    }, 5000)
-    return () => window.clearInterval(timer)
-  }, [logoState, bp.business_id])
-
-  async function send(change: Change) {
+  async function send(change: Change): Promise<boolean> {
     setBusy(true)
     busyRef.current = true
     setError('')
@@ -181,22 +81,16 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
       if (!res.ok) {
         setError(res.error)
         if (res.stale) {
-          const latest = await reloadInterview(bp.business_id)
-          if (latest.ok) setData(latest.data)
+          const again = await reloadInterview(bp.business_id)
+          if (again.ok) apply(again.data)
         }
         return false
       }
-      latest.current = res.data
-      setData(res.data)
-      if (change.action === 'turn') {
-        setLastAnswer(change.text || '')
-        setText('')
-        setField('')
-      }
-      if (change.action === 'build') router.push(`/start/${bp.business_id}/website`)
+      apply(res.data)
+      if (change.action === 'turn') setText('')
       return true
     } catch {
-      setError('Could not save that change. Your previous answers are safe. Please retry.')
+      setError('That didn’t save. Your earlier answers are safe — please try again.')
       return false
     } finally {
       setBusy(false)
@@ -206,76 +100,93 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
   }
 
   /**
-   * A spoken turn, handled by exactly the same command a typed one uses.
-   *
-   * Locah's reply is whatever the interview decided — the realtime model is
-   * told what to say, it does not choose. That is what keeps one Blueprint
-   * authoritative across both ways of talking to it.
+   * A spoken turn: exactly the command a typed one uses. What LOCAH says next
+   * is whatever the interview decided — the voice model is told what to say.
    */
-  function speakTurn(transcript: string): Promise<{ say: string; sufficient: boolean }> {
-    const run = async () => {
-      const current = latest.current.blueprint
-      const res = await interviewAction(current.business_id, {
-        action: 'turn',
-        text: transcript,
-        revision: current.revision,
-        request_id: crypto.randomUUID(),
-      })
-      if (!res.ok) {
-        if (res.stale) {
-          const reloaded = await reloadInterview(current.business_id)
-          if (reloaded.ok) {
-            latest.current = reloaded.data
-            setData(reloaded.data)
+  const speakTurn = useCallback(
+    (transcript: string): Promise<{ say: string; sufficient: boolean }> => {
+      const run = async () => {
+        const current = latest.current.blueprint
+        const res = await interviewAction(current.business_id, {
+          action: 'turn',
+          text: transcript,
+          via: 'voice',
+          revision: current.revision,
+          request_id: crypto.randomUUID(),
+        })
+        if (!res.ok) {
+          if (res.stale) {
+            const again = await reloadInterview(current.business_id)
+            if (again.ok) apply(again.data)
           }
+          return { say: 'I couldn’t save that just now — could you say it once more?', sufficient: false }
         }
+        apply(res.data)
+        const reply = res.data.blueprint.messages.filter((m) => m.role === 'assistant').slice(-1)[0]?.text
         return {
-          say: 'I could not save that just now — could you say it once more?',
-          sufficient: false,
+          say: reply || 'Tell me a little more about your business.',
+          sufficient: Boolean(res.data.blueprint.completion_state.ready_at),
         }
       }
-      latest.current = res.data
-      setData(res.data)
-      const next = res.data.blueprint
-      const reply = next.messages.filter((m) => m.role === 'assistant').slice(-1)[0]?.text
-      return {
-        say: reply || 'Tell me a little more about your business.',
-        sufficient: next.completion_state.sufficient,
-      }
+      const turn = voiceChain.current.then(run, run)
+      voiceChain.current = turn.catch(() => undefined)
+      return turn
+    },
+    [apply]
+  )
+
+  const voice = useVoice({ businessId: bp.business_id, onTurn: speakTurn })
+
+  // "Talk to LOCAH" on the first screen lands here ready to listen.
+  const autoTalk = useRef(false)
+  useEffect(() => {
+    if (autoTalk.current) return
+    autoTalk.current = true
+    if (params.get('talk') === '1' && data.voice.available) void voice.start()
+    const retry = params.get('retry')
+    if (retry) setText(retry)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // The owner said "build it": show them what will be built.
+  useEffect(() => {
+    if (bp.confirm_requested && buildable && !built) setConfirming(true)
+  }, [bp.confirm_requested, buildable, built])
+
+  useEffect(() => {
+    stream.current?.scrollTo({ top: stream.current.scrollHeight, behavior: 'smooth' })
+  }, [bp.messages.length, sending, voice.heard, voice.phase])
+
+  const correct: Correct = (slot, values, fieldText) =>
+    send({ action: 'correct', slot, values, ...(fieldText ? { text: fieldText } : {}) })
+
+  async function startBuild() {
+    setConfirming(false)
+    setBuild({ stage: 1, error: '' })
+    const ok = await send({ action: 'build' })
+    if (!ok) {
+      setBuild({ stage: 1, error: 'Your website wasn’t built. Nothing was lost — try again.' })
+      return
     }
-    const turn = voiceChain.current.then(run, run)
-    voiceChain.current = turn.catch(() => undefined)
-    return turn
+    setBuild({ stage: 3, error: '' })
+    router.push(`/start/${bp.business_id}/website`)
   }
 
-  /** Upload now so the transfer overlaps with typing; ask what it is only if the words do not say. */
+  /** Upload now so it overlaps with typing; ask what it is only if the words don't say. */
   async function attach(file: File) {
     setUploading(true)
     setError('')
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error('Choose an image smaller than 10 MB.')
       const guess = roleFromText(text)
-      const start = await startInterviewUpload(
-        bp.business_id,
-        guess ?? 'business',
-        file.type,
-        file.size,
-        file.name
-      )
+      const start = await startInterviewUpload(bp.business_id, guess ?? 'business', file.type, file.size, file.name)
       if (!start.ok) throw new Error(start.error)
-      // Supabase's signed-upload endpoint expects the same multipart body its
-      // `uploadToSignedUrl` client emits for a browser File. A raw File plus a
-      // manually-set Content-Type passes preflight but the upload itself is
-      // rejected by the hosted storage service.
-      const uploadBody = new FormData()
-      uploadBody.append('cacheControl', '3600')
-      uploadBody.append('', file)
-      const uploaded = await fetch(start.uploadUrl, {
-        method: 'PUT',
-        headers: { 'x-upsert': 'false' },
-        body: uploadBody,
-      })
-      if (!uploaded.ok) throw new Error('The image did not upload. Please try again.')
+      // Supabase's signed upload expects the multipart body its own client sends.
+      const body = new FormData()
+      body.append('cacheControl', '3600')
+      body.append('', file)
+      const uploaded = await fetch(start.uploadUrl, { method: 'PUT', headers: { 'x-upsert': 'false' }, body })
+      if (!uploaded.ok) throw new Error('The image didn’t upload. Please try again.')
       const complete = await finishInterviewUpload(bp.business_id, start.assetId)
       if (!complete.ok) throw new Error(complete.error)
       if (guess) await saveAttachment(start.assetId, file.name, guess)
@@ -288,390 +199,268 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
   }
 
   async function saveAttachment(assetId: string, filename: string, role: MediaRole) {
-    const ok = await send({
-      action: 'media',
-      media: { asset_id: assetId, role, label: filename, source: 'USER_UPLOAD' },
-    })
+    const ok = await send({ action: 'media', media: { asset_id: assetId, role, label: filename, source: 'USER_UPLOAD' } })
     if (ok) setStaged(null)
   }
 
+  const submit = () => {
+    if (text.trim() && !busy) void send({ action: 'turn', text: text.trim() })
+  }
   const waiting = busy && Boolean(sending)
+  const lastAssistant = bp.messages.map((m) => m.role).lastIndexOf('assistant')
+  const checkpointAt = bp.checkpoint_turn != null ? bp.checkpoint_turn * 2 : -1
+  const showCheckpoint = buildable && !built && checkpointAt === lastAssistant && !bp.refining && !waiting
+  const title = u.business.name || 'Your business'
+  const kindLine = [u.business.category, u.business.place].filter(Boolean).join(' · ')
 
   return (
-    <div className="bi">
-      <header className="bi-heading">
-        <div>
-          <p className="bi-eyebrow">A LITTLE CONVERSATION. YOUR NEXT CHAPTER.</p>
-          <h1>{bp.identity.display_name?.value}</h1>
-          <p>Tell us what makes your business yours. You can leave and come back any time.</p>
+    <div className="ti">
+      <header className="ti-bar">
+        <div className="ti-bar__who">
+          <p className="ti-bar__name">{title}</p>
+          {kindLine ? <p className="ti-bar__kind">{kindLine}</p> : null}
         </div>
-        <span className="bi-saved" role="status">
-          {busy ? 'Saving…' : 'Progress saved'}
-        </span>
+        <Progress data={data} compact />
+        <button type="button" className="ti-bar__panel" onClick={() => setSheet(true)}>
+          What I understand
+        </button>
+        {buildable && !built ? (
+          <button type="button" className="lc-btn lc-btn--primary ti-bar__build" disabled={busy} onClick={() => setConfirming(true)}>
+            Build my website
+          </button>
+        ) : built ? (
+          <a className="lc-btn lc-btn--primary ti-bar__build" href={`/start/${bp.business_id}/website`}>
+            Open your website
+          </a>
+        ) : null}
       </header>
-      <div className="bi-layout">
-        <section className="bi-conversation" aria-label="Business interview">
-          <div className="bi-modes" role="tablist" aria-label="How to answer">
-            <button
-              role="tab"
-              type="button"
-              aria-selected={mode === 'chat'}
-              onClick={() => setMode('chat')}
-            >
-              Chat with Locah
-            </button>
-            <button
-              role="tab"
-              type="button"
-              aria-selected={mode === 'voice'}
-              disabled={!data.voice.available}
-              title={data.voice.reason}
-              onClick={() => setMode('voice')}
-            >
-              {data.voice.available ? 'Talk to Locah' : 'Talk to Locah · not available yet'}
-            </button>
-          </div>
-          {mode === 'voice' ? (
-            <VoicePanel
-              businessId={bp.business_id}
-              data={data}
-              onTurn={speakTurn}
-              onSwitchToChat={() => setMode('chat')}
-            />
-          ) : null}
-          {mode === 'chat' ? (
-            <>
-              <div
-                className="bi-messages"
-                role="log"
-                aria-live="polite"
-                aria-relevant="additions"
-                ref={stream}
-              >
-                {bp.messages.map((message, i) => (
-                  <div
-                    className={`bi-message bi-message--${message.role}`}
-                    key={`${message.at}-${i}`}
-                  >
-                    <span>{message.role === 'assistant' ? 'LOCAH' : 'YOU'}</span>
-                    <p>{message.text}</p>
-                  </div>
-                ))}
-                {waiting && (
-                  <>
-                    <div className="bi-message bi-message--user bi-message--pending">
-                      <span>YOU</span>
-                      <p>{sending}</p>
-                    </div>
-                    <div
-                      className="bi-message bi-message--assistant bi-thinking"
-                      aria-label="Locah is reading your answer"
-                    >
-                      <span>LOCAH</span>
-                      <p>
-                        <i />
-                        <i />
-                        <i />
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-              {error && (
-                <p className="ob-error" role="alert">
-                  {error}
-                </p>
-              )}
 
-              {staged && (
-                <div className="bi-staged" role="group" aria-label="What is this image?">
-                  <p>
-                    <strong>{staged.filename}</strong> is ready. What is it?
-                  </p>
-                  <div className="bi-choices">
-                    {ROLE_ORDER.map((role) => (
-                      <button
-                        key={role}
-                        className="lc-btn"
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void saveAttachment(staged.assetId, staged.filename, role)}
-                      >
-                        {ROLE_LABELS[role]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <form
-                className="bi-compose"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  void send({ action: 'turn', text, ...(field ? { field } : {}) })
-                }}
-              >
-                <label htmlFor="interview-message">
-                  {field ? `Update: ${LABELS[field]}` : 'Your reply'}
-                </label>
-                <textarea
-                  ref={input}
-                  id="interview-message"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && text.trim()) {
-                      e.preventDefault()
-                      void send({ action: 'turn', text, ...(field ? { field } : {}) })
-                    }
-                  }}
-                  maxLength={4000}
-                  required
-                  rows={3}
-                  disabled={busy}
-                  placeholder="In your own words… you can attach a photo or logo too."
-                />
-                <div className="bi-compose-actions">
-                  <button className="lc-btn lc-btn--primary" disabled={busy || !text.trim()}>
-                    {busy ? 'Saving…' : 'Send reply →'}
-                  </button>
-                  <label className="bi-clip">
-                    {uploading ? 'Uploading…' : '📎 Attach image'}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
-                      disabled={busy || uploading}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) void attach(file)
-                        e.target.value = ''
-                      }}
-                    />
-                  </label>
-                  {field && (
-                    <button className="lc-btn" type="button" onClick={() => setField('')}>
-                      Cancel correction
+      <div className="ti-layout">
+        <section className="ti-chat" aria-label="Conversation with LOCAH">
+          <div className="ti-log" role="log" aria-live="polite" aria-relevant="additions" ref={stream}>
+            {bp.messages.map((m, i) => (
+              <div key={`${m.at}-${i}`} className={`ti-msg ti-msg--${m.role}`}>
+                {m.role === 'assistant' ? (
+                  <span className="ti-msg__who" aria-hidden="true">
+                    <i />
+                    LOCAH
+                  </span>
+                ) : null}
+                <p>{m.text}</p>
+                {m.role === 'user' && m.via === 'voice' ? (
+                  <span className="ti-msg__via">
+                    <MicIcon size={12} /> spoken
+                  </span>
+                ) : null}
+                {i === checkpointAt && showCheckpoint ? (
+                  <div className="ti-checkpoint">
+                    <button type="button" className="lc-btn lc-btn--primary" disabled={busy} onClick={() => setConfirming(true)}>
+                      Build my website
                     </button>
-                  )}
-                </div>
-                <p className="ob-help bi-hint">
-                  Say what a picture is as you attach it — “this is our logo”, “photos of our shop”
-                  — and it goes to the right place.
-                </p>
-              </form>
-            </>
-          ) : null}
-
-          {lastAnswer && bp.last_turn?.fallback_reason && bp.remaining_questions[0] && (
-            <div className="bi-fallback">
-              <p>
-                AI couldn’t organise your answer. You can save it directly as “
-                {LABELS[bp.remaining_questions[0].field]}”, then review it.
-              </p>
-              <button
-                className="lc-btn"
-                disabled={busy}
-                onClick={() =>
-                  void send({
-                    action: 'turn',
-                    field: bp.remaining_questions[0].field,
-                    text: lastAnswer,
-                  })
-                }
-              >
-                Save as answer
-              </button>
-            </div>
-          )}
-
-          {bp.media_assets.length > 0 && (
-            <ul className="bi-attached">
-              {bp.media_assets.map((asset) => (
-                <li key={asset.asset_id}>
-                  ✓ {asset.label || 'Image'} — {ROLE_LABELS[asset.role]}
-                </li>
-              ))}
-            </ul>
-          )}
-          {data.image_generation.available && bp.completion_state.status !== 'built' && (
-            <details className="bi-artwork">
-              <summary>No logo or cover photo? Locah can draw them · optional</summary>
-              <p className="ob-help">{data.image_generation.reason}</p>
-              <div className="bi-choices">
-                {!bp.media_assets.some((m) => m.role === 'logo') ? (
-                  <button
-                    className="lc-btn"
-                    disabled={busy || requested('logo')}
-                    onClick={() => void send({ action: 'image', image_role: 'logo' })}
-                  >
-                    {requested('logo') ? '✓ Logo will be drawn' : 'Make me a simple logo'}
-                  </button>
-                ) : null}
-                {!bp.media_assets.some((m) => m.role === 'hero') ? (
-                  <button
-                    className="lc-btn"
-                    disabled={busy || requested('hero')}
-                    onClick={() => void send({ action: 'image', image_role: 'hero' })}
-                  >
-                    {requested('hero') ? '✓ Cover artwork will be drawn' : 'Draw cover artwork'}
-                  </button>
+                    <button type="button" className="lc-btn lc-btn--ghost" disabled={busy} onClick={() => void send({ action: 'refine' })}>
+                      Keep refining
+                    </button>
+                  </div>
                 ) : null}
               </div>
-              <p className="ob-help">
-                Drawn after you build, so it never slows your first preview.
+            ))}
+            {waiting ? (
+              <>
+                <div className="ti-msg ti-msg--user ti-msg--pending">
+                  <p>{sending}</p>
+                </div>
+                <div className="ti-msg ti-msg--assistant ti-thinking" aria-label="LOCAH is reading your answer">
+                  <span className="ti-msg__who" aria-hidden="true">
+                    <i />
+                    LOCAH
+                  </span>
+                  <p>
+                    <b />
+                    <b />
+                    <b />
+                  </p>
+                </div>
+              </>
+            ) : null}
+            {voice.live && voice.heard && voice.phase === 'listening' ? (
+              <div className="ti-msg ti-msg--user ti-msg--pending">
+                <p>{voice.heard}</p>
+              </div>
+            ) : null}
+          </div>
+
+          {error ? (
+            <p className="ti-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          {staged ? (
+            <div className="ti-staged" role="group" aria-label="What is this image?">
+              <p>
+                <strong>{staged.filename}</strong> is ready. What is it?
               </p>
-            </details>
+              <div>
+                {ROLE_ORDER.map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    className="lc-btn lc-btn--sm lc-btn--ghost"
+                    disabled={busy}
+                    onClick={() => void saveAttachment(staged.assetId, staged.filename, role)}
+                  >
+                    {ROLE_LABELS[role]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {buildable && !built ? (
+            <button type="button" className="ti-float-build lc-btn lc-btn--primary" disabled={busy} onClick={() => setConfirming(true)}>
+              Build my website
+            </button>
+          ) : null}
+
+          {voice.live || voice.phase === 'failed' ? (
+            <div className="ti-voice" data-phase={voice.phase}>
+              <span className="ti-voice__orb" aria-hidden="true" />
+              <div className="ti-voice__text">
+                <p className="ti-voice__state" role="status">
+                  {VOICE_LABEL[voice.phase]}
+                </p>
+                <p className="ti-voice__line">
+                  {voice.phase === 'failed'
+                    ? voice.error || 'Voice stopped. Nothing is lost — try again or type.'
+                    : voice.phase === 'speaking'
+                      ? voice.said
+                      : voice.heard || 'Say it the way you’d tell a friend.'}
+                </p>
+              </div>
+              <div className="ti-voice__actions">
+                {voice.phase === 'failed' ? (
+                  <button type="button" className="lc-btn lc-btn--sm" onClick={() => void voice.start()}>
+                    Retry
+                  </button>
+                ) : (
+                  <button type="button" className="ti-voice__stop" onClick={voice.stop} aria-label="Stop talking">
+                    <StopIcon />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="ti-link"
+                  onClick={() => {
+                    voice.stop()
+                    input.current?.focus()
+                  }}
+                >
+                  Type instead
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form
+              className="ti-compose"
+              onSubmit={(e) => {
+                e.preventDefault()
+                submit()
+              }}
+            >
+              <label className="lc-sr" htmlFor="ti-input">
+                Your reply
+              </label>
+              <textarea
+                id="ti-input"
+                ref={input}
+                value={text}
+                rows={1}
+                maxLength={4000}
+                disabled={busy}
+                placeholder={built ? 'Tell LOCAH what to change…' : 'Reply in your own words…'}
+                onChange={(e) => {
+                  setText(e.target.value)
+                  e.target.style.height = 'auto'
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    submit()
+                  }
+                }}
+              />
+              <div className="ti-compose__tools">
+                <label className="ti-icon" title="Attach a photo or logo">
+                  <ClipIcon />
+                  <span className="lc-sr">{uploading ? 'Uploading…' : 'Attach a photo or logo'}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    disabled={busy || uploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) void attach(file)
+                      e.target.value = ''
+                    }}
+                  />
+                </label>
+                {data.voice.available ? (
+                  <button type="button" className="ti-icon ti-icon--mic" disabled={busy} onClick={() => void voice.start()}>
+                    <MicIcon />
+                    <span>Talk</span>
+                  </button>
+                ) : null}
+                <button type="submit" className="ti-send" disabled={busy || !text.trim()} aria-label="Send">
+                  <SendIcon />
+                </button>
+              </div>
+            </form>
           )}
         </section>
 
-        <UnderstandingPanel
+        <aside className={`ti-panel${sheet ? ' ti-panel--open' : ''}`} aria-label="What LOCAH understands" ref={panel}>
+          <div className="ti-panel__grab">
+            <span>What I understand</span>
+            <button type="button" onClick={() => setSheet(false)} aria-label="Close">
+              ×
+            </button>
+          </div>
+          <UnderstandingPanel
+            data={data}
+            busy={busy}
+            thinking={waiting}
+            onCorrect={correct}
+            onAsk={(prefill) => {
+              setSheet(false)
+              setText(prefill)
+              input.current?.focus()
+            }}
+          />
+        </aside>
+        {sheet ? <div className="ti-sheet-scrim" onClick={() => setSheet(false)} aria-hidden="true" /> : null}
+      </div>
+
+      {confirming ? (
+        <ConfirmSheet
           data={data}
           busy={busy}
-          thinking={waiting}
-          onDraft={(draft) => send({ action: 'draft', draft })}
-          onConfirm={() => void send({ action: 'confirm' })}
-          onCorrect={(target, label, value, key) => {
-            setMode('chat')
-            if (key) {
-              setField(key)
-              setText(value)
-            } else {
-              setField('')
-              setText(`About ${label.toLowerCase()}: `)
-            }
-            input.current?.focus()
+          onBuild={() => void startBuild()}
+          onChange={() => {
+            setConfirming(false)
+            setSheet(true)
+            panel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
           }}
+          onKeepTalking={() => {
+            setConfirming(false)
+            void send({ action: 'refine' })
+          }}
+          onKeepTools={() => send({ action: 'keep_tools' })}
+          onName={(name) => correct('name', [], name)}
+          onClose={() => setConfirming(false)}
         />
-      </div>
-      {bp.completion_state.sufficient && (
-        <section className="bi-finish" aria-label="Review and build">
-          <h2>A few choices. Then it’s yours.</h2>
-          {bp.unsupported_requests.map((gap) => (
-            <p className="bi-gap" key={gap.normalized_intent}>
-              <strong>You asked: {gap.original_request}</strong>
-              <br />
-              {gap.why_unsupported}
-            </p>
-          ))}
-          {bp.recommended_modules.length > 0 && (
-            <section aria-label="Recommended for you">
-              <h3>Recommended from what you told us</h3>
-              <p>
-                Each one says why. Nothing turns on unless you choose it, and you can change your
-                mind later.
-              </p>
-              <div className="bi-tool-grid">
-                {bp.recommended_modules.map((module) => (
-                  <ToolCard
-                    key={module.module_id}
-                    module={module}
-                    busy={busy}
-                    labels={toolLabels}
-                    onChoose={(choice) => choose(module.module_id, choice)}
-                  />
-                ))}
-              </div>
-              {pendingChoices ? (
-                <button
-                  className="bi-text-button"
-                  disabled={busy}
-                  onClick={() =>
-                    void send({
-                      action: 'choices',
-                      choices: Object.fromEntries(
-                        bp.recommended_modules
-                          .filter((m) => m.choice === 'pending')
-                          .map((m) => [m.module_id, 'declined'])
-                      ),
-                    })
-                  }
-                >
-                  Skip these for now
-                </button>
-              ) : null}
-            </section>
-          )}
-          {others.length > 0 && (
-            <details className="bi-more-tools">
-              <summary>
-                Also available for your business · {others.length}{' '}
-                {others.length === 1 ? 'tool' : 'tools'}
-              </summary>
-              <p className="ob-help">
-                Included in your access, switched off until you choose them.
-              </p>
-              {[
-                { title: 'For your customers', rows: forCustomers },
-                { title: 'For running your business', rows: forRunning },
-              ]
-                .filter((g) => g.rows.length > 0)
-                .map((g) => (
-                  <section key={g.title} aria-label={g.title}>
-                    <h4 className="bi-tool-group">{g.title}</h4>
-                    <div className="bi-tool-grid">
-                      {g.rows.map((module) => (
-                        <ToolCard
-                          key={module.module_id}
-                          module={module}
-                          busy={busy}
-                          compact
-                          labels={toolLabels}
-                          onChoose={(choice) => choose(module.module_id, choice)}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                ))}
-            </details>
-          )}
-          <details>
-            <summary>Choose your starting design · optional</summary>
-            <div className="bi-template-grid">
-              {data.templates
-                .filter((t) => t.available)
-                .map((template) => (
-                  <button
-                    key={template.id}
-                    className="bi-template"
-                    disabled={busy}
-                    aria-pressed={bp.template_preferences.template_id === template.id}
-                    onClick={() => void send({ action: 'template', template_id: template.id })}
-                  >
-                    <span className="bi-swatches" aria-hidden="true">
-                      <i style={{ background: template.primary_color }} />
-                      <i style={{ background: template.accent_color }} />
-                    </span>
-                    <strong>{template.name}</strong>
-                    <span>{template.look.join(' · ')}</span>
-                    <small>{template.description}</small>
-                  </button>
-                ))}
-            </div>
-          </details>
-          <div className="bi-build">
-            <p>
-              Your first preview appears immediately. Personalization runs in the background.
-              <br />
-              Nothing is published until you choose to publish.
-            </p>
-            {bp.completion_state.status === 'built' ? (
-              <Link className="lc-btn lc-btn--primary" href={`/start/${bp.business_id}/website`}>
-                Open your website
-              </Link>
-            ) : (
-              <button
-                className="lc-btn lc-btn--primary lc-btn--lg"
-                disabled={busy || !bp.completion_state.confirmed || pendingChoices}
-                onClick={() => void send({ action: 'build' })}
-              >
-                Build my website →
-              </button>
-            )}
-            {!bp.completion_state.confirmed && <small>Confirm your details above first.</small>}
-            {pendingChoices && <small>Choose your tools, or continue without them.</small>}
-          </div>
-        </section>
-      )}
+      ) : null}
+      {build ? <BuildOverlay stage={build.stage} error={build.error} onRetry={() => void startBuild()} /> : null}
     </div>
   )
 }

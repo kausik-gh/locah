@@ -338,8 +338,8 @@ def last_ask(bp: BusinessBlueprint) -> Ask | None:
 # ------------------------------------------------------------- what Locah says
 
 CHECKPOINT = {
-    "en": "I've got enough to make a strong first version.{so_far} You can build it now, or keep refining — "
-          "a little more detail only makes it more yours.{more}",
+    "en": "I've got enough to make a strong first version.{so_far} Build it now, or keep refining — "
+          "a little more detail only makes it more yours.",
     "ta_en": "Oru nalla first version build panna podhumaana details irukku.{so_far} Ippove build pannalaam, "
              "illa innum konjam refine pannalaam — innum details sonna innum personal-aa irukkum.{more}",
     "ta": "நல்ல முதல் வெர்ஷன் உருவாக்க போதுமான தகவல் இருக்கு.{so_far} இப்போவே உருவாக்கலாம், இல்ல இன்னும் "
@@ -394,8 +394,8 @@ def so_far_line(bp: BusinessBlueprint, lang: str, *, first_shape: bool = False) 
     time, a short "so far" after that."""
     from platform_core.interview.understanding import read_back, synthesis
 
-    if lang == "en" and first_shape:
-        said = str(read_back(bp, "shape"))
+    if lang == "en":
+        said = str(read_back(bp, "shape" if first_shape else "so_far"))
         if said:
             return said
     text = synthesis(bp, lang)
