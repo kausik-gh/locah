@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,7 +28,7 @@ client = TestClient(app)
 
 @pytest.fixture
 def owner(monkeypatch: Any) -> dict[str, str]:
-    return new_identity(monkeypatch)[1]
+    return cast(dict[str, str], new_identity(monkeypatch)[1])
 
 
 def test_picked_kind_becomes_columns_and_seeds_default_traits(owner: dict[str, str]) -> None:
@@ -119,3 +119,22 @@ async def test_business_traits_are_tenant_isolated() -> None:
             {"b": business_id})
 
     await assert_tenant_isolated("business_traits", insert)
+
+
+def test_storefront_is_always_on(owner: dict[str, str]) -> None:
+    """Capability Universe §6.1: "Storefront is always on" — every built
+    Storefront module is active from the start and cannot be switched off."""
+    from platform_core.catalog.modules import storefront_modules
+
+    bid = create_business(client, owner)
+    assert "customer-relationships" in storefront_modules()
+    states = {m["module_id"]: m["activation_state"]
+              for m in client.get(f"/v1/b/{bid}/modules", headers=owner).json()["data"]}
+    for module_id in storefront_modules():
+        assert states.get(module_id) == "active", module_id
+    off = client.post(f"/v1/b/{bid}/modules/customer-relationships/deactivate", headers=owner)
+    assert off.status_code == 422, off.text
+    assert "stays on" in off.json()["error"]["message"]
+    added = client.post(f"/v1/platform/businesses/{bid}/customers", json={"display_name": "Walk-in", "phone": "+919800000002"},
+                          headers=owner)
+    assert added.status_code == 200, added.text

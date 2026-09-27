@@ -163,6 +163,20 @@ export default async function SettingsPage({ params }: { params: { businessId: s
         </div>
       </section>
 
+      <section className="ws-settings-section">
+        <div><h2>Automations</h2><p>Reminders and alerts LOCAH sends for you. See every step, and switch any of it off.</p></div>
+        <div>
+          <Link className="btn-quiet" href={`${businessBase}/settings/automations`}>Open automations →</Link>
+        </div>
+      </section>
+
+      <section className="ws-settings-section">
+        <div><h2>Usage and limits</h2><p>What you used this month of anything that costs per use, with a limit you set.</p></div>
+        <div>
+          <Link className="btn-quiet" href={`${businessBase}/settings/usage`}>Open usage →</Link>
+        </div>
+      </section>
+
       <section className="ws-settings-section ws-settings-section--links">
         <div><h2>More about your business</h2><p>These details live in their own areas of Workspace.</p></div>
         <ul style={{ paddingLeft: '1.1rem', lineHeight: 1.9 }}>

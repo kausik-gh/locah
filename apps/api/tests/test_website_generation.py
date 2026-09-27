@@ -551,3 +551,69 @@ def test_generated_draft_cannot_contain_sections_the_business_lacks(
     assert theme["personality"] in PERSONALITIES, theme
     assert str(theme["primary_color"]).startswith("#"), theme
     assert theme.get("template_id"), "a generated draft must name its reference"
+
+
+class _MeteredProvider(_StubProvider):
+    """A stub that reports token usage, as the real adapters do."""
+
+    calls = 0
+
+    async def generate_structured(self, prompt, schema, model_config, timeout_seconds):
+        _MeteredProvider.calls += 1
+        self.last_usage = {"prompt_tokens": 900, "completion_tokens": 300, "total_tokens": 1200, "model": "test"}
+        return await super().generate_structured(prompt, schema, model_config, timeout_seconds)
+
+
+def _run_generation(business_id: str, user_id: uuid.UUID) -> dict[str, Any]:
+    import platform_core.services.website_generation as gen_mod
+
+    async def _run() -> dict[str, Any]:
+        url = get_database_url()
+        assert url
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        engine = create_async_engine(url, echo=False, poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as session:
+            job = WGJ(business_id=uuid.UUID(business_id), status="pending", prompt_version="v1",
+                      triggered_by=user_id, intake={})
+            session.add(job)
+            await session.commit()
+            res = await gen_mod.WebsiteGenerationService.execute_job(
+                session, generation_job_id=job.id, correlation_id=str(uuid.uuid4())
+            )
+            await session.commit()
+        await engine.dispose()
+        return dict(res)
+
+    return asyncio.run(_run())
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+def test_ai_generation_is_metered_and_respects_the_owners_cap(
+    owner: tuple[dict[str, str], uuid.UUID], monkeypatch: Any
+) -> None:
+    """Capability Universe §24 #9: model tokens are counted per business per
+    month; once the owner's cap is used up, generation falls back to the plain
+    draft instead of calling the model."""
+    import platform_core.services.website_generation as gen_mod
+
+    monkeypatch.setattr(gen_mod, "get_ai_provider", lambda: _MeteredProvider())
+    headers, user_id = owner
+    client = TestClient(app)
+    business_id = _create_business(client, headers)
+    usage_url = f"/v1/platform/businesses/{business_id}/usage"
+
+    first = _run_generation(business_id, user_id)
+    assert first["generated_by"] == "ai_generation", first
+    meters = {m["resource"]: m for m in client.get(usage_url, headers=headers).json()["data"]}
+    assert meters["model_tokens"]["used"] == 1200
+
+    capped = client.put(f"{usage_url}/model_tokens/cap", json={"cap": 1000}, headers=headers)
+    assert capped.status_code == 200, capped.text
+    calls_before = _MeteredProvider.calls
+    second = _run_generation(business_id, user_id)
+    assert second["generated_by"] == "deterministic_fallback", second
+    assert _MeteredProvider.calls == calls_before, "the model must not be called once the cap is reached"
+    meters = {m["resource"]: m for m in client.get(usage_url, headers=headers).json()["data"]}
+    assert meters["model_tokens"]["used"] == 1200

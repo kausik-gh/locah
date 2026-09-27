@@ -5,12 +5,12 @@ COMPLETE."""
 
 from __future__ import annotations
 
-from tools.ledger.model import Section, r
+from tools.ledger.model import Row, Section, r
 
 S, P, C, A, F = "NOT_STARTED", "PARTIAL", "COMPLETE", "ACTIVATION_REQUIRED", "FUTURE"
 
 
-def pb(id: str, ph: str, src: str, fam: str, core: str, rec: str) -> object:
+def pb(id: str, ph: str, src: str, fam: str, core: str, rec: str) -> Row:
     return r(id, ph, src, f"{fam} — Core: {core} · Rec: {rec}", "playbook", "NEW", S,
              "no trait→module fixture yet", test="✗ fixture")
 

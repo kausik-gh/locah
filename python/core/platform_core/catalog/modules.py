@@ -343,5 +343,11 @@ def is_built(key: str) -> bool:
     return bool(info and info.built and not info.future)
 
 
+def storefront_modules() -> tuple[str, ...]:
+    """Built Storefront modules outside Platform Core — on for every business
+    (§6.1 "Storefront is always on"); an owner cannot switch them off."""
+    return tuple(k for k in STOREFRONT if not k.startswith("core-") and is_built(k))
+
+
 def built_modules() -> frozenset[str]:
     return frozenset(k for k, m in MODULES.items() if m.built and not m.future)

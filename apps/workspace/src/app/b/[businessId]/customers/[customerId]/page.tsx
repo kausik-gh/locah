@@ -1,9 +1,12 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
-import { apiTry } from '@/lib/api'
+import { apiTry, businessHeaders } from '@/lib/api'
 import { GateNotice, PageHeader, StatusPill } from '@/components/ModuleState'
 import { addCustomerNote, setCustomerState } from '../actions'
+import { ConsentPanel, type ConsentRow } from './ConsentPanel'
+import { timelineText, type TimelineSummary } from './timeline-text'
+import { LocalTime } from '@/components/LocalTime'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +22,7 @@ type CustomerDetail = {
 type TimelineEntry = {
   id: string
   activity_type: string
-  summary: string | null
+  summary: TimelineSummary
   occurred_at: string
 }
 
@@ -46,12 +49,15 @@ export default async function CustomerDetailPage({
   }
   const customer = res.data.data
 
-  const [timelineRes, notesRes] = await Promise.all([
+  const [timelineRes, notesRes, consentRes, contextRes] = await Promise.all([
     apiTry<{ data: TimelineEntry[] }>(`${base}/timeline`, token),
     apiTry<{ data: Note[] }>(`${base}/notes`, token),
+    apiTry<{ data: { history: ConsentRow[] } }>(`${base}/consents`, token),
+    apiTry<{ data: { permissions: string[] } }>('/v1/me/context', token, businessHeaders(params.businessId)),
   ])
   const timeline = timelineRes.ok ? timelineRes.data.data || [] : []
   const notes = notesRes.ok ? notesRes.data.data || [] : []
+  const canUpdate = contextRes.ok && (contextRes.data.data.permissions ?? []).includes('customers.update')
 
   const stateActions =
     customer.status === 'active'
@@ -86,23 +92,28 @@ export default async function CustomerDetailPage({
         ))}
       </section>
 
+      {consentRes.ok ? (
+        <ConsentPanel
+          businessId={params.businessId}
+          customerId={params.customerId}
+          history={consentRes.data.data.history}
+          canChange={canUpdate}
+        />
+      ) : null}
+
       <section style={{ marginTop: '1.75rem' }}>
         <h2 >Activity</h2>
         {timeline.length === 0 ? (
           <p style={{ opacity: 0.8 }}>Nothing recorded for this customer yet.</p>
         ) : (
-          <ol style={{ paddingLeft: '1.1rem' }}>
+          <ul className="bos-timeline">
             {timeline.map((entry) => (
-              <li key={entry.id} style={{ marginBottom: '0.35rem' }}>
-                <strong>{entry.activity_type}</strong>
-                {entry.summary ? ` — ${entry.summary}` : ''}
-                <span style={{ opacity: 0.6 }}>
-                  {' '}
-                  · {new Date(entry.occurred_at).toLocaleString()}
-                </span>
+              <li key={entry.id}>
+                <span>{timelineText(entry.activity_type, entry.summary)}</span>
+                <LocalTime value={entry.occurred_at} />
               </li>
             ))}
-          </ol>
+          </ul>
         )}
       </section>
 

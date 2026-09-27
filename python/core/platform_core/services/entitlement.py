@@ -112,6 +112,16 @@ class ModuleService:
         actor_id: uuid.UUID,
         reason: str | None = None,
     ) -> BusinessModuleState:
+        from platform_core.catalog.modules import MODULES, storefront_modules
+
+        if module_id in storefront_modules():
+            from platform_core.exceptions import ValidationError
+
+            info = MODULES.get(module_id)
+            raise ValidationError(
+                f"{info.label if info else module_id} is part of every business and stays on",
+                details={"field": "module_id", "module_id": module_id, "reason": "storefront"},
+            )
         result = await session.execute(
             select(BusinessModuleState).where(
                 BusinessModuleState.business_id == business_id,

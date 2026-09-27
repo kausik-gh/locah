@@ -74,3 +74,54 @@ RESOLVED_DECISIONS["OD-01"] = (
     "trade-network is new and distinct from b2b-network (supplier discovery, P6); payroll stays FUTURE; "
     "business-passport / business-community are outside the MD and untouched."
 )
+
+
+# ---------------------------------------------------------------- P1-02
+done("P1-02", {
+    "PM-03": dict(status=P, code="automation triggers consume inventory.stock.low/replenished and every lead.* event through the subscriber registry; events for modules not built yet arrive with them",
+                  db="✓ platform_outbox_events", svc="✓", test="✓ drain_events in tests"),
+    "PM-04": dict(status=C, code="one ladder engine (automation_rules/automation_steps): idempotency key ladder:entity:period:step, quiet hours 21:00–08:00 IST, owner switch cancels pending steps with a reason, worker automation lane; 9 source ladders defined, a ladder is only offered once its steps have code (stock.low, lead.followup today)",
+                  db="✓ migration 20260927110000 + RLS", svc="✓ AutomationEngine + /automations", perm="✓ settings.read/update + actor matrix",
+                  ws="✓ Settings › Automations", auto="✓ worker lane", test="✓ test_platform_primitives + browser p1_02"),
+    "PM-05": dict(status=C, code="gapless row-locked series per (business, series key, period) with FY helper; offline number blocks reserve/release; first consumer is GST invoicing (P1-04)",
+                  db="✓ number_series, number_series_blocks + RLS", svc="✓ NumberSeriesService", test="✓ 20 concurrent allocations with rollbacks → 1..20; blocks never overlap"),
+    "PM-06": dict(status=P, code="Money type (integer paise + currency, Indian grouping, allocation without losing a paisa) for all new tables; First Launch tables stay NUMERIC(12,2) — converting them is a data migration not yet planned",
+                  svc="✓ platform_core.money", test="✓"),
+    "PM-07": dict(status=P, code="reportlab renderer (A4, 58 mm, 80 mm; bundled DejaVu fonts; deterministic bytes) + hashed, versioned store + permission-checked download; no module renders through it yet (invoices in P1-04); Tamil/Hindi shaping not supported by reportlab",
+                  db="✓ rendered_documents + RLS", svc="✓ /documents/{id}", test="✓ deterministic + dedupe + stranger denied"),
+    "PM-08": dict(status=C, code="consent store: a grant is a row, a withdrawal closes it, history never overwritten; purpose/channel/source/evidence; staff records and withdraws on the customer page",
+                  db="✓ customer_consents + RLS", svc="✓ ConsentService + /consents", perm="✓ customers.read/update + actor matrix",
+                  ws="✓ Customer › What they agreed to", test="✓ API + isolation + browser p1_02"),
+    "PM-09": dict(status=C, code="per-business monthly meters with idempotent counting, owner caps (carried forward), 80%/100% alerts to Notifications; AI tokens counted and capped today (website + interview generation fall back to the plain draft at the cap); WhatsApp/SMS/email/voice/maps start counting when their providers connect",
+                  db="✓ usage_meters, usage_events + RLS", svc="✓ UsageMeterService + /usage", ws="✓ Settings › Usage",
+                  test="✓ caps/alerts + generation metered and capped"),
+    "PM-12": dict(status=P, code="server contract built: client mutation UUIDs, idempotent replay, per-mutation permission check, rejection reasons; no production mutation kinds or device queue until POS (P1-05)",
+                  db="✓ offline_mutations + RLS", svc="✓ POST /sync", test="✓ replay idempotent + permission checked"),
+    "PM-17": dict(status=C, code="ladders are scheduled and cancelled only by event subscribers (automation_triggers); the engine imports no module code",
+                  test="✓"),
+    "PM-19": dict(status=P, code="P1-01/P1-02 tables each ship RLS + isolation test (assert_tenant_isolated) + actor-matrix rows; rule continues per packet",
+                  test="✓ test_platform_primitives isolation ×9, test_actor_matrix primitives ×7"),
+    "PR-10": dict(status=P, code="INR default, DPDP consent records exist; English UI only; GST/UPI arrive with invoicing/POS"),
+    "PR-11": dict(status=C, code="every owner automation runs on the ladder engine: idempotent steps, owner activity log with outcome, per-automation and per-step off switch, never offered without code behind it",
+                  ws="✓ Settings › Automations", test="✓"),
+    "PR-13": dict(status=P, code="metering + caps + alerts built and live for AI tokens; pass-through pricing waits on OD-04; WhatsApp/voice/Maps meters count once connected"),
+    "CR-05": dict(status=C, code="consent per purpose/channel with timestamp, source and evidence on the customer page (see PM-08)",
+                  db="✓", svc="✓", ws="✓", test="✓"),
+    "CR-02": dict(status=P, code="timeline now reads as sentences on the customer page (was printing raw objects); invoices/messages/reviews/jobs join as those modules land",
+                  ws="✓ Customer › Activity"),
+    "AU-03": dict(status=C, code="stock below reorder point → one alert per item per day to everyone with inventory.read; cancelled when stock is replenished; skipped if already restored; drafting a purchase request waits for Buying (P4)",
+                  svc="✓", ws="✓ Settings › Automations + Notifications", auto="✓ stock.low", test="✓ API + browser p1_02"),
+    "AU-07": dict(status=C, code="follow-up date → nudge to the assignee (or everyone with leads.read); stops when the lead moves stage, closes or is deleted; a new date replaces the old",
+                  svc="✓", ws="✓ Settings › Automations + Notifications", auto="✓ lead.followup", test="✓"),
+    "AU-09": dict(status=C, code="activity log lists every step with outcome and status; whole-automation and per-step switches; switching off cancels pending steps with a reason",
+                  ws="✓ Settings › Automations", test="✓ API + browser p1_02"),
+    "PK-01": dict(status=P, code="'Storefront is always on': built Storefront modules (customer-relationships today) start active on every business, are backfilled (migration 20260927120000) and cannot be switched off; reviews/messaging/insights/compliance not built yet",
+                  test="✓ test_storefront_is_always_on"),
+    "TS-01": dict(status=P, code="subcategory→module fixtures; ladder schedules + quiet hours; number-series concurrency; tax/BOM/yield fixtures come with their packets", test="◐"),
+    "TS-02": dict(status=P, code="full suite on the RLS-enforcing platform_api role (890 tests); every new table has isolation + actor-matrix rows", test="✓"),
+    "TS-09": dict(status=P, code="Phase B CDP flows p1_01_modules (11 checks) and p1_02_primitives (21 checks), desktop + 390 px, screenshots in acceptance-out/phase_b", test="✓"),
+})
+UPDATES["PKT-01"] = dict(status=C, code="[P1-01] every subcategory's recommendation matches the snapshot fixture (427 subcategories)",
+                         test="✓ test_taxonomy_recommendations")
+UPDATES["PKT-02"] = dict(status=C, code="[P1-02] all 9 new tables have isolation tests; idempotency proven for ladders, number series, meters, offline replay, document store and consent",
+                         test="✓ test_platform_primitives (24) + actor matrix (7)")

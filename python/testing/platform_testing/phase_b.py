@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
 import jwt
-from sqlalchemy import text
+from sqlalchemy import CursorResult, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -144,3 +144,74 @@ async def assert_tenant_isolated(
             await session.rollback()
     finally:
         await engine.dispose()
+
+
+def drain_events(business_id: str | uuid.UUID, *, rounds: int = 3) -> int:
+    """Run this business's pending outbox events through fan-out and every
+    subscriber, like the worker would — isolated to this business's events."""
+    from platform_worker.outbox_consumer import poll_and_dispatch_outbox, poll_and_run_deliveries
+
+    async def _run() -> int:
+        engine = create_async_engine(db_url(), echo=False, poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        total = 0
+        try:
+            for _ in range(rounds):
+                async with factory() as session:
+                    ids = [str(r[0]) for r in (await session.execute(text(
+                        "select id from platform_outbox_events where business_id = :b"), {"b": str(business_id)})).all()]
+                if not ids:
+                    break
+                async with factory() as session:
+                    await poll_and_dispatch_outbox(session, "phase-b-test", event_ids=ids)
+                async with factory() as session:
+                    total += await poll_and_run_deliveries(session, "phase-b-test", event_ids=ids)
+        finally:
+            await engine.dispose()
+        return total
+
+    return asyncio.run(_run())
+
+
+def run_automation(business_id: str | uuid.UUID, *, now: datetime | None = None) -> int:
+    """Run this business's due automation steps, as the worker lane would."""
+    from platform_core.automation import AutomationEngine
+
+    async def _run() -> int:
+        engine = create_async_engine(db_url(), echo=False, poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            async with factory() as session:
+                ran: int = await AutomationEngine.run_due(session, "phase-b-test", now=now,
+                                                          business_id=uuid.UUID(str(business_id)))
+                return ran
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(_run())
+
+
+def sql(query: str, **params: Any) -> list[Any]:
+    """Run one statement as the database owner (test setup and assertions only)."""
+
+    async def _run() -> list[Any]:
+        engine = create_async_engine(db_url(), echo=False, poolclass=NullPool)
+        try:
+            async with AsyncSession(engine) as session:
+                res = cast(CursorResult[Any], await session.execute(text(query), params))
+                rows = list(res.all()) if res.returns_rows else []
+                await session.commit()
+                return rows
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(_run())
+
+
+def primary_location(client: Any, headers: dict[str, str], business_id: str) -> str:
+    resp = client.get(f"/v1/platform/businesses/{business_id}/locations", headers=headers)
+    assert resp.status_code == 200, resp.text
+    for loc in resp.json()["data"]:
+        if loc["is_primary"]:
+            return cast(str, loc["id"])
+    raise AssertionError("primary location missing")

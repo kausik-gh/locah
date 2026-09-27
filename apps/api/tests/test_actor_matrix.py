@@ -366,3 +366,52 @@ def test_membership_in_one_business_grants_nothing_in_another(
         leaked = client.get(ORDERS.format(bid=theirs), headers=member_headers)
         assert leaked.status_code == 403
         assert leaked.json()["error"]["code"] == "MEMBERSHIP_REQUIRED"
+
+
+# ---------------------------------------------------------------------------
+# Phase B shared primitives (Capability Universe §24.3: every new table ships
+# with an actor-matrix row). Each row: the surface, the permission that opens
+# it, and proof that a member without it is refused while one granted exactly
+# that permission is let in.
+# ---------------------------------------------------------------------------
+PRIMITIVE_SURFACES = [
+    # (method, path, permission that opens it, body)
+    ("GET", "/v1/platform/businesses/{bid}/automations", "settings.read", None),
+    ("PATCH", "/v1/platform/businesses/{bid}/automations/stock.low", "settings.update", {"enabled": False}),
+    ("GET", "/v1/platform/businesses/{bid}/automations/activity", "settings.read", None),
+    ("GET", "/v1/platform/businesses/{bid}/usage", "settings.read", None),
+    ("PUT", "/v1/platform/businesses/{bid}/usage/whatsapp_message/cap", "settings.update", {"cap": 100}),
+    ("GET", "/v1/platform/businesses/{bid}/customers/{cid}/consents", "customers.read", None),
+    ("POST", "/v1/platform/businesses/{bid}/customers/{cid}/consents", "customers.update",
+     {"purpose": "marketing", "channel": "whatsapp", "granted": True}),
+]
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+@pytest.mark.parametrize(("method", "path", "permission", "body"), PRIMITIVE_SURFACES,
+                         ids=[f"{m} {p.split('{bid}')[1]}" for m, p, _, _ in PRIMITIVE_SURFACES])
+def test_primitive_surfaces_follow_their_permission(
+    owner: tuple[dict[str, str], uuid.UUID], method: str, path: str, permission: str, body: Any,
+) -> None:
+    headers, _ = owner
+    member_headers, member_id, _ = _actor()
+    outsider_headers, _, _ = _actor()
+    with TestClient(app) as client:
+        bid = _create_business(client, headers)
+        contact = client.post(f"/v1/platform/businesses/{bid}/customers",
+                              json={"display_name": "Matrix Customer", "phone": "+919800000001"}, headers=headers)
+        assert contact.status_code in (200, 201), contact.text
+        url = path.format(bid=bid, cid=contact.json()["data"]["id"])
+        membership_id = _invite_membership(client, headers, bid, member_id, "member")
+        _activate(client, headers, bid, membership_id)
+
+        def call(h: dict[str, str]) -> Any:
+            return client.request(method, url, headers=h, json=body)
+
+        assert call(headers).status_code == 200, "owner must reach every primitive surface"
+        outsider = call(outsider_headers)
+        assert outsider.status_code == 403 and outsider.json()["error"]["code"] == "MEMBERSHIP_REQUIRED"
+        refused = call(member_headers)
+        assert refused.status_code == 403 and refused.json()["error"]["code"] == "PERMISSION_DENIED"
+        _grant(client, headers, bid, membership_id, [permission])
+        assert call(member_headers).status_code == 200, f"{permission} should open {method} {path}"

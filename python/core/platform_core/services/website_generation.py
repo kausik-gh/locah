@@ -503,6 +503,10 @@ class WebsiteGenerationService:
         generated_by = "ai_generation"
         fallback_reason: str | None = None
         try:
+            from platform_core.services.usage_meter import CapReached, UsageMeterService
+
+            if await UsageMeterService.over_cap(session, job.business_id, "model_tokens"):
+                raise CapReached("model_tokens")  # the owner's monthly AI limit: use the plain draft
             payload, provider_name, model_name, usage = await WebsiteGenerationService._try_ai(
                 context, intake, plan
             )
@@ -510,6 +514,10 @@ class WebsiteGenerationService:
             job.model_name = model_name
             if usage:
                 job.provider_usage = usage
+                await UsageMeterService.record_model_usage(
+                    session, job.business_id, usage, key=f"website_generation:{job.id}:{job.attempt_count}",
+                    feature="website_generation",
+                )
         except Exception as exc:  # noqa: BLE001
             payload = _deterministic()
             generated_by = "deterministic_fallback"

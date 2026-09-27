@@ -109,7 +109,7 @@ def test_default_traits_reproduce_each_family_core_and_rec() -> None:
         for s in c.subcategories:
             if s.key == "other":
                 continue
-            fam = BY_KEY[family_key_for(s.key, s.playbook)]  # type: ignore[index]
+            fam = BY_KEY[family_key_for(s.key, s.playbook)]  # type: ignore[index, unused-ignore]
             rec = recommend(subcategory_key=s.key, playbook=s.playbook, traits=s.traits)
             core = {m for m in _mods(fam.core) if not _future(m)}
             want_core = core - TRAIT_DEMOTIONS.get(s.key, set())

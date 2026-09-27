@@ -1081,10 +1081,13 @@ class BusinessInterviewService:
         from platform_core.interview.media_director import draw_missing, record, slug
         from platform_core.interview.site_composer import compose_site
 
+        from platform_core.services.usage_meter import CapReached, UsageMeterService
+
+        ai_capped = await UsageMeterService.over_cap(session, job.business_id, "model_tokens")
         await session.commit()  # no transaction held open across the provider calls
         baseline = direct(bp, business.business_type)
         trade = _trade(bp, baseline.archetype)
-        plan_task = asyncio.create_task(generate_creative_plan(bp, business.business_type))
+        plan_task = None if ai_capped else asyncio.create_task(generate_creative_plan(bp, business.business_type))
         images_started = time.monotonic()
         drawn = await draw_missing(bp, baseline, trade)
         images_ms = int((time.monotonic() - images_started) * 1000)
@@ -1092,6 +1095,8 @@ class BusinessInterviewService:
         provider: Any = None
         latency_ms = 0
         try:
+            if plan_task is None:
+                raise CapReached("model_tokens")  # the owner's monthly AI limit: keep the baseline
             direction, copy, provider, latency_ms = await plan_task
             creative_source = direction.source
         except Exception as exc:  # noqa: BLE001 — the pictures still improve the site
@@ -1127,6 +1132,11 @@ class BusinessInterviewService:
             job.ai_provider = provider.provider_name
             job.model_name = provider.model_name
         job.provider_usage = {**dict(getattr(provider, "last_usage", None) or {}), **meta}
+        if provider is not None:
+            await UsageMeterService.record_model_usage(
+                session, job.business_id, getattr(provider, "last_usage", None),
+                key=f"interview_personalization:{job.id}:{job.attempt_count}", feature="interview_personalization",
+            )
 
         locked = await BusinessInterviewService.load_business(session, job.business_id, lock=True)
         snapshot = job.intake or {}

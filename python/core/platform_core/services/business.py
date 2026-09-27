@@ -23,6 +23,7 @@ from platform_core.models import (
     BusinessProfile,
     CommercialEntitlement,
 )
+from platform_core.catalog.modules import storefront_modules
 from platform_core.permissions import ALL_PERMISSIONS, PLATFORM_CORE_MODULE_IDS, ROLE_PRIMARY_OWNER
 from platform_core.services.audit import AuditService
 from platform_core.services.entitlement import EntitlementService, ModuleService
@@ -293,6 +294,18 @@ class BusinessService:
                     reason="Platform Core auto-grant",
                 )
             )
+            session.add(
+                BusinessModuleState(
+                    business_id=business.id,
+                    module_id=module_id,
+                    activation_state="active",
+                    enabled_at=now,
+                    activated_at=now,
+                )
+            )
+        # Capability Universe §6.1: "Storefront is always on" — every built
+        # Storefront module starts active (unbuilt ones join when they ship).
+        for module_id in storefront_modules():
             session.add(
                 BusinessModuleState(
                     business_id=business.id,

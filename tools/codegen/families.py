@@ -17,8 +17,8 @@ OUT = Path(__file__).resolve().parents[2] / "python/core/platform_core/catalog/f
 
 
 def slug(label: str) -> str:
-    words = re.sub(r"\(.*?\)", "", label.lower())
-    words = re.sub(r"[^a-z0-9]+", " ", words).split()
+    cleaned = re.sub(r"\(.*?\)", "", label.lower())
+    words = re.sub(r"[^a-z0-9]+", " ", cleaned).split()
     stop = {"and", "the", "of", "a", "an", "e", "g"}
     words = [w for w in words if w not in stop]
     return "_".join(words[:4])
