@@ -60,6 +60,7 @@ export const AREAS: NavArea[] = [
     children: [
       { href: '/invoices', label: 'Bills & invoices', perm: 'invoices.read', module: 'invoicing' },
       { href: '/payments', label: 'Payments', perm: 'payments.read', module: 'payments' },
+      { href: '/khata', label: 'Khata (credit book)', perm: 'ledger.read', module: 'ledger' },
       { href: '/invoices/tax-rates', label: 'Tax rates', perm: 'invoices.read', module: 'invoicing' },
       { href: '/pos/shifts', label: 'Counter shifts', perm: 'pos.approve', module: 'pos' },
       { href: '/invoices/reports', label: 'Reports for your CA', perm: 'invoices.export', module: 'invoicing' },

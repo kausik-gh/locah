@@ -1870,3 +1870,7 @@
 [data-locah-site] .ls-bill__totals .is-total { color: var(--site-ink); font-weight: 700; font-size: 1.1rem; padding-top: 0.3rem; }
 [data-locah-site] .ls-bill__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 [data-locah-site] .ls-bill__seller { display: grid; gap: 0.15rem; font-size: 0.82rem; }
+/* A customer's khata statement (P1-06): the business's own colours only. */
+[data-locah-site] .ls-khata__pay { display: grid; gap: 0.8rem; justify-items: start; }
+[data-locah-site] .ls-khata__qr { width: 180px; height: 180px; background: #fff; padding: 6px; border-radius: 8px; border: 1px solid var(--site-border); }
+[data-locah-site] .ls-khata__h { margin: 0 0 0.7rem; font-size: 1rem; }

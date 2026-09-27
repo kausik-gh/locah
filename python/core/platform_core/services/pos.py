@@ -45,6 +45,7 @@ from platform_core.models import (
     InvoicingRegister,
     InvoicingRegistration,
     InvoicingTaxProfile,
+    LedgerEntry,
     Offering,
     OfferingVariant,
     PlatformIdentity,
@@ -65,7 +66,7 @@ APPROVAL_TTL = 600
 PIN_LOCK_AFTER = 5
 PIN_LOCK_MINUTES = 15
 APPROVAL_ACTIONS = {"discount": "a discount above the cashier's limit", "void": "cancelling a bill",
-                    "return": "a return after the return window"}
+                    "return": "a return after the return window", "credit": "khata above the customer's limit"}
 CASH_KINDS = {"petty_expense": "Petty expense", "cash_in": "Cash put in", "cash_out": "Cash taken out",
               "refund": "Cash refund"}
 _VPA = re.compile(r"^[A-Za-z0-9._-]{2,255}@[A-Za-z][A-Za-z0-9.-]{1,64}$")
@@ -463,7 +464,7 @@ class PosService:
                         lock: bool = False) -> PosShift:
         q = select(PosShift).where(PosShift.business_id == business_id, PosShift.id == shift_id)
         if lock:
-            q = q.with_for_update()
+            q = q.with_for_update().execution_options(populate_existing=True)
         shift = (await session.execute(q)).scalars().first()
         if shift is None:
             raise ResourceNotFound("Shift")
@@ -498,8 +499,24 @@ class PosService:
         returns = (await session.execute(select(func.count()).select_from(InvoicingDocument).where(
             InvoicingDocument.shift_id == shift.id, InvoicingDocument.doc_kind == "credit_note",
             InvoicingDocument.status == "issued"))).scalar()
+        # Khata at this counter (§14.5): credit given on bills, and money paid
+        # off accounts — the cash part is in the drawer.
+        khata: dict[str, Decimal] = {}
+        for kind, method, total in (await session.execute(
+            select(LedgerEntry.kind, LedgerEntry.method, func.coalesce(func.sum(LedgerEntry.amount), 0))
+            .where(LedgerEntry.shift_id == shift.id).group_by(LedgerEntry.kind, LedgerEntry.method))).all():
+            key = "given" if kind == "credit_sale" else f"paid_{method or 'other'}" if kind == "payment_received" \
+                else "other"
+            khata[key] = khata.get(key, Decimal(0)) + dec(total)
+        # A voided khata bill's credit is taken back by an adjustment on the bill.
+        voided_khata = dec((await session.execute(
+            select(func.coalesce(func.sum(LedgerEntry.amount), 0))
+            .join(InvoicingDocument, InvoicingDocument.id == LedgerEntry.document_id)
+            .where(LedgerEntry.shift_id == shift.id, LedgerEntry.kind == "credit_sale",
+                   InvoicingDocument.status == "cancelled"))).scalar())
         zero = Decimal(0)
-        expected = (dec(shift.opening_cash) + by.get("cash", zero) + moves.get("cash_in", zero)
+        khata_cash = -khata.get("paid_cash", zero)
+        expected = (dec(shift.opening_cash) + by.get("cash", zero) + moves.get("cash_in", zero) + khata_cash
                     - moves.get("refund", zero) - moves.get("petty_expense", zero) - moves.get("cash_out", zero))
         return {
             "bills": int(counts.get("issued", 0)), "voided": int(counts.get("cancelled", 0)), "returns": int(returns or 0),
@@ -508,6 +525,9 @@ class PosService:
             "cash_in": _f(moves.get("cash_in", zero)), "cash_out": _f(moves.get("cash_out", zero)),
             "refunds": _f(moves.get("refund", zero)), "petty_expenses": _f(moves.get("petty_expense", zero)),
             "opening_cash": _f(shift.opening_cash), "expected_cash": _f(expected),
+            "khata_given": _f(khata.get("given", zero) - voided_khata),
+            "khata_received": _f(-sum((v for k, v in khata.items() if k.startswith("paid_")), zero)),
+            "khata_cash": _f(khata_cash),
         }
 
     @staticmethod

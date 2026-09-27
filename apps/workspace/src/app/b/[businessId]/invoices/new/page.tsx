@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
-import { apiTry } from '@/lib/api'
+import { apiTry, businessHeaders } from '@/lib/api'
 import { Card, GateNotice, PageHeader } from '@/components/ui'
 import { BillForm, type CatalogueItem, type CustomerLite } from './BillForm'
 import type { Bill, Setup } from '../types'
+import type { AccountList } from '../../khata/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,14 +21,23 @@ export default async function NewBillPage({
   if (!token) redirect('/login')
   const b = params.businessId
   const base = `/b/${b}/invoices`
-  const [setup, items, customers, draft] = await Promise.all([
+  const [setup, items, customers, draft, accounts, me] = await Promise.all([
     apiTry<{ data: Setup }>(`/v1/platform/businesses/${b}/invoicing/setup`, token),
     apiTry<{ data: CatalogueItem[] }>(`/v1/platform/businesses/${b}/products`, token),
     apiTry<{ data: CustomerLite[] }>(`/v1/platform/businesses/${b}/customers?limit=200`, token),
     searchParams.draft
       ? apiTry<{ data: Bill }>(`/v1/platform/businesses/${b}/invoices/${searchParams.draft}`, token)
       : Promise.resolve(null),
+    apiTry<{ data: AccountList }>(`/v1/platform/businesses/${b}/ledger/accounts?party=customer`, token),
+    apiTry<{ data: { permissions: string[] } }>('/v1/me/context', token, businessHeaders(b)),
   ])
+  const perms = new Set(me.ok ? me.data.data.permissions ?? [] : [])
+  const khata = {
+    canUse: accounts.ok && perms.has('ledger.record'),
+    canAllowOver: perms.has('ledger.manage'),
+    byContact: Object.fromEntries((accounts.ok ? accounts.data.data.accounts : [])
+      .filter((a) => a.customer_contact_id).map((a) => [a.customer_contact_id as string, a])),
+  }
   const header = (
     <PageHeader
       title={searchParams.draft ? 'Edit draft bill' : 'New bill'}
@@ -60,6 +70,7 @@ export default async function NewBillPage({
         items={items.ok ? items.data.data.filter((o) => o.status !== 'archived' && o.title !== 'Delivery fee') : []}
         customers={customers.ok ? customers.data.data : []}
         draft={draft && draft.ok && draft.data.data.status === 'draft' ? draft.data.data : null}
+        khata={khata}
       />
     </div>
   )

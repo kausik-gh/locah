@@ -88,6 +88,12 @@ POS_USE = "pos.use"
 POS_APPROVE = "pos.approve"
 POS_CONFIGURE = "pos.configure"
 
+# Khata / credit book (Capability Universe §6.2, §14.5): seeing who owes what,
+# recording credit and money received, and setting limits / correcting.
+LEDGER_READ = "ledger.read"
+LEDGER_RECORD = "ledger.record"
+LEDGER_MANAGE = "ledger.manage"
+
 PAYMENTS_READ = "payments.read"
 PAYMENTS_REFUND = "payments.refund"
 PAYMENTS_MANAGE_CONNECTION = "payments.manage_connection"

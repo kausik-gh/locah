@@ -282,3 +282,36 @@ done("P1-05", {
     "CN-20": dict(status=P, code="scanner as keyboard ✓, scale labels ✓, ESC/POS receipts + drawer kick over Web Serial built (not hardware-tested), camera scanning and kitchen printers not built"),
     "PR-09": dict(status=P, code="the counter works over a dropped connection with its own queue; the crew app arrives in P2; device testing on entry-level hardware is TS-08"),
 })
+
+
+# ---------------------------------------------------------------- P1-06 khata / credit book
+_LG_TEST = "✓ test_khata (12, incl. 30 concurrent writers) + actor matrix + browser p1_06 (25 checks)"
+done("P1-06", {
+    "LG-01": dict(status=C, code="one account per customer (linked to their customer record) or supplier; balance moves only with an append-only entry under the account's row lock (entries cannot be updated or deleted — a DB trigger refuses it; mistakes are corrections with a reason); opening balances carried over from the notebook",
+                  db="✓ ledger_accounts + ledger_entries + RLS + append-only trigger", svc="✓ LedgerService", api="✓ /ledger/accounts",
+                  ws="✓ Money › Khata (credit book)", perm="✓ ledger.read / record / manage", test=_LG_TEST),
+    "LG-02": dict(status=C, code="credit comes from bills so the tax record and the khata agree: a Workspace bill 'on their khata' or the counter's khata tender posts the unpaid part to the customer's account; money recorded on a khata bill, credit/debit notes on it and cancelling it flow back to the khata",
+                  svc="✓ charge_bill / on_bill_payment / on_note / on_cancel", ws="✓ New bill › Put this bill on their khata; counter › Khata tab", test=_LG_TEST),
+    "LG-03": dict(status=C, code="the owner (ledger.manage) sets each customer's limit and days to pay; at the limit the counter refuses khata unless a manager approves with their PIN (signed short-lived approval, recorded on the entry and notified to those who manage the book); in the Workspace only ledger.manage can allow a bill over the limit",
+                  ws="✓", test=_LG_TEST + " + browser PIN override"),
+    "LG-04": dict(status=C, code="ageing by FIFO (money received settles the oldest amounts first) into not due / 1–30 / 31–60 / 61–90 / 90+ days late, for customers and suppliers; totals for receivable, payable and past due; late and over-limit accounts on the owner's 'Needs you now' and the accountant's 'Unpaid' and 'Due'",
+                  ws="✓ account page + list", role="✓ owner, accountant homes", test=_LG_TEST),
+    "LG-05": dict(status=P, code="statement link (hash-only token, opens just that account on the business's own website in its theme) with a UPI link and QR to the business's own UPI ID for the amount due; sent from the account page through WhatsApp click-to-chat; statement PDF for any period. Automatic WhatsApp sending and reminder ladders need the messaging foundation (P1-07, provider activation)",
+                  web="✓ /{slug}/khata/{token}", ws="✓", test=_LG_TEST),
+    "LG-06": dict(status=C, code="money received (cash, UPI, card, bank transfer, cheque) settles the customer's oldest open khata bills first and marks them paid / part paid; paid at the counter it lands in that shift's drawer; payments made to suppliers; purchases on credit from suppliers with their bill number and due date",
+                  ws="✓ account page; counter › Khata", test=_LG_TEST),
+    "LG-07": dict(status=C, code="§26.3 done-when: 30 concurrent writers (entries, corrections, payments with bill settlement) leave balance = sum of entries, running balances consistent and line numbers 1..n with no gap. The test first failed (a row already in the session kept a stale balance after the lock) and the locked read now refreshes the row",
+                  test=_LG_TEST),
+    "PKT-06": dict(status=C, code="done-when met: balance equals sum of entries under concurrent writes (test_khata)", test=_LG_TEST),
+    "GP-03": dict(status=P, code="udhaar notebook → khata with limits, ageing, statements and UPI links, carried-over balances; WhatsApp reminders on a schedule wait for messaging (P1-07)", test=_LG_TEST),
+    "PS-03": dict(status=P, code="cash with change, UPI QR (cashier confirms or 'UPI to verify'), card with reference, khata (customer by phone, limit checked online, manager's PIN above it), split tenders; change only from cash. Automatic UPI confirmation by payment webhook needs a payment provider (Cashfree, activation required)",
+                  ws="✓", test="✓ test_pos + test_khata + browser p1_05/p1_06"),
+    "PS-05": dict(status=C, code="returns at the counter become a credit note against the bill, put stock back, and refund cash from the drawer, UPI/card — or back to the customer's khata when the bill was on khata",
+                  svc="✓ pos.return", ws="✓ Return", test="✓ test_pos + test_khata"),
+    "PS-14": dict(status=C, code="expected = opening + cash sales + khata paid in cash + cash put in − cash refunds − petty expenses − cash taken out; khata given and received shown at close; counted and variance logged per shift; a short or over drawer notifies the managers",
+                  ws="✓", test="✓ test_pos + test_khata + browser p1_06"),
+    "RL-14": dict(status=P, code="accountant role holds invoices and the khata (record money, set limits, corrections, statements) with 'Unpaid' and 'Due' homes counting bills and khata; expenses and connectors (P4) not built yet",
+                  perm="✓", role="✓", test="✓ test_khata roles"),
+    "RL-05": dict(status=C, code="Cashier: bill, take payments incl. khata within the limit and khata paid at the counter, returns within the window, cash shift, discount up to the owner's cap; location-limited",
+                  perm="✓ + ledger.read/record", role="✓", ws="✓", test="✓ test_pos + test_khata"),
+})

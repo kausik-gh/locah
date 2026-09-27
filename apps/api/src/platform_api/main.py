@@ -58,6 +58,7 @@ from platform_api.routers import (
     v1_workspace_home,
     v1_public_enquiries,
     v1_platform_invoicing,
+    v1_platform_ledger,
     v1_platform_pos,
 )
 
@@ -239,6 +240,8 @@ app.include_router(v1_workspace_home.router)
 app.include_router(v1_public_enquiries.router)
 app.include_router(v1_platform_invoicing.router)
 app.include_router(v1_platform_invoicing.public_router)
+app.include_router(v1_platform_ledger.router)
+app.include_router(v1_platform_ledger.public_router)
 app.include_router(v1_platform_pos.router)
 
 app.add_exception_handler(PlatformError, platform_error_handler)

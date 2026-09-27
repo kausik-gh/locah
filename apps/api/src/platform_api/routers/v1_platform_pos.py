@@ -64,7 +64,7 @@ class ApproveBody(BaseModel):
 
     approver_id: UUID
     pin: str = Field(min_length=4, max_length=6)
-    action: Literal["discount", "void", "return"]
+    action: Literal["discount", "void", "return", "credit"]
     max_discount_pct: float | None = Field(default=None, ge=0, le=100)
     document_id: UUID | None = None
 
@@ -97,7 +97,12 @@ async def pos_setup(
     actor: BusinessActorContext = Depends(require_business_actor(POS_USE, MODULE)),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
-    return {"data": await PosService.setup(session, business_id, actor.request.identity_id), "meta": _meta(actor)}
+    data = await PosService.setup(session, business_id, actor.request.identity_id)
+    # Khata at the counter (§14.5): the credit book is on and this person may give credit.
+    ledger = actor.request.module_states.get("ledger")
+    data["khata"] = bool(ledger is not None and ledger.is_operational()
+                         and "ledger.record" in actor.request.effective_permissions)
+    return {"data": data, "meta": _meta(actor)}
 
 
 @router.put("/{business_id}/pos/settings")

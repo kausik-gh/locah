@@ -101,6 +101,12 @@ export const PERMISSIONS = {
   POS_APPROVE: 'pos.approve',
   POS_CONFIGURE: 'pos.configure',
 
+  // Module: ledger — khata / credit book (Capability Universe §14.5)
+  LEDGER_READ: 'ledger.read',
+  LEDGER_RECORD: 'ledger.record',
+  // Credit limits, supplier accounts, opening balances and corrections.
+  LEDGER_MANAGE: 'ledger.manage',
+
   // Module: projects
   PROJECTS_READ: 'projects.read',
   PROJECTS_CREATE: 'projects.create',

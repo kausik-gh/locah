@@ -18,8 +18,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_api.db import get_db_session
-from platform_api.dependencies import BusinessActorContext, require_business_actor
-from platform_core.exceptions import ResourceNotFound, ValidationError
+from platform_api.dependencies import BusinessActorContext, assert_module_operational, require_business_actor
+from platform_core.exceptions import PermissionDenied, ResourceNotFound, ValidationError
 from platform_core.invoicing.states import STATES
 from platform_core.permissions import (
     INVOICES_CANCEL,
@@ -28,6 +28,8 @@ from platform_core.permissions import (
     INVOICES_ISSUE,
     INVOICES_READ,
     INVOICES_RECORD_PAYMENT,
+    LEDGER_MANAGE,
+    LEDGER_RECORD,
 )
 from platform_core.services import invoicing_reports as reports
 from platform_core.services.invoicing import (
@@ -259,6 +261,9 @@ class BillBody(BaseModel):
     lines: list[LineBody] = Field(min_length=1, max_length=300)
     issue: bool = True
     idempotency_key: str | None = Field(default=None, max_length=120)
+    # On the customer's khata (§14.5); above their limit only with ledger.manage.
+    on_account: bool = False
+    allow_over_limit: bool = False
 
 
 class FromOrderBody(BaseModel):
@@ -304,7 +309,19 @@ class PaymentBody(BaseModel):
 
 
 def _body(model: BaseModel) -> dict[str, Any]:
-    return model.model_dump(mode="json", exclude_none=True)
+    return model.model_dump(mode="json", exclude_none=True, exclude={"allow_over_limit"})
+
+
+def _khata(actor: BusinessActorContext, body: BillBody) -> dict[str, Any]:
+    """Who may put a bill on a customer's khata, and allow it over the limit."""
+    if not body.on_account:
+        return {}
+    perms = actor.request.effective_permissions
+    if LEDGER_RECORD not in perms:
+        raise PermissionDenied(LEDGER_RECORD)
+    assert_module_operational(actor.request, "ledger")
+    over = body.allow_over_limit and LEDGER_MANAGE in perms
+    return {"credit_approved_by": actor.request.identity_id if over else None}
 
 
 @router.get("/{business_id}/invoices")
@@ -336,7 +353,7 @@ async def create_invoice(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     doc = await InvoiceService.create(session, business_id, actor.request.identity_id, _body(body) | {
-        "issue": body.issue, "reverse_charge": body.reverse_charge})
+        "issue": body.issue, "reverse_charge": body.reverse_charge} | _khata(actor, body))
     await session.commit()
     return {"data": await InvoiceService.detail(session, business_id, doc.id), "meta": _meta(actor)}
 
@@ -371,10 +388,13 @@ async def update_invoice(
     actor: BusinessActorContext = Depends(require_business_actor(INVOICES_ISSUE, MODULE)),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
+    khata = _khata(actor, body)
     doc = await InvoiceService.update_draft(session, business_id, document_id, actor.request.identity_id,
-                                            _body(body) | {"reverse_charge": body.reverse_charge})
+                                            _body(body) | {"reverse_charge": body.reverse_charge,
+                                                           "on_account": body.on_account})
     if body.issue:
-        await InvoiceService.issue(session, business_id, doc.id, actor.request.identity_id)
+        await InvoiceService.issue(session, business_id, doc.id, actor.request.identity_id,
+                                   credit_approved_by=khata.get("credit_approved_by"))
     await session.commit()
     return {"data": await InvoiceService.detail(session, business_id, doc.id), "meta": _meta(actor)}
 

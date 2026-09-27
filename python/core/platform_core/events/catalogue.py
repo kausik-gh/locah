@@ -273,6 +273,13 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "invoice.paid",
         }
     ),
+    # Capability Universe §6.2 `ledger`, §14.5 — the khata.
+    "ledger": frozenset(
+        {
+            "ledger.entry.posted",
+            "ledger.limit.overridden",
+        }
+    ),
 }
 
 KNOWN_EVENT_TYPES: frozenset[str] = frozenset().union(*_CATALOGUE.values())

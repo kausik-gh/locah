@@ -2120,6 +2120,8 @@ class InvoicingDocument(Base):
     device_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     pos_meta: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    # Sold on the customer's account (khata, P1-06): what is owed sits in their ledger.
+    on_account: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     issued_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -2242,6 +2244,59 @@ class PosCashMovement(Base):
     document_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     client_mutation_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_by: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+
+# ---------------------------------------------------------------- khata / credit book (P1-06)
+class LedgerAccount(Base):
+    """A customer's or supplier's running account (Capability Universe §6.2, §14.5)."""
+
+    __tablename__ = "ledger_accounts"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    party_type: Mapped[str] = mapped_column(Text, nullable=False)
+    customer_contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gstin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    balance: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    credit_limit: Mapped[Any | None] = mapped_column(Numeric(14, 2), nullable=True)
+    credit_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    public_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_entry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class LedgerEntry(Base):
+    """One append-only line in an account; balance_after is the running balance."""
+
+    __tablename__ = "ledger_entries"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    account_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("ledger_accounts.id"))
+    seq: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    amount: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    balance_after: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    entry_date: Mapped[Any] = mapped_column(Date, nullable=False)
+    due_date: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    method: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    document_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    shift_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    location_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    over_limit_approved_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

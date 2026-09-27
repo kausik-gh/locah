@@ -46,6 +46,7 @@ export default async function BillPage({ params }: { params: { businessId: strin
           <span style={{ display: 'inline-flex', gap: '.4rem', flexWrap: 'wrap' }}>
             <StatusPill value={d.status} />
             {d.status === 'issued' && d.overdue ? <StatusPill value="overdue" /> : null}
+            {d.on_account ? <StatusPill value="on khata" tone="info" /> : null}
             {d.status === 'issued' && PAYMENT_LABEL[d.payment_status] ? (
               <StatusPill value={PAYMENT_LABEL[d.payment_status]} tone={d.payment_status === 'paid' ? 'good' : 'warn'} />
             ) : null}

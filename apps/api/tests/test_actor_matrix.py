@@ -511,3 +511,40 @@ def test_pos_surfaces_follow_their_permission(
         assert refused.status_code == 403 and refused.json()["error"]["code"] == "PERMISSION_DENIED"
         _grant(client, headers, bid, membership_id, [permission])
         assert call(member_headers).status_code == 200, f"{permission} should open {method} {path}"
+
+
+LEDGER_SURFACES = [
+    # (method, path, permission that opens it, body) — Capability Universe §6.2 `ledger`, §14.5
+    ("GET", "/v1/platform/businesses/{bid}/ledger/accounts", "ledger.read", None),
+    ("GET", "/v1/platform/businesses/{bid}/ledger/lookup?phone=%2B919800000000", "ledger.read", None),
+    ("POST", "/v1/platform/businesses/{bid}/ledger/accounts", "ledger.manage",
+     {"party_type": "supplier", "display_name": "Matrix Supplier"}),
+]
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+@pytest.mark.parametrize(("method", "path", "permission", "body"), LEDGER_SURFACES,
+                         ids=[f"{m} {p.split('{bid}')[1]}" for m, p, _, _ in LEDGER_SURFACES])
+def test_ledger_surfaces_follow_their_permission(
+    owner: tuple[dict[str, str], uuid.UUID], method: str, path: str, permission: str, body: Any,
+) -> None:
+    headers, _ = owner
+    member_headers, member_id, _ = _actor()
+    outsider_headers, _, _ = _actor()
+    with TestClient(app) as client:
+        bid = _create_business(client, headers)
+        assert client.post(f"/v1/b/{bid}/modules/ledger/enable", headers=headers).status_code == 200
+        url = path.format(bid=bid)
+        membership_id = _invite_membership(client, headers, bid, member_id, "member")
+        _activate(client, headers, bid, membership_id)
+
+        def call(h: dict[str, str]) -> Any:
+            return client.request(method, url, headers=h, json=body)
+
+        assert call(headers).status_code == 200, "owner must reach every khata surface"
+        outsider = call(outsider_headers)
+        assert outsider.status_code == 403 and outsider.json()["error"]["code"] == "MEMBERSHIP_REQUIRED"
+        refused = call(member_headers)
+        assert refused.status_code == 403 and refused.json()["error"]["code"] == "PERMISSION_DENIED"
+        _grant(client, headers, bid, membership_id, [permission])
+        assert call(member_headers).status_code == 200, f"{permission} should open {method} {path}"

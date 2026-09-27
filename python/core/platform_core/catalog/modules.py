@@ -181,7 +181,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         "Who owes you and whom you owe, with limits, ageing and WhatsApp statements.",
         customer_can=("See what they owe and pay it",),
         staff_can=("Give credit within a limit", "Record settlements", "Send statements"),
-        packs=("commerce", "trade", "back_office"),
+        packs=("commerce", "trade", "back_office"), built=True,
     ),
     ModuleInfo(
         "messaging", "WhatsApp & messages", "P1",

@@ -44,6 +44,7 @@ from platform_core.services.number_series import NumberSeriesService, financial_
 from platform_core.services.pos import PosService, holder, read_approval, series_key
 
 TENDERS = {"cash": "Cash", "upi": "UPI", "card": "Card"}
+KHATA = "khata"  # on the customer's account (§14.5)
 
 
 def _sold_at(raw: Any, tz: str | None) -> tuple[datetime, date]:
@@ -201,26 +202,46 @@ async def pos_sale(session: AsyncSession, ctx: SyncContext, p: dict[str, Any]) -
     await InvoiceService.issue(session, ctx.business_id, doc.id, ctx.actor_id, issue_date=sold_day,
                                reresolve=False, preset=preset)
 
-    # Tenders (§14.1): cash, UPI, card; split allowed; change only from cash.
+    # Tenders (§14.1): cash, UPI, card, khata; split allowed; change only from cash.
     due = dec(doc.amount_due)
     tenders = list(p.get("tenders") or [])
     total = ZERO
     cash_given = ZERO
+    khata = ZERO
     for t in tenders:
-        if t.get("method") not in TENDERS:
-            raise Rejected("Take cash, UPI or card (khata comes with the credit book)")
+        if t.get("method") not in TENDERS and t.get("method") != KHATA:
+            raise Rejected("Take cash, UPI, card or khata")
         amount = money(dec(t.get("amount") or 0))
         if amount <= 0:
             raise Rejected("A tender amount must be more than zero")
         total += amount
         if t["method"] == "cash":
             cash_given += amount
+        if t["method"] == KHATA:
+            khata += amount
     if total < due:
         raise Rejected(f"₹{due - total} is still to be paid")
     change = total - due
     if change > cash_given:
         raise Rejected("Change can only be given from cash")
+    if khata > 0:
+        # On the customer's khata: their account, within their limit unless
+        # a manager allowed more (§14.5).
+        if "ledger.record" not in ctx.permissions:
+            raise Rejected("You are not allowed to give credit (khata)")
+        if not contact_id:
+            raise Rejected("Khata needs the customer: enter their phone number")
+        from platform_core.services.ledger import LedgerService
+
+        approval = read_approval(p.get("credit_approval"), ctx.business_id, "credit")
+        doc.on_account = True
+        doc.amount_paid = due - khata
+        await session.flush()
+        await LedgerService.charge_bill(session, doc, khata, ctx.actor_id, shift_id=shift.id,
+                                        approved_by=uuid.UUID(str(approval["by"])) if approval else None)
     for t in tenders:
+        if t["method"] == KHATA:
+            continue
         amount = money(dec(t["amount"]))
         if t["method"] == "cash" and change > 0:
             back = min(change, amount)
@@ -234,9 +255,9 @@ async def pos_sale(session: AsyncSession, ctx: SyncContext, p: dict[str, Any]) -
             recorded_by=ctx.actor_id, shift_id=shift.id,
             verification="to_verify" if t["method"] == "upi" and t.get("to_verify") else "verified",
         ))
-    doc.amount_paid = min(total, due)
+    doc.amount_paid = min(total, due) - khata
     doc.pos_meta = {**doc.pos_meta, "notes": notes, "tendered": float(total),
-                    "change": float(total - due if total > due else 0)}
+                    "change": float(total - due if total > due else 0), "khata": float(khata)}
     await session.flush()
     token = share_token(ctx.business_id, doc.id)
     return {"document_id": str(doc.id), "number": doc.number, "amount_due": float(doc.amount_due),
@@ -285,14 +306,14 @@ async def pos_return(session: AsyncSession, ctx: SyncContext, p: dict[str, Any])
         approval = read_approval(p.get("approval"), ctx.business_id, "return")
         if approval is None:
             raise Rejected(f"This bill is past the {window}-day return window — a manager's PIN is needed")
-    method = p.get("refund_method") or "cash"
-    if method not in TENDERS:
-        raise Rejected("Refund in cash, UPI or card")
+    method = p.get("refund_method") or (KHATA if original.on_account else "cash")
+    if method not in TENDERS and not (method == KHATA and original.on_account):
+        raise Rejected("Refund in cash, UPI or card" + (" — or back to their khata" if original.on_account else ""))
     note = await InvoiceService.note(session, ctx.business_id, original.id, ctx.actor_id, {
         "kind": "credit_note", "reason": "return", "restock": bool(p.get("restock", True)),
         "lines": [{"original_line_id": x.get("original_line_id"), "quantity": x.get("quantity")}
                   for x in p.get("lines") or []],
-        "notes": p.get("note"),
+        "notes": p.get("note"), "to_account": method == KHATA,
     })
     note.shift_id, note.device_id = shift.id, ctx.device_id
     note.pos_meta = {"refund_method": method}
@@ -333,3 +354,24 @@ async def pos_cash(session: AsyncSession, ctx: SyncContext, p: dict[str, Any]) -
         session, ctx.business_id, ctx.actor_id, uuid.UUID(str(p.get("shift_id"))), kind=str(p.get("kind") or ""),
         amount=p.get("amount"), reason=str(p.get("reason") or ""))
     return {"id": str(row.id), "kind": row.kind, "amount": float(row.amount)}
+
+
+@mutation("pos.khata_payment", permission="ledger.record")  # type: ignore[untyped-decorator, unused-ignore]
+async def pos_khata_payment(session: AsyncSession, ctx: SyncContext, p: dict[str, Any]) -> dict[str, Any]:
+    """A customer pays off their khata at the counter; cash goes in the drawer."""
+    from platform_core.services.ledger import LedgerService
+
+    shift = await PosService.get_shift(session, ctx.business_id, uuid.UUID(str(p.get("shift_id"))), lock=True)
+    if shift.status != "open":
+        raise Rejected("Open a shift to take a payment")
+    method = p.get("method") or "cash"
+    if method not in TENDERS:
+        raise Rejected("Take cash, UPI or card")
+    account = await LedgerService.get(session, ctx.business_id, uuid.UUID(str(p.get("account_id"))))
+    if account.party_type != "customer":
+        raise Rejected("Only a customer's khata is paid at the counter")
+    entry, applied = await LedgerService.receive(
+        session, ctx.business_id, account.id, ctx.actor_id, amount=p.get("amount"), method=method,
+        reference=(str(p.get("reference") or "").strip() or None), shift_id=shift.id, location_id=shift.location_id)
+    return {"entry_id": str(entry.id), "name": account.display_name, "amount": float(-entry.amount),
+            "balance": float(entry.balance_after), "applied": applied}

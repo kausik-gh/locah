@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import { createBill, updateDraft } from '../invoice-actions'
 import { rupees, type Bill, type Setup } from '../types'
+import type { Account } from '../../khata/types'
 
 export type CatalogueItem = {
   id: string
@@ -15,6 +16,8 @@ export type CatalogueItem = {
   kind_label?: string
 }
 export type CustomerLite = { id: string; display_name: string; phone: string | null; email: string | null }
+/** Khata on a bill (§14.5): who may give credit, and each customer's account. */
+export type KhataInfo = { canUse: boolean; canAllowOver: boolean; byContact: Record<string, Account> }
 
 type Line = { key: string; offering_id: string; title: string; quantity: string; unit_price: string; discount: string; hsn_sac: string; rate: string }
 
@@ -26,12 +29,13 @@ const blank = (): Line => ({ key: Math.random().toString(36).slice(2), offering_
  * carries its own HSN/SAC and rate. Place of supply defaults from the buyer's
  * GSTIN; the owner can change it.
  */
-export function BillForm({ businessId, setup, items, customers, draft }: {
+export function BillForm({ businessId, setup, items, customers, draft, khata }: {
   businessId: string
   setup: Setup
   items: CatalogueItem[]
   customers: CustomerLite[]
   draft: Bill | null
+  khata: KhataInfo
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
@@ -41,7 +45,9 @@ export function BillForm({ businessId, setup, items, customers, draft }: {
   const register = registers.find((r) => r.id === registerId)
   const registration = setup.registrations.find((r) => r.id === register?.registration_id)
   const regular = registration?.scheme === 'regular'
-  const [contactId, setContactId] = useState('')
+  const [contactId, setContactId] = useState(draft?.customer_contact_id ?? '')
+  const [onAccount, setOnAccount] = useState(Boolean(draft?.on_account))
+  const [allowOver, setAllowOver] = useState(false)
   const [business, setBusiness] = useState(Boolean(draft?.buyer?.gstin))
   const [buyer, setBuyer] = useState({
     name: draft?.buyer?.name ?? '', phone: draft?.buyer?.phone ?? '', gstin: draft?.buyer?.gstin ?? '',
@@ -76,6 +82,8 @@ export function BillForm({ businessId, setup, items, customers, draft }: {
     if (c) setBuyer((bb) => ({ ...bb, name: c.display_name, phone: c.phone ?? '' }))
   }
   const rough = lines.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.unit_price || 0) - Number(l.discount || 0), 0)
+  const account = contactId ? khata.byContact[contactId] : undefined
+  const room = account && account.credit_limit !== null ? account.credit_limit - account.balance : null
 
   const submit = (issue: boolean) =>
     start(async () => {
@@ -91,6 +99,8 @@ export function BillForm({ businessId, setup, items, customers, draft }: {
         reverse_charge: regular && business && reverse,
         due_date: due || undefined,
         notes: notes || undefined,
+        on_account: Boolean(contactId) && onAccount,
+        allow_over_limit: onAccount && allowOver,
         issue,
         lines: lines.filter((l) => l.offering_id || l.title.trim()).map((l) => ({
           offering_id: l.offering_id || undefined,
@@ -136,6 +146,28 @@ export function BillForm({ businessId, setup, items, customers, draft }: {
           <label><span className="bos-label">Name{business ? '' : ' — optional'}</span><input value={buyer.name} onChange={(e) => setBuyer({ ...buyer, name: e.target.value })} maxLength={200} /></label>
           <label><span className="bos-label">Phone — optional</span><input value={buyer.phone} onChange={(e) => setBuyer({ ...buyer, phone: e.target.value })} inputMode="tel" maxLength={20} /></label>
         </div>
+        {khata.canUse && contactId ? (
+          <div className="bos-khata-toggle">
+            <label className="bos-toggle">
+              <input type="checkbox" checked={onAccount} onChange={(e) => setOnAccount(e.target.checked)} />
+              <span className="bos-toggle__track" aria-hidden />
+              <span>Put this bill on their khata (credit)</span>
+            </label>
+            <p className={`bos-khata-note${onAccount && room !== null && rough > room ? ' is-over' : ''}`}>
+              {account
+                ? `${account.balance > 0 ? `Owes ${rupees(account.balance)}` : 'Owes nothing'}${account.credit_limit !== null ? ` · limit ${rupees(account.credit_limit)}` : ' · no limit set'}.`
+                : 'No khata yet — this bill opens one.'}
+              {onAccount && room !== null && rough > room ? ` This bill would take them over their limit (${rupees(Math.max(0, room))} left).` : ''}
+            </p>
+            {onAccount && room !== null && rough > room && khata.canAllowOver ? (
+              <label className="bos-toggle" style={{ marginTop: '.4rem' }}>
+                <input type="checkbox" checked={allowOver} onChange={(e) => setAllowOver(e.target.checked)} />
+                <span className="bos-toggle__track" aria-hidden />
+                <span>Allow it over the limit</span>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
         {registration?.scheme !== 'unregistered' ? (
           <label className="bos-toggle" style={{ marginTop: '.8rem' }}>
             <input type="checkbox" checked={business} onChange={(e) => setBusiness(e.target.checked)} />

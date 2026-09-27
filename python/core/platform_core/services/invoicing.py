@@ -480,15 +480,18 @@ class InvoiceService:
             reverse_charge=reverse, prices_include_tax=profile.prices_include_tax,
             due_date=date.fromisoformat(due) if due else None,
             notes=(str(payload.get("notes") or "").strip()[:2000] or None), terms=profile.terms,
-            idempotency_key=key, created_by=actor_id,
+            idempotency_key=key, created_by=actor_id, on_account=bool(payload.get("on_account")),
         )
+        if doc.on_account and contact is None:
+            raise _err("customer_contact_id", "Choose the customer whose khata this bill goes on")
         session.add(doc)
         await session.flush()
         for row in InvoiceService._apply(doc, lines, bill):
             session.add(row)
         await session.flush()
         if payload.get("issue", True):
-            await InvoiceService.issue(session, business_id, doc.id, actor_id)
+            await InvoiceService.issue(session, business_id, doc.id, actor_id,
+                                       credit_approved_by=payload.get("credit_approved_by"))
         return doc
 
     @staticmethod
@@ -533,6 +536,10 @@ class InvoiceService:
             doc.due_date = date.fromisoformat(payload["due_date"]) if payload["due_date"] else None
         if "notes" in payload:
             doc.notes = str(payload.get("notes") or "").strip()[:2000] or None
+        if "on_account" in payload:
+            doc.on_account = bool(payload["on_account"])
+        if doc.on_account and contact is None:
+            raise _err("customer_contact_id", "Choose the customer whose khata this bill goes on")
         doc.seller = await InvoiceService._seller(session, business_id, reg, register.location_id)
         for row in InvoiceService._apply(doc, lines, bill):
             session.add(row)
@@ -619,7 +626,7 @@ class InvoiceService:
     async def issue(
         session: AsyncSession, business_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, *,
         actor_context: str = "business", reresolve: bool = True, issue_date: date | None = None,
-        preset: tuple[str, str, int, str] | None = None,
+        preset: tuple[str, str, int, str] | None = None, credit_approved_by: uuid.UUID | None = None,
     ) -> InvoicingDocument:
         """Number and issue a draft. `issue_date` is the day of sale for a counter
         bill rung up offline; `preset` (series, FY, value, number) is a number
@@ -684,6 +691,13 @@ class InvoiceService:
             if short:
                 doc.pos_meta = {**(doc.pos_meta or {}), "stock_short": short}
                 await session.flush()
+        if doc.on_account and doc.source != "pos" and doc.doc_kind in INVOICE_KINDS:
+            # Sold on the customer's khata (§14.5); the counter posts its own
+            # khata tender after taking the other tenders.
+            from platform_core.services.ledger import LedgerService
+
+            await LedgerService.charge_bill(session, doc, dec(doc.amount_due) - dec(doc.amount_paid), actor_id,
+                                            approved_by=credit_approved_by)
         payload = InvoiceService._event_payload(doc)
         await OutboxService.publish(session, event_type="invoice.issued", business_id=business_id, payload=payload)
         await AuditService.record(session, event_type="invoice.issued", actor_identity_id=actor_id,
@@ -740,6 +754,9 @@ class InvoiceService:
         doc.version += 1
         doc.updated_at = now
         await session.flush()
+        from platform_core.services.ledger import LedgerService
+
+        await LedgerService.on_cancel(session, doc, actor_id)
         payload = InvoiceService._event_payload(doc) | {"reason": doc.cancel_reason}
         await OutboxService.publish(session, event_type="invoice.cancelled", business_id=business_id, payload=payload)
         await AuditService.record(session, event_type="invoice.cancelled", actor_identity_id=actor_id,
@@ -821,7 +838,7 @@ class InvoiceService:
             place_of_supply=original.place_of_supply, intra_state=original.intra_state,
             reverse_charge=original.reverse_charge, prices_include_tax=original.prices_include_tax,
             currency=original.currency, notes=(str(payload.get("notes") or "").strip()[:2000] or None),
-            created_by=actor_id,
+            created_by=actor_id, on_account=original.on_account and kind == "debit_note",
         )
         session.add(doc)
         await session.flush()
@@ -841,6 +858,12 @@ class InvoiceService:
         if doc.restock:
             await InvoiceService._move_stock(session, doc, new_rows, sign=1, movement_type="reversal",
                                              reason=f"Returned — credit note {doc.number}", actor_id=actor_id)
+        if original.on_account and payload.get("to_account", True):
+            # Goods back or a price cut on a khata bill lowers what is owed
+            # (a counter refund in cash says so with to_account=False).
+            from platform_core.services.ledger import LedgerService
+
+            await LedgerService.on_note(session, doc, actor_id)
         event = InvoiceService._event_payload(doc)
         await OutboxService.publish(session, event_type="invoice.issued", business_id=business_id, payload=event)
         await AuditService.record(session, event_type="invoice.issued", actor_identity_id=actor_id,
@@ -879,6 +902,10 @@ class InvoiceService:
         doc.version += 1
         doc.updated_at = datetime.now(timezone.utc)
         await session.flush()
+        if doc.on_account:
+            from platform_core.services.ledger import LedgerService
+
+            await LedgerService.on_bill_payment(session, doc, row, actor_id)
         event = InvoiceService._event_payload(doc) | {"amount": _f(amount), "method": method}
         await OutboxService.publish(session, event_type="invoice.payment_recorded", business_id=business_id,
                                     payload=event)
@@ -896,7 +923,7 @@ class InvoiceService:
         q = select(InvoicingDocument).where(InvoicingDocument.business_id == business_id,
                                             InvoicingDocument.id == document_id)
         if lock:
-            q = q.with_for_update()
+            q = q.with_for_update().execution_options(populate_existing=True)
         doc = (await session.execute(q)).scalars().first()
         if doc is None:
             raise ResourceNotFound("Bill")
@@ -946,6 +973,7 @@ class InvoiceService:
             "buyer": doc.buyer, "seller": doc.seller, "place_of_supply": doc.place_of_supply,
             "place_of_supply_label": state_label(doc.place_of_supply), "intra_state": doc.intra_state,
             "reverse_charge": doc.reverse_charge, "prices_include_tax": doc.prices_include_tax,
+            "on_account": doc.on_account,
             "currency": doc.currency, "location_id": str(doc.location_id), "register_id": str(doc.register_id),
             "taxable_total": _f(doc.taxable_total), "cgst_total": _f(doc.cgst_total),
             "sgst_total": _f(doc.sgst_total), "igst_total": _f(doc.igst_total), "tax_total": _f(doc.tax_total),

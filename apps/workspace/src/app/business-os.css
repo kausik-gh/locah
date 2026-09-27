@@ -443,6 +443,50 @@
   .bos-inv-presets { margin-right: 0; flex-basis: 100%; }
 }
 
+/* ---------------------------------------------------------------- khata / credit book (P1-06) */
+.bos-khata-bal { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bos-khata-bal.is-owed { color: var(--color-foreground); font-weight: 600; }
+.bos-khata-bal.is-ahead { color: var(--status-good-fg); }
+.bos-khata-late { color: var(--status-bad-fg); font-variant-numeric: tabular-nums; }
+.bos-khata-limit { display: grid; gap: .2rem; min-width: 110px; }
+.bos-khata-limit small { color: var(--color-muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
+.bos-khata-meter { display: block; height: 6px; border-radius: 999px; background: var(--color-surface-2); overflow: hidden; }
+.bos-khata-meter > span { display: block; height: 100%; background: var(--color-primary); border-radius: inherit; }
+.bos-khata-meter > span.is-over { background: var(--status-bad-fg); }
+.bos-khata-age { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: .5rem; margin: .3rem 0 .6rem; }
+.bos-khata-age > div {
+  display: grid; gap: .1rem; padding: .55rem .7rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+}
+.bos-khata-age span { font-size: .74rem; color: var(--color-muted); }
+.bos-khata-age strong { font-variant-numeric: tabular-nums; font-weight: 600; }
+.bos-khata-age .is-late { border-color: var(--status-bad-bd); background: var(--status-bad-bg); }
+.bos-khata-age .is-late strong { color: var(--status-bad-fg); }
+.bos-khata-table { overflow-x: auto; }
+.bos-khata-table table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.bos-khata-table th {
+  text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--color-muted);
+  font-weight: 600; padding: .45rem .6rem; border-bottom: 1px solid var(--color-border-strong); white-space: nowrap;
+}
+.bos-khata-table td { padding: .55rem .6rem; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+.bos-khata-table td small { display: block; color: var(--color-muted); font-size: .76rem; }
+.bos-khata-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bos-khata-toggle { margin-top: .8rem; }
+.bos-khata-note { margin: .4rem 0 0; font-size: .84rem; color: var(--color-muted); }
+.bos-khata-note.is-over { color: var(--status-bad-fg); }
+@media (max-width: 720px) {
+  .bos-khata-table thead { display: none; }
+  .bos-khata-table table, .bos-khata-table tbody { display: block; }
+  .bos-khata-table tr { display: grid; grid-template-columns: 1fr auto; gap: .15rem .6rem; padding: .6rem 0; border-bottom: 1px solid var(--color-border); }
+  .bos-khata-table td { border: 0; padding: 0; height: auto; min-height: 0; }
+  .bos-khata-table td:first-child { grid-column: 1 / -1; color: var(--color-muted); font-size: .78rem; }
+  .bos-khata-table td:nth-child(2) { grid-column: 1; grid-row: 2; }
+  .bos-khata-table td:nth-child(3), .bos-khata-table td:nth-child(4) { grid-column: 2; grid-row: 2; }
+  .bos-khata-table td:nth-child(3):empty, .bos-khata-table td:nth-child(4):empty { display: none; }
+  .bos-khata-table td:nth-child(4):not(:empty)::before { content: "−"; }
+  .bos-khata-table td:last-child { grid-column: 1 / -1; grid-row: 3; color: var(--color-muted); font-size: .78rem; }
+  .bos-khata-table td:last-child::before { content: "Balance "; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bos-toggle__track, .bos-toggle__track::after { transition: none; }
 }

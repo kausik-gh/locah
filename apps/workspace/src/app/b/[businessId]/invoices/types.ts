@@ -57,6 +57,8 @@ export type Bill = {
   intra_state: boolean | null
   reverse_charge: boolean
   prices_include_tax: boolean
+  on_account?: boolean
+  customer_contact_id?: string | null
   taxable_total: number
   cgst_total: number
   sgst_total: number

@@ -124,6 +124,29 @@ class _Ctx:
 
         return list(await InvoiceService.list_documents(self.s, self.b, payment="unpaid", limit=500))
 
+    async def _khata(self) -> dict[str, Any] | None:
+        """Customer khata (Capability Universe §14.5): who owes, who is late, who is over their limit."""
+        if not self.can("ledger.read", "ledger"):
+            return None
+        from platform_core.services.ledger import LedgerService
+
+        data = await LedgerService.list_accounts(self.s, self.b, party_type="customer")
+        rows = data["accounts"]
+        return {"owing": [a for a in rows if a["balance"] > 0], "late": [a for a in rows if a["ageing"]["overdue"] > 0],
+                "over": [a for a in rows if a["over_limit"]], "totals": data["totals"]}
+
+    def _khata_items(self, k: dict[str, Any] | None) -> list[dict[str, Any]]:
+        if not k:
+            return []
+        items = []
+        if k["late"]:
+            items.append(_item("khata accounts past due", len(k["late"]), "/khata?due=1",
+                               f"{_rupees(k['totals']['overdue'])} overdue", tone="bad"))
+        if k["over"]:
+            items.append(_item("khata accounts over their limit", len(k["over"]), "/khata",
+                               ", ".join(a["display_name"] for a in k["over"][:3])))
+        return items
+
     # ------------------------------------------------------------------ owner: needs you now
     async def needs_you_now(self) -> dict[str, Any]:
         items = []
@@ -167,6 +190,7 @@ class _Ctx:
         if late:
             items.append(_item("bills past their due date", len(late), "/invoices?tab=overdue",
                                f"{_rupees(sum(b['outstanding'] for b in late))} owed", tone="bad"))
+        items += self._khata_items(await self._khata())
         return {"key": "now", "title": "Needs you now", "items": items, "empty": "Nothing needs you right now."}
 
     # ------------------------------------------------------------------ today
@@ -347,16 +371,21 @@ class _Ctx:
         if bills:
             items.append(_item("bills not fully paid", len(bills), "/invoices?tab=unpaid",
                                f"{_rupees(sum(b['outstanding'] for b in bills))} outstanding"))
+        k = await self._khata()
+        if k and k["owing"]:
+            items.append(_item("customers owe on khata", len(k["owing"]), "/khata",
+                               f"{_rupees(k['totals']['receivable'])} in all"))
         return {"key": "unpaid", "title": "Unpaid", "items": items, "empty": "Nothing is unpaid."}
 
     async def due(self) -> dict[str, Any] | None:
         late = [b for b in await self._open_bills() if b["overdue"]]
+        khata = self._khata_items(await self._khata())
         if not self.can("memberships.read", "memberships"):
-            if not self.can("invoices.read", "invoicing"):
+            if not self.can("invoices.read", "invoicing") and not khata:
                 return None
             items = [_item("bills past their due date", len(late), "/invoices?tab=overdue",
                            f"{_rupees(sum(b['outstanding'] for b in late))} owed", tone="bad")] if late else []
-            return {"key": "due", "title": "Due", "items": items, "empty": "Nothing is due."}
+            return {"key": "due", "title": "Due", "items": items + khata, "empty": "Nothing is due."}
         soon = await self._count(MembershipEnrolment, MembershipEnrolment.business_id == self.b,
                                  MembershipEnrolment.deleted_at.is_(None), MembershipEnrolment.status == "active",
                                  MembershipEnrolment.ends_at >= self.now,
@@ -372,4 +401,4 @@ class _Ctx:
         if late:
             items.append(_item("bills past their due date", len(late), "/invoices?tab=overdue",
                                f"{_rupees(sum(b['outstanding'] for b in late))} owed", tone="bad"))
-        return {"key": "due", "title": "Due", "items": items, "empty": "Nothing is due."}
+        return {"key": "due", "title": "Due", "items": items + khata, "empty": "Nothing is due."}

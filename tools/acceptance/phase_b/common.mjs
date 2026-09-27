@@ -57,8 +57,9 @@ export async function clickUntil(page, text, selector, tries = 8) {
 
 /** Console errors, minus one known harness artifact: when a test navigates
  *  away while Next.js is still prefetching a link, the aborted fetch logs
- *  "Failed to fetch RSC payload … TypeError: Failed to fetch". Anything else
+ *  "Failed to fetch RSC payload … TypeError: Failed to fetch" (in dev, followed
+ *  by its stack frames). Anything else
  *  — including a real RSC failure with a status code — still counts. */
 export function realErrors(page) {
-  return page.consoleErrors.filter((e) => !/Failed to fetch RSC payload .* TypeError: Failed to fetch$/s.test(e))
+  return page.consoleErrors.filter((e) => !/Failed to fetch RSC payload .* TypeError: Failed to fetch(\n\s+at [^\n]+)*$/s.test(e))
 }
