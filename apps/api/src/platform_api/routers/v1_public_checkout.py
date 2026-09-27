@@ -31,6 +31,7 @@ class CheckoutItem(BaseModel):
     offering_id: UUID
     variant_id: UUID | None = None
     quantity: int = Field(default=1, ge=1, le=100)
+    # Accepted for older clients and ignored: prices always come from the catalogue.
     unit_price: float | None = None
 
 

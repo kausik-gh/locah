@@ -299,7 +299,9 @@ class CheckoutService:
                     "offering_id": offering_id,
                     "variant_id": raw.get("variant_id"),
                     "quantity": int(raw.get("quantity") or 1),
-                    "unit_price": raw.get("unit_price"),
+                    # Never the customer's number: the price comes from the
+                    # catalogue (Capability Universe §12.6 "cart price =
+                    # catalogue price"). Any unit_price sent is ignored.
                 }
             )
 
