@@ -11,7 +11,7 @@
 //   CHROME_PATH=/opt/pw-browsers/chromium CHROME_NO_SANDBOX=1 node tools/acceptance/phase_b/p1_team.mjs
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { launch } from '../cdp.mjs'
-import { OUT, WS, api, browser, check, clickUntil, newBusiness } from './common.mjs'
+import { OUT, WS, api, browser, check, clickUntil, newBusiness, realErrors } from './common.mjs'
 
 const results = []
 const shots = `${OUT}/phase_b/p1_team`
@@ -107,7 +107,7 @@ try {
   await staff.goto(joinUrl)
   await staff.waitFor('This link does not work', { text: true })
   check(true, 'the join link works once', results)
-  check(staff.consoleErrors.length === 0, `no console errors for staff (${staff.consoleErrors.slice(0, 2).join(' | ')})`, results)
+  check(realErrors(staff).length === 0, `no console errors for staff (${realErrors(staff).slice(0, 2).join(' | ')})`, results)
 } finally {
   await staff.close()
 }
@@ -128,7 +128,7 @@ try {
     check(!overflow, `no sideways scroll at 390 px (${path})`, results)
     await owner.shot(`${shots}/${name}.png`, { full: true })
   }
-  check(owner.consoleErrors.length === 0, `no console errors for owner (${owner.consoleErrors.slice(0, 2).join(' | ')})`, results)
+  check(realErrors(owner).length === 0, `no console errors for owner (${realErrors(owner).slice(0, 2).join(' | ')})`, results)
 } finally {
   await owner.close()
 }

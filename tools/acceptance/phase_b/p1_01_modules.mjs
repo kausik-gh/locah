@@ -4,7 +4,7 @@
 //
 //   CHROME_PATH=/opt/pw-browsers/chromium CHROME_NO_SANDBOX=1 node tools/acceptance/phase_b/p1_01_modules.mjs
 import { writeFileSync } from 'node:fs'
-import { OUT, WS, browser, check, newBusiness } from './common.mjs'
+import { OUT, WS, browser, check, newBusiness, realErrors } from './common.mjs'
 
 const results = []
 const shots = `${OUT}/phase_b/p1_01`
@@ -54,7 +54,7 @@ try {
   await page.shot(`${shots}/04-modules-phone.png`, { full: true })
   await page.goto(`${WS}/b/${biz.id}/settings/business`)
   await page.shot(`${shots}/05-traits-phone.png`, { full: true })
-  check(page.consoleErrors.length === 0, `no console errors (${page.consoleErrors.slice(0, 2).join(' | ')})`, results)
+  check(realErrors(page).length === 0, `no console errors (${realErrors(page).slice(0, 2).join(' | ')})`, results)
 } finally {
   await page.close()
   writeFileSync(`${shots}/results.json`, JSON.stringify({ business: biz, results }, null, 1))

@@ -52,7 +52,8 @@ export default async function InventoryPage({
   }
   const records = res.data.data || []
   const locations = locRes.ok ? locRes.data.data || [] : []
-  const lowCount = records.filter((r) => r.stock_status !== 'in_stock').length
+  // The API's stock states are available / low_stock / out_of_stock.
+  const lowCount = records.filter((r) => r.stock_status === 'low_stock' || r.stock_status === 'out_of_stock').length
 
   return (
     <div>
@@ -72,7 +73,7 @@ export default async function InventoryPage({
         hrefFor={(v) => `${base}/inventory${v ? `?stock_status=${v}` : ''}`}
         options={[
           { value: '', label: 'All' },
-          { value: 'in_stock', label: 'In stock' },
+          { value: 'available', label: 'In stock' },
           { value: 'low_stock', label: 'Low stock' },
           { value: 'out_of_stock', label: 'Out of stock' },
         ]}

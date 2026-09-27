@@ -178,6 +178,38 @@
 .bos-timeline li > :last-child { color: var(--color-muted); font-size: .8rem; }
 .bos-card__head .btn-quiet { white-space: nowrap; }
 
+/* ---------------------------------------------------------------- home */
+.bos-home { max-width: 1000px; }
+.bos-band { margin-top: 1.9rem; }
+.bos-band:first-of-type { margin-top: .6rem; }
+.bos-stat-link { text-decoration: none; color: inherit; display: block; }
+.bos-stat-link:hover { border-color: var(--color-border-strong); }
+.bos-attention { list-style: none; margin: 0; padding: 0; display: grid; gap: .45rem; }
+.bos-attention__row {
+  display: grid; grid-template-columns: auto 1fr auto; gap: .9rem; align-items: center; min-height: 56px;
+  padding: .7rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface);
+  color: var(--color-foreground); text-decoration: none; box-shadow: var(--shadow-card);
+}
+.bos-attention__row:hover { border-color: var(--color-border-strong); }
+.bos-attention__row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.bos-attention__count {
+  min-width: 2.2rem; height: 2.2rem; padding: 0 .4rem; border-radius: 999px; display: grid; place-items: center;
+  font-weight: 650; font-variant-numeric: tabular-nums;
+  color: var(--status-warn-fg); background: var(--status-warn-bg); border: 1px solid var(--status-warn-bd);
+}
+.bos-attention__row.is-bad .bos-attention__count { color: var(--status-bad-fg); background: var(--status-bad-bg); border-color: var(--status-bad-bd); }
+.bos-attention__row.is-info .bos-attention__count { color: var(--status-info-fg); background: var(--status-info-bg); border-color: var(--status-info-bd); }
+.bos-attention__row.is-good .bos-attention__count { color: var(--status-good-fg); background: var(--status-good-bg); border-color: var(--status-good-bd); }
+.bos-attention__dot { width: 10px; height: 10px; border-radius: 50%; margin: 0 .3rem; background: var(--status-warn-fg); }
+.bos-attention__row.is-good .bos-attention__dot { background: var(--status-good-fg); }
+.bos-attention__row.is-info .bos-attention__dot { background: var(--status-info-fg); }
+.bos-attention__row.is-bad .bos-attention__dot { background: var(--status-bad-fg); }
+.bos-attention__text { display: grid; gap: .1rem; min-width: 0; }
+.bos-attention__text strong { font-weight: 600; font-size: .92rem; }
+.bos-attention__text strong::first-letter { text-transform: uppercase; }
+.bos-attention__text span { color: var(--color-muted); font-size: .82rem; overflow: hidden; text-overflow: ellipsis; }
+.bos-attention__go { color: var(--color-primary); }
+
 /* ---------------------------------------------------------------- team */
 .bos-people { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; max-width: 980px; }
 .bos-person {

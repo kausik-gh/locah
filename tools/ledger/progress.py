@@ -145,3 +145,19 @@ done("P1-SH", {
                   db="✓ business_custom_roles + RLS", svc="✓ /roles, /roles/custom", perm="✓ delegation ceiling",
                   ws="✓ Team › Roles", test="✓ API + isolation + browser p1_team"),
 })
+
+
+# ---------------------------------------------------------------- P1-SH (part 2): navigation and role homes
+done("P1-SH", {
+    "FD-07": dict(status=C, code="owner adds a person with a role + scope; one-time join link (hash stored, WhatsApp share); the person creates their own login with the invited email and lands on their role's home with only their areas",
+                  db="✓", svc="✓", perm="✓ delegation ceiling, inviter re-checked at join", ws="✓ Team › Add a person, /join",
+                  role="✓ role home + role-shaped navigation", test="✓ API + browser p1_team, p1_shell"),
+    "FD-08": dict(status=C, code="the Guide's areas in fixed order (Home, Business presence, Sell/Serve, Offerings, Customers, Money, Team, Reach, Insights, AI employees, Modules & integrations, Settings); each shows only children whose module is on and whose permission the person holds; Reach/Insights/AI employees appear once their tools are built; area label follows what the business does (Sell / Serve / Sell & serve)",
+                  ws="✓ AppSidebar + lib/workspace-nav", role="✓", test="✓ browser p1_shell (owner, store keeper, manager)"),
+    "FD-09": dict(status=P, code="home answers the role's question from real records within permissions and locations: owner (needs you now · today · your business incl. setup next), manager (late or stuck at my location · today), store keeper (what is low · what arrived), accountant (unpaid · due); cashier, front desk, provider and dispatcher homes come with POS (P1-05) and the P2 roles",
+                  svc="✓ /home", ws="✓", role="✓", test="✓ test_role_home + browser p1_shell"),
+    "RL-01": dict(status=C, code="Owner: everything, business scope, Workspace; home answers needs you now · today · your business (Build Spec §8)",
+                  perm="✓", ws="✓", role="✓", test="✓"),
+    "SF-01": dict(status=C, code="Workspace serves owner, manager and office roles with role-shaped navigation and homes",
+                  ws="✓", role="✓", test="✓ browser p1_shell"),
+})

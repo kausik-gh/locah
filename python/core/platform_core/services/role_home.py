@@ -1,0 +1,325 @@
+"""Home answers the role's question (Business OS Guide §3 "Home should answer a
+question, not display random cards"; Capability Universe §7.2; Build Spec §8).
+
+Owner:        What needs me now? What is happening today? Is my business live?
+Manager:      What is late, blocked or exceptional at my location?
+Store keeper: What is low, what arrived?
+Accountant:   Unpaid and due (sync status joins with the Tally connector, P4).
+
+Every number is counted from real records, with the viewer's permissions and
+location scope applied (the ORM location filter runs on these queries), and
+every row links to the records behind it. Nothing is estimated.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from platform_core.models import (
+    Booking,
+    Business,
+    BusinessMembership,
+    CustomerContact,
+    FulfilmentJob,
+    InventoryMovement,
+    Lead,
+    MembershipEnrolment,
+    Offering,
+    PaymentAttempt,
+    SalesOrder,
+    Website,
+)
+from platform_core.permissions import ROLE_PRIMARY_OWNER
+
+IST = ZoneInfo("Asia/Kolkata")
+LIVE_ORDER = ("pending", "accepted", "preparing", "ready")
+ENDED = ("cancelled", "rejected")
+
+
+def _item(label: str, count: int, href: str, detail: str = "", tone: str = "warn") -> dict[str, Any]:
+    return {"label": label, "count": count, "href": href, "detail": detail, "tone": tone}
+
+
+def _rupees(amount: Decimal | float | int | None) -> str:
+    """Whole rupees with Indian digit grouping (₹1,23,456)."""
+    digits = str(int(Decimal(str(amount or 0)).quantize(Decimal("1"))))
+    head, tail = digits[:-3], digits[-3:]
+    groups: list[str] = []
+    while len(head) > 2:
+        groups.insert(0, head[-2:])
+        head = head[:-2]
+    return "₹" + ",".join([g for g in [head, *groups] if g] + [tail])
+
+
+class RoleHomeService:
+    @staticmethod
+    async def role_key(session: AsyncSession, membership: BusinessMembership) -> str:
+        if membership.role == ROLE_PRIMARY_OWNER:
+            return "owner"
+        key = membership.role_template or ""
+        if key.startswith("custom:"):
+            from sqlalchemy import text
+
+            row = (await session.execute(
+                text("SELECT based_on FROM business_custom_roles WHERE id = CAST(:id AS uuid)"), {"id": key[7:]},
+            )).first()
+            key = (row[0] if row else None) or ""
+        return key if key in ("manager", "store_keeper", "accountant", "cashier") else "member"
+
+    @staticmethod
+    async def compose(
+        session: AsyncSession, business: Business, membership: BusinessMembership, permissions: frozenset[str],
+        live_modules: set[str], *, now: datetime | None = None,
+    ) -> dict[str, Any]:
+        now = now or datetime.now(timezone.utc)
+        key = await RoleHomeService.role_key(session, membership)
+        can = lambda perm, module=None: perm in permissions and (module is None or module in live_modules)  # noqa: E731
+        ctx = _Ctx(session, business.id, now, can)
+        from platform_core.authorization.role_templates import OWNER, ROLE_TEMPLATES
+
+        tpl = OWNER if key == "owner" else ROLE_TEMPLATES.get(key)
+        question = tpl.home if tpl else "Your work today"
+        if key == "manager":
+            bands = [await ctx.late_or_stuck(), await ctx.today()]
+        elif key == "store_keeper":
+            bands = [await ctx.low_stock(), await ctx.arrived()]
+        elif key == "accountant":
+            bands = [await ctx.unpaid(), await ctx.due()]
+        else:
+            bands = [await ctx.needs_you_now(), await ctx.today()]
+            if key == "owner":
+                bands.append(await ctx.your_business(business, live_modules))
+        scoped = bool(membership.location_scope) and membership.role != ROLE_PRIMARY_OWNER
+        return {
+            "role": {"key": key, "label": tpl.label if tpl else "Team member", "question": question},
+            "location_scoped": scoped,
+            "bands": [b for b in bands if b is not None],
+        }
+
+
+class _Ctx:
+    def __init__(self, session: AsyncSession, business_id: uuid.UUID, now: datetime, can: Any) -> None:
+        self.s, self.b, self.now, self.can = session, business_id, now, can
+        local = now.astimezone(IST)
+        self.day_start = local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        self.day_end = self.day_start + timedelta(days=1)
+
+    async def _count(self, model: Any, *where: Any) -> int:
+        return int((await self.s.execute(select(func.count()).select_from(model).where(*where))).scalar_one())
+
+    # ------------------------------------------------------------------ owner: needs you now
+    async def needs_you_now(self) -> dict[str, Any]:
+        items = []
+        if self.can("orders.read", "orders"):
+            n = await self._count(SalesOrder, SalesOrder.business_id == self.b, SalesOrder.deleted_at.is_(None),
+                                  SalesOrder.status == "pending")
+            if n:
+                items.append(_item("orders waiting to be accepted", n, "/orders?status=pending", tone="bad"))
+        if self.can("bookings.read", "bookings"):
+            n = await self._count(Booking, Booking.business_id == self.b, Booking.deleted_at.is_(None),
+                                  Booking.status == "pending", Booking.starts_at >= self.now - timedelta(hours=1))
+            if n:
+                items.append(_item("bookings to confirm", n, "/bookings?status=pending"))
+        if self.can("payments.read", "payments"):
+            n = await self._count(PaymentAttempt, PaymentAttempt.business_id == self.b,
+                                  PaymentAttempt.deleted_at.is_(None), PaymentAttempt.status == "failed",
+                                  PaymentAttempt.created_at >= self.now - timedelta(days=7))
+            if n:
+                items.append(_item("payments failed this week", n, "/payments", tone="bad"))
+        if self.can("inventory.read", "inventory"):
+            low = await self._low_rows()
+            if low:
+                items.append(_item("items low or out of stock", len(low), "/inventory?stock_status=low_stock",
+                                   ", ".join(r["title"] for r in low[:3])))
+        if self.can("leads.read", "leads"):
+            n = await self._count(Lead, Lead.business_id == self.b, Lead.deleted_at.is_(None), Lead.status == "new")
+            if n:
+                items.append(_item("new enquiries to answer", n, "/leads?status=new"))
+            due = await self._count(Lead, Lead.business_id == self.b, Lead.deleted_at.is_(None),
+                                    Lead.status.notin_(("won", "lost")), Lead.next_follow_up_at < self.day_end)
+            if due:
+                items.append(_item("follow-ups due today", due, "/leads", tone="info"))
+        if self.can("memberships.read", "memberships"):
+            n = await self._count(MembershipEnrolment, MembershipEnrolment.business_id == self.b,
+                                  MembershipEnrolment.deleted_at.is_(None), MembershipEnrolment.status == "active",
+                                  MembershipEnrolment.ends_at >= self.now,
+                                  MembershipEnrolment.ends_at < self.now + timedelta(days=7))
+            if n:
+                items.append(_item("memberships ending this week", n, "/memberships", tone="info"))
+        return {"key": "now", "title": "Needs you now", "items": items, "empty": "Nothing needs you right now."}
+
+    # ------------------------------------------------------------------ today
+    async def today(self) -> dict[str, Any] | None:
+        stats = []
+        if self.can("orders.read", "orders"):
+            row = (await self.s.execute(
+                select(func.count(), func.coalesce(func.sum(SalesOrder.total_amount), 0)).select_from(SalesOrder)
+                .where(SalesOrder.business_id == self.b, SalesOrder.deleted_at.is_(None),
+                       SalesOrder.status.notin_(ENDED), SalesOrder.created_at >= self.day_start,
+                       SalesOrder.created_at < self.day_end)
+            )).one()
+            stats.append({"label": "Order value today", "value": _rupees(row[1]), "href": "/orders",
+                          "note": f"{int(row[0])} order{'s' if int(row[0]) != 1 else ''}"})
+        if self.can("bookings.read", "bookings"):
+            n = await self._count(Booking, Booking.business_id == self.b, Booking.deleted_at.is_(None),
+                                  Booking.status.notin_(ENDED), Booking.starts_at >= self.day_start,
+                                  Booking.starts_at < self.day_end)
+            stats.append({"label": "Bookings today", "value": str(n), "href": "/bookings", "note": ""})
+        if self.can("customers.read", "customer-relationships"):
+            n = await self._count(CustomerContact, CustomerContact.business_id == self.b,
+                                  CustomerContact.deleted_at.is_(None), CustomerContact.created_at >= self.day_start)
+            stats.append({"label": "New customers today", "value": str(n), "href": "/customers", "note": ""})
+        if not stats:
+            return None
+        return {"key": "today", "title": "Today", "stats": stats,
+                "empty": "No activity yet today."}
+
+    # ------------------------------------------------------------------ owner: your business
+    async def your_business(self, business: Business, live: set[str]) -> dict[str, Any]:
+        from platform_core.catalog.modules import MODULES, is_built
+        from platform_core.services.module_readiness import readiness
+
+        site = (await self.s.execute(select(Website.status).where(Website.business_id == self.b))).scalar()
+        offerings = await self._count(Offering, Offering.business_id == self.b, Offering.deleted_at.is_(None))
+        items = [] if offerings else [
+            _item("Add what you sell", 0, "/offerings", "No products or services yet — customers need something to buy or book"),
+        ]
+        items += [
+            _item("Website", 0, "/website", "Published" if site == "published" else "Not published yet",
+                  "good" if site == "published" else "warn"),
+            _item("Marketplace listing", 0, "/marketplace",
+                  "Customers can find you" if business.visibility == "discoverable" and site == "published"
+                  else "Not listed yet", "good" if business.visibility == "discoverable" else "info"),
+        ]
+        tools = sorted(m for m in live if not m.startswith("core-") and is_built(m) and m in MODULES)
+        states = await readiness(self.s, self.b, tools) if tools else {}
+        waiting = [MODULES[m].label for m in tools if states[m]["steps"] and not states[m]["configured"]]
+        items.append(_item(
+            "Tools", len(tools), "/modules",
+            (f"{len(tools)} on · setup left in {', '.join(waiting[:3])}" if waiting else f"{len(tools)} on, all set up")
+            if tools else "None switched on yet", "warn" if waiting else "good" if tools else "info"))
+        return {"key": "business", "title": "Your business", "items": items, "empty": ""}
+
+    # ------------------------------------------------------------------ manager
+    async def late_or_stuck(self) -> dict[str, Any]:
+        items = []
+        if self.can("orders.read", "orders"):
+            n = await self._count(SalesOrder, SalesOrder.business_id == self.b, SalesOrder.deleted_at.is_(None),
+                                  SalesOrder.status == "pending",
+                                  SalesOrder.created_at < self.now - timedelta(minutes=30))
+            if n:
+                items.append(_item("orders waiting over 30 minutes", n, "/orders?status=pending", tone="bad"))
+            n = await self._count(SalesOrder, SalesOrder.business_id == self.b, SalesOrder.deleted_at.is_(None),
+                                  SalesOrder.status.in_(("accepted", "preparing", "ready")),
+                                  SalesOrder.created_at < self.now - timedelta(hours=24))
+            if n:
+                items.append(_item("orders open for more than a day", n, "/orders"))
+        if self.can("bookings.read", "bookings"):
+            n = await self._count(Booking, Booking.business_id == self.b, Booking.deleted_at.is_(None),
+                                  Booking.status == "confirmed", Booking.starts_at < self.now - timedelta(minutes=15),
+                                  Booking.starts_at >= self.day_start)
+            if n:
+                items.append(_item("bookings started but not checked in", n, "/bookings"))
+            n = await self._count(Booking, Booking.business_id == self.b, Booking.deleted_at.is_(None),
+                                  Booking.status == "pending", Booking.starts_at >= self.now,
+                                  Booking.starts_at < self.day_end)
+            if n:
+                items.append(_item("bookings today still unconfirmed", n, "/bookings?status=pending"))
+        if self.can("fulfilment.read", "fulfilment"):
+            n = await self._count(FulfilmentJob, FulfilmentJob.business_id == self.b,
+                                  or_(and_(FulfilmentJob.status == "out_for_delivery",
+                                           FulfilmentJob.updated_at < self.now - timedelta(hours=2)),
+                                      and_(FulfilmentJob.status == "failed",
+                                           FulfilmentJob.updated_at >= self.day_start)))
+            if n:
+                items.append(_item("deliveries stuck or failed today", n, "/fulfilment", tone="bad"))
+        if self.can("inventory.read", "inventory"):
+            low = await self._low_rows()
+            if low:
+                items.append(_item("items low or out of stock", len(low), "/inventory?stock_status=low_stock",
+                                   ", ".join(r["title"] for r in low[:3])))
+        return {"key": "late", "title": "Late or stuck", "items": items,
+                "empty": "Nothing is late or stuck."}
+
+    # ------------------------------------------------------------------ store keeper
+    async def _low_rows(self) -> list[dict[str, Any]]:
+        from platform_core.services.inventory import InventoryService
+
+        rows = await InventoryService.list_for_business(self.s, self.b)
+        low = [r for r in rows if r["stock_status"] in ("low_stock", "out_of_stock")]
+        return [{"title": r["product_title"], "on_hand": r["quantity_on_hand"], "status": r["stock_status"],
+                 "location_id": r.get("location_id")} for r in low]
+
+    async def low_stock(self) -> dict[str, Any] | None:
+        if not self.can("inventory.read", "inventory"):
+            return None
+        low = await self._low_rows()
+        items = [_item(r["title"], int(r["on_hand"]), "/inventory?stock_status=low_stock",
+                       "Out of stock" if r["status"] == "out_of_stock" else f"{r['on_hand']} left",
+                       "bad" if r["status"] == "out_of_stock" else "warn") for r in low[:12]]
+        return {"key": "low", "title": "What is low", "items": items, "empty": "Nothing is running low."}
+
+    async def arrived(self) -> dict[str, Any] | None:
+        if not self.can("inventory.read", "inventory"):
+            return None
+        rows = (await self.s.execute(
+            select(Offering.title, InventoryMovement.quantity_delta, InventoryMovement.movement_type,
+                   InventoryMovement.created_at)
+            .join(Offering, Offering.id == InventoryMovement.offering_id)
+            .where(InventoryMovement.business_id == self.b, InventoryMovement.quantity_delta > 0,
+                   InventoryMovement.movement_type.in_(("receipt", "opening_stock", "adjustment")),
+                   InventoryMovement.created_at >= self.now - timedelta(days=7))
+            .order_by(InventoryMovement.created_at.desc()).limit(12)
+        )).all()
+        words = {"receipt": "Received", "opening_stock": "Opening stock", "adjustment": "Added"}
+        items = [dict(_item(r[0], int(r[1]), "/inventory", f"{words[r[2]]} +{r[1]}", "good"), at=r[3].isoformat())
+                 for r in rows]
+        return {"key": "arrived", "title": "What arrived", "items": items, "empty": "Nothing arrived this week."}
+
+    # ------------------------------------------------------------------ accountant
+    async def unpaid(self) -> dict[str, Any]:
+        items = []
+        if self.can("orders.read", "orders"):
+            row = (await self.s.execute(
+                select(func.count(), func.coalesce(func.sum(SalesOrder.total_amount), 0)).select_from(SalesOrder)
+                .where(SalesOrder.business_id == self.b, SalesOrder.deleted_at.is_(None),
+                       SalesOrder.status.notin_(ENDED),
+                       SalesOrder.payment_status.in_(("pending", "pending_offline")))
+            )).one()
+            if int(row[0]):
+                items.append(_item("orders not paid yet", int(row[0]), "/orders", f"{_rupees(row[1])} outstanding"))
+        if self.can("payments.read", "payments"):
+            n = await self._count(PaymentAttempt, PaymentAttempt.business_id == self.b,
+                                  PaymentAttempt.deleted_at.is_(None), PaymentAttempt.status == "failed",
+                                  PaymentAttempt.created_at >= self.now - timedelta(days=30))
+            if n:
+                items.append(_item("payments failed in the last 30 days", n, "/payments", tone="bad"))
+            n = await self._count(PaymentAttempt, PaymentAttempt.business_id == self.b,
+                                  PaymentAttempt.deleted_at.is_(None), PaymentAttempt.status == "pending_offline")
+            if n:
+                items.append(_item("cash or offline payments to confirm", n, "/payments", tone="info"))
+        return {"key": "unpaid", "title": "Unpaid", "items": items, "empty": "Nothing is unpaid."}
+
+    async def due(self) -> dict[str, Any] | None:
+        if not self.can("memberships.read", "memberships"):
+            return None
+        soon = await self._count(MembershipEnrolment, MembershipEnrolment.business_id == self.b,
+                                 MembershipEnrolment.deleted_at.is_(None), MembershipEnrolment.status == "active",
+                                 MembershipEnrolment.ends_at >= self.now,
+                                 MembershipEnrolment.ends_at < self.now + timedelta(days=7))
+        lapsed = await self._count(MembershipEnrolment, MembershipEnrolment.business_id == self.b,
+                                   MembershipEnrolment.deleted_at.is_(None), MembershipEnrolment.status == "expired",
+                                   MembershipEnrolment.ends_at >= self.now - timedelta(days=30))
+        items = []
+        if soon:
+            items.append(_item("renewals due this week", soon, "/memberships", tone="info"))
+        if lapsed:
+            items.append(_item("memberships lapsed in the last 30 days", lapsed, "/memberships"))
+        return {"key": "due", "title": "Due", "items": items, "empty": "Nothing is due."}

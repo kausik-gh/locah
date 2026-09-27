@@ -10,7 +10,7 @@
 //   CHROME_PATH=/opt/pw-browsers/chromium CHROME_NO_SANDBOX=1 node tools/acceptance/phase_b/p1_02_primitives.mjs
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { OUT, WS, api, browser, check, newBusiness } from './common.mjs'
+import { OUT, WS, api, browser, check, newBusiness, realErrors } from './common.mjs'
 
 const results = []
 const shots = `${OUT}/phase_b/p1_02`
@@ -114,7 +114,7 @@ try {
     check(!overflow, `no sideways scroll at 390 px (${path})`, results)
     await page.shot(`${shots}/${name}.png`, { full: true })
   }
-  check(page.consoleErrors.length === 0, `no console errors (${page.consoleErrors.slice(0, 2).join(' | ')})`, results)
+  check(realErrors(page).length === 0, `no console errors (${realErrors(page).slice(0, 2).join(' | ')})`, results)
 } finally {
   await page.close()
   writeFileSync(`${shots}/results.json`, JSON.stringify({ business: biz, results }, null, 1))

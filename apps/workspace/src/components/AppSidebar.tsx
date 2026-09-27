@@ -2,48 +2,19 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { visibleAreas } from '@/lib/workspace-nav'
 
 /* ========================================================================
-   Workspace layout shell (Frontend Design Work Order, Prompt B, item 1).
-   Persistent left sidebar. Business switcher · Core · Modules (active only) ·
-   Notifications. Collapse persists. Current route always visibly active.
-   No data fetching here — the server layout passes everything in.
+   Workspace layout shell. Persistent left sidebar: business switcher, then the
+   Business OS Guide §3 areas in their fixed order, each showing only what this
+   business runs and this person may open (lib/workspace-nav). Collapse
+   persists. Current route always visibly active. No data fetching here — the
+   server layout passes everything in.
    ======================================================================== */
 
 export type NavBusiness = { id: string; display_name: string; slug?: string }
 
-type Item = { href: string; label: string }
-
-const CORE: Item[] = [
-  { href: '', label: 'Home' },
-  { href: '/website', label: 'Website' },
-  { href: '/profile', label: 'Profile' },
-  { href: '/brand', label: 'Brand & Media' },
-  { href: '/locations', label: 'Locations' },
-  { href: '/team', label: 'Team' },
-  { href: '/marketplace', label: 'Marketplace' },
-  { href: '/settings', label: 'Settings' },
-]
-
-/** module id -> the workspace route it unlocks. Only rendered when the module
- *  is operational for this business (read from module_states, never invented). */
-const MODULE_NAV: { module: string; href: string; label: string }[] = [
-  { module: 'offerings-catalog', href: '/offerings', label: 'Offerings' },
-  { module: 'inventory', href: '/inventory', label: 'Inventory' },
-  { module: 'orders', href: '/orders', label: 'Orders' },
-  { module: 'fulfilment', href: '/fulfilment', label: 'Fulfilment' },
-  { module: 'bookings', href: '/bookings', label: 'Bookings' },
-  { module: 'workforce', href: '/workforce', label: 'Workforce' },
-  { module: 'customer-relationships', href: '/customers', label: 'Customers' },
-  { module: 'leads', href: '/leads', label: 'Leads' },
-  { module: 'quotes', href: '/quotes', label: 'Quotes' },
-  { module: 'projects', href: '/projects', label: 'Projects' },
-  { module: 'memberships', href: '/memberships', label: 'Memberships' },
-  { module: 'payments', href: '/payments', label: 'Payments' },
-]
-
-const OPERATIONAL = new Set(['active', 'ready'])
 const STORAGE_KEY = 'ws-sidebar-collapsed'
 
 function NavLink({
@@ -131,11 +102,13 @@ export function AppSidebar({
   businessId,
   businesses,
   moduleStates,
+  permissions,
   unreadCount,
 }: {
   businessId: string
   businesses: NavBusiness[]
   moduleStates: Record<string, string>
+  permissions: string[] | null
   unreadCount: number
 }) {
   const pathname = usePathname()
@@ -181,14 +154,22 @@ export function AppSidebar({
   }
 
   const base = `/b/${businessId}`
-  const isActive = (href: string) => {
-    const full = `${base}${href}`
-    if (href === '') return pathname === base || pathname === `${base}/`
-    return pathname === full || pathname.startsWith(`${full}/`)
-  }
+  const areas = useMemo(() => visibleAreas(moduleStates, permissions), [moduleStates, permissions])
+  // The most specific link that matches the page is the active one, so
+  // Settings › Automations does not also light up Business settings.
+  const activeHref = useMemo(() => {
+    const hrefs = [...areas.flatMap((a) => a.children.map((c) => c.href)), '/notifications']
+    let best: string | null = null
+    for (const href of hrefs) {
+      const full = `${base}${href}`
+      const hit = href === '' ? pathname === base || pathname === `${base}/` : pathname === full || pathname.startsWith(`${full}/`)
+      if (hit && (best === null || href.length > best.length)) best = href
+    }
+    return best
+  }, [areas, base, pathname])
+  const isActive = (href: string) => activeHref === href
 
   const current = businesses.find((b) => b.id === businessId)
-  const activeModules = MODULE_NAV.filter((m) => OPERATIONAL.has(moduleStates[m.module] ?? ''))
 
   return (
     <>
@@ -264,46 +245,33 @@ export function AppSidebar({
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: 'auto', padding: '0.4rem 0.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-        <GroupLabel collapsed={railed}>Core</GroupLabel>
-        {CORE.map((item) => (
-          <NavLink
-            key={item.href || 'home'}
-            href={`${base}${item.href}`}
-            label={item.label}
-            active={isActive(item.href)}
-            collapsed={railed}
-          />
-        ))}
-
-        {activeModules.length > 0 ? (
-          <>
-            <GroupLabel collapsed={railed}>Modules</GroupLabel>
-            {activeModules.map((m) => (
+        {areas.map((area) =>
+          area.key === 'home' ? (
+            <div key="home" style={{ display: 'grid', gap: '0.1rem', marginTop: '0.3rem' }}>
+              <NavLink href={base} label="Home" active={isActive('')} collapsed={railed} />
               <NavLink
-                key={m.href}
-                href={`${base}${m.href}`}
-                label={m.label}
-                active={isActive(m.href)}
+                href={`${base}/notifications`}
+                label="Notifications"
+                active={isActive('/notifications')}
                 collapsed={railed}
+                badge={unreadCount}
               />
-            ))}
-          </>
-        ) : null}
-
-        <GroupLabel collapsed={railed}>Alerts</GroupLabel>
-        <NavLink
-          href={`${base}/notifications`}
-          label="Notifications"
-          active={isActive('/notifications')}
-          collapsed={railed}
-          badge={unreadCount}
-        />
-        <NavLink
-          href={`${base}/modules`}
-          label="All modules"
-          active={isActive('/modules')}
-          collapsed={railed}
-        />
+            </div>
+          ) : (
+            <div key={area.key} role="group" aria-label={area.label}>
+              <GroupLabel collapsed={railed}>{area.label}</GroupLabel>
+              {area.children.map((item) => (
+                <NavLink
+                  key={item.href}
+                  href={`${base}${item.href}`}
+                  label={item.label}
+                  active={isActive(item.href)}
+                  collapsed={railed}
+                />
+              ))}
+            </div>
+          ),
+        )}
       </nav>
 
       {/* Collapse toggle */}
