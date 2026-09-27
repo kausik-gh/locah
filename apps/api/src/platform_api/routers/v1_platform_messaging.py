@@ -62,6 +62,8 @@ class SettingsBody(BaseModel):
     language: Literal["en", "ta", "hi"] | None = None
     customer_updates: dict[str, bool] | None = None
     human_pause_hours: int | None = Field(default=None, ge=1, le=72)
+    cod_allowed: bool | None = None
+    first_order_cod_cap: float | None = Field(default=None, ge=0)
 
 
 class AlertsBody(BaseModel):
@@ -182,8 +184,10 @@ async def save_settings(
     actor: BusinessActorContext = Depends(require_business_actor(MESSAGING_CONFIGURE, MODULE)),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
-    await MessagingService.save_settings(session, business_id, actor.request.identity_id,
-                                         body.model_dump(exclude_none=True))
+    # An empty first-order cap (null) removes it; any other null means "unchanged".
+    payload = {k: v for k, v in body.model_dump(exclude_unset=True).items()
+               if v is not None or k == "first_order_cod_cap"}
+    await MessagingService.save_settings(session, business_id, actor.request.identity_id, payload)
     data = await MessagingService.setup(session, business_id, actor.request.identity_id, _perms(actor))
     await session.commit()
     return {"data": data, "meta": _meta(actor)}

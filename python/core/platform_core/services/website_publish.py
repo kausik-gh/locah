@@ -326,6 +326,9 @@ class WebsitePublishService:
                 "contact": await _public_contact(session, business.id),
             },
             "capabilities": capabilities,
+            # §12.2 "Order on WhatsApp": the business's connected number, when
+            # a WhatsApp journey can run right now.
+            "whatsapp": await _whatsapp_entry(session, business.id),
             "website": WebsiteResolver.serialize_website(website),
             "version": WebsiteResolver.serialize_version(version),
             "page": serialized_page,
@@ -370,6 +373,13 @@ async def _theme_with_logo(session: Any, business_id: Any, theme: Any) -> dict[s
     if asset is not None and asset.public_url:
         result["logo_url"] = asset.public_url
     return result
+
+
+async def _whatsapp_entry(session: Any, business_id: Any) -> dict[str, Any] | None:
+    from platform_core.messaging.entry import whatsapp_entry
+
+    entry = await whatsapp_entry(session, business_id)
+    return {k: entry[k] for k in ("href", "label", "journeys")} if entry else None
 
 
 async def _public_contact(session: Any, business_id: Any) -> dict[str, str]:

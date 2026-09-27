@@ -17,7 +17,7 @@ REASON_MAX = 500
 
 LEAD_STATUSES = frozenset({"new", "contacted", "qualified", "won", "lost"})
 TERMINAL_STATUSES = frozenset({"won", "lost"})
-LEAD_SOURCES = frozenset({"manual", "website_enquiry", "marketplace", "import"})
+LEAD_SOURCES = frozenset({"manual", "website_enquiry", "marketplace", "import", "whatsapp"})
 
 # Doc 11 §10.2: New → Contacted → Qualified → Won | Lost. A lead may also be
 # marked Lost from any non-terminal state, and re-opened from Lost.

@@ -600,3 +600,37 @@
   .bos-catalogue li > button { grid-column: 1 / -1; justify-self: start; }
   .bos-person__actions { justify-content: flex-start; }
 }
+
+/* Opening hours (Locations › a location) */
+.bos-hours__days { display: grid; gap: .35rem; }
+.bos-hours__day { display: grid; grid-template-columns: 11rem 1fr; gap: .6rem; align-items: center; padding: .35rem 0; border-bottom: 1px solid var(--color-border); }
+.bos-hours__day:last-child { border-bottom: 0; }
+.bos-hours__spans { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center; }
+.bos-hours__span { display: inline-flex; gap: .35rem; align-items: center; }
+.bos-hours__span input[type=time] { width: 7.2rem; }
+.bos-hours__closed { color: var(--color-muted); font-size: .9rem; }
+@media (max-width: 560px) {
+  .bos-hours__day { grid-template-columns: 1fr; gap: .3rem; }
+}
+
+/* Choices LOCAH offered in a chat (WhatsApp buttons and lists, §12.3) */
+.bos-bubble__options { list-style: none; margin: .45rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: .3rem; }
+.bos-bubble__options.is-list { flex-direction: column; align-items: stretch; }
+.bos-bubble__options li { display: grid; }
+.bos-bubble__options li > span, .bos-bubble__options li > button {
+  font-size: .8rem; padding: .2rem .6rem; min-height: 28px; border-radius: 999px; border: 1px solid var(--status-good-bd);
+  background: var(--color-surface); color: var(--color-primary); text-align: left; line-height: 1.3;
+}
+.bos-bubble__options.is-list li > span, .bos-bubble__options.is-list li > button { border-radius: 8px; }
+.bos-bubble__options li > button:hover { background: var(--color-surface-2); filter: none; }
+.bos-bubble__options small { font-size: .7rem; color: var(--color-muted); padding: 0 .6rem; }
+.bos-inbox__as-customer { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding: .5rem .75rem; border-top: 1px dashed var(--color-border-strong); background: var(--status-warn-bg, var(--color-surface-2)); }
+.bos-inbox__as-customer label { flex-basis: 100%; font-size: .74rem; color: var(--color-muted); }
+.bos-inbox__as-customer input { flex: 1 1 12rem; min-width: 0; }
+.bos-wa-journeys { margin: 0 0 1rem; padding-left: 1.1rem; display: grid; gap: .25rem; font-size: .9rem; }
+.bos-wa-entry { display: grid; grid-template-columns: 180px 1fr; gap: 1.2rem; align-items: start; margin-bottom: 1rem; }
+.bos-wa-qr { margin: 0; padding: .6rem; border: 1px solid var(--color-border); border-radius: 10px; background: #fff; text-align: center; }
+.bos-wa-qr svg { width: 100%; height: auto; display: block; }
+.bos-wa-qr figcaption { font-size: .78rem; color: #111; margin-top: .2rem; }
+.bos-wa-link { margin: 0; overflow-wrap: anywhere; font-size: .9rem; }
+@media (max-width: 560px) { .bos-wa-entry { grid-template-columns: 1fr; } .bos-wa-qr { max-width: 220px; } }

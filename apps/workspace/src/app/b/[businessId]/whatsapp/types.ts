@@ -32,7 +32,15 @@ export type Setup = {
   meta: { app_id: string; config_id: string; graph_version: string } | null
   meta_ready: boolean
   sandbox_available: boolean
-  settings: { language: 'en' | 'ta' | 'hi'; human_pause_hours: number; customer_updates: Record<string, boolean> }
+  settings: {
+    language: 'en' | 'ta' | 'hi'
+    human_pause_hours: number
+    customer_updates: Record<string, boolean>
+    cod_allowed: boolean
+    first_order_cod_cap: number | null
+  }
+  /** §12.2 entry points: the link with "menu" typed, its QR, what customers can do. */
+  entry: { number: string; href: string; label: string; journeys: string[]; test_number: boolean; qr_svg: string } | null
   customer_updates: Record<string, string>
   ladder_updates: Record<string, string>
   languages: Record<string, string>
@@ -73,7 +81,15 @@ export type Message = {
   category: string | null
   sent_via: string | null
   sent_by_name: string | null
-  payload: { latitude?: number; longitude?: number; media_type?: string; title?: string }
+  payload: {
+    latitude?: number
+    longitude?: number
+    media_type?: string
+    title?: string
+    /** Buttons or list rows LOCAH offered (structured journeys, §12.3). */
+    options?: { id: string; title: string; description?: string }[]
+    reply_kind?: 'button' | 'list'
+  }
   at: string | null
 }
 

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
-import { addQuickReply, assign, markRead, reply, setState } from '../whatsapp/whatsapp-actions'
+import { addQuickReply, assign, markRead, reply, sandboxInbound, setState } from '../whatsapp/whatsapp-actions'
 import { clock, rupees, until, type Conversation, type Thread } from '../whatsapp/types'
 
 const TABS: [string, string][] = [
@@ -49,6 +49,11 @@ export function Inbox({ businessId, view, q, list, thread, quickReplies, canRepl
     end.current?.scrollIntoView({ block: 'end' })
   }, [businessId, thread])
 
+  const [asCustomer, setAsCustomer] = useState('')
+  const lastOffer = thread ? [...thread.messages].reverse().find((m) => m.direction === 'in' || m.payload.options?.length) : undefined
+  const tappable = sandbox && thread && lastOffer?.direction === 'out' ? lastOffer.id : null
+  const customer = (body: Record<string, unknown>, after?: () => void) =>
+    thread && act(() => sandboxInbound(businessId, { from_phone: thread.phone, name: thread.name, ...body }), after)
   const act = (fn: () => Promise<{ ok: boolean; message?: string }>, after?: () => void) =>
     start(async () => {
       setError(null)
@@ -136,6 +141,21 @@ export function Inbox({ businessId, view, q, list, thread, quickReplies, canRepl
                 {m.kind === 'location' && m.payload.latitude !== undefined ? (
                   <a href={`https://www.google.com/maps?q=${m.payload.latitude},${m.payload.longitude}`} target="_blank" rel="noreferrer">📍 {m.body}</a>
                 ) : <p>{m.body}</p>}
+                {m.payload.options?.length ? (
+                  <ul className={`bos-bubble__options${m.payload.reply_kind === 'list' ? ' is-list' : ''}`} aria-label="Choices offered">
+                    {m.payload.options.map((o) => (
+                      <li key={o.id}>
+                        {tappable === m.id ? (
+                          <button type="button" disabled={pending} title="Tap as the customer (test number)"
+                            onClick={() => customer({ button_id: o.id, button_title: o.title, list_reply: m.payload.reply_kind === 'list' })}>
+                            {o.title}
+                          </button>
+                        ) : <span>{o.title}</span>}
+                        {o.description ? <small>{o.description}</small> : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <small className="bos-bubble__meta">
                   {m.direction === 'out' ? (m.sent_via === 'workspace' ? m.sent_by_name ?? 'Team' : m.sent_via === 'business_app' ? 'WhatsApp Business app' : 'LOCAH') + ' · ' : ''}
                   {clock(m.at)}{TICKS[m.status] ? ` · ${TICKS[m.status]}` : ''}{m.error ? ` — ${m.error}` : ''}
@@ -144,6 +164,13 @@ export function Inbox({ businessId, view, q, list, thread, quickReplies, canRepl
             ))}
             <div ref={end} />
           </div>
+          {sandbox && thread.state === 'open' ? (
+            <form className="bos-inbox__as-customer" onSubmit={(e) => { e.preventDefault(); if (asCustomer.trim()) customer({ text: asCustomer.trim() }, () => setAsCustomer('')) }}>
+              <label htmlFor="as-customer">Test number — write as {thread.name || 'the customer'}</label>
+              <input id="as-customer" value={asCustomer} onChange={(e) => setAsCustomer(e.target.value)} placeholder="menu, 2, an address…" />
+              <button type="submit" className="btn-ghost" disabled={pending || !asCustomer.trim()}>Send as customer</button>
+            </form>
+          ) : null}
           {canReply ? (
             thread.window_open ? (
               <form className="bos-inbox__reply" onSubmit={(e) => { e.preventDefault(); act(() => reply(businessId, thread.id, text), () => setText('')) }}>

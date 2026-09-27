@@ -44,6 +44,9 @@ export function WhatsAppSetup({ businessId, setup, canConfigure }: { businessId:
   const [lang, setLang] = useState(setup.settings.language)
   const [updates, setUpdates] = useState(setup.settings.customer_updates)
   const [pause, setPause] = useState(String(setup.settings.human_pause_hours))
+  const [cod, setCod] = useState(setup.settings.cod_allowed)
+  const [cap, setCap] = useState(setup.settings.first_order_cod_cap === null ? '' : String(setup.settings.first_order_cod_cap))
+  const [copied, setCopied] = useState(false)
   const mine = setup.alerts.mine
   const [alertPhone, setAlertPhone] = useState(mine?.phone ? `+${mine.phone}` : '')
   const [alertKinds, setAlertKinds] = useState<string[]>(mine?.kinds ?? Object.keys(setup.alerts.kinds).slice(0, 2))
@@ -174,6 +177,74 @@ export function WhatsAppSetup({ businessId, setup, canConfigure }: { businessId:
               {status('updates')}
             </div>
           ) : null}
+        </section>
+      ) : null}
+
+      {ch ? (
+        <section className="bos-card" aria-labelledby="entry-h">
+          <h2 id="entry-h">Customers order and book here</h2>
+          {setup.entry ? (
+            <>
+              <p className="bos-hint">
+                When a customer sends “menu”, LOCAH answers with buttons — no typing, no AI — and every order, booking or
+                question lands in the same place as your website’s. Prices and stock come only from your catalogue.
+              </p>
+              <ul className="bos-wa-journeys">
+                {setup.entry.journeys.includes('order') ? <li><strong>Order</strong> — pick items, delivery or pickup, pay on delivery</li> : null}
+                {setup.entry.journeys.includes('book') ? <li><strong>Book</strong> — a service, a day and a free time from your opening hours</li> : null}
+                {setup.entry.journeys.includes('enquire') ? <li><strong>Ask a question</strong> — saved as an enquiry for your team</li> : null}
+                {setup.entry.journeys.some((j) => j === 'order' || j === 'book') ? <li><strong>Track, repeat, change or cancel</strong> — their own orders and bookings, within your policy</li> : null}
+                {setup.entry.journeys.includes('dues') ? <li><strong>What do I owe</strong> — their khata balance and unpaid bills, with a link to pay</li> : null}
+                <li><strong>Talk to a person</strong> — always there; the chat comes to your inbox</li>
+              </ul>
+              <div className="bos-wa-entry">
+                <figure className="bos-wa-qr">
+                  {/* Generated on the server from the business's own link. */}
+                  <div aria-label={`QR code: ${setup.entry.label}`} role="img" dangerouslySetInnerHTML={{ __html: setup.entry.qr_svg }} />
+                  <figcaption>Scan to {setup.entry.label.replace(' on WhatsApp', '').toLowerCase()} on WhatsApp</figcaption>
+                </figure>
+                <div>
+                  <p className="bos-label">Your link</p>
+                  <p className="bos-wa-link"><a href={setup.entry.href} target="_blank" rel="noreferrer">{setup.entry.href}</a></p>
+                  <div className="bos-inv-buttons">
+                    <button type="button" className="btn-ghost" onClick={() => { void navigator.clipboard?.writeText(setup.entry!.href); setCopied(true) }}>{copied ? 'Copied' : 'Copy link'}</button>
+                    <a className="btn btn-ghost" download="whatsapp-qr.svg" href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(setup.entry.qr_svg)}`}>Download QR</a>
+                  </div>
+                  <p className="bos-hint" style={{ marginTop: '.6rem' }}>
+                    Print the QR for your counter and packaging. Your website shows “{setup.entry.label}”, and so does your Marketplace listing.
+                    {setup.entry.test_number ? ' This is a test number, so the link will not open a real chat.' : ''}
+                  </p>
+                </div>
+              </div>
+              <fieldset className="bos-inv-q" disabled={!canConfigure}>
+                <legend>Paying for WhatsApp orders</legend>
+                <label className="bos-toggle">
+                  <input type="checkbox" checked={cod} onChange={(e) => setCod(e.target.checked)} />
+                  <span className="bos-toggle__track" aria-hidden />
+                  <span>Customers can pay on delivery or at pickup</span>
+                </label>
+                {cod ? (
+                  <label style={{ display: 'grid', maxWidth: '22rem', marginTop: '.5rem' }}>
+                    <span className="bos-label">First order: pay on delivery up to (₹, leave empty for no limit)</span>
+                    <input inputMode="decimal" value={cap} onChange={(e) => setCap(e.target.value.replace(/[^\d.]/g, ''))} placeholder="No limit" />
+                  </label>
+                ) : (
+                  <p className="bos-hint">Online payment links need a payment provider, which is being switched on — until then a person finishes these orders.</p>
+                )}
+                {canConfigure ? (
+                  <div className="bos-inv-buttons">
+                    <button type="button" disabled={pending} onClick={() => run('pay', () => saveSettings(businessId, { cod_allowed: cod, first_order_cod_cap: cap ? Number(cap) : null }), 'Saved')}>Save payment rules</button>
+                    {status('pay')}
+                  </div>
+                ) : null}
+              </fieldset>
+            </>
+          ) : (
+            <p className="bos-hint">
+              Switch on <Link href={`/b/${businessId}/modules`}>Orders, Bookings or Enquiries</Link> and customers can order, book or ask
+              right here with buttons — the same records your website creates.
+            </p>
+          )}
         </section>
       ) : null}
 

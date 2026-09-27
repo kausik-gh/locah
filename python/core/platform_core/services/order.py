@@ -25,6 +25,9 @@ from platform_core.services.outbox import OutboxService
 from platform_core.validation.order import validate_create_payload, validate_patch_payload
 
 
+# Capability Universe §6.1: where an order came from.
+ORDER_CHANNELS = frozenset({"web", "whatsapp", "pos", "phone", "workspace", "marketplace", "chitbridge"})
+
 class OrderService:
     @staticmethod
     def serialize_order(order: SalesOrder) -> dict[str, Any]:
@@ -281,6 +284,7 @@ class OrderService:
             currency=validated["currency"],
             internal_reference=validated["internal_reference"],
             idempotency_key=validated["idempotency_key"],
+            channel=payload.get("channel") if payload.get("channel") in ORDER_CHANNELS else None,
         )
         session.add(order)
         await session.flush()

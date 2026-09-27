@@ -716,6 +716,8 @@ class SalesOrder(Base):
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Capability Universe §14: once the business has a tax profile, orders are
     # priced by the billing engine — its round-off line and what it decided.
+    # Where it came from (Capability Universe §6.1): web, whatsapp, pos, phone, workspace, marketplace, chitbridge.
+    channel: Mapped[str | None] = mapped_column(Text, nullable=True)
     round_off: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, server_default=text("0"))
     tax_basis: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
@@ -1022,6 +1024,7 @@ class Booking(Base):
     provider_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("workforce_members.id"), nullable=True
     )
+    channel: Mapped[str | None] = mapped_column(Text, nullable=True)
     booking_number: Mapped[str] = mapped_column(Text, nullable=False)
     reservation_mode: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
@@ -2336,6 +2339,8 @@ class MessagingSettings(Base):
     customer_updates: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict,
                                                              server_default=text("'{}'::jsonb"))
     human_pause_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=12, server_default=text("12"))
+    cod_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    first_order_cod_cap: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
@@ -2404,7 +2409,7 @@ class MessagingMessage(Base):
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_via: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("clock_timestamp()"))
     status_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

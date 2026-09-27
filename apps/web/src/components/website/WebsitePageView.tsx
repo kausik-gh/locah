@@ -216,7 +216,15 @@ export function WebsitePageView({
   // The tab title is set by each route's generateMetadata, not here — a <title>
   // rendered in the tree lands in <body> on React 18 and duplicates the tag.
   const contact: SiteContact = data.business.contact || {}
-  const reachable = Boolean(contact.phone || contact.whatsapp)
+  // §12.2: the business's connected number opens its WhatsApp menu; the
+  // number the owner published is the fallback.
+  const journey = data.whatsapp || null
+  const waHref = journey
+    ? journey.href
+    : contact.whatsapp
+      ? `https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`
+      : ''
+  const reachable = Boolean(contact.phone || waHref)
   const nav = data.navigation || []
   const sections = data.page.sections.filter((s) => s.is_visible !== false)
   const capabilities = data.capabilities || {}
@@ -381,13 +389,14 @@ export function WebsitePageView({
         ))}
       </main>
 
-      {contact.whatsapp ? (
+      {waHref ? (
         <a
           className="ls-wa-float"
-          href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}
+          href={waHref}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`WhatsApp ${name}`}
+          aria-label={journey ? `${journey.label}, ${name}` : `WhatsApp ${name}`}
+          title={journey ? journey.label : undefined}
         >
           <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
             <path
@@ -402,13 +411,9 @@ export function WebsitePageView({
         // On a phone the two things a visitor most wants are always one tap away.
         <nav className="ls-mobile-bar" aria-label="Contact">
           {contact.phone ? <a href={`tel:${contact.phone}`}>{callLabel}</a> : null}
-          {contact.whatsapp ? (
-            <a
-              href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              WhatsApp
+          {waHref ? (
+            <a href={waHref} target="_blank" rel="noopener noreferrer">
+              {journey ? journey.label : 'WhatsApp'}
             </a>
           ) : null}
         </nav>
@@ -443,7 +448,7 @@ export function WebsitePageView({
             </div>
           ) : null}
           {canOrder && !canBook ? <CommerceCart slug={slug} variant="footer" /> : null}
-          {visitLinks.length > 0 ? (
+          {visitLinks.length > 0 || journey ? (
             <div className="ls-foot__col">
               <p className="ls-foot__heading">Your visit</p>
               {canOrder ? <CommerceCart slug={slug} variant="footer-link" /> : null}
@@ -452,6 +457,11 @@ export function WebsitePageView({
                   {item.label}
                 </Link>
               ))}
+              {journey ? (
+                <a href={journey.href} target="_blank" rel="noopener noreferrer">
+                  {journey.label}
+                </a>
+              ) : null}
             </div>
           ) : null}
         </div>

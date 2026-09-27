@@ -13,6 +13,9 @@ export type PublicWebsitePayload = {
   /** What a visitor can actually do here, from the business's live modules.
    *  Sections read this instead of assuming from their own type. */
   capabilities?: Record<string, boolean>
+  /** The business's connected WhatsApp number, when a WhatsApp journey
+   *  (order, book, ask) can run right now: "menu" is already typed. */
+  whatsapp?: { href: string; label: string; journeys: string[] } | null
   website: { status: string }
   page: {
     title: string

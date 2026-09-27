@@ -191,7 +191,51 @@ class CheckoutService:
         correlation_id: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
+        """The website's checkout: a guest with a name and email."""
         business = await CheckoutService._resolve_business(session, slug)
+        guest = payload.get("guest") or {}
+        display_name = str(guest.get("name") or "").strip()
+        email = str(guest.get("email") or "").strip().lower()
+        phone = (str(guest.get("phone")).strip() if guest.get("phone") else None) or None
+        if not display_name or not email:
+            raise ValidationError(
+                "Guest name and email are required",
+                details={"field": "guest"},
+            )
+
+        # Doc 05 Part 7.1: a guest checkout is bounded to the transaction and
+        # never becomes a Platform Identity. Customer attribution is the
+        # business-scoped CustomerContact; audit/actor attribution is the
+        # storefront owner acting in a guest-checkout context.
+        actor_id = business.primary_owner_identity_id
+        contact = await CustomerService.find_or_create_contact(
+            session,
+            business_id=business.id,
+            correlation_id=correlation_id,
+            actor_id=actor_id,
+            actor_context="guest_checkout",
+            display_name=display_name,
+            email=email,
+            phone=phone,
+        )
+
+        return await CheckoutService.place_for_contact(
+            session, business=business, contact=contact, correlation_id=correlation_id,
+            payload={**payload, "channel": "web"})
+
+    @staticmethod
+    async def place_for_contact(
+        session: AsyncSession,
+        *,
+        business: Business,
+        contact: Any,
+        correlation_id: str,
+        payload: dict[str, Any],
+        actor_context: str = "guest_checkout",
+    ) -> dict[str, Any]:
+        """One order path for every channel (website, WhatsApp): priced from the
+        catalogue, fulfilment job, payment attempt (Capability Universe §12)."""
+        actor_id = business.primary_owner_identity_id
         if not await CheckoutService._orders_active(session, business.id):
             # Auto-enable is not allowed; require module. For First Launch retail types
             # orders is on the plan — Business must enable. Fallback: if entitled core
@@ -254,32 +298,6 @@ class CheckoutService:
                 "Selected payment method is not available",
                 details={"payment_method": payment_method},
             )
-
-        guest = payload.get("guest") or {}
-        display_name = str(guest.get("name") or "").strip()
-        email = str(guest.get("email") or "").strip().lower()
-        phone = (str(guest.get("phone")).strip() if guest.get("phone") else None) or None
-        if not display_name or not email:
-            raise ValidationError(
-                "Guest name and email are required",
-                details={"field": "guest"},
-            )
-
-        # Doc 05 Part 7.1: a guest checkout is bounded to the transaction and
-        # never becomes a Platform Identity. Customer attribution is the
-        # business-scoped CustomerContact; audit/actor attribution is the
-        # storefront owner acting in a guest-checkout context.
-        actor_id = business.primary_owner_identity_id
-        contact = await CustomerService.find_or_create_contact(
-            session,
-            business_id=business.id,
-            correlation_id=correlation_id,
-            actor_id=actor_id,
-            actor_context="guest_checkout",
-            display_name=display_name,
-            email=email,
-            phone=phone,
-        )
 
         # Validate offerings exist and are public/active before create.
         order_items: list[dict[str, Any]] = []
@@ -352,8 +370,9 @@ class CheckoutService:
             business_id=business.id,
             actor_id=actor_id,
             correlation_id=correlation_id,
-            actor_context="guest_checkout",
+            actor_context=actor_context,
             payload={
+                "channel": payload.get("channel"),
                 "location_id": location_id,
                 "customer_contact_id": contact.id,
                 "payment_method": payment_method,

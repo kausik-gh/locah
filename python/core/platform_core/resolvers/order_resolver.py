@@ -91,6 +91,7 @@ class OrderResolver:
                 str(order.customer_contact_id) if order.customer_contact_id else None
             ),
             "order_number": order.order_number,
+            "channel": order.channel,
             "status": order.status,
             "payment_method": order.payment_method,
             "payment_status": order.payment_status,

@@ -355,3 +355,43 @@ done("P1-07", {
     "PM-09": dict(status=P, code="per-business monthly meters with idempotent counting, caps, 80%/100% alerts; AI tokens and WhatsApp messages counted and capped today; SMS/email/voice/maps start counting when their providers connect"),
     "IV-08": dict(status=P, code="A4 PDF, 58/80 mm thermal PDF, the customer's bill page, and 'Your bill from <business>' sent from the business's WhatsApp number or the staff member's phone; email not built (no email provider for business mail yet); GSTR-1 format VB-14"),
 })
+
+
+# ---------------------------------------------------------------- P1-08 WhatsApp journeys
+_JR_TEST = ("✓ test_journeys (6: order with a price change between summary and tap, duplicate deliveries, stock "
+            "short, zone, COD cap, reorder, cancel; book from opening hours with a resource held; enquiry; dues; a "
+            "person's pause; entry points — zero model calls, AI guard record empty) + browser p1_08 (30 checks)")
+done("P1-08", {
+    "MS-04": dict(status=C, code="router, cheapest branch first: STOP → opt-out; 'talk to a person' → inbox; button and list replies, menu words (English, Tamil, Hindi) and plain keywords ('track', 'cancel my booking', 'how much do I owe') → the structured journey; other free text → a person, with 'send menu' offered, until the AI WhatsApp Manager (P3)",
+                  svc="✓ MessagingService.route + messaging.journeys", test=_JR_TEST),
+    "MS-09": dict(status=A, code="built: the business number's wa.me link with 'menu' typed, its QR (download for counter and packaging) on the WhatsApp page; the tenant website's WhatsApp button, phone bar and footer say 'Order / Book on WhatsApp' and open the menu; the Marketplace listing's WhatsApp action does the same — each only when the number is connected and a journey can run. Google Business Profile links (MK-06) and Click-to-WhatsApp ads (MK-04) need those providers",
+                  ws="✓ WhatsApp › Customers order and book here", web="✓ website + Marketplace", test=_JR_TEST),
+    "MS-10": dict(status=A, code="menu → category → item (today's price) → option / pack / required choices as lists → quantity (buttons or typed) → cart (checkout row kept while adding) → delivery or pickup → address → summary → 'Place order' → the same order the website creates (CheckoutService.place_for_contact: stock reserved, fulfilment job, channel whatsapp) with the tracking link. Pay on delivery / at pickup with the owner's first-order cap. Online payment links need a payment provider; WhatsApp Flows (form screens) need Flow publishing through Meta (MS-07) — lists and buttons carry the same choices meanwhile",
+                  svc="✓ journeys order_*", test=_JR_TEST),
+    "MS-11": dict(status=C, code="service → location (when several) → day → free times from the location's weekly opening hours, each checked like the website's booking page (provider, capacity, bookable resources) → confirm button → booking with channel whatsapp and the resource held; typed time when no hours are set",
+                  svc="✓ journeys book_*", ws="✓ Locations › Opening hours editor", test=_JR_TEST),
+    "MS-12": dict(status=C, code="'Ask a question' → the customer types it → a lead with source whatsapp and the chat link, and the chat waits for a person (inbox, Needs you now, alerts); assigned from Enquiries like any website lead",
+                  test=_JR_TEST),
+    "MS-13": dict(status=P, code="'What do I owe' → khata balance with the statement link (UPI link and QR to the business's own UPI) and each unpaid bill with its page; payment-due templates carry the same links (P1-07). Provider payment links need a payment provider (activation); membership renewal is P2",
+                  test=_JR_TEST),
+    "MS-14": dict(status=C, code="'Track my order' / 'where is my order' → each open order's status in words and its tracking link", test=_JR_TEST),
+    "MS-15": dict(status=C, code="'Repeat my last order' → the last order's items that are still sold, re-priced today, through the same checkout and confirm button", test=_JR_TEST),
+    "MS-16": dict(status=P, code="cancel an order while it is still waiting to be accepted, and a booking outside the owner's cancellation window; anything later, and changes (reschedule, edit an order), go to a person with the reason shown",
+                  test=_JR_TEST),
+    "MS-17": dict(status=C, code="'Talk to a person' is on the menu and on every summary, problem and confirmation; typing 'talk to a person' / 'human' (and Tamil, Hindi) works at any step; the chat goes to the inbox and LOCAH steps back", test=_JR_TEST),
+    "MS-18": dict(status=C, code="nothing is placed or booked without the customer's button; at 'Place order' the cart is priced from the catalogue again — a changed price shows the new total and asks again; stock short offers 'Make it N' or remove; a taken slot shows the other free times", test=_JR_TEST + " (§12.6)"),
+    "MS-19": dict(status=A, code="a location pin or a typed address with its PIN code is matched to the owner's delivery zones (radius zones use the pin) and kept on the order's delivery job; the customer's last delivery address is offered first. Turning a pin into a street address needs a maps provider",
+                  test=_JR_TEST),
+    "MS-20": dict(status=C, code="LOCAH's replies only offer this business's own tasks; anything it does not recognise goes to a person ('someone will reply here soon — or send menu'), never a made-up answer", test=_JR_TEST),
+    "MS-22": dict(status=P, code="chips: needs a person (with wait), LOCAH replying, topic (order, booking, enquiry, payment — set by the journeys), assignee, unread; the choices LOCAH offered show under its message (on a test number they can be tapped as the customer); side panel: customer, khata, orders, bookings, membership. The 'AI handling' chip arrives with the AI WhatsApp Manager (P3)",
+                  ws="✓", test="✓ browser p1_07 + p1_08"),
+    "MS-24": dict(status=C, code="§12.6: a cart is never placed at a price other than the catalogue's at that moment (price changed between summary and tap → new total, confirmed again); duplicate webhook deliveries create one message and one order; no automatic message within the pause after a person's reply; no marketing template without consent — zero model calls",
+                  test=_JR_TEST + " + test_messaging"),
+    "PKT-08": dict(status=C, code="done-when met: the §12.6 tests pass with zero model calls (test_journeys + test_messaging; the suite's AI guard fails any attempted model call)", test=_JR_TEST),
+    "OR-02": dict(status=C, code="orders carry where they came from — website, WhatsApp, counter, phone, entered by the team, Marketplace, ChitBridge (P4) — shown on the orders list; bookings too",
+                  db="✓ orders_orders.channel / bookings_bookings.channel", ws="✓ Orders › From", test=_JR_TEST),
+    "CO-02": dict(status=P, code="business-task replies only, opt-in enforced, template categories carried and metered, quality rating shown when Meta reports it. On a live number these rules are exercised only after Meta activation (MS-07)"),
+    "GP-01": dict(status=C, code="one WhatsApp inbox with the customer's orders, bookings and khata beside the chat, and WhatsApp journeys that create the same orders, bookings and enquiries as the website", test=_JR_TEST),
+    "CN-23": dict(status=C, code="every WhatsApp message LOCAH sends — journey replies, templates, team alerts, inbox replies — is counted once (idempotent per message) with its category (service, utility, marketing) on the business's monthly meter, capped where the owner sets a limit; so a change in WhatsApp's per-message prices is absorbed by the count, not by guesswork",
+                  test="✓ test_messaging (meter + cap) + test_journeys"),
+})

@@ -253,6 +253,8 @@ class BookingService:
             management_token_expires_at=datetime.now(timezone.utc) + timedelta(days=90),
             internal_reference=validated["internal_reference"],
             idempotency_key=validated["idempotency_key"],
+            channel=payload.get("channel") if payload.get("channel") in ("web", "whatsapp", "phone", "workspace",
+                                                                          "marketplace") else None,
         )
         session.add(booking)
         await session.flush()

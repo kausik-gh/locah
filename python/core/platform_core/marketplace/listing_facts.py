@@ -245,6 +245,13 @@ async def gather_listing_facts(
         value = raw_contact.get(key)
         if isinstance(value, str) and re.sub(r"\D", "", value):
             facts.public_contact[key] = value.strip()
+    # §12.2: a connected business number opens the WhatsApp menu from the listing.
+    from platform_core.messaging.entry import whatsapp_entry
+
+    entry = await whatsapp_entry(session, business.id)
+    if entry is not None:
+        facts.public_contact["whatsapp_order"] = str(entry["number"])
+        facts.public_contact["whatsapp_order_label"] = str(entry["label"])
 
     # ---- where it is ------------------------------------------------------
     address = location.address if location is not None and isinstance(location.address, dict) else {}

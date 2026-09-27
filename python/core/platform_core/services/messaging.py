@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -132,7 +133,8 @@ class MessagingService:
     async def settings(session: AsyncSession, business_id: uuid.UUID) -> MessagingSettings:
         row = await session.get(MessagingSettings, business_id)
         if row is None:
-            row = MessagingSettings(business_id=business_id, language="en", customer_updates={}, human_pause_hours=12)
+            row = MessagingSettings(business_id=business_id, language="en", customer_updates={}, human_pause_hours=12,
+                                    cod_allowed=True, first_order_cod_cap=None)
             session.add(row)
             await session.flush()
         return row
@@ -161,7 +163,11 @@ class MessagingService:
             "channel": MessagingService.serialize_channel(channel),
             "meta": meta_public_config(), "meta_ready": meta_configured(), "sandbox_available": sandbox_enabled(),
             "settings": {"language": s.language, "human_pause_hours": s.human_pause_hours,
-                         "customer_updates": {k: MessagingService.update_on(s, k) for k in CUSTOMER_UPDATES}},
+                         "customer_updates": {k: MessagingService.update_on(s, k) for k in CUSTOMER_UPDATES},
+                         "cod_allowed": s.cod_allowed,
+                         "first_order_cod_cap": float(s.first_order_cod_cap)
+                         if s.first_order_cod_cap is not None else None},
+            "entry": await MessagingService.entry(session, business_id),
             "customer_updates": CUSTOMER_UPDATES, "ladder_updates": LADDER_UPDATES, "languages": LANGUAGES,
             "templates": templates,
             "alerts": {"mine": {"phone": mine.phone, "kinds": list(mine.kinds), "enabled": mine.enabled}
@@ -169,6 +175,18 @@ class MessagingService:
                        "kinds": {k: label for k, (label, perm) in STAFF_ALERTS.items() if perm in permissions}},
             "meter": meters.get("whatsapp_message"),
         }
+
+    @staticmethod
+    async def entry(session: AsyncSession, business_id: uuid.UUID) -> dict[str, Any] | None:
+        """§12.2 entry points for the owner to share: the link with "menu" typed,
+        its QR for the counter and packaging, and what customers can do there."""
+        from platform_core.messaging.entry import whatsapp_entry
+        from platform_core.services.pos import PosService
+
+        entry = await whatsapp_entry(session, business_id)
+        if entry is None:
+            return None
+        return {**entry, "qr_svg": PosService.qr_svg(str(entry["href"]))}
 
     @staticmethod
     async def _connected(session: AsyncSession, business_id: uuid.UUID, actor_id: uuid.UUID,
@@ -278,6 +296,18 @@ class MessagingService:
             if not 1 <= hours <= 72:
                 raise _err("human_pause_hours", "Between 1 and 72 hours")
             s.human_pause_hours = hours
+        if "cod_allowed" in payload:
+            s.cod_allowed = bool(payload["cod_allowed"])
+        if "first_order_cod_cap" in payload:
+            cap = payload["first_order_cod_cap"]
+            if cap is not None:
+                try:
+                    cap = Decimal(str(cap)).quantize(Decimal("0.01"))
+                except (InvalidOperation, ValueError):
+                    raise _err("first_order_cod_cap", "Enter an amount in rupees") from None
+                if cap <= 0 or cap > Decimal("10000000"):
+                    raise _err("first_order_cod_cap", "Enter an amount above ₹0, or leave it empty for no cap")
+            s.first_order_cod_cap = cap
         s.updated_by, s.updated_at, s.version = actor_id, _now(), s.version + 1
         await session.flush()
         return s
@@ -482,6 +512,34 @@ class MessagingService:
         return await MessagingService._deliver(
             session, channel, conv, msg, lambda p, token: p.send_text(token, channel.phone_number_id, wa_id, body))
 
+    @staticmethod
+    async def bot_interactive(session: AsyncSession, conv: MessagingConversation, interactive: dict[str, Any], *,
+                              via: str = "journey") -> MessagingMessage | None:
+        """Buttons or a list from LOCAH (§12.3 structured journeys) — the same
+        rules as bot_text: inside the window, never over a person."""
+        if not MessagingService.window_open(conv) or not await MessagingService.bot_may_reply(session, conv):
+            return None
+        channel = await session.get(MessagingChannel, conv.channel_id)
+        if channel is None or channel.status != "connected":
+            return None
+        body = str((interactive.get("body") or {}).get("text") or "")
+        action = interactive.get("action") or {}
+        # What the customer can tap, kept with the reply ids for the inbox.
+        options = [{"id": b["reply"]["id"], "title": b["reply"]["title"]} for b in action.get("buttons") or []] or \
+            [{"id": r["id"], "title": r["title"], **({"description": r["description"]} if r.get("description") else {})}
+             for sec in action.get("sections") or [] for r in sec.get("rows") or []]
+        msg = MessagingMessage(business_id=conv.business_id, conversation_id=conv.id, direction="out",
+                               kind="interactive", body=body[:4096], payload={"interactive": interactive,
+                                                                              "options": options,
+                                                                              "reply_kind": interactive.get("type")},
+                               category="service", status="queued", sent_via=via)
+        session.add(msg)
+        await session.flush()
+        wa_id = conv.wa_id
+        return await MessagingService._deliver(
+            session, channel, conv, msg,
+            lambda p, token: p.send_interactive(token, channel.phone_number_id, wa_id, interactive))
+
     # ------------------------------------------------------------------ webhooks
     @staticmethod
     async def process_webhook(session: AsyncSession, payload: dict[str, Any]) -> dict[str, int]:
@@ -564,10 +622,13 @@ class MessagingService:
         conv = await MessagingService.conversation_for(session, channel, wa_id, contact=contact, name=profile_name)
         kind, body, extra = MessagingService._content(m)
         when = datetime.fromtimestamp(int(m.get("timestamp") or 0), timezone.utc) if m.get("timestamp") else _now()
+        recent = _now() - when < timedelta(seconds=2)
         inserted = (await session.execute(pg_insert(MessagingMessage).values(
             id=uuid.uuid4(), business_id=channel.business_id, conversation_id=conv.id, direction="in", kind=kind,
             body=body[:4096] if body else None, payload={"raw_type": m.get("type"), **extra}, status="received",
-            provider_message_id=message_id, created_at=when,
+            # WhatsApp stamps to the second: a reply sent just now takes the
+            # clock time, so it stays after the message of LOCAH's it answers.
+            provider_message_id=message_id, created_at=func.clock_timestamp() if recent else when,
         ).on_conflict_do_nothing(index_elements=["business_id", "provider_message_id"],
                                  index_where=text("provider_message_id IS NOT NULL")).returning(
             MessagingMessage.id))).first()
@@ -609,10 +670,14 @@ class MessagingService:
         conv.waiting_since = conv.waiting_since or _now()
         await session.flush()
         if first_wait:
+            from platform_core.messaging.entry import whatsapp_entry
+
             business = await session.get(Business, conv.business_id)
+            menu = " Or send menu to see what you can do here." if not wants_person and await whatsapp_entry(
+                session, conv.business_id) else ""
             await MessagingService.bot_text(
                 session, conv, f"Thanks — someone from {business.display_name if business else 'us'} will reply "
-                               "here soon.", via="journey")
+                               f"here soon.{menu}", via="journey")
             await MessagingService._schedule_waiting(session, conv)
         return "person"
 
@@ -762,7 +827,8 @@ class MessagingService:
                           "category": m.category, "sent_via": m.sent_via,
                           "sent_by_name": names.get(m.sent_by) if m.sent_by else None,
                           "payload": {k: v for k, v in (m.payload or {}).items() if k in ("latitude", "longitude",
-                                                                                          "media_type", "title")},
+                                                                                          "media_type", "title",
+                                                                                          "options", "reply_kind")},
                           "at": m.created_at.isoformat() if m.created_at else None} for m in reversed(msgs)],
             "customer": side,
         }
