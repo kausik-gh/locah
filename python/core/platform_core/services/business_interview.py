@@ -279,6 +279,22 @@ async def _sync_business(session: AsyncSession, business: Business, bp: Business
         if meta.get("classification") != wanted:
             meta["classification"] = wanted
             business.metadata_ = meta
+        # The P1 columns (Capability Universe §4.4) and the default operating
+        # traits follow the settled kind; an owner's own trait choices survive.
+        from platform_core.catalog.taxonomy import resolve
+        from platform_core.services.business_classification import BusinessClassificationService
+
+        sub = bp.category.subcategory_key or None
+        if resolve(bp.category.category_key, sub) and (
+            business.category_key != bp.category.category_key or business.subcategory_key != sub
+        ):
+            await BusinessClassificationService.set_classification(
+                session, business, category_key=bp.category.category_key,
+                subcategory_key=sub, actor_id=None, audit=False,
+            )
+            meta = dict(business.metadata_ or {})
+            meta["classification"] = wanted
+            business.metadata_ = meta
 
 
 async def _queue_logo(
@@ -889,7 +905,14 @@ class BusinessInterviewService:
             for m, state in entitlement.module_states.items()
             if state.activation_state == "active" and state.entitled
         }
-        pending = set(bp.approved_modules) & set(entitlement.entitled_modules)
+        from platform_core.catalog.modules import MODULES as _CATALOGUE
+
+        # Approved but not built yet (Capability Universe modules still to
+        # come) stay approved and off: nothing unbuilt is ever switched on.
+        pending = {
+            m for m in set(bp.approved_modules) & set(entitlement.entitled_modules)
+            if m not in _CATALOGUE or (_CATALOGUE[m].built and not _CATALOGUE[m].future)
+        }
         while pending:
             ready = {
                 mid

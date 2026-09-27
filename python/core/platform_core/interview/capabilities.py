@@ -527,10 +527,22 @@ def _gaps(bp: BusinessBlueprint) -> list[CapabilityGapProposal]:
     return list(gaps.values())[:40]
 
 
+def _built(module: str) -> bool:
+    """Registered is not built. A Capability Universe module whose data, API,
+    permissions and UI do not exist yet is never offered as available."""
+    from platform_core.catalog.modules import MODULES
+
+    info = MODULES.get(module)
+    return info is None or (info.built and not info.future)
+
+
 def _status(
     module: str, entitlement: ResolvedEntitlement, snapshot: object
 ) -> tuple[str, str, list[str]]:
     definition = ModuleRegistry.get_or_raise(module)
+    if not _built(module):
+        caps = [key for key, cap in CAPABILITIES.items() if cap.required_module_id == module]
+        return ("NOT_CURRENTLY_AVAILABLE", "Not available on LOCAH yet.", caps)
     state = entitlement.module_states.get(module)
     caps = [key for key, cap in CAPABILITIES.items() if cap.required_module_id == module]
     enabled_features = all(
@@ -646,7 +658,7 @@ def available_modules(
     )
     for row in rows:
         module = row["module_id"]
-        if row.get("module_class") != "optional" or module in recommended:
+        if row.get("module_class") != "optional" or module in recommended or not _built(module):
             continue
         definition = ModuleRegistry.get(module)
         state = entitlement.module_states.get(module)

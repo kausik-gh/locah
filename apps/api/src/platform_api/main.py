@@ -51,6 +51,7 @@ from platform_api.routers import (
     v1_media,
     v1_business_interview,
     v1_taxonomy,
+    v1_business_classification,
 )
 
 # Database lifecycle state
@@ -223,6 +224,7 @@ app.include_router(v1_platform_notifications.router)
 app.include_router(v1_media.router)
 app.include_router(v1_business_interview.router)
 app.include_router(v1_taxonomy.router)
+app.include_router(v1_business_classification.router)
 
 app.add_exception_handler(PlatformError, platform_error_handler)
 

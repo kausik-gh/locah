@@ -16,6 +16,7 @@ from pathlib import Path
 
 from tools.ledger import rows_ai, rows_commerce, rows_engage, rows_foundation, rows_governance
 from tools.ledger import rows_operate, rows_playbooks
+from tools.ledger import progress
 from tools.ledger.model import PHASES, STATUSES, Row, Section
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,6 +38,24 @@ COLUMNS = ("ID", "PH", "SOURCE SECTION", "CAPABILITY", "MODULE KEY", "EXISTING /
            "TEST STATUS", "FINAL STATUS")
 
 
+def _apply_progress() -> None:
+    by_id = {row.id: row for s in SECTIONS for row in s.rows}
+    for rid, change in progress.UPDATES.items():
+        row = by_id.get(rid)
+        if row is None:
+            raise SystemExit(f"progress.py names unknown ledger id {rid}")
+        for key, value in change.items():
+            setattr(row, key, value)
+        row.__post_init__()
+    for d in rows_governance.DECISIONS:
+        if d.id in progress.RESOLVED_DECISIONS:
+            d.state = "RESOLVED"
+            d.note = progress.RESOLVED_DECISIONS[d.id]
+
+
+_apply_progress()
+
+
 def all_rows() -> list[Row]:
     rows = [row for s in SECTIONS for row in s.rows]
     seen: set[str] = set()
@@ -56,7 +75,6 @@ def gate(phase: str) -> Counter[str]:
 
 
 def render() -> str:
-    rows = all_rows()
     out: list[str] = []
     out.append("# LOCAH Business OS — implementation ledger\n\n")
     out.append(

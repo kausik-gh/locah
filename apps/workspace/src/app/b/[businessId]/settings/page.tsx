@@ -156,6 +156,13 @@ export default async function SettingsPage({ params }: { params: { businessId: s
         </form>
       </section>
 
+      <section className="ws-settings-section">
+        <div><h2>How your business works</h2><p>What kind of business this is, how you sell and deliver, and who buys. Recommendations follow it.</p></div>
+        <div>
+          <Link className="btn-quiet" href={`${businessBase}/settings/business`}>Open how your business works →</Link>
+        </div>
+      </section>
+
       <section className="ws-settings-section ws-settings-section--links">
         <div><h2>More about your business</h2><p>These details live in their own areas of Workspace.</p></div>
         <ul style={{ paddingLeft: '1.1rem', lineHeight: 1.9 }}>

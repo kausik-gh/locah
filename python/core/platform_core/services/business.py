@@ -308,6 +308,22 @@ class BusinessService:
             session, identity_id=identity_id, business_id=business.id
         )
 
+        # Capability Universe §4.4: the picked kind is a column, and its default
+        # operating traits are seeded (never a module grant).
+        picked = input_data.classification or {}
+        if picked.get("category_key"):
+            from platform_core.catalog.taxonomy import resolve
+            from platform_core.services.business_classification import (
+                BusinessClassificationService,
+            )
+
+            if resolve(picked.get("category_key"), picked.get("subcategory_key") or None):
+                await BusinessClassificationService.set_classification(
+                    session, business, category_key=picked["category_key"],
+                    subcategory_key=picked.get("subcategory_key") or None,
+                    actor_id=None, audit=False,
+                )
+
         await OutboxService.publish(
             session,
             event_type="business.created",

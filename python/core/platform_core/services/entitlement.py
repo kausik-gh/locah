@@ -48,6 +48,19 @@ class ModuleService:
             from platform_core.exceptions import EntitlementRequired
 
             raise EntitlementRequired(module_id)
+        # Honesty rule (Capability Universe §2 rule 7; Business OS Guide §4): a
+        # module whose data, API, permissions and UI are not built yet can be
+        # registered and recommended, but never switched on.
+        from platform_core.catalog.modules import MODULES
+
+        info = MODULES.get(module_id)
+        if info is not None and (info.future or not info.built):
+            from platform_core.exceptions import ValidationError
+
+            raise ValidationError(
+                f"{info.label} is not available yet",
+                details={"field": "module_id", "module_id": module_id, "reason": "not_built"},
+            )
 
         result = await session.execute(
             select(BusinessModuleState).where(

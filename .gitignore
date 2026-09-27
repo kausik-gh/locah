@@ -57,3 +57,6 @@ infra/supabase/email-templates/dist/
 
 # Local browser-acceptance output (screenshots, transcripts)
 acceptance-out/
+
+# Chrome profiles from local acceptance runs (tools/acceptance/cdp.mjs)
+locah-accept-*/

@@ -32,6 +32,8 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "business.context_switched",
             "business.override.updated",
             "business_type.changed",
+            "business.classification.changed",
+            "business.traits.changed",
         }
     ),
     "membership": frozenset(

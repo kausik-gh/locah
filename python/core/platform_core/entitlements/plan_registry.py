@@ -3,6 +3,21 @@
 from __future__ import annotations
 
 from platform_core.entitlements.models import REGISTRY_VERSION, PlanDefinition, UsageLimit
+from platform_core.entitlements.module_registry import PHASE_B_MODULE_IDS
+
+# Pricing and packaging of packs and add-ons is an open owner decision
+# (Capability Universe §28.1; ledger OD-04). Until it is made, the modules the
+# Capability Universe adds (§6.2) are entitled on every plan: no plan gates
+# them and no price is shown. What a business may actually switch on is still
+# decided by whether the module is built (platform_core.catalog.modules).
+# First Launch modules keep their Doc 08 packaging until a Storefront module is
+# built and the MD §5 "Storefront (all)" rule has to be applied to it.
+# `invoicing` was registered in First Launch but never packaged; it is a
+# §6.2 P1 module and a dependency of `pos`, so it joins them.
+_UNPRICED_MODULES = PHASE_B_MODULE_IDS | frozenset({"invoicing"})
+_UNPRICED_FEATURES = frozenset(
+    {f"{m}.core" for m in _UNPRICED_MODULES}
+)
 
 _FOUNDATION_MODULES = frozenset(
     {
@@ -51,6 +66,9 @@ _FOUNDATION_FEATURES = frozenset(
         "workforce.availability",
     }
 )
+
+_FOUNDATION_MODULES = _FOUNDATION_MODULES | _UNPRICED_MODULES
+_FOUNDATION_FEATURES = _FOUNDATION_FEATURES | _UNPRICED_FEATURES
 
 _GROWTH_MODULES = _FOUNDATION_MODULES | frozenset({"analytics", "messaging", "marketing", "reviews"})
 _GROWTH_FEATURES = _FOUNDATION_FEATURES | frozenset(

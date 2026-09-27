@@ -120,6 +120,10 @@ class Business(Base):
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id")
     )
     business_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Capability Universe §4.4 — the kind of business and how it is organised.
+    category_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    subcategory_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    org_shape: Mapped[str | None] = mapped_column(Text, nullable=True)
     characteristics: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
@@ -136,6 +140,24 @@ class Business(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class BusinessTrait(Base):
+    """One operating trait of a Business (Capability Universe §4.3)."""
+
+    __tablename__ = "business_traits"
+
+    business_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True
+    )
+    trait_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    set_by: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class BusinessProfile(Base):

@@ -230,7 +230,70 @@ _OPTIONAL_MODULES: dict[str, ModuleDefinition] = {
     ),
 }
 
-_MODULES: dict[str, ModuleDefinition] = {**_CORE_MODULES, **_OPTIONAL_MODULES}
+# Capability Universe §6.2 modules (Phase B). Registered with the same
+# dependencies as migration 20260927100000 and platform_core.catalog.modules.
+# Which of them a business may actually enable is decided by the catalogue's
+# `built` flag (never offer what does not exist yet), not by this registry.
+_PHASE_B_MODULES: dict[str, ModuleDefinition] = {
+    m.module_id: m
+    for m in (
+        _mod("pos", "Counter billing", "optional",
+             "Scan or search, cart, hold bill, split tender, returns, cash drawer shifts, offline queue",
+             ("offerings-catalog", "invoicing"), features=("pos.core",)),
+        _mod("ledger", "Khata / credit book", "optional",
+             "Running balance per customer and supplier, credit limits, ageing, reminders, settlements",
+             ("customer-relationships",), features=("ledger.core",)),
+        _mod("compliance", "Licences & deadlines", "optional",
+             "Licence and filing calendar, expiry reminders, document vault link",
+             ("core-business-profile",), features=("compliance.core",)),
+        _mod("dispatch", "Live delivery", "optional",
+             "Delivery and field jobs, crew assignment, live location, ETA, proof of delivery, COD settlement",
+             ("fulfilment",), features=("dispatch.core",)),
+        _mod("tasks", "Tasks & checklists", "optional",
+             "Housekeeping, maintenance, prep, opening / closing checklists",
+             ("core-team-access",), features=("tasks.core",)),
+        _mod("attendance", "Check-ins", "optional",
+             "Member, student and staff check-in by QR or manual",
+             ("core-team-access",), features=("attendance.core",)),
+        _mod("kitchen", "Kitchen display", "optional",
+             "Kitchen order tickets by station, bump screen, prep timers, printer fallback",
+             ("orders",), features=("kitchen.core",)),
+        _mod("ai-employees", "AI staff", "optional",
+             "One entitlement per AI employee, limits, approvals, meters",
+             ("core-team-access",), features=("ai-employees.core",)),
+        _mod("connectors", "Integration hub", "optional",
+             "Adapters, credentials, source-of-truth settings, sync logs",
+             ("core-settings",), features=("connectors.core",)),
+        _mod("expenses", "Expenses & cash book", "optional",
+             "Expenses, petty cash, daily cash closing",
+             ("core-business-profile",), features=("expenses.core",)),
+        _mod("procurement", "Buying", "optional",
+             "Suppliers, price agreements, requisitions, POs, goods receipt, supplier bills, payables",
+             ("core-business-profile",), features=("procurement.core",)),
+        _mod("recipes", "Recipes & BOM", "optional",
+             "Components per offering, yield, wastage, unit conversions, production batches, consumption on sale",
+             ("inventory",), features=("recipes.core",)),
+        _mod("trade-network", "ChitBridge link", "optional",
+             "Entity binding, buyer / supplier relations, chit sync",
+             ("procurement",), features=("trade-network.core",)),
+        _mod("jobs", "Job cards", "optional",
+             "Request, inspect, estimate, approve, work, parts, QC, invoice — linked to a customer asset",
+             ("customer-relationships",), features=("jobs.core",)),
+        _mod("academics", "Courses & batches", "optional",
+             "Courses, batches, timetable, enrolment, assessments, homework, certificates",
+             ("offerings-catalog",), features=("academics.core",)),
+        _mod("documents", "Forms & files", "optional",
+             "Templates, intake and consent forms, uploads, typed / drawn signatures",
+             ("core-business-profile",), features=("documents.core",)),
+        _mod("donations", "Donations", "optional",
+             "Causes, one-off and recurring gifts, 80G receipts, donor timeline",
+             ("payments",), features=("donations.core",)),
+    )
+}
+
+PHASE_B_MODULE_IDS: frozenset[str] = frozenset(_PHASE_B_MODULES)
+
+_MODULES: dict[str, ModuleDefinition] = {**_CORE_MODULES, **_OPTIONAL_MODULES, **_PHASE_B_MODULES}
 
 
 class ModuleRegistry:

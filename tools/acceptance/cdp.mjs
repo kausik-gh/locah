@@ -29,6 +29,8 @@ export async function launch({ width = 1440, height = 900, mobile = false } = {}
       '--no-default-browser-check',
       '--use-fake-ui-for-media-stream',
       '--use-fake-device-for-media-stream',
+      // Containers run as root, where Chrome refuses to start sandboxed.
+      ...(process.env.CHROME_NO_SANDBOX ? ['--no-sandbox'] : []),
       'about:blank',
     ],
     { stdio: 'ignore' }
