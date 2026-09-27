@@ -1257,6 +1257,9 @@ class BusinessMembership(Base):
     location_scope: Mapped[list[UUID] | None] = mapped_column(
         ARRAY(PG_UUID(as_uuid=True)), nullable=True
     )
+    # Capability Universe §7.2: the role template (or "custom:<id>") and scope.
+    role_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_scope: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'business'"))
     invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -1280,6 +1283,10 @@ class BusinessInvitation(Base):
     location_scope: Mapped[list[UUID] | None] = mapped_column(
         ARRAY(PG_UUID(as_uuid=True)), nullable=True
     )
+    role_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_scope: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'business'"))
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    join_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     invited_by: Mapped[UUID] = mapped_column(

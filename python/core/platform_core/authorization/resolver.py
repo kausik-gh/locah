@@ -36,6 +36,20 @@ class MembershipPermissionData:
     grants: tuple[str, ...]
     denials: tuple[str, ...]
     template_ids: tuple[str, ...]
+    # Permissions of the owner's custom roles among template_ids ("custom:<id>").
+    custom_roles: tuple[tuple[str, frozenset[str]], ...] = ()
+
+
+def template_permissions(template_id: str, custom: dict[str, frozenset[str]]) -> frozenset[str]:
+    """Phase A templates by id, §7.2 role templates as "role:<key>", an owner's
+    custom roles as "custom:<id>" (Capability Universe §7.3)."""
+    if template_id.startswith("role:"):
+        from platform_core.authorization.role_templates import role_permissions
+
+        return frozenset(role_permissions(template_id[5:]))
+    if template_id.startswith("custom:"):
+        return custom.get(template_id, frozenset())
+    return frozenset(TEMPLATES.get(template_id, frozenset()))
 
 
 class EffectivePermissionResolver:
@@ -72,10 +86,23 @@ class EffectivePermissionResolver:
                 )
             )
         ).all()
+        template_ids = tuple(r.value for r in rows if r.kind == "t")
+        custom_ids = [t[7:] for t in template_ids if t.startswith("custom:")]
+        custom: tuple[tuple[str, frozenset[str]], ...] = ()
+        if custom_ids:
+            from sqlalchemy import text
+
+            found = (await session.execute(
+                text("SELECT id::text, permissions FROM business_custom_roles "
+                     "WHERE id = ANY(CAST(:ids AS uuid[])) AND archived_at IS NULL"),
+                {"ids": custom_ids},
+            )).all()
+            custom = tuple((f"custom:{r[0]}", frozenset(r[1] or ())) for r in found)
         return MembershipPermissionData(
             grants=tuple(r.value for r in rows if r.kind == "g"),
             denials=tuple(r.value for r in rows if r.kind == "d"),
-            template_ids=tuple(r.value for r in rows if r.kind == "t"),
+            template_ids=template_ids,
+            custom_roles=custom,
         )
 
     @staticmethod
@@ -114,8 +141,9 @@ class EffectivePermissionResolver:
         effective: set[str] = set(role.granted_permissions) - set(role.denied_permissions)
         inherited: set[str] = set()
 
+        custom = dict(permission_data.custom_roles)
         for template_id in permission_data.template_ids:
-            template_perms = TEMPLATES.get(template_id, frozenset())
+            template_perms = template_permissions(template_id, custom)
             inherited.update(template_perms)
             effective.update(template_perms)
 
@@ -152,7 +180,7 @@ class EffectivePermissionResolver:
                 "grants": list(permission_data.grants),
                 "denials": list(permission_data.denials),
             },
-            "custom_roles": {"status": "placeholder", "active": False},
+            "custom_roles": {"active": bool(custom), "roles": sorted(custom)},
             "abac": {"status": "placeholder", "active": False},
         }
 

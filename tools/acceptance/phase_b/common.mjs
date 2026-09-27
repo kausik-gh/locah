@@ -42,3 +42,15 @@ export function check(cond, msg, results) {
   console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`)
   if (!cond) process.exitCode = 1
 }
+
+/** Click (by visible text) until `selector` appears — covers clicks that land
+ *  before React has hydrated the page. */
+export async function clickUntil(page, text, selector, tries = 8) {
+  for (let i = 0; i < tries; i++) {
+    await page.click(text, { byText: true }).catch(() => undefined)
+    const shown = await page.eval(`!!document.querySelector(${JSON.stringify(selector)})`)
+    if (shown) return
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  throw new Error(`clicking "${text}" never showed ${selector}`)
+}

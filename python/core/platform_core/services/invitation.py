@@ -67,6 +67,9 @@ class InvitationService:
                 str(inv.invited_identity_id) if inv.invited_identity_id else None
             ),
             "invited_role": inv.invited_role,
+            "role_template": inv.role_template,
+            "access_scope": inv.access_scope,
+            "display_name": inv.display_name,
             "location_scope": location_scope,
             "status": inv.status,
             "expires_at": inv.expires_at.isoformat(),
@@ -355,6 +358,7 @@ class InvitationService:
         now = datetime.now(timezone.utc)
         invitation.status = "revoked"
         invitation.revoked_at = now
+        invitation.join_token_hash = None
         invitation.version += 1
         await session.flush()
 
@@ -444,11 +448,16 @@ class InvitationService:
             correlation_id=correlation_id,
         )
 
+        from platform_core.services.staff import StaffService
+
+        await StaffService.apply_invited_role(session, invitation, membership, correlation_id)
+
         now = datetime.now(timezone.utc)
         invitation.status = "accepted"
         invitation.accepted_at = now
         invitation.invited_identity_id = accepter_identity_id
         invitation.membership_id = membership.id
+        invitation.join_token_hash = None  # the join link works once
         invitation.version += 1
         await session.flush()
 

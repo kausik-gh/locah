@@ -53,6 +53,8 @@ from platform_api.routers import (
     v1_taxonomy,
     v1_business_classification,
     v1_platform_primitives,
+    v1_team_roles,
+    v1_public_join,
 )
 
 # Database lifecycle state
@@ -227,6 +229,8 @@ app.include_router(v1_business_interview.router)
 app.include_router(v1_taxonomy.router)
 app.include_router(v1_business_classification.router)
 app.include_router(v1_platform_primitives.router)
+app.include_router(v1_team_roles.router)
+app.include_router(v1_public_join.router)
 
 app.add_exception_handler(PlatformError, platform_error_handler)
 

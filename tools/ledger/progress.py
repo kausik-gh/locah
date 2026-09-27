@@ -125,3 +125,23 @@ UPDATES["PKT-01"] = dict(status=C, code="[P1-01] every subcategory's recommendat
                          test="✓ test_taxonomy_recommendations")
 UPDATES["PKT-02"] = dict(status=C, code="[P1-02] all 9 new tables have isolation tests; idempotency proven for ladders, number series, meters, offline replay, document store and consent",
                          test="✓ test_platform_primitives (24) + actor matrix (7)")
+
+
+# ---------------------------------------------------------------- P1-SH (part 1): roles, scope, staff logins
+done("P1-SH", {
+    "FD-07": dict(status=P, code="owner adds a person with a role + scope; LOCAH makes a one-time join link (hash stored, shareable on WhatsApp); the person creates their own login with the invited email or signs in, joins with the role applied (inviter's authority re-checked at join); role homes land with the navigation step",
+                  db="✓ business_invitations.role_template/access_scope/display_name/join_token_hash + token RLS arm",
+                  svc="✓ /team/people, /team/invitations/{id}/link, /v1/public/join/{token}", perm="✓ team.invite + delegation ceiling",
+                  ws="✓ Team › Add a person, /join/{token}", test="✓ API + browser p1_team (staff signs up in a separate browser)"),
+    "RL-01": dict(status=P, code="Owner template (everything, business scope, Workspace); home question recorded — the three-band home is the navigation step",
+                  perm="✓", ws="◐"),
+    "RL-02": dict(status=P, code="Manager template (operations, bookings, stock, staff rota, customers) with location scope enforced server-side (ORM filter + write guard) and by restrictive RLS on orders, bookings, deliveries, stock, quotes, projects; approvals up to a limit need the approval engine",
+                  perm="✓ location scope enforced + tested", test="✓ test_roles_and_scope"),
+    "RL-05": dict(status=P, code="Cashier template defined (location scope, POS surface); offered once POS ships (P1-05)"),
+    "RL-07": dict(status=P, code="Store keeper template (stock, counts, adjustments) at chosen locations — verified in the browser seeing only their location; goods receipt, transfers and requisitions come with Buying (P4)",
+                  perm="✓", ws="✓ Team", test="✓ API + browser p1_team"),
+    "RL-14": dict(status=P, code="Accountant template (payments, orders, quotes, memberships, stock valuation, exports; no customer messaging); invoices/ledger/expenses join with P1-04/P1-06"),
+    "RL-16": dict(status=C, code="owners make custom roles from a template in plain words; nobody can create, give or add a person with more than they hold (checked on create, assign, add and again at join)",
+                  db="✓ business_custom_roles + RLS", svc="✓ /roles, /roles/custom", perm="✓ delegation ceiling",
+                  ws="✓ Team › Roles", test="✓ API + isolation + browser p1_team"),
+})

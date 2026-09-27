@@ -12,7 +12,8 @@ from sqlalchemy.pool import NullPool
 
 _RESET_GUCS = text(
     "SELECT set_config('app.current_business_id', '', false), "
-    "set_config('app.current_identity_id', '', false)"
+    "set_config('app.current_identity_id', '', false), "
+    "set_config('app.current_location_scope', '', false)"
 )
 
 # The GUC reset only matters when the API is on the RLS-enforcing connection —
