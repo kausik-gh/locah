@@ -215,3 +215,39 @@ def primary_location(client: Any, headers: dict[str, str], business_id: str) -> 
         if loc["is_primary"]:
             return cast(str, loc["id"])
     raise AssertionError("primary location missing")
+
+
+def gstin_for(state: str, pan: str = "AAACL1234K") -> str:
+    """A GSTIN with a correct check character (test data only)."""
+    from platform_core.invoicing.states import _check_char
+
+    body = f"{state}{pan}1Z"
+    return str(body + _check_char(body))
+
+
+def billing_shop(
+    client: Any, owner: dict[str, str], *, modules: tuple[str, ...] = (), inclusive: bool = False,
+    round_off: bool = False, scheme: str = "regular", state: str = "33", code: str = "CHN1",
+) -> dict[str, Any]:
+    """A business with invoicing set up: tax profile, one registration, one register."""
+    bid = create_business(client, owner, modules=("offerings-catalog", "inventory", "orders", "payments",
+                                                   "invoicing", *modules))
+    base = f"/v1/platform/businesses/{bid}"
+    r = client.put(f"{base}/invoicing/profile", json={"prices_include_tax": inclusive, "round_off": round_off,
+                                                      "issue_on": "manual"}, headers=owner)
+    assert r.status_code == 200, r.text
+    body: dict[str, Any] = {"scheme": scheme, "legal_name": "Test Stores"}
+    if scheme == "unregistered":
+        body["state_code"] = state
+    else:
+        body["gstin"] = gstin_for(state)
+    if scheme == "composition":
+        body["composition_declaration"] = "Declaration as advised by the CA"
+    reg = client.post(f"{base}/invoicing/registrations", json=body, headers=owner)
+    assert reg.status_code == 200, reg.text
+    loc = primary_location(client, owner, bid)
+    register = client.post(f"{base}/invoicing/registers", json={
+        "location_id": loc, "registration_id": reg.json()["data"]["id"], "code": code}, headers=owner)
+    assert register.status_code == 200, register.text
+    return {"bid": bid, "base": base, "loc": loc, "registration": reg.json()["data"],
+            "register": register.json()["data"]}

@@ -25,8 +25,8 @@ SCOPE_WORDS = {
     "self": "Only their own profile and time",
 }
 SURFACES = {"workspace": "Workspace", "pos": "Counter billing (POS)", "crew": "Crew app", "kitchen": "Kitchen display"}
-# Surfaces that exist today. POS joins with P1-05, crew and kitchen in P2.
-BUILT_SURFACES = frozenset({"workspace"})
+# Surfaces that exist today (POS since P1-05); crew and kitchen join in P2.
+BUILT_SURFACES = frozenset({"workspace", "pos"})
 CURRENT_PHASES = frozenset({"P1"})
 
 
@@ -71,6 +71,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
             p.WORKFORCE_READ, p.WORKFORCE_UPDATE, p.WORKFORCE_MANAGE_AVAILABILITY,
             p.PAYMENTS_READ, p.WEBSITE_READ, p.MARKETPLACE_READ, p.TEAM_READ, p.SETTINGS_READ, p.MODULES_READ,
             p.INVOICES_READ, p.INVOICES_ISSUE, p.INVOICES_CANCEL, p.INVOICES_RECORD_PAYMENT,
+            p.POS_USE, p.POS_APPROVE,
         },
         (), "P1", system_role=p.ROLE_MANAGER,
     ),
@@ -95,8 +96,8 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
         "cashier", "Cashier", "Bills at the counter, takes payments, handles returns under a limit and the cash shift",
         "location", "pos", "Open shift, bills, drawer balance",
         _READ_BASICS | {p.ORDERS_READ, p.ORDERS_CREATE, p.ORDERS_UPDATE_STATUS, p.PAYMENTS_READ,
-                        p.CUSTOMERS_READ, p.OFFERINGS_READ, p.INVOICES_READ, p.INVOICES_ISSUE},
-        ("orders",), "P1",
+                        p.CUSTOMERS_READ, p.OFFERINGS_READ, p.INVOICES_READ, p.INVOICES_ISSUE, p.POS_USE},
+        ("pos",), "P1",
     ),
     # ---- later phases: kept here so the registry mirrors §7.2, never offered yet.
     RoleTemplate(
@@ -173,6 +174,8 @@ PERMISSION_WORDS: dict[str, str] = {
     "entitlements.read": "See what the plan includes", "entitlements.update": "Change what the plan includes",
     "fulfilment.read": "See deliveries and pickups", "fulfilment.update_status": "Update delivery status",
     "fulfilment.manage_config": "Set delivery zones and fees",
+    "pos.use": "Bill at the counter and run a cash shift", "pos.approve": "Approve counter overrides with a PIN",
+    "pos.configure": "Set counter billing rules",
     "invoices.read": "See bills and invoices", "invoices.issue": "Issue bills and credit notes",
     "invoices.cancel": "Cancel bills", "invoices.record_payment": "Record money received on bills",
     "invoices.export": "Export for the CA", "invoices.configure": "Set up GST and tax rates",

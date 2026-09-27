@@ -469,3 +469,45 @@ def test_invoicing_surfaces_follow_their_permission(
         assert refused.status_code == 403 and refused.json()["error"]["code"] == "PERMISSION_DENIED"
         _grant(client, headers, bid, membership_id, [permission])
         assert call(member_headers).status_code == 200, f"{permission} should open {method} {path}"
+
+
+POS_SURFACES = [
+    # (method, path, permission that opens it, body) — Capability Universe §14.1
+    ("GET", "/v1/platform/businesses/{bid}/pos/setup", "pos.use", None),
+    ("GET", "/v1/platform/businesses/{bid}/pos/catalogue?location_id={loc}", "pos.use", None),
+    ("PUT", "/v1/platform/businesses/{bid}/pos/settings", "pos.configure", {"return_window_days": 7}),
+    ("GET", "/v1/platform/businesses/{bid}/pos/shifts", "pos.approve", None),
+    ("PUT", "/v1/platform/businesses/{bid}/pos/pin", "pos.approve", {"pin": "4826"}),
+    ("GET", "/v1/platform/businesses/{bid}/pos/upi-to-verify", "invoices.record_payment", None),
+]
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+@pytest.mark.parametrize(("method", "path", "permission", "body"), POS_SURFACES,
+                         ids=[f"{m} {p.split('{bid}')[1]}" for m, p, _, _ in POS_SURFACES])
+def test_pos_surfaces_follow_their_permission(
+    owner: tuple[dict[str, str], uuid.UUID], method: str, path: str, permission: str, body: Any,
+) -> None:
+    headers, _ = owner
+    member_headers, member_id, _ = _actor()
+    outsider_headers, _, _ = _actor()
+    with TestClient(app) as client:
+        bid = _create_business(client, headers)
+        for module_id in ("invoicing", "pos"):
+            assert client.post(f"/v1/b/{bid}/modules/{module_id}/enable", headers=headers).status_code == 200
+        loc = next(x for x in client.get(f"/v1/platform/businesses/{bid}/locations", headers=headers).json()["data"]
+                   if x["is_primary"])
+        url = path.format(bid=bid, loc=loc["id"])
+        membership_id = _invite_membership(client, headers, bid, member_id, "member")
+        _activate(client, headers, bid, membership_id)
+
+        def call(h: dict[str, str]) -> Any:
+            return client.request(method, url, headers=h, json=body)
+
+        assert call(headers).status_code == 200, "owner must reach every counter surface"
+        outsider = call(outsider_headers)
+        assert outsider.status_code == 403 and outsider.json()["error"]["code"] == "MEMBERSHIP_REQUIRED"
+        refused = call(member_headers)
+        assert refused.status_code == 403 and refused.json()["error"]["code"] == "PERMISSION_DENIED"
+        _grant(client, headers, bid, membership_id, [permission])
+        assert call(member_headers).status_code == 200, f"{permission} should open {method} {path}"

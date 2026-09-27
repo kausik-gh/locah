@@ -2115,6 +2115,11 @@ class InvoicingDocument(Base):
     terms: Mapped[str | None] = mapped_column(Text, nullable=True)
     public_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Counter bills (P1-05): the shift and device they were rung up on, when.
+    shift_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    device_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pos_meta: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     issued_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -2166,6 +2171,77 @@ class InvoicingPayment(Base):
     reference: Mapped[str | None] = mapped_column(Text, nullable=True)
     received_on: Mapped[Any] = mapped_column(Date, nullable=False)
     recorded_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    shift_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    verification: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'verified'"))
+    verified_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------- counter billing (P1-05)
+class PosSettings(Base):
+    """The owner's counter rules (Capability Universe §14.1–§14.3)."""
+
+    __tablename__ = "pos_settings"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    upi_vpa: Mapped[str | None] = mapped_column(Text, nullable=True)
+    upi_payee_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    return_window_days: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("7"))
+    discount_caps: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    block_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("50"))
+    weighed_label: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    receipt_footer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PosApprovalPin(Base):
+    __tablename__ = "pos_approval_pins"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    identity_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    pin_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    failed_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PosShift(Base):
+    """A cash-drawer shift on one register (§14.1, §14.5)."""
+
+    __tablename__ = "pos_shifts"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    register_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoicing_registers.id"))
+    device_id: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'open'"))
+    opened_by: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    opening_cash: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    closed_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expected_cash: Mapped[Any | None] = mapped_column(Numeric(14, 2), nullable=True)
+    counted_cash: Mapped[Any | None] = mapped_column(Numeric(14, 2), nullable=True)
+    variance: Mapped[Any | None] = mapped_column(Numeric(14, 2), nullable=True)
+    close_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class PosCashMovement(Base):
+    __tablename__ = "pos_cash_movements"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    shift_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("pos_shifts.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    amount: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    document_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    client_mutation_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_by: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

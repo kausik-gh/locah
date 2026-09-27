@@ -288,6 +288,17 @@ class InvoiceService:
             if quantity <= 0:
                 raise _err(f"lines.{i}.quantity", "Quantity must be more than zero")
             price = raw.get("unit_price")
+            stock_per_unit: int | None = None
+            if offering is not None and raw.get("options"):
+                # A pack or choices (§6.3): priced and sized by the catalogue.
+                from platform_core.services.offering_pricing import price_selection
+
+                priced = price_selection(offering, variant, raw.get("options"))
+                if priced.title_suffix and not raw.get("title"):
+                    title = f"{title} — {priced.title_suffix}"
+                if price is None:
+                    price = priced.unit_price
+                stock_per_unit = priced.stock_per_unit
             if price is None and offering is not None:
                 price = variant.price_amount if variant is not None and variant.price_amount is not None \
                     else offering.price_amount
@@ -307,8 +318,15 @@ class InvoiceService:
                 if not ZERO <= rate <= 100:
                     raise _err(f"lines.{i}.rate", "A rate between 0 and 100")
             unit_label = str(raw.get("unit_label") or "").strip()[:20] or _unit_label(offering)
+            if stock_per_unit is not None:
+                unit_label = "pack"
+                if quantity != quantity.to_integral():
+                    raise _err(f"lines.{i}.quantity", "Packs are sold whole")
+                stock = int(quantity) * stock_per_unit if offering is not None and offering.track_inventory else 0
+            else:
+                stock = _stock_for(offering, quantity, unit_label)
             out.append(_Line(offering, variant.id if variant else None, None, None, title[:300], hsn, unit_label,
-                             quantity, unit_price, discount, rate, _stock_for(offering, quantity, unit_label)))
+                             quantity, unit_price, discount, rate, stock))
         # Rates for catalogue lines (and free lines with only an HSN/SAC) come from data.
         need = [i for i, x in enumerate(out) if x.offering is not None or x.rate is None]
         resolved = await TaxRateService.resolve(session, business_id, [_rate_key(out[i]) for i in need], on)
@@ -377,10 +395,14 @@ class InvoiceService:
     @staticmethod
     async def _move_stock(
         session: AsyncSession, doc: InvoicingDocument, rows: list[InvoicingDocumentLine], *, sign: int,
-        movement_type: str, reason: str, actor_id: uuid.UUID,
-    ) -> None:
+        movement_type: str, reason: str, actor_id: uuid.UUID, allow_short: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Move stock for a bill's lines. A counter sale already happened, so it
+        is never refused for a stale count (`allow_short`): stock goes to zero
+        and the shortfall is returned so the team can recount."""
         from platform_core.services.inventory import InventoryService
 
+        short: list[dict[str, Any]] = []
         for row in rows:
             if not row.offering_id or row.stock_quantity <= 0:
                 continue
@@ -393,7 +415,13 @@ class InvoiceService:
             delta = sign * row.stock_quantity
             before = InventoryService.serialize_record(record, offering=offering)
             available = record.quantity_on_hand - record.quantity_reserved
-            if delta < 0 and available < -delta:
+            if delta < 0 and allow_short and record.quantity_on_hand < -delta:
+                short.append({"offering_id": str(offering.id), "title": offering.title,
+                              "sold": -delta, "on_record": record.quantity_on_hand})
+                delta = -record.quantity_on_hand
+                if delta == 0:
+                    continue
+            elif delta < 0 and not allow_short and available < -delta:
                 raise ValidationError(
                     f"Only {max(available, 0)} of {offering.title} in stock here — adjust stock or change the line",
                     details={"offering_id": str(offering.id), "available": available, "needed": -delta})
@@ -410,6 +438,7 @@ class InvoiceService:
                 session, business_id=doc.business_id, offering=offering, record=record, actor_id=actor_id,
                 correlation_id=str(uuid.uuid4()), quantity_delta=delta, movement_type=movement_type, reason=reason,
                 before_state=before, after_state=InventoryService.serialize_record(record, offering=offering))
+        return short
 
     # ------------------------------------------------------------------ create
     @staticmethod
@@ -589,8 +618,12 @@ class InvoiceService:
     @staticmethod
     async def issue(
         session: AsyncSession, business_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, *,
-        actor_context: str = "business", reresolve: bool = True,
+        actor_context: str = "business", reresolve: bool = True, issue_date: date | None = None,
+        preset: tuple[str, str, int, str] | None = None,
     ) -> InvoicingDocument:
+        """Number and issue a draft. `issue_date` is the day of sale for a counter
+        bill rung up offline; `preset` (series, FY, value, number) is a number
+        from the register's reserved block (§14.2)."""
         doc = await InvoiceService.get(session, business_id, document_id, lock=True)
         if doc.status != "draft":
             raise ConflictError("This bill is already issued")
@@ -598,7 +631,7 @@ class InvoiceService:
         reg = await session.get(InvoicingRegistration, doc.registration_id)
         assert register is not None and reg is not None
         location = await session.get(BusinessLocation, doc.location_id)
-        doc.issue_date = local_today(location.timezone if location else None)
+        doc.issue_date = issue_date or local_today(location.timezone if location else None)
         rows = list((await session.execute(select(InvoicingDocumentLine).where(
             InvoicingDocumentLine.document_id == doc.id).order_by(InvoicingDocumentLine.sort_order))).scalars())
         if reresolve and doc.source == "manual" and doc.doc_kind in INVOICE_KINDS:
@@ -634,16 +667,23 @@ class InvoiceService:
             if profile and profile.default_due_days:
                 doc.due_date = doc.issue_date + timedelta(days=profile.default_due_days)
         doc.seller = await InvoiceService._seller(session, business_id, reg, doc.location_id)
-        await InvoiceService._allocate(session, doc, register)
+        if preset is not None:
+            doc.series_key, doc.fy, doc.seq, doc.number = preset
+        else:
+            await InvoiceService._allocate(session, doc, register)
         now = datetime.now(timezone.utc)
         doc.status, doc.issued_at, doc.issued_by = "issued", now, actor_id
         doc.public_token_hash = token_hash(share_token(business_id, doc.id))
         doc.version += 1
         doc.updated_at = now
         await session.flush()
-        if doc.source == "manual" and doc.doc_kind in INVOICE_KINDS:
-            await InvoiceService._move_stock(session, doc, rows, sign=-1, movement_type="deduction",
-                                             reason=f"Bill {doc.number}", actor_id=actor_id)
+        if doc.source in ("manual", "pos") and doc.doc_kind in INVOICE_KINDS:
+            short = await InvoiceService._move_stock(
+                session, doc, rows, sign=-1, movement_type="deduction", reason=f"Bill {doc.number}",
+                actor_id=actor_id, allow_short=doc.source == "pos")
+            if short:
+                doc.pos_meta = {**(doc.pos_meta or {}), "stock_short": short}
+                await session.flush()
         payload = InvoiceService._event_payload(doc)
         await OutboxService.publish(session, event_type="invoice.issued", business_id=business_id, payload=payload)
         await AuditService.record(session, event_type="invoice.issued", actor_identity_id=actor_id,
@@ -666,7 +706,12 @@ class InvoiceService:
     @staticmethod
     async def cancel(
         session: AsyncSession, business_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, reason: str,
+        *, void: bool = False,
     ) -> InvoicingDocument:
+        """Cancel an issued bill; it keeps its number. `void` is a counter bill
+        cancelled at the counter: its money goes back to the customer there,
+        so recorded payments stay (for the audit) and stop counting in the
+        drawer."""
         reason = (reason or "").strip()
         if not reason:
             raise _err("reason", "Say why the bill is cancelled")
@@ -680,11 +725,11 @@ class InvoiceService:
             raise ConflictError("Cancel the credit or debit notes raised against this bill first")
         paid = (await session.execute(select(func.count()).select_from(InvoicingPayment).where(
             InvoicingPayment.document_id == doc.id))).scalar()
-        if paid:
+        if paid and not (void and doc.source == "pos"):
             raise ConflictError("Money has been recorded against this bill; raise a credit note instead")
         rows = list((await session.execute(select(InvoicingDocumentLine).where(
             InvoicingDocumentLine.document_id == doc.id))).scalars())
-        if doc.source == "manual" and doc.doc_kind in INVOICE_KINDS:
+        if doc.source in ("manual", "pos") and doc.doc_kind in INVOICE_KINDS:
             await InvoiceService._move_stock(session, doc, rows, sign=1, movement_type="reversal",
                                              reason=f"Bill {doc.number} cancelled", actor_id=actor_id)
         if doc.doc_kind == "credit_note" and doc.restock:

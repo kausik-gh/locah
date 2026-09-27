@@ -99,9 +99,10 @@ CHECKS: dict[str, Check] = {
         "AND EXISTS (SELECT 1 FROM invoicing_registers g WHERE g.business_id = p.business_id "
         "AND g.status = 'active')",
     ),
+    # A POS register is the invoicing register (one concept, §14.4).
     "register_created": _sql_if_table(
-        "pos_registers",
-        "SELECT 1 FROM pos_registers WHERE business_id = CAST(:b AS uuid) AND status = 'active'",
+        "invoicing_registers",
+        "SELECT 1 FROM invoicing_registers WHERE business_id = CAST(:b AS uuid) AND status = 'active'",
     ),
     "channel_connected": _sql_if_table(
         "messaging_channels",

@@ -86,7 +86,7 @@ export default async function WorkspaceHomePage({ params }: { params: { business
           {band.stats ? (
             <div className="ws-stats">
               {band.stats.map((s) => (
-                <Link key={s.label} href={`${base}${s.href}`} className="ws-stat bos-stat-link">
+                <Link key={s.label} href={s.href.startsWith('~') ? `${s.href.slice(1)}/${params.businessId}` : `${base}${s.href}`} className="ws-stat bos-stat-link">
                   <p className="ws-stat__label">{s.label}</p>
                   <p className="ws-stat__value">{s.value}</p>
                   {s.note ? <p className="ws-stat__note">{s.note}</p> : null}
@@ -97,7 +97,7 @@ export default async function WorkspaceHomePage({ params }: { params: { business
             <ul className="bos-attention">
               {band.items.map((i) => (
                 <li key={`${i.label}-${i.href}`}>
-                  <Link href={`${base}${i.href}`} className={`bos-attention__row is-${i.tone}`}>
+                  <Link href={i.href.startsWith('~') ? `${i.href.slice(1)}/${params.businessId}` : `${base}${i.href}`} className={`bos-attention__row is-${i.tone}`}>
                     {band.key === 'business' ? (
                       <span className="bos-attention__dot" aria-hidden />
                     ) : (

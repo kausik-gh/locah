@@ -81,6 +81,13 @@ INVOICES_RECORD_PAYMENT = "invoices.record_payment"
 INVOICES_EXPORT = "invoices.export"
 INVOICES_CONFIGURE = "invoices.configure"
 
+# Counter billing (Capability Universe §14.1): ringing up sales and running a
+# cash shift; approving what is above a cashier's limit with a PIN; setting
+# the counter's rules.
+POS_USE = "pos.use"
+POS_APPROVE = "pos.approve"
+POS_CONFIGURE = "pos.configure"
+
 PAYMENTS_READ = "payments.read"
 PAYMENTS_REFUND = "payments.refund"
 PAYMENTS_MANAGE_CONNECTION = "payments.manage_connection"

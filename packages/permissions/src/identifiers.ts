@@ -95,6 +95,12 @@ export const PERMISSIONS = {
   // Tax profile, GST registrations, registers and rates — owner / CA data.
   INVOICES_CONFIGURE: 'invoices.configure',
 
+  // Module: pos — counter billing (Capability Universe §14.1)
+  POS_USE: 'pos.use',
+  // Approves, with a PIN, a discount above the cap, a void or a late return.
+  POS_APPROVE: 'pos.approve',
+  POS_CONFIGURE: 'pos.configure',
+
   // Module: projects
   PROJECTS_READ: 'projects.read',
   PROJECTS_CREATE: 'projects.create',

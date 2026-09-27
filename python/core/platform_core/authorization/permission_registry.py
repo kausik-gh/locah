@@ -25,6 +25,7 @@ _RESOURCE_LABELS: dict[str, str] = {
     "bookings": "Bookings",
     "payments": "Payments",
     "invoices": "Invoices & GST",
+    "pos": "Counter billing",
     "memberships": "Memberships",
     "customers": "Customers",
     "leads": "Leads",

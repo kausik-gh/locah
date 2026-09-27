@@ -165,3 +165,60 @@ class NumberSeriesService:
             text("UPDATE number_series_blocks SET status = 'released' WHERE business_id = :b AND id = :id"),
             {"b": str(business_id), "id": str(block_id)},
         )
+
+    @staticmethod
+    async def active_block(
+        session: AsyncSession, business_id: uuid.UUID, *, series_key: str, period: str, holder: str,
+    ) -> Block | None:
+        """The holder's newest active block in this series and period, if any."""
+        row = (await session.execute(
+            text("""
+                SELECT id FROM number_series_blocks
+                WHERE business_id = :b AND series_key = :k AND period = :p AND holder = :h AND status = 'active'
+                ORDER BY start_value DESC LIMIT 1
+            """),
+            {"b": str(business_id), "k": series_key, "p": period, "h": holder},
+        )).first()
+        return await NumberSeriesService.block(session, business_id, row[0]) if row else None
+
+    @staticmethod
+    async def return_tail(
+        session: AsyncSession, business_id: uuid.UUID, block_id: uuid.UUID, last_used: int | None,
+    ) -> int:
+        """Give back the unused end of a block when nothing was allocated after
+        it, so the series stays gapless (§14.2). Returns how many numbers came
+        back; a block that is not the series tail keeps its numbers for the
+        register's next shift instead."""
+        blk = (await session.execute(
+            text("""
+                SELECT b.series_key, b.period, b.start_value, b.end_value, s.next_value
+                FROM number_series_blocks b
+                JOIN number_series s ON s.business_id = b.business_id AND s.series_key = b.series_key
+                                    AND s.period = b.period
+                WHERE b.business_id = :b AND b.id = :id AND b.status = 'active'
+                FOR UPDATE OF s
+            """),
+            {"b": str(business_id), "id": str(block_id)},
+        )).first()
+        if blk is None:
+            return 0
+        key, period, start, end, next_value = blk
+        used_end = start - 1 if last_used is None else int(last_used)
+        if int(next_value) != int(end) + 1 or used_end >= int(end):
+            return 0
+        await session.execute(
+            text("UPDATE number_series SET next_value = :n, updated_at = now() "
+                 "WHERE business_id = :b AND series_key = :k AND period = :p"),
+            {"n": used_end + 1, "b": str(business_id), "k": key, "p": period},
+        )
+        if used_end < int(start):
+            await session.execute(text("DELETE FROM number_series_blocks WHERE business_id = :b AND id = :id"),
+                                  {"b": str(business_id), "id": str(block_id)})
+        else:
+            await session.execute(
+                text("UPDATE number_series_blocks SET end_value = :e, status = 'exhausted' "
+                     "WHERE business_id = :b AND id = :id"),
+                {"e": used_end, "b": str(business_id), "id": str(block_id)},
+            )
+        return int(end) - used_end
+

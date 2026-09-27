@@ -92,6 +92,8 @@ class RoleHomeService:
             bands = [await ctx.low_stock(), await ctx.arrived()]
         elif key == "accountant":
             bands = [await ctx.unpaid(), await ctx.due()]
+        elif key == "cashier":
+            bands = [await ctx.counter(membership.identity_id)]
         else:
             bands = [await ctx.needs_you_now(), await ctx.today()]
             if key == "owner":
@@ -294,6 +296,30 @@ class _Ctx:
         items = [dict(_item(r[0], int(r[1]), "/inventory", f"{words[r[2]]} +{r[1]}", "good"), at=r[3].isoformat())
                  for r in rows]
         return {"key": "arrived", "title": "What arrived", "items": items, "empty": "Nothing arrived this week."}
+
+    # ------------------------------------------------------------------ cashier
+    async def counter(self, identity_id: uuid.UUID) -> dict[str, Any] | None:
+        """Open shift, bills, drawer balance (§7.2) — at this person's locations."""
+        if not self.can("pos.use", "pos"):
+            return None
+        from platform_core.models import InvoicingRegister, PosShift
+        from platform_core.services.pos import PosService
+
+        rows = (await self.s.execute(
+            select(PosShift, InvoicingRegister.name).join(InvoicingRegister, InvoicingRegister.id == PosShift.register_id)
+            .where(PosShift.business_id == self.b, PosShift.status == "open").order_by(PosShift.opened_at)
+        )).all()
+        stats = []
+        for shift, name in rows:
+            s = await PosService.summary(self.s, shift)
+            mine = " (yours)" if shift.opened_by == identity_id else ""
+            stats.append({"label": f"{name}{mine}", "value": _rupees(s["expected_cash"]), "href": "~/pos",
+                          "note": f"in the drawer · {s['bills']} bills since "
+                                  f"{shift.opened_at.astimezone(IST).strftime('%-I:%M %p')}"})
+        if not stats:
+            stats.append({"label": "No shift open", "value": "Open the counter", "href": "~/pos",
+                          "note": "Count the drawer and open a shift to start billing"})
+        return {"key": "counter", "title": "Your counter", "stats": stats, "empty": ""}
 
     # ------------------------------------------------------------------ accountant
     async def unpaid(self) -> dict[str, Any]:

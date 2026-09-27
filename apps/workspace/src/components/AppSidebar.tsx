@@ -263,7 +263,7 @@ export function AppSidebar({
               {area.children.map((item) => (
                 <NavLink
                   key={item.href}
-                  href={`${base}${item.href}`}
+                  href={item.href.startsWith('~') ? `${item.href.slice(1)}${base.slice(2)}` : `${base}${item.href}`}
                   label={item.label}
                   active={isActive(item.href)}
                   collapsed={railed}

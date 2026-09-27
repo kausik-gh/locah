@@ -30,6 +30,7 @@ from platform_core.permissions import (
 from platform_core.services.consent import PURPOSE_LABELS, ConsentService
 from platform_core.services.documents_store import DocumentStore
 from platform_core.services.module_readiness import module_states
+import platform_core.pos.sales  # noqa: F401  (the counter's offline mutations)
 from platform_core.services.offline_sync import OfflineSyncService, SyncContext
 from platform_core.services.usage_meter import UsageMeterService
 

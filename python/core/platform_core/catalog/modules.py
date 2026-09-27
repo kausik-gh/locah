@@ -174,7 +174,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         "Bill at the counter: scan or search, hold bills, take cash/UPI/card/khata, and close the drawer.",
         staff_can=("Open and close a shift", "Bill, hold, return", "Print or WhatsApp the receipt"),
         setup=(_s("register_created", "Create a counter register"),),
-        packs=("commerce",), depends_on=("offerings-catalog", "invoicing"), surfaces=("pos",),
+        packs=("commerce",), depends_on=("offerings-catalog", "invoicing"), surfaces=("pos",), built=True,
     ),
     ModuleInfo(
         "ledger", "Khata / credit book", "P1",

@@ -7,6 +7,8 @@
  * API decides what anyone may actually do.
  */
 
+/** `href` is relative to the business (`/orders` → /b/{id}/orders); a leading `~`
+ *  names another full-screen surface (`~/pos` → /pos/{id}). */
 export type NavChild = { href: string; label: string; perm?: string; anyPerm?: string[]; module?: string }
 export type NavArea = { key: string; label: string; children: NavChild[] }
 
@@ -27,6 +29,7 @@ export const AREAS: NavArea[] = [
     key: 'operate',
     label: 'Sell & serve',
     children: [
+      { href: '~/pos', label: 'Counter (POS)', perm: 'pos.use', module: 'pos' },
       { href: '/orders', label: 'Orders', perm: 'orders.read', module: 'orders' },
       { href: '/bookings', label: 'Bookings', perm: 'bookings.read', module: 'bookings' },
       { href: '/fulfilment', label: 'Deliveries & pickup', perm: 'fulfilment.read', module: 'fulfilment' },
@@ -58,6 +61,7 @@ export const AREAS: NavArea[] = [
       { href: '/invoices', label: 'Bills & invoices', perm: 'invoices.read', module: 'invoicing' },
       { href: '/payments', label: 'Payments', perm: 'payments.read', module: 'payments' },
       { href: '/invoices/tax-rates', label: 'Tax rates', perm: 'invoices.read', module: 'invoicing' },
+      { href: '/pos/shifts', label: 'Counter shifts', perm: 'pos.approve', module: 'pos' },
       { href: '/invoices/reports', label: 'Reports for your CA', perm: 'invoices.export', module: 'invoicing' },
     ],
   },
@@ -87,6 +91,7 @@ export const AREAS: NavArea[] = [
       { href: '/settings', label: 'Business settings', perm: 'settings.read' },
       { href: '/settings/business', label: 'How your business works', perm: 'settings.read' },
       { href: '/settings/invoicing', label: 'Tax & invoicing', perm: 'invoices.read', module: 'invoicing' },
+      { href: '/settings/counter', label: 'Counter billing', perm: 'pos.use', module: 'pos' },
       { href: '/settings/automations', label: 'Automations', perm: 'settings.read' },
       { href: '/settings/usage', label: 'Usage & limits', perm: 'settings.read' },
     ],
@@ -97,7 +102,7 @@ const OPERATIONAL = new Set(['active', 'ready', 'enabled'])
 
 /** "Sell & serve" reads as what this business actually does. */
 function operateLabel(on: (m: string) => boolean): string {
-  const sells = on('orders') || on('quotes')
+  const sells = on('orders') || on('quotes') || on('pos')
   const serves = on('bookings') || on('memberships')
   if (sells && serves) return 'Sell & serve'
   if (serves) return 'Serve'
