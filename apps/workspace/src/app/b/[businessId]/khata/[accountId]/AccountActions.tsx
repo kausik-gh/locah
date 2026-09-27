@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { postEntry, recordMoney, shareStatement, updateAccount } from '../khata-actions'
 import { rupees, type AccountDetail } from '../types'
+import { sendDocument } from '../../whatsapp/whatsapp-actions'
 
 type Panel = 'money' | 'purchase' | 'limit' | 'fix' | 'statement' | null
 const today = () => new Date().toISOString().slice(0, 10)
@@ -14,8 +15,8 @@ const today = () => new Date().toISOString().slice(0, 10)
  * set the limit and days to pay, correct a mistake, or close a settled
  * account.
  */
-export function AccountActions({ businessId, account: a, canRecord, canManage }: {
-  businessId: string; account: AccountDetail; canRecord: boolean; canManage: boolean
+export function AccountActions({ businessId, account: a, canRecord, canManage, whatsapp = false }: {
+  businessId: string; account: AccountDetail; canRecord: boolean; canManage: boolean; whatsapp?: boolean
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
@@ -72,7 +73,14 @@ export function AccountActions({ businessId, account: a, canRecord, canManage }:
         {closed ? <p className="bos-hint">This account is closed.</p> : null}
         {canRecord && customer ? (
           <div className="bos-inv-buttons">
-            <button type="button" disabled={pending} onClick={() => share('whatsapp')}>Send statement on WhatsApp</button>
+            {whatsapp ? (
+              <button type="button" disabled={pending} onClick={() => run(async () => { const r = await sendDocument(businessId, 'statement', a.id); return r.ok ? { ok: true } : r }, 'Statement sent from your WhatsApp number')}>
+                Send statement from your WhatsApp number
+              </button>
+            ) : null}
+            <button type="button" className={whatsapp ? 'btn-ghost' : undefined} disabled={pending} onClick={() => share('whatsapp')}>
+              {whatsapp ? 'Send from my phone' : 'Send statement on WhatsApp'}
+            </button>
             <button type="button" className="btn-ghost" disabled={pending} onClick={() => share('copy')}>Copy customer link</button>
           </div>
         ) : null}

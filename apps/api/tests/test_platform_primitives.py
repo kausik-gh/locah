@@ -281,14 +281,16 @@ def test_low_stock_ladder_runs_once_and_is_visible(monkeypatch: Any) -> None:
                 "'inventory.low_stock' and recipient_identity_id = :o", b=bid, o=owner_id)
     assert [n[0] for n in notes] == ["Mutton curry cut is running low"]
     feed = client.get(f"/v1/platform/businesses/{bid}/automations", headers=owner).json()["data"]
-    assert [a["key"] for a in feed["automations"]] == ["stock.low"]
+    assert [a["key"] for a in feed["automations"]] == ["stock.low", "chat.waiting"]
     assert feed["activity"][0]["status"] == "done" and "low" in feed["activity"][0]["outcome"]
 
 
 @DB
 def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
-    """Memberships, bookings and fulfilment are built, but their ladders have no
-    step code yet — the owner is never shown a switch that does nothing."""
+    """Memberships are built but their renewal ladder has no step code yet (P2)
+    — the owner is never shown a switch that does nothing. Booking reminders,
+    order tracking, bill and khata reminders and waiting chats have steps since
+    WhatsApp (P1-07); each shows only while its module is on."""
     from platform_core.automation import LADDERS, is_wired
 
     _, owner = new_identity(monkeypatch)
@@ -296,8 +298,10 @@ def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
                                                    "bookings", "fulfilment"))
     shown = [a["key"] for a in client.get(f"/v1/platform/businesses/{bid}/automations",
                                           headers=owner).json()["data"]["automations"]]
-    assert shown == ["stock.low", "lead.followup"]
-    assert {k for k in LADDERS if is_wired(k)} == {"stock.low", "lead.followup"}
+    assert shown == ["booking.reminder", "stock.low", "order.tracking", "lead.followup", "chat.waiting"]
+    assert "membership.renewal" not in shown
+    assert {k for k in LADDERS if is_wired(k)} == {"stock.low", "lead.followup", "booking.reminder", "order.tracking",
+                                                   "invoice.overdue", "ledger.statement", "chat.waiting"}
 
 
 @DB

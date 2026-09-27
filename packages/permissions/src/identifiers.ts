@@ -107,6 +107,13 @@ export const PERMISSIONS = {
   // Credit limits, supplier accounts, opening balances and corrections.
   LEDGER_MANAGE: 'ledger.manage',
 
+  // Module: messaging — WhatsApp & messages (Capability Universe §12.5)
+  MESSAGING_READ: 'messaging.read',
+  // Replies to customers from the business's WhatsApp number.
+  MESSAGING_REPLY: 'messaging.reply',
+  // Connects the number, submits templates, chooses automatic updates.
+  MESSAGING_CONFIGURE: 'messaging.configure',
+
   // Module: projects
   PROJECTS_READ: 'projects.read',
   PROJECTS_CREATE: 'projects.create',

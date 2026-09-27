@@ -315,3 +315,43 @@ done("P1-06", {
     "RL-05": dict(status=C, code="Cashier: bill, take payments incl. khata within the limit and khata paid at the counter, returns within the window, cash shift, discount up to the owner's cap; location-limited",
                   perm="✓ + ledger.read/record", role="✓", ws="✓", test="✓ test_pos + test_khata"),
 })
+
+
+# ---------------------------------------------------------------- P1-07 WhatsApp foundation
+_MS_TEST = "✓ test_messaging (18, recorded Meta webhook payloads + sandbox) + actor matrix + browser p1_07 (21 checks)"
+done("P1-07", {
+    "MS-01": dict(status=P, code="one inbox of WhatsApp conversations and messages (in, out, templates, locations, media notes, delivery status); a new number becomes a customer. Other channels (SMS, email) are MS-06, activation required",
+                  db="✓ messaging_conversations + messaging_messages + RLS", svc="✓ MessagingService", api="✓ /messaging/*",
+                  ws="✓ Reach › WhatsApp inbox", perm="✓ messaging.read / reply / configure", test=_MS_TEST),
+    "MS-02": dict(status=P, code="library of 11 templates (order received / confirmed / out for delivery / delivered, booking confirmed / reminder, payment due, your bill, renewal due, offer, team alert) in English, Tamil and Hindi, parameters in order, checked against WhatsApp's rules; submitted and tracked per business and language. Approval by Meta needs a real number (MS-07); Tamil and Hindi wording needs a native review (VB-22); renewal (P2) and offer (P3) are not sent yet",
+                  ws="✓ WhatsApp › Message templates", test=_MS_TEST),
+    "MS-03": dict(status=C, code="marketing templates go only to customers with an open WhatsApp marketing opt-in in the consent store; STOP (English, Tamil, Hindi) withdraws it and says so; transactional messages follow the customer's own order or booking",
+                  test=_MS_TEST + " (§12.6 consent test)"),
+    "MS-04": dict(status=P, code="router, cheapest branch first: STOP → opt-out; 'talk to a person' (button or words, English/Tamil/Hindi) → inbox; buttons and menu words → structured journeys (hook in place, journeys are P1-08); free text → a person until the AI WhatsApp Manager (P3)",
+                  svc="✓ MessagingService.route", test=_MS_TEST),
+    "MS-05": dict(status=C, code="a person's reply — in the inbox, or from the WhatsApp Business app on a coexistence number — keeps LOCAH's automatic replies out of that chat for the owner's pause (12 h default, 1–72); 'Hand back to LOCAH' lifts it",
+                  ws="✓ inbox + WhatsApp settings", test=_MS_TEST + " (§12.6 12-hour test)"),
+    "MS-07": dict(status=A, code="built, not exercised against Meta: Embedded Signup in the owner's browser (with the coexistence option), code exchange, app subscription to the WABA, token encrypted at rest, Cloud API sends and template submission; switched on only when LOCAH's Meta app (app id, secret, Embedded Signup configuration, Graph API version) is configured — until then the page says so. A dev-only sandbox number stands in on test stacks",
+                  ws="✓ WhatsApp › Your WhatsApp number"),
+    "MS-08": dict(status=C, code="webhook: Meta's verify-token handshake and X-Hub-Signature-256 on every delivery (refused unsigned or wrongly signed; off until configured); resolves the business by phone number id under RLS; one message per delivery id; forward-only delivery statuses; coexistence echoes. Notification routing: order received / confirmed / delivered, booking confirmed to customers (owner switches each), out-for-delivery, booking reminders, bill and khata payment reminders on ladders; team members' own alerts (new orders, bookings, enquiries, chats waiting, khata over limit). Every message is metered and stops at the owner's cap",
+                  api="✓ /v1/webhooks/whatsapp", svc="✓ messaging_notify subscribers + ladder steps", test=_MS_TEST),
+    "MS-22": dict(status=P, code="chips: needs a person (with wait), LOCAH replying, topic, assignee, unread; side panel: customer, khata balance, recent orders, bookings, membership, with links. The 'AI handling' chip arrives with the AI WhatsApp Manager (P3); topics are set by the journeys (P1-08)",
+                  ws="✓", test="✓ browser p1_07"),
+    "MS-23": dict(status=C, code="assign to anyone who may reply, quick replies (saved from any reply), wait timer; a chat waiting over 10 minutes shows in Needs you now (owner) and Late or stuck (manager), and alerts those who asked on WhatsApp and in Notifications",
+                  ws="✓", role="✓", test=_MS_TEST),
+    "MS-24": dict(status=P, code="§12.6 here: duplicate webhook deliveries create one message; no automatic message within 12 h of a person's reply; no marketing template without consent — zero model calls. 'Cart price = catalogue price' and duplicate deliveries creating one order arrive with the order journey (P1-08)",
+                  test=_MS_TEST),
+    "PKT-07": dict(status=A, code="done-when met on the test stack: the owner connects a number, turns on new-order alerts, an order arrives and the owner's alert and the customer's update are sent (API test + browser). Doing it with a real number needs Meta activation (MS-07)",
+                   test=_MS_TEST),
+    "CO-02": dict(status=P, code="opt-in enforced; template categories (utility / marketing) carried and metered; the bot handles only this business's tasks (router sends anything else to a person); the number's quality rating and limit are shown when Meta reports them. Off-topic redirect wording comes with the journeys (P1-08)"),
+    "GP-01": dict(status=P, code="one WhatsApp inbox with the customer's orders, bookings and khata beside the chat; WhatsApp flows that create real orders and bookings are P1-08"),
+    "AU-04": dict(status=C, code="bills with a due date and khata balances get payment reminders on the due day, 7 days late (and 15 days for bills, with an owner notification), with the bill or statement link; they stop when paid, cancelled or settled; the owner switches them in Automations. Live delivery needs a real number (MS-07)",
+                  test=_MS_TEST),
+    "AU-02": dict(status=C, code="booking confirmation on confirm and reminders the day before and 2 hours before; stops on cancel or reschedule (a rescheduled confirmed booking is reminded at its new time)", test="✓ test_messaging (confirm, reminder, cancel)"),
+    "AU-05": dict(status=C, code="out for delivery → tracking link to the customer; 'delivered' when delivered, which also stops the tracking step", test="✓ test_messaging"),
+    "LG-05": dict(status=C, code="statement link on the business's own site with UPI link and QR; sent from the business's WhatsApp number (or from the staff member's phone); khata reminders when a balance falls due and 7 days later. Live delivery needs a real number (MS-07)",
+                  web="✓", ws="✓", test="✓ test_khata + test_messaging"),
+    "GP-03": dict(status=C, code="udhaar notebook → khata with limits, ageing, statements, UPI links, carried-over balances and WhatsApp reminders", test="✓ test_khata + test_messaging"),
+    "PM-09": dict(status=P, code="per-business monthly meters with idempotent counting, caps, 80%/100% alerts; AI tokens and WhatsApp messages counted and capped today; SMS/email/voice/maps start counting when their providers connect"),
+    "IV-08": dict(status=P, code="A4 PDF, 58/80 mm thermal PDF, the customer's bill page, and 'Your bill from <business>' sent from the business's WhatsApp number or the staff member's phone; email not built (no email provider for business mail yet); GSTR-1 format VB-14"),
+})

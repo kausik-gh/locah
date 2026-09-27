@@ -94,6 +94,13 @@ LEDGER_READ = "ledger.read"
 LEDGER_RECORD = "ledger.record"
 LEDGER_MANAGE = "ledger.manage"
 
+# WhatsApp & messages (Capability Universe §6.2 `messaging`, §12.5): reading
+# the business inbox, replying to customers from the business number, and
+# connecting the number / choosing what is sent automatically.
+MESSAGING_READ = "messaging.read"
+MESSAGING_REPLY = "messaging.reply"
+MESSAGING_CONFIGURE = "messaging.configure"
+
 PAYMENTS_READ = "payments.read"
 PAYMENTS_REFUND = "payments.refund"
 PAYMENTS_MANAGE_CONNECTION = "payments.manage_connection"

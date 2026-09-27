@@ -18,9 +18,10 @@ export default async function AccountPage({ params }: { params: { businessId: st
   if (!token) redirect('/login')
   const b = params.businessId
   const base = `/b/${b}/khata`
-  const [res, me] = await Promise.all([
+  const [res, me, wa] = await Promise.all([
     apiTry<{ data: AccountDetail }>(`/v1/platform/businesses/${b}/ledger/accounts/${params.accountId}`, token),
     apiTry<{ data: { permissions: string[] } }>('/v1/me/context', token, businessHeaders(b)),
+    apiTry<{ data: { channel: { status: string } | null } }>(`/v1/platform/businesses/${b}/messaging/setup`, token),
   ])
   if (!res.ok) {
     return (
@@ -113,7 +114,8 @@ export default async function AccountPage({ params }: { params: { businessId: st
               ) : <p className="bos-empty">No entries yet.</p>}
             </section>
           </div>
-          <AccountActions businessId={b} account={a} canRecord={perms.has('ledger.record')} canManage={perms.has('ledger.manage')} />
+          <AccountActions businessId={b} account={a} canRecord={perms.has('ledger.record')} canManage={perms.has('ledger.manage')}
+            whatsapp={perms.has('messaging.reply') && wa.ok && wa.data.data.channel?.status === 'connected'} />
         </div>
       </DetailShell>
     </div>

@@ -18,8 +18,11 @@ export default async function BillPage({ params }: { params: { businessId: strin
   if (!token) redirect('/login')
   const b = params.businessId
   const base = `/b/${b}/invoices`
-  const res = await apiTry<{ data: Bill; meta: { note_reasons: Record<string, Record<string, string>>; payment_methods: Record<string, string> } }>(
-    `/v1/platform/businesses/${b}/invoices/${params.docId}`, token)
+  const [res, wa] = await Promise.all([
+    apiTry<{ data: Bill; meta: { note_reasons: Record<string, Record<string, string>>; payment_methods: Record<string, string> } }>(
+      `/v1/platform/businesses/${b}/invoices/${params.docId}`, token),
+    apiTry<{ data: { channel: { status: string } | null } }>(`/v1/platform/businesses/${b}/messaging/setup`, token),
+  ])
   if (!res.ok) {
     return (
       <div className="bos-page">
@@ -150,7 +153,8 @@ export default async function BillPage({ params }: { params: { businessId: strin
           </article>
 
           <aside className="bos-inv-side">
-            <BillActions businessId={b} bill={d} noteReasons={res.data.meta.note_reasons} methods={res.data.meta.payment_methods} />
+            <BillActions businessId={b} bill={d} noteReasons={res.data.meta.note_reasons} methods={res.data.meta.payment_methods}
+              whatsapp={wa.ok && wa.data.data.channel?.status === 'connected'} />
             {(d.payments ?? []).length ? (
               <section className="bos-card">
                 <h2>Money received</h2>

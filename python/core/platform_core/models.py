@@ -2300,4 +2300,136 @@ class LedgerEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+
+class MessagingChannel(Base):
+    """A business's WhatsApp number (Capability Universe §9.1). One per business."""
+
+    __tablename__ = "messaging_channels"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    kind: Mapped[str] = mapped_column(Text, nullable=False, default="whatsapp", server_default=text("'whatsapp'"))
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", server_default=text("'pending'"))
+    display_phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone_number_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    waba_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    coexistence: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    quality_rating: Mapped[str | None] = mapped_column(Text, nullable=True)
+    messaging_limit: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_webhook_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    connected_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+
+
+class MessagingSettings(Base):
+    __tablename__ = "messaging_settings"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    language: Mapped[str] = mapped_column(Text, nullable=False, default="en", server_default=text("'en'"))
+    customer_updates: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict,
+                                                             server_default=text("'{}'::jsonb"))
+    human_pause_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=12, server_default=text("12"))
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+
+
+class MessagingTemplate(Base):
+    __tablename__ = "messaging_templates"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    template_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    language: Mapped[str] = mapped_column(Text, primary_key=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="submitted", server_default=text("'submitted'"))
+    provider_template_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rejected_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MessagingConversation(Base):
+    """One customer's WhatsApp thread with the business (Capability Universe §12.5)."""
+
+    __tablename__ = "messaging_conversations"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    channel_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("messaging_channels.id"))
+    contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    wa_id: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False, default="customer", server_default=text("'customer'"))
+    profile_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    state: Mapped[str] = mapped_column(Text, nullable=False, default="open", server_default=text("'open'"))
+    handler: Mapped[str] = mapped_column(Text, nullable=False, default="bot", server_default=text("'bot'"))
+    needs_person: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    topic: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assigned_to: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    unread: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_outbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_human_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    waiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    journey: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict,
+                                                    server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+
+
+class MessagingMessage(Base):
+    __tablename__ = "messaging_messages"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    conversation_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("messaging_conversations.id"))
+    direction: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict,
+                                                    server_default=text("'{}'::jsonb"))
+    template_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_message_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_via: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    status_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MessagingStaffAlert(Base):
+    __tablename__ = "messaging_staff_alerts"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    identity_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"),
+                                              primary_key=True)
+    phone: Mapped[str] = mapped_column(Text, nullable=False)
+    kinds: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list,
+                                             server_default=text("'{}'"))
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    opted_in_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MessagingQuickReply(Base):
+    __tablename__ = "messaging_quick_replies"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
 PlatformProfile = PlatformIdentity

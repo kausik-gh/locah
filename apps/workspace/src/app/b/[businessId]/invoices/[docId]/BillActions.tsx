@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { billAction, shareBill } from '../invoice-actions'
+import { sendDocument } from '../../whatsapp/whatsapp-actions'
 import { rupees, type Bill } from '../types'
 
 type Panel = null | 'pay' | 'credit' | 'debit' | 'cancel'
@@ -18,7 +19,9 @@ export function BillActions({
   bill,
   noteReasons,
   methods,
+  whatsapp = false,
 }: {
+  whatsapp?: boolean
   businessId: string
   bill: Bill
   noteReasons: Record<string, Record<string, string>>
@@ -90,7 +93,14 @@ export function BillActions({
         <>
           <h2>Send and settle</h2>
           <div className="bos-inv-buttons">
-            <button type="button" disabled={pending} onClick={() => share('whatsapp')}>Send on WhatsApp</button>
+            {whatsapp ? (
+              <button type="button" disabled={pending} onClick={() => run(async () => { const r = await sendDocument(businessId, 'bill', bill.id); return r.ok ? { ok: true } : r }, 'Sent from your WhatsApp number')}>
+                Send from your WhatsApp number
+              </button>
+            ) : null}
+            <button type="button" className={whatsapp ? 'btn-ghost' : undefined} disabled={pending} onClick={() => share('whatsapp')}>
+              {whatsapp ? 'Send from my phone' : 'Send on WhatsApp'}
+            </button>
             <button type="button" className="btn-ghost" disabled={pending} onClick={() => share('copy')}>Copy customer link</button>
           </div>
           {link ? <input className="bos-inv-link" readOnly value={link} aria-label="Customer link" onFocus={(e) => e.currentTarget.select()} /> : null}

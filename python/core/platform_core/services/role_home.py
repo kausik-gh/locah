@@ -147,6 +147,15 @@ class _Ctx:
                                ", ".join(a["display_name"] for a in k["over"][:3])))
         return items
 
+    async def _chats_waiting(self) -> list[dict[str, Any]]:
+        """WhatsApp chats waiting for a person over 10 minutes (Capability Universe §12.5)."""
+        if not self.can("messaging.read", "messaging"):
+            return []
+        from platform_core.services.messaging import MessagingService
+
+        n = await MessagingService.waiting_long(self.s, self.b)
+        return [_item("customers waiting over 10 minutes on WhatsApp", n, "/inbox?view=waiting", tone="bad")] if n else []
+
     # ------------------------------------------------------------------ owner: needs you now
     async def needs_you_now(self) -> dict[str, Any]:
         items = []
@@ -191,6 +200,7 @@ class _Ctx:
             items.append(_item("bills past their due date", len(late), "/invoices?tab=overdue",
                                f"{_rupees(sum(b['outstanding'] for b in late))} owed", tone="bad"))
         items += self._khata_items(await self._khata())
+        items = await self._chats_waiting() + items
         return {"key": "now", "title": "Needs you now", "items": items, "empty": "Nothing needs you right now."}
 
     # ------------------------------------------------------------------ today
@@ -247,7 +257,7 @@ class _Ctx:
 
     # ------------------------------------------------------------------ manager
     async def late_or_stuck(self) -> dict[str, Any]:
-        items = []
+        items = await self._chats_waiting()
         if self.can("orders.read", "orders"):
             n = await self._count(SalesOrder, SalesOrder.business_id == self.b, SalesOrder.deleted_at.is_(None),
                                   SalesOrder.status == "pending",

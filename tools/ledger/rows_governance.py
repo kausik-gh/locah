@@ -140,6 +140,8 @@ VERIFY = [
     Verify("VB-19", "GST state codes", "The state-code table used for place of supply and GSTIN checks (platform_core/invoicing/states.py)", "§14.4", "VERIFY_AT_BUILD", "Reference data, editable in one place"),
     Verify("VB-20", "Invoice number length", "The GST limit on invoice-number length (16 characters) against the source example CHN1/26-27/000123, which is 17", "§14.4", "VERIFY_AT_BUILD", "Default padding 5 keeps CHN1/26-27/00001 at 16; longer numbers are flagged to the owner, not blocked"),
     Verify("VB-21", "In-store barcodes", "GS1 restricted-circulation prefix used for in-store codes (20…)", "§14.3", "VERIFY_AT_BUILD", "One constant in platform_core/pos/barcodes.py"),
+    Verify("VB-22", "Tamil and Hindi templates", "Native-speaker review of the Tamil and Hindi WhatsApp template wording before it is submitted for a real number", "§12.4", "VERIFY_AT_BUILD", "Wording lives in platform_core/messaging/templates.py; the sandbox approves it automatically, Meta will not"),
+    Verify("VB-23", "WhatsApp coexistence echoes", "The webhook field and shape Meta uses for replies the owner sends from the WhatsApp Business app on a coexistence number (built as `smb_message_echoes` / `message_echoes`)", "§9.1, §12.5", "VERIFY_AT_BUILD", "One parser in MessagingService._echo; confirm against a recorded Meta delivery at activation"),
 ]
 
 SECTIONS = [compliance, roadmap, testing, e2e]

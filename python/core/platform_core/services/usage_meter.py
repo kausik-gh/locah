@@ -28,7 +28,7 @@ LABELS = {
 ALERT_STEPS = (80, 100)
 # Resources something actually counts today. Messaging, calls and maps join as
 # their providers are connected; until then the owner can still set a limit.
-COUNTED_NOW = frozenset({"model_tokens"})
+COUNTED_NOW = frozenset({"model_tokens", "whatsapp_message"})
 
 
 class CapReached(Exception):

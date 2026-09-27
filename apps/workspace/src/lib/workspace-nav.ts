@@ -75,9 +75,16 @@ export const AREAS: NavArea[] = [
       { href: '/workforce', label: 'Staff & rota', perm: 'workforce.read', module: 'workforce' },
     ],
   },
-  // Reach, Insights and AI Employees join as their tools ship (WhatsApp and
-  // campaigns, analytics, AI staff). Until then they have nothing to show.
-  { key: 'reach', label: 'Reach', children: [] },
+  // Insights and AI Employees join as their tools ship (analytics, AI staff);
+  // campaigns join Reach in P3. Until then they have nothing to show.
+  {
+    key: 'reach',
+    label: 'Reach',
+    children: [
+      { href: '/inbox', label: 'WhatsApp inbox', perm: 'messaging.read', module: 'messaging' },
+      { href: '/whatsapp', label: 'WhatsApp', perm: 'messaging.read', module: 'messaging' },
+    ],
+  },
   { key: 'insights', label: 'Insights', children: [] },
   { key: 'ai', label: 'AI employees', children: [] },
   {

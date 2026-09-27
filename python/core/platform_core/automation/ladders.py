@@ -97,6 +97,14 @@ LADDERS: dict[str, Ladder] = {lad.key: lad for lad in (
         quiet_hours=False,
     ),
     Ladder(
+        "chat.waiting", "messaging", "Chats waiting for a person", "when a customer asks for a person on WhatsApp",
+        "messaging_conversation",
+        (LadderStep("after_10_min", 10 * timedelta(minutes=1), "After 10 minutes without a reply",
+                    "Alert whoever handles WhatsApp; the chat shows in Needs you now"),),
+        "someone replies or the chat is closed",
+        quiet_hours=False,
+    ),
+    Ladder(
         "licence.expiry", "compliance", "Licence reminders", "the licence expiry date", "compliance_item",
         (
             LadderStep("minus_30", -30 * D, "30 days before expiry", "Tell you and create a renewal task"),

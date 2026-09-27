@@ -189,7 +189,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         customer_can=("Order, book, pay and track on WhatsApp",),
         staff_can=("Reply from one inbox", "Hand chats to the right person"),
         setup=(_s("channel_connected", "Connect your WhatsApp number"),),
-        packs=("storefront",), marketplace_actions=("whatsapp",),
+        packs=("storefront",), marketplace_actions=("whatsapp",), built=True,
     ),
     ModuleInfo(
         "reviews", "Reviews", "P1",

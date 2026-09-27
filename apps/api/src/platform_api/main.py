@@ -36,6 +36,7 @@ from platform_api.routers import (
     v1_platform_projects,
     v1_platform_quotes,
     webhooks_payments,
+    webhooks_whatsapp,
     v1_website,
     v1_public_websites,
     v1_public_quotes,
@@ -59,6 +60,7 @@ from platform_api.routers import (
     v1_public_enquiries,
     v1_platform_invoicing,
     v1_platform_ledger,
+    v1_platform_messaging,
     v1_platform_pos,
 )
 
@@ -215,6 +217,7 @@ app.include_router(v1_platform_payments.router)
 app.include_router(v1_platform_projects.router)
 app.include_router(v1_platform_quotes.router)
 app.include_router(webhooks_payments.router)
+app.include_router(webhooks_whatsapp.router)
 app.include_router(v1_website.router)
 app.include_router(v1_public_websites.router)
 app.include_router(v1_public_quotes.router)
@@ -242,6 +245,7 @@ app.include_router(v1_platform_invoicing.router)
 app.include_router(v1_platform_invoicing.public_router)
 app.include_router(v1_platform_ledger.router)
 app.include_router(v1_platform_ledger.public_router)
+app.include_router(v1_platform_messaging.router)
 app.include_router(v1_platform_pos.router)
 
 app.add_exception_handler(PlatformError, platform_error_handler)
