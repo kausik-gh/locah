@@ -43,7 +43,7 @@ Tests enable it globally. Local acceptance uses `AI_PROVIDER=replay` and
 
 - Interview evaluation: `uv run python -c "from platform_testing.interview_eval import main; main()"` → `docs/phase-a/interview-transcripts/` (23 owners × scripted model / model down).
 - Website fixtures: `uv run python -m platform_testing.website_fixtures <dir>`; screenshots `LOCAH_SITE_LAB_DIR=<dir> node tools/acceptance/sites.mjs <out>`.
-- Browser flows A–M on a local stack: `tools/acceptance/README.md`.
+- Browser flows A–L (12) on a local stack: `tools/acceptance/README.md`.
 
 ## Amendment (2026-09-27) — where the older documents are superseded
 
