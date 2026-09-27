@@ -1844,3 +1844,29 @@
   [data-locah-site] .ls-specs__row { grid-template-columns: 1fr; gap: 0; }
   [data-locah-site] .ls-offer__actions { justify-content: flex-start; }
 }
+
+/* Your bill from <business> (Capability Universe §14.4) — site tokens only. */
+[data-locah-site] .ls-bill { max-width: 640px; display: grid; gap: 1.1rem; }
+[data-locah-site] .ls-bill__head { display: grid; gap: 0.3rem; }
+[data-locah-site] .ls-bill__head .ls-title { margin: 0; font-size: clamp(1.4rem, 4vw, 1.9rem); font-variant-numeric: tabular-nums; }
+[data-locah-site] .ls-bill__cancelled {
+  margin: 0; padding: 0.7rem 0.9rem; border-radius: var(--site-radius); border: 1px solid var(--site-border);
+  background: var(--site-bg-alt); color: var(--site-ink); font-weight: 600;
+}
+[data-locah-site] .ls-bill__card {
+  display: grid; gap: 1rem; padding: 1.2rem; border: 1px solid var(--site-border); border-radius: var(--site-radius);
+  background: var(--site-bg);
+}
+[data-locah-site] .ls-bill__lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.7rem; }
+[data-locah-site] .ls-bill__lines li { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+[data-locah-site] .ls-bill__lines small { display: block; color: var(--site-muted); font-size: 0.82rem; }
+[data-locah-site] .ls-bill__lines strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+[data-locah-site] .ls-bill__totals {
+  display: grid; grid-template-columns: 1fr auto; gap: 0.3rem 1rem; margin: 0; padding-top: 0.8rem;
+  border-top: 1px solid var(--site-border); font-variant-numeric: tabular-nums;
+}
+[data-locah-site] .ls-bill__totals dt { color: var(--site-muted); }
+[data-locah-site] .ls-bill__totals dd { margin: 0; text-align: right; }
+[data-locah-site] .ls-bill__totals .is-total { color: var(--site-ink); font-weight: 700; font-size: 1.1rem; padding-top: 0.3rem; }
+[data-locah-site] .ls-bill__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+[data-locah-site] .ls-bill__seller { display: grid; gap: 0.15rem; font-size: 0.82rem; }

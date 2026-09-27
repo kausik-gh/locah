@@ -201,3 +201,41 @@ done("P1-03", {
     "FD-03": dict(status=P, code="sites now present each item by its kind (packs/cuts, choices, variants, gifts, projects by status, test drive and site visit) and only offer actions whose tools are on; module-driven section placement by the CreativeDirector still to wire",
                   web="◐"),
 })
+
+
+# ---------------------------------------------------------------- P1-04 GST invoicing
+_IV_TEST = "✓ test_invoicing_gst (36) + actor matrix + browser p1_04 (39 checks)"
+done("P1-04", {
+    "IV-01": dict(status=C, code="tax invoice carries GSTIN, FY number, HSN/SAC, taxable value, CGST + SGST (same state) or IGST (other state) and place of supply; prices with or without GST as the owner chose, discounts before tax",
+                  db="✓ invoicing_documents/_lines + RLS + location scope", svc="✓ one engine (invoicing/tax_engine) for orders and bills",
+                  api="✓ /invoices", perm="✓ invoices.*", ws="✓ Money › Bills & invoices", test=_IV_TEST),
+    "IV-02": dict(status=C, code="B2B tax invoice with the buyer's GSTIN (check character and state verified), place of supply defaulting to the buyer's state, reverse-charge flag (tax shown, not collected); IRN/QR stays IV-12 (P4)",
+                  svc="✓", ws="✓ new bill: registered business, place of supply, reverse charge", test=_IV_TEST),
+    "IV-03": dict(status=C, code="composition registration issues a bill of supply: no tax computed or printed (A4 and thermal), the owner's declaration printed; orders of a composition business carry no tax either",
+                  svc="✓", ws="✓", web="✓", test="✓ never prints a tax line (spec + browser)"),
+    "IV-04": dict(status=C, code="not-registered business issues a plain bill with no GSTIN, place of supply or tax", svc="✓", test="✓"),
+    "IV-05": dict(status=C, code="credit notes (return by quantity with optional restock, price reduction, correction) and debit notes (price increase, correction) reference the original, can never credit more than was billed, own gapless CN/DN series per GSTIN × FY, reduce what is owed",
+                  svc="✓", ws="✓ bill page › Credit note / Debit note", test=_IV_TEST),
+    "IV-06": dict(status=C, code="rates are data: per HSN/SAC (longest prefix) or per item with effective dates; a new rate ends the previous one; nothing seeded or guessed; a tax invoice is refused while any line has no rate; issued bills keep their rate",
+                  db="✓ invoicing_tax_rates", ws="✓ Money › Tax rates (items without a rate named)", test=_IV_TEST),
+    "IV-07": dict(status=C, code="numbers taken on issue from NumberSeriesService: one series per GSTIN × FY (Apr–Mar) × register, e.g. CHN1/26-27/00001; drafts have none; cancelled bills keep theirs and stay listed; 'Documents issued' report proves no gaps. VB-20: default padding 5 (source example has 6 → 17 characters)",
+                  db="✓ unique (series, FY, seq)", test="✓ gapless across cancel/draft; two registers' blocks never overlap"),
+    "IV-08": dict(status=P, code="A4, 80 mm and 58 mm PDFs (hashed, stored, versioned); 'Your bill from <business>' customer page on the business's site with its PDF; 'Send on WhatsApp' opens the owner's WhatsApp with the message and link. Sending from the business's WhatsApp number waits on messaging (P1-07, provider activation); email not sent (no email provider configured)",
+                  web="✓ /<slug>/bill/<token>", ws="✓", test="✓ browser p1_04 (390 px)"),
+    "IV-09": dict(status=P, code="sales register, HSN/SAC summary, tax by rate, documents issued and a GSTR-1 worksheet (B2B, B2C, inter-state B2C listed, notes, HSN, documents), each as CSV; portal file format to confirm (VB-14); Tally export arrives with the Tally connector (§15, P4)",
+                  svc="✓ invoicing_reports", ws="✓ Money › Reports for your CA", perm="✓ invoices.export", test=_IV_TEST),
+    "IV-10": dict(status=C, code="'Confirm with your CA' beside every tax-treatment choice: prices incl./excl. GST, advances (setting, 'not decided' by default), rate choices (rates are the owner's data), reverse charge per bill, composition declaration wording; the owner can record that their CA checked",
+                  ws="✓ Settings › Tax & invoicing", test="✓ browser"),
+    "IV-11": dict(status=C, code="§14.6: same-state CGST/SGST and other-state IGST from place of supply; composition never prints a tax line; round-off is its own line and never changes the tax — unit, API and browser",
+                  test=_IV_TEST),
+    "IV-13": dict(status=P, code="website and WhatsApp orders are priced by the same engine and billed when the owner chose (accepted / completed / manual), or from the order page; B2B and walk-in bills raised directly move stock on issue and back on cancel; returns restock. Counter bills join with POS (P1-05)",
+                  svc="✓ invoicing.auto_bill subscriber (blocked bills notify, never guessed)", ws="✓ order page › Bill", test=_IV_TEST),
+    "PKT-04": dict(status=P, code="§14.6 tests pass for the tax split, composition and round-off; register number blocks are proven not to overlap, but offline bills syncing from two registers can only be tested with the POS (P1-05)",
+                   test=_IV_TEST),
+    "CO-03": dict(status=P, code="invoice content and numbering per §14.4 done; e-invoice above threshold and e-way bills need a GSP (P4, OD-10)"),
+    "RL-14": dict(status=P, code="accountant role now holds invoices (issue, cancel, record money, set up tax, export for the CA) with 'Unpaid' and 'Due' homes counting bills; ledger (P1-06), expenses and connectors (P4) not built yet",
+                  perm="✓", role="✓ home: bills not fully paid, bills past due", test="✓"),
+    "OR-07": dict(status=P, code="catalogue → cart → order → payment → invoice (engine-priced, auto or on demand) → inventory → fulfilment → tracking; review and customer-timeline links still absent",
+                  test="✓ test_checkout_flow + test_invoicing_gst"),
+    "AU-04": dict(status=S, code="overdue bills are visible (list filter, owner and accountant homes); the reminder ladder stays unwired until messaging (P1-07) can send the statement — it is not offered as an automation before then"),
+})

@@ -89,9 +89,15 @@ CHECKS: dict[str, Check] = {
         "SELECT 1 FROM workforce_members WHERE business_id = CAST(:b AS uuid) "
         "AND deleted_at IS NULL AND status = 'active'"
     ),
+    # Billing is set up when the owner chose how they bill, told LOCAH their
+    # registration (or that they are not registered) and has a register.
     "tax_profile": _sql_if_table(
         "invoicing_tax_profiles",
-        "SELECT 1 FROM invoicing_tax_profiles WHERE business_id = CAST(:b AS uuid)",
+        "SELECT 1 FROM invoicing_tax_profiles p WHERE p.business_id = CAST(:b AS uuid) "
+        "AND EXISTS (SELECT 1 FROM invoicing_registrations r WHERE r.business_id = p.business_id "
+        "AND r.status = 'active') "
+        "AND EXISTS (SELECT 1 FROM invoicing_registers g WHERE g.business_id = p.business_id "
+        "AND g.status = 'active')",
     ),
     "register_created": _sql_if_table(
         "pos_registers",

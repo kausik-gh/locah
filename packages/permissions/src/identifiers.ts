@@ -86,6 +86,15 @@ export const PERMISSIONS = {
   // Issuing binds the business to a price, so it is separate from editing.
   QUOTES_ISSUE: 'quotes.issue',
 
+  // Module: invoicing (Capability Universe §14)
+  INVOICES_READ: 'invoices.read',
+  INVOICES_ISSUE: 'invoices.issue',
+  INVOICES_CANCEL: 'invoices.cancel',
+  INVOICES_RECORD_PAYMENT: 'invoices.record_payment',
+  INVOICES_EXPORT: 'invoices.export',
+  // Tax profile, GST registrations, registers and rates — owner / CA data.
+  INVOICES_CONFIGURE: 'invoices.configure',
+
   // Module: projects
   PROJECTS_READ: 'projects.read',
   PROJECTS_CREATE: 'projects.create',

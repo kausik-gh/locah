@@ -54,7 +54,12 @@ export const AREAS: NavArea[] = [
   {
     key: 'money',
     label: 'Money',
-    children: [{ href: '/payments', label: 'Payments', perm: 'payments.read', module: 'payments' }],
+    children: [
+      { href: '/invoices', label: 'Bills & invoices', perm: 'invoices.read', module: 'invoicing' },
+      { href: '/payments', label: 'Payments', perm: 'payments.read', module: 'payments' },
+      { href: '/invoices/tax-rates', label: 'Tax rates', perm: 'invoices.read', module: 'invoicing' },
+      { href: '/invoices/reports', label: 'Reports for your CA', perm: 'invoices.export', module: 'invoicing' },
+    ],
   },
   {
     key: 'team',
@@ -81,6 +86,7 @@ export const AREAS: NavArea[] = [
     children: [
       { href: '/settings', label: 'Business settings', perm: 'settings.read' },
       { href: '/settings/business', label: 'How your business works', perm: 'settings.read' },
+      { href: '/settings/invoicing', label: 'Tax & invoicing', perm: 'invoices.read', module: 'invoicing' },
       { href: '/settings/automations', label: 'Automations', perm: 'settings.read' },
       { href: '/settings/usage', label: 'Usage & limits', perm: 'settings.read' },
     ],

@@ -2,7 +2,7 @@
 
 A member whose membership is limited to some locations sees and changes only
 the operational records at those locations: orders, bookings, deliveries,
-stock, quotes and projects. Records with no location (business-wide) stay
+stock, quotes, projects, bills and billing registers. Records with no location (business-wide) stay
 visible. The owner is never limited.
 
 The server enforces it here, for every ORM read and write in the request's
@@ -27,13 +27,16 @@ def _scoped_models() -> tuple[type[Any], ...]:
         Booking,
         FulfilmentJob,
         InventoryMovement,
+        InvoicingDocument,
+        InvoicingRegister,
         InventoryRecord,
         Project,
         Quote,
         SalesOrder,
     )
 
-    return (SalesOrder, Booking, FulfilmentJob, InventoryRecord, InventoryMovement, Quote, Project)
+    return (SalesOrder, Booking, FulfilmentJob, InventoryRecord, InventoryMovement, Quote, Project,
+            InvoicingDocument, InvoicingRegister)
 
 
 def scoped_locations(membership: Any) -> tuple[uuid.UUID, ...] | None:

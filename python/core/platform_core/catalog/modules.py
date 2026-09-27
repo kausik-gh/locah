@@ -166,8 +166,8 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         "Correctly numbered tax invoices, bills of supply and credit notes, with CA-ready exports.",
         customer_can=("Receive a bill as PDF and on WhatsApp", "See invoices in My Activity"),
         staff_can=("Issue and cancel invoices", "Raise credit notes", "Export for the CA"),
-        setup=(_s("tax_profile", "Tell LOCAH your GST registration (or that you are not registered)"),),
-        packs=("commerce", "trade", "back_office"), site=("my_invoices",),
+        setup=(_s("tax_profile", "Tell LOCAH how you bill and your GST registration (or that you are not registered)"),),
+        packs=("commerce", "trade", "back_office"), site=("my_invoices",), built=True,
     ),
     ModuleInfo(
         "pos", "Counter billing", "P1",

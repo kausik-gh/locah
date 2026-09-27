@@ -137,6 +137,8 @@ VERIFY = [
     Verify("VB-16", "Label scales", "Barcode format of the pilot hardware", "§14.3", "VERIFY_AT_BUILD", "Per-business configurable format"),
     Verify("VB-17", "Listing sites", "Calendar import/export support for homestays", "§21.6", "VERIFY_AT_BUILD", ""),
     Verify("VB-18", "Partner APIs", "Shipping, hyperlocal, EMI and accounting APIs open to small merchants", "§9.1", "VERIFY_AT_BUILD", ""),
+    Verify("VB-19", "GST state codes", "The state-code table used for place of supply and GSTIN checks (platform_core/invoicing/states.py)", "§14.4", "VERIFY_AT_BUILD", "Reference data, editable in one place"),
+    Verify("VB-20", "Invoice number length", "The GST limit on invoice-number length (16 characters) against the source example CHN1/26-27/000123, which is 17", "§14.4", "VERIFY_AT_BUILD", "Default padding 5 keeps CHN1/26-27/00001 at 16; longer numbers are flagged to the owner, not blocked"),
 ]
 
 SECTIONS = [compliance, roadmap, testing, e2e]

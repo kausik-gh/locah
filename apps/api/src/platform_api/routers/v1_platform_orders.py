@@ -51,6 +51,9 @@ class CreateOrderRequest(BaseModel):
     discount_amount: float = Field(default=0, ge=0)
     internal_reference: str | None = None
     idempotency_key: str | None = None
+    # GST place of supply (two-digit state code) when the buyer's state is
+    # known and differs from the shop's (Capability Universe §14.4).
+    place_of_supply: str | None = Field(default=None, min_length=2, max_length=2)
     items: list[OrderLineItemInput] = Field(min_length=1)
 
 

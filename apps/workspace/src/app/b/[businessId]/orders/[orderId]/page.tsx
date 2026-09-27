@@ -4,6 +4,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { DetailShell, GateNotice, PageHeader, Section, StatusPill } from '@/components/ui'
 import { advanceOrderStatus, cancelOrder } from '../actions'
+import { OrderBill } from './OrderBill'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,10 +25,17 @@ export default async function OrderDetailPage({
       payment_status: string
       payment_method: string
       total_amount: number
+      subtotal: number
+      tax_amount: number
+      discount_amount: number
+      round_off: number
+      tax_basis: { engine?: string; inclusive?: boolean; intra_state?: boolean; scheme?: string; rates_missing?: string[] }
       currency: string
       items?: Array<{ title: string; quantity: number; line_total: number }>
     }
   }>(`/v1/platform/businesses/${params.businessId}/orders/${params.orderId}`, token)
+  const bills = await apiTry<{ data: Array<{ id: string; number: string | null; kind_label: string; status: string; doc_kind: string }> }>(
+    `/v1/platform/businesses/${params.businessId}/invoices?order_id=${params.orderId}&kind=invoices`, token)
   if (!res.ok) {
     return (
       <div>
@@ -127,6 +135,31 @@ export default async function OrderDetailPage({
           ) : null}
         </div>
       </Section>
+
+      {order.tax_basis?.engine ? (
+        <dl className="bos-inv-ordertax">
+          <dt>Before tax</dt><dd>{order.currency} {order.subtotal}</dd>
+          {order.discount_amount ? (<><dt>Discount</dt><dd>− {order.currency} {order.discount_amount}</dd></>) : null}
+          <dt>{order.tax_basis.scheme !== 'regular' ? 'Tax' : order.tax_basis.intra_state ? 'CGST + SGST' : 'IGST'}</dt>
+          <dd>{order.currency} {order.tax_amount}{order.tax_basis.inclusive ? ' (included in prices)' : ''}</dd>
+          {order.round_off ? (<><dt>Round-off</dt><dd>{order.currency} {order.round_off}</dd></>) : null}
+          <dt>Total</dt><dd>{order.currency} {order.total_amount}</dd>
+        </dl>
+      ) : null}
+      {order.tax_basis?.rates_missing?.length ? (
+        <p className="bos-inv-warn">No GST rate yet for: {order.tax_basis.rates_missing.join(', ')}. Add it in Tax rates before billing.</p>
+      ) : null}
+
+      {bills.ok ? (
+        <Section title="Bill">
+          <OrderBill
+            businessId={params.businessId}
+            orderId={params.orderId}
+            cancelled={['cancelled', 'rejected'].includes(order.status)}
+            live={bills.data.data.find((x) => x.status !== 'cancelled') ?? null}
+          />
+        </Section>
+      ) : null}
 
       <p style={{ marginTop: '1.5rem', color: 'var(--color-muted)', fontSize: '0.88rem' }}>
         Refunds: use the Payments module transaction detail when a payment attempt exists.

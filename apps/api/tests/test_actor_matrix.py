@@ -415,3 +415,57 @@ def test_primitive_surfaces_follow_their_permission(
         assert refused.status_code == 403 and refused.json()["error"]["code"] == "PERMISSION_DENIED"
         _grant(client, headers, bid, membership_id, [permission])
         assert call(member_headers).status_code == 200, f"{permission} should open {method} {path}"
+
+
+INVOICING_SURFACES = [
+    # (method, path, permission that opens it, body) — Capability Universe §14
+    ("GET", "/v1/platform/businesses/{bid}/invoicing/setup", "invoices.read", None),
+    ("PUT", "/v1/platform/businesses/{bid}/invoicing/profile", "invoices.configure",
+     {"prices_include_tax": True, "round_off": True, "issue_on": "manual"}),
+    ("GET", "/v1/platform/businesses/{bid}/invoicing/tax-rates", "invoices.read", None),
+    ("GET", "/v1/platform/businesses/{bid}/invoices", "invoices.read", None),
+    ("GET", "/v1/platform/businesses/{bid}/invoices/{doc}", "invoices.read", None),
+    ("GET", "/v1/platform/businesses/{bid}/invoices/{doc}/pdf", "invoices.read", None),
+    ("GET", "/v1/platform/businesses/{bid}/invoices/{doc}/share", "invoices.issue", None),
+    ("GET", "/v1/platform/businesses/{bid}/invoicing/reports/sales_register", "invoices.export", None),
+    ("GET", "/v1/platform/businesses/{bid}/invoicing/reports/gstr1.csv", "invoices.export", None),
+]
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+@pytest.mark.parametrize(("method", "path", "permission", "body"), INVOICING_SURFACES,
+                         ids=[f"{m} {p.split('{bid}')[1]}" for m, p, _, _ in INVOICING_SURFACES])
+def test_invoicing_surfaces_follow_their_permission(
+    owner: tuple[dict[str, str], uuid.UUID], method: str, path: str, permission: str, body: Any,
+) -> None:
+    headers, _ = owner
+    member_headers, member_id, _ = _actor()
+    outsider_headers, _, _ = _actor()
+    with TestClient(app) as client:
+        bid = _create_business(client, headers)
+        base = f"/v1/platform/businesses/{bid}"
+        assert client.post(f"/v1/b/{bid}/modules/invoicing/enable", headers=headers).status_code == 200
+        client.put(f"{base}/invoicing/profile", json={"prices_include_tax": True, "round_off": True,
+                                                      "issue_on": "manual"}, headers=headers)
+        reg = client.post(f"{base}/invoicing/registrations", json={
+            "scheme": "unregistered", "legal_name": "Matrix Co", "state_code": "33"}, headers=headers).json()["data"]
+        loc = next(x for x in client.get(f"{base}/locations", headers=headers).json()["data"] if x["is_primary"])
+        client.post(f"{base}/invoicing/registers", json={"location_id": loc["id"], "registration_id": reg["id"],
+                                                         "code": "M1"}, headers=headers)
+        doc = client.post(f"{base}/invoices", json={"lines": [{"title": "Service", "unit_price": 100}]},
+                          headers=headers)
+        assert doc.status_code == 200, doc.text
+        url = path.format(bid=bid, doc=doc.json()["data"]["id"])
+        membership_id = _invite_membership(client, headers, bid, member_id, "member")
+        _activate(client, headers, bid, membership_id)
+
+        def call(h: dict[str, str]) -> Any:
+            return client.request(method, url, headers=h, json=body)
+
+        assert call(headers).status_code == 200, "owner must reach every invoicing surface"
+        outsider = call(outsider_headers)
+        assert outsider.status_code == 403 and outsider.json()["error"]["code"] == "MEMBERSHIP_REQUIRED"
+        refused = call(member_headers)
+        assert refused.status_code == 403 and refused.json()["error"]["code"] == "PERMISSION_DENIED"
+        _grant(client, headers, bid, membership_id, [permission])
+        assert call(member_headers).status_code == 200, f"{permission} should open {method} {path}"

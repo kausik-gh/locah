@@ -37,7 +37,10 @@ router = APIRouter(prefix="/v1/platform/businesses", tags=["primitives"])
 
 # Who may open a rendered document of each type. A module adds its type here
 # when it starts rendering documents.
-DOCUMENT_PERMISSIONS: dict[str, str] = {"quote": "quotes.read"}
+DOCUMENT_PERMISSIONS: dict[str, str] = {
+    "quote": "quotes.read",
+    **{kind: "invoices.read" for kind in ("tax_invoice", "bill_of_supply", "bill", "credit_note", "debit_note")},
+}
 
 
 def _meta(actor: BusinessActorContext, **extra: Any) -> dict[str, Any]:

@@ -114,6 +114,14 @@ class _Ctx:
     async def _count(self, model: Any, *where: Any) -> int:
         return int((await self.s.execute(select(func.count()).select_from(model).where(*where))).scalar_one())
 
+    async def _open_bills(self) -> list[dict[str, Any]]:
+        """Issued bills with money still owed (Capability Universe §14), within the viewer's locations."""
+        if not self.can("invoices.read", "invoicing"):
+            return []
+        from platform_core.services.invoicing import InvoiceService
+
+        return list(await InvoiceService.list_documents(self.s, self.b, payment="unpaid", limit=500))
+
     # ------------------------------------------------------------------ owner: needs you now
     async def needs_you_now(self) -> dict[str, Any]:
         items = []
@@ -153,6 +161,10 @@ class _Ctx:
                                   MembershipEnrolment.ends_at < self.now + timedelta(days=7))
             if n:
                 items.append(_item("memberships ending this week", n, "/memberships", tone="info"))
+        late = [b for b in await self._open_bills() if b["overdue"]]
+        if late:
+            items.append(_item("bills past their due date", len(late), "/invoices?tab=overdue",
+                               f"{_rupees(sum(b['outstanding'] for b in late))} owed", tone="bad"))
         return {"key": "now", "title": "Needs you now", "items": items, "empty": "Nothing needs you right now."}
 
     # ------------------------------------------------------------------ today
@@ -305,11 +317,20 @@ class _Ctx:
                                   PaymentAttempt.deleted_at.is_(None), PaymentAttempt.status == "pending_offline")
             if n:
                 items.append(_item("cash or offline payments to confirm", n, "/payments", tone="info"))
+        bills = await self._open_bills()
+        if bills:
+            items.append(_item("bills not fully paid", len(bills), "/invoices?tab=unpaid",
+                               f"{_rupees(sum(b['outstanding'] for b in bills))} outstanding"))
         return {"key": "unpaid", "title": "Unpaid", "items": items, "empty": "Nothing is unpaid."}
 
     async def due(self) -> dict[str, Any] | None:
+        late = [b for b in await self._open_bills() if b["overdue"]]
         if not self.can("memberships.read", "memberships"):
-            return None
+            if not self.can("invoices.read", "invoicing"):
+                return None
+            items = [_item("bills past their due date", len(late), "/invoices?tab=overdue",
+                           f"{_rupees(sum(b['outstanding'] for b in late))} owed", tone="bad")] if late else []
+            return {"key": "due", "title": "Due", "items": items, "empty": "Nothing is due."}
         soon = await self._count(MembershipEnrolment, MembershipEnrolment.business_id == self.b,
                                  MembershipEnrolment.deleted_at.is_(None), MembershipEnrolment.status == "active",
                                  MembershipEnrolment.ends_at >= self.now,
@@ -322,4 +343,7 @@ class _Ctx:
             items.append(_item("renewals due this week", soon, "/memberships", tone="info"))
         if lapsed:
             items.append(_item("memberships lapsed in the last 30 days", lapsed, "/memberships"))
+        if late:
+            items.append(_item("bills past their due date", len(late), "/invoices?tab=overdue",
+                               f"{_rupees(sum(b['outstanding'] for b in late))} owed", tone="bad"))
         return {"key": "due", "title": "Due", "items": items, "empty": "Nothing is due."}

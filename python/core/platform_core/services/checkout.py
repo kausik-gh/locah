@@ -360,6 +360,11 @@ class CheckoutService:
                 "currency": payload.get("currency") or "INR",
                 "idempotency_key": idempotency_key,
                 "items": order_items,
+                # GST place of supply: where delivered goods go (§14.4).
+                "place_of_supply": (
+                    str(delivery_address.get("state_code") or "").strip() or None
+                    if mode == "delivery" and isinstance(delivery_address, dict) else None
+                ),
             },
         )
 

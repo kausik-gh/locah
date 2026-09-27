@@ -117,3 +117,11 @@ export async function fetchTracking(orderId: string, token: string) {
 export function cartStorageKey(slug: string) {
   return `platform.cart.${slug}`
 }
+
+
+/** GST state codes, for the delivery address's state (place of supply, Capability Universe §14.4). */
+export async function fetchGstStates(): Promise<{ code: string; name: string }[]> {
+  const res = await fetch(`${apiUrl}/v1/public/gst-states`)
+  if (!res.ok) return []
+  return ((await res.json()) as { data: { code: string; name: string }[] }).data
+}

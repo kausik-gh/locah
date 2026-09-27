@@ -714,6 +714,12 @@ class SalesOrder(Base):
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
     )
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Capability Universe §14: once the business has a tax profile, orders are
+    # priced by the billing engine — its round-off line and what it decided.
+    round_off: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, server_default=text("0"))
+    tax_basis: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1986,6 +1992,181 @@ class ProjectTask(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------- invoicing (P1-04)
+def _uuid_pk() -> Mapped[UUID]:
+    return mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+
+
+class InvoicingTaxProfile(Base):
+    """How the business bills (Capability Universe §14.4). Owner / CA data."""
+
+    __tablename__ = "invoicing_tax_profiles"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    prices_include_tax: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    round_off: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    issue_on: Mapped[str] = mapped_column(Text, nullable=False)
+    advances_treatment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_due_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bank_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ca_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvoicingRegistration(Base):
+    """A GST registration (one per state), or the business's 'not registered' row."""
+
+    __tablename__ = "invoicing_registrations"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    scheme: Mapped[str] = mapped_column(Text, nullable=False)
+    gstin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    legal_name: Mapped[str] = mapped_column(Text, nullable=False)
+    trade_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    state_code: Mapped[str] = mapped_column(Text, nullable=False)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    composition_declaration: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvoicingRegister(Base):
+    """A billing counter at a location; its series is GSTIN × FY × register."""
+
+    __tablename__ = "invoicing_registers"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    registration_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoicing_registrations.id"))
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    pad: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("5"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvoicingTaxRate(Base):
+    """A GST rate for an offering or an HSN/SAC code, effective over a date range."""
+
+    __tablename__ = "invoicing_tax_rates"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    offering_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    hsn_sac: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rate: Mapped[Any] = mapped_column(Numeric(5, 2), nullable=False)
+    effective_from: Mapped[Any] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvoicingDocument(Base):
+    """Tax invoice, bill of supply, bill, credit note or debit note (§14.4)."""
+
+    __tablename__ = "invoicing_documents"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    register_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoicing_registers.id"))
+    registration_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoicing_registrations.id"))
+    doc_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
+    series_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fy: Mapped[str | None] = mapped_column(Text, nullable=True)
+    seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    issue_date: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    due_date: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'manual'"))
+    order_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("orders_orders.id"), nullable=True)
+    original_document_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    note_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    restock: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    customer_contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    buyer: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    seller: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    place_of_supply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    intra_state: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    reverse_charge: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    prices_include_tax: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    currency: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'INR'"))
+    taxable_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    cgst_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    sgst_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    igst_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    tax_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    round_off: Mapped[Any] = mapped_column(Numeric(8, 2), nullable=False, server_default=text("0"))
+    grand_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    amount_due: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    amount_paid: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    public_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    issued_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class InvoicingDocumentLine(Base):
+    __tablename__ = "invoicing_document_lines"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    document_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("invoicing_documents.id", ondelete="CASCADE")
+    )
+    offering_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    variant_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    order_line_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    original_line_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    hsn_sac: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantity: Mapped[Any] = mapped_column(Numeric(12, 3), nullable=False)
+    unit_price: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False)
+    discount: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    taxable_value: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    tax_rate: Mapped[Any | None] = mapped_column(Numeric(5, 2), nullable=True)
+    cgst: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    sgst: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    igst: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    line_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvoicingPayment(Base):
+    __tablename__ = "invoicing_payments"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    document_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoicing_documents.id"))
+    amount: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    method: Mapped[str] = mapped_column(Text, nullable=False)
+    reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    received_on: Mapped[Any] = mapped_column(Date, nullable=False)
+    recorded_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 PlatformProfile = PlatformIdentity

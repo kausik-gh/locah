@@ -262,6 +262,17 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "membership.enrolment.completed",
         }
     ),
+    # Capability Universe §14 — the one billing engine.
+    "invoicing": frozenset(
+        {
+            "invoicing.settings.updated",
+            "invoicing.tax_rates.changed",
+            "invoice.issued",
+            "invoice.cancelled",
+            "invoice.payment_recorded",
+            "invoice.paid",
+        }
+    ),
 }
 
 KNOWN_EVENT_TYPES: frozenset[str] = frozenset().union(*_CATALOGUE.values())

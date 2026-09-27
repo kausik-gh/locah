@@ -99,6 +99,8 @@ class OrderResolver:
             "tax_amount": float(order.tax_amount),
             "discount_amount": float(order.discount_amount),
             "total_amount": float(order.total_amount),
+            "round_off": float(order.round_off or 0),
+            "tax_basis": order.tax_basis or {},
             "internal_reference": order.internal_reference,
             "cancellation_reason": order.cancellation_reason,
             "version": order.version,

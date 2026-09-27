@@ -13,7 +13,8 @@ from __future__ import annotations
 from platform_core.events.subscribers import (  # noqa: F401  (registration side effects)
     automation_triggers,
     fulfilment_cancellation,
+    invoicing_auto,
     marketplace_index,
 )
 
-__all__ = ["automation_triggers", "fulfilment_cancellation", "marketplace_index"]
+__all__ = ["automation_triggers", "fulfilment_cancellation", "invoicing_auto", "marketplace_index"]

@@ -298,14 +298,22 @@ class OrderService:
             line_items.append(item)
         await session.flush()
 
-        totals = calculate_order_totals(
-            [OrderResolver.serialize_line_item(i) for i in line_items],
-            discount_amount=validated["discount_amount"],
-        )
-        order.subtotal = float(totals["subtotal"])
-        order.tax_amount = float(totals["tax_amount"])
-        order.discount_amount = float(totals["discount_amount"])
-        order.total_amount = float(totals["total_amount"])
+        # Capability Universe §14: once the business has set up billing, the
+        # order is priced by the same engine as its bill.
+        from platform_core.services.invoicing_pricing import price_order
+
+        if not await price_order(
+            session, business_id=business_id, order=order, lines=line_items,
+            discount=validated["discount_amount"], place_of_supply=validated.get("place_of_supply"),
+        ):
+            totals = calculate_order_totals(
+                [OrderResolver.serialize_line_item(i) for i in line_items],
+                discount_amount=validated["discount_amount"],
+            )
+            order.subtotal = float(totals["subtotal"])
+            order.tax_amount = float(totals["tax_amount"])
+            order.discount_amount = float(totals["discount_amount"])
+            order.total_amount = float(totals["total_amount"])
 
         await OrderService._reserve_line_items(
             session,

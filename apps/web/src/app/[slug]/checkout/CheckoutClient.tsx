@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import {
   CartItem,
   cartStorageKey,
+  fetchGstStates,
   placeCheckoutOrder,
   quoteDelivery,
 } from '@/lib/checkout-api'
@@ -73,6 +74,8 @@ export default function CheckoutClient({
   const [city, setCity] = useState('')
   const [line1, setLine1] = useState('')
   const [postal, setPostal] = useState('')
+  const [stateCode, setStateCode] = useState('')
+  const [states, setStates] = useState<{ code: string; name: string }[]>([])
   const [deliveryCharge, setDeliveryCharge] = useState(0)
   const [serviceable, setServiceable] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -99,6 +102,10 @@ export default function CheckoutClient({
       setItems([])
     }
   }, [slug])
+
+  useEffect(() => {
+    if (mode === 'delivery' && !states.length) fetchGstStates().then(setStates).catch(() => setStates([]))
+  }, [mode, states.length])
 
   useEffect(() => {
     if (mode !== 'delivery' || !city) {
@@ -160,7 +167,7 @@ export default function CheckoutClient({
         payment_method: paymentMethod,
         location_id: options.locations.find((l) => l.is_primary)?.id || options.locations[0]?.id,
         delivery_address:
-          mode === 'delivery' ? { city, line1, postal_code: postal } : undefined,
+          mode === 'delivery' ? { city, line1, postal_code: postal, state_code: stateCode || undefined } : undefined,
         guest: { name, email, phone: phone || undefined },
         idempotency_key: crypto.randomUUID(),
       })
@@ -324,6 +331,12 @@ export default function CheckoutClient({
                   value={postal}
                   onChange={(e) => setPostal(e.target.value)}
                 />
+                {states.length ? (
+                  <select aria-label="State" value={stateCode} onChange={(e) => setStateCode(e.target.value)}>
+                    <option value="">State</option>
+                    {states.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
+                  </select>
+                ) : null}
                 <p>
                   {serviceable
                     ? `Delivery charge: ${deliveryCharge.toFixed(2)}`

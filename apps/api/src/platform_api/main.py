@@ -57,6 +57,7 @@ from platform_api.routers import (
     v1_public_join,
     v1_workspace_home,
     v1_public_enquiries,
+    v1_platform_invoicing,
 )
 
 # Database lifecycle state
@@ -235,6 +236,8 @@ app.include_router(v1_team_roles.router)
 app.include_router(v1_public_join.router)
 app.include_router(v1_workspace_home.router)
 app.include_router(v1_public_enquiries.router)
+app.include_router(v1_platform_invoicing.router)
+app.include_router(v1_platform_invoicing.public_router)
 
 app.add_exception_handler(PlatformError, platform_error_handler)
 
