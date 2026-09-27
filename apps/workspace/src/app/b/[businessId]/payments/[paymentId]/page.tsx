@@ -1,9 +1,10 @@
 import Link from 'next/link'
+import { randomUUID } from 'node:crypto'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader, ROW, StatusPill, TABLE, TD, TH } from '@/components/ModuleState'
-import { recordSettlement, refundPayment } from '../actions'
+import { recordSettlement, refreshRefund, refundPayment } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,7 @@ type Payment = {
   refundable_amount: number
   failure_code: string | null
   failure_reason: string | null
+  settlement?: { gross_amount?: number; platform_fee?: number; business_amount?: number } | null
   created_at: string
 }
 
@@ -57,7 +59,9 @@ export default async function PaymentDetailPage({
   const refunds = refundsRes.ok ? refundsRes.data.data || [] : []
 
   const canSettle = payment.status === 'pending' && payment.payment_method !== 'online'
-  const canRefund = payment.status === 'succeeded' && payment.refundable_amount > 0
+  const pendingRefunds = refunds.filter((r) => r.status === 'pending').reduce((n, r) => n + r.amount, 0)
+  const availableRefund = Math.max(payment.refundable_amount - pendingRefunds, 0)
+  const canRefund = ['succeeded', 'partially_refunded'].includes(payment.status) && availableRefund > 0
 
   return (
     <div>
@@ -89,8 +93,13 @@ export default async function PaymentDetailPage({
       ) : null}
       <p>
         Refunded: {payment.currency} {payment.refunded_amount} · Still refundable:{' '}
-        {payment.currency} {payment.refundable_amount}
+        {payment.currency} {availableRefund.toFixed(2)}
       </p>
+      {payment.settlement?.business_amount != null ? <p>
+        Customer paid {payment.currency} {payment.settlement.gross_amount} · LOCAH fee{' '}
+        {payment.currency} {payment.settlement.platform_fee} · Business share{' '}
+        {payment.currency} {payment.settlement.business_amount}
+      </p> : null}
 
       {canSettle ? (
         <section style={{ marginTop: '1.5rem' }}>
@@ -101,6 +110,7 @@ export default async function PaymentDetailPage({
           <form action={recordSettlement}>
             <input type="hidden" name="businessId" value={params.businessId} />
             <input type="hidden" name="paymentId" value={params.paymentId} />
+            <input type="hidden" name="idempotency_key" value={randomUUID()} />
             <button type="submit" style={BUTTON}>
               Mark as settled
             </button>
@@ -119,14 +129,14 @@ export default async function PaymentDetailPage({
               type="number"
               step="0.01"
               min="0.01"
-              max={payment.refundable_amount}
-              defaultValue={payment.refundable_amount}
+              max={availableRefund}
+              defaultValue={availableRefund}
               required
               style={INPUT}
             />
             <input name="reason" placeholder="Reason for the refund" required style={INPUT} />
             <button type="submit" style={BUTTON}>
-              Issue refund
+              {payment.provider === 'cashfree' ? 'Request refund' : 'Issue refund'}
             </button>
           </form>
         </section>
@@ -154,6 +164,14 @@ export default async function PaymentDetailPage({
                     <td style={TD}>{refund.reason || '—'}</td>
                     <td style={TD}>
                       <StatusPill value={refund.status} />
+                      {refund.status === 'pending' && payment.provider === 'cashfree' ? (
+                        <form action={refreshRefund} style={{ display: 'inline', marginLeft: '.6rem' }}>
+                          <input type="hidden" name="businessId" value={params.businessId} />
+                          <input type="hidden" name="paymentId" value={params.paymentId} />
+                          <input type="hidden" name="refundId" value={refund.id} />
+                          <button type="submit">Check status</button>
+                        </form>
+                      ) : null}
                     </td>
                     <td style={TD}>{new Date(refund.created_at).toLocaleString()}</td>
                   </tr>

@@ -117,7 +117,7 @@ def test_guest_checkout_pickup_cod(owner: tuple[dict[str, str], uuid.UUID]) -> N
     first = client.post(
         f"/v1/public/websites/{slug}/checkout",
         json={
-            "items": [{"offering_id": product_id, "quantity": 2}],
+            "items": [{"offering_id": product_id, "quantity": 2, "unit_price": 0.01}],
             "fulfilment_mode": "pickup",
             "payment_method": "cod",
             "guest": {"name": "Guest", "email": f"{uuid.uuid4()}@example.com"},
@@ -129,6 +129,7 @@ def test_guest_checkout_pickup_cod(owner: tuple[dict[str, str], uuid.UUID]) -> N
     assert body["fulfilment"]["mode"] == "pickup"
     assert body["tracking"]["token"]
     assert body["confirmation"]["order_number"]
+    assert body["order"]["total_amount"] == 100.0
     order_id = body["order"]["id"]
 
     dup = client.post(

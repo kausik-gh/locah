@@ -52,6 +52,7 @@ class CreatePaymentRequest(BaseModel):
 class RefundPaymentRequest(VersionedBody):
     amount: float = Field(gt=0)
     reason: str
+    idempotency_key: str | None = Field(default=None, max_length=100)
 
 
 class MerchantConnectionRequest(BaseModel):
@@ -60,6 +61,23 @@ class MerchantConnectionRequest(BaseModel):
     provider: str = "stub"
     status: str = "pending"
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CashfreeVendorRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=2, max_length=150)
+    email: str = Field(min_length=3, max_length=200)
+    phone: str = Field(pattern=r"^[0-9]{10}$")
+    account_type: str = Field(pattern=r"^(BUSINESS|INDIVIDUAL)$")
+    business_type: str | None = None
+    pan: str = Field(pattern=r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+    gst: str | None = None
+    cin: str | None = None
+    uidai: int | None = None
+    account_holder: str = Field(min_length=2, max_length=150)
+    account_number: str = Field(min_length=6, max_length=30)
+    ifsc: str = Field(pattern=r"^[A-Z]{4}0[A-Z0-9]{6}$")
 
 
 # A payment attempt requires the permission for the SOURCE module, not a
@@ -155,7 +173,9 @@ async def get_merchant_connection(
 async def upsert_merchant_connection(
     business_id: UUID,
     body: MerchantConnectionRequest,
-    actor: BusinessActorContext = Depends(require_business_actor(PAYMENTS_MANAGE_CONNECTION, "payments")),
+    actor: BusinessActorContext = Depends(
+        require_business_actor(PAYMENTS_MANAGE_CONNECTION, "payments")
+    ),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     connection = await MerchantService.upsert_connection(
@@ -170,6 +190,52 @@ async def upsert_merchant_connection(
         "data": MerchantService.serialize(connection),
         "meta": {"correlation_id": actor.request.correlation_id},
     }
+
+
+@router.post("/{business_id}/payments/cashfree/vendor")
+async def onboard_cashfree_vendor(
+    business_id: UUID,
+    body: CashfreeVendorRequest,
+    actor: BusinessActorContext = Depends(
+        require_business_actor(PAYMENTS_MANAGE_CONNECTION, "payments")
+    ),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    kyc: dict[str, Any] = {"account_type": body.account_type, "pan": body.pan}
+    for key in ("business_type", "gst", "cin", "uidai"):
+        value = getattr(body, key)
+        if value is not None:
+            kyc[key] = value
+    connection = await MerchantService.onboard_cashfree(
+        session,
+        business_id=business_id,
+        actor_id=actor.request.identity_id,
+        correlation_id=actor.request.correlation_id,
+        name=body.name,
+        email=body.email,
+        phone=body.phone,
+        kyc_details=kyc,
+        bank={
+            "account_holder": body.account_holder,
+            "account_number": body.account_number,
+            "ifsc": body.ifsc,
+        },
+    )
+    await session.commit()
+    return {"data": MerchantService.serialize(connection), "meta": {}}
+
+
+@router.post("/{business_id}/payments/cashfree/refresh")
+async def refresh_cashfree_vendor(
+    business_id: UUID,
+    actor: BusinessActorContext = Depends(
+        require_business_actor(PAYMENTS_MANAGE_CONNECTION, "payments")
+    ),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    connection = await MerchantService.refresh_cashfree(session, business_id=business_id)
+    await session.commit()
+    return {"data": MerchantService.serialize(connection), "meta": {}}
 
 
 class RazorpayConnectRequest(BaseModel):
@@ -334,7 +400,11 @@ async def create_refund(
         payment_id=payment_id,
         actor_id=actor.request.identity_id,
         correlation_id=actor.request.correlation_id,
-        payload={"amount": body.amount, "reason": body.reason},
+        payload={
+            "amount": body.amount,
+            "reason": body.reason,
+            "idempotency_key": body.idempotency_key,
+        },
         expected_version=body.version,
     )
     await session.commit()
@@ -361,3 +431,22 @@ async def list_refunds(
         "data": [RefundService.serialize(r) for r in refunds],
         "meta": {"correlation_id": actor.request.correlation_id, "count": len(refunds)},
     }
+
+
+@router.post("/{business_id}/payments/{payment_id}/refunds/{refund_id}/refresh")
+async def refresh_cashfree_refund(
+    business_id: UUID,
+    payment_id: UUID,
+    refund_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(PAYMENTS_REFUND, "payments")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    refund = await RefundService.refresh_cashfree_refund(
+        session,
+        business_id=business_id,
+        payment_id=payment_id,
+        refund_id=refund_id,
+        correlation_id=actor.request.correlation_id,
+    )
+    await session.commit()
+    return {"data": RefundService.serialize(refund), "meta": {}}

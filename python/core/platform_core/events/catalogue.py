@@ -173,9 +173,12 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "payment.completed",
             "payment.failed",
             "payment.refunded",
+            "payment.refund_requested",
             "payment.updated",
             "payment.webhook_processed",
+            "payment.webhook_received",
             "payment.merchant.updated",
+            "payment.commission_rule.changed",
         }
     ),
     "website": frozenset(

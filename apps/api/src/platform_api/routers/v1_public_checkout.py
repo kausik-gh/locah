@@ -8,11 +8,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_api.db import get_db_session
 from platform_core.services.checkout import CheckoutService
 from platform_core.services.fulfilment import FulfilmentService
+from platform_core.models import PaymentAttempt
+from platform_core.services.payment_webhook import PaymentWebhookService
 
 router = APIRouter(prefix="/v1/public", tags=["checkout"])
 
@@ -77,9 +80,7 @@ async def checkout_quote(
     body: QuoteRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
-    data = await CheckoutService.quote_delivery(
-        session, slug=slug, address=body.delivery_address
-    )
+    data = await CheckoutService.quote_delivery(session, slug=slug, address=body.delivery_address)
     return {"data": data, "meta": {}}
 
 
@@ -105,7 +106,40 @@ async def public_order_tracking(
     token: str = Query(..., min_length=8),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
-    data = await FulfilmentService.get_tracking(
-        session, order_id=order_id, token=token
-    )
+    data = await FulfilmentService.get_tracking(session, order_id=order_id, token=token)
     return {"data": data, "meta": {}}
+
+
+@router.post("/orders/{order_id}/payment/verify")
+async def verify_public_order_payment(
+    order_id: UUID,
+    token: str = Query(..., min_length=8),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    # The tracking token is the guest's authorization. The method never
+    # accepts a payment status or amount from the browser.
+    tracking = await FulfilmentService.get_tracking(session, order_id=order_id, token=token)
+    payment = (
+        (
+            await session.execute(
+                select(PaymentAttempt)
+                .where(
+                    PaymentAttempt.source_type == "order",
+                    PaymentAttempt.source_id == order_id,
+                    PaymentAttempt.provider == "cashfree",
+                    PaymentAttempt.deleted_at.is_(None),
+                )
+                .order_by(PaymentAttempt.created_at.desc())
+                .limit(1)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if payment is None:
+        return {"data": {"status": tracking["order"]["payment_status"]}, "meta": {}}
+    await PaymentWebhookService.verify_cashfree_order(
+        session, payment=payment, correlation_id=str(uuid.uuid4())
+    )
+    await session.commit()
+    return {"data": {"status": payment.status}, "meta": {}}

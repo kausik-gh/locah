@@ -12,7 +12,7 @@ import {
   TD,
   TH,
 } from '@/components/ModuleState'
-import { RazorpayConnect } from './RazorpayConnect'
+import { CashfreeConnect } from './CashfreeConnect'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,22 +27,15 @@ type Payment = {
   provider: string | null
   refunded_amount: number
   failure_reason: string | null
+  settlement?: { gross_amount?: number; platform_fee?: number; business_amount?: number } | null
   created_at: string
 }
 
 type MerchantConnection = {
   provider: string
   status: string
-  key_id?: string | null
-  has_credentials?: boolean
-  connection_mode?: string | null
-  linked_account_id?: string | null
-  linked_account_status?: string | null
-  requires_merchant_keys?: boolean
-  external_dependency?: boolean
   last_verified_at?: string | null
-  verification_error?: string | null
-  provider_metadata?: { mode?: string; connection_mode?: string }
+  provider_metadata?: { vendor_id?: string; vendor_status?: string; masked_account?: string; settlement_method?: string }
 } | null
 
 const STATUSES = ['pending', 'succeeded', 'failed', 'refunded']
@@ -63,7 +56,7 @@ export default async function PaymentsPage({
   const [res, merchantRes] = await Promise.all([
     apiTry<{ data: Payment[] }>(`${base}/payments${qs}`, token),
     apiTry<{ data: MerchantConnection }>(
-      `${base}/payments/merchant-connection?provider=razorpay`,
+      `${base}/payments/merchant-connection?provider=cashfree`,
       token
     ),
   ])
@@ -78,7 +71,7 @@ export default async function PaymentsPage({
   const payments = res.data.data || []
   const merchant = merchantRes.ok ? merchantRes.data.data : null
 
-  const settled = payments
+  const received = payments
     .filter((p) => p.status === 'succeeded')
     .reduce((sum, p) => sum + p.amount - p.refunded_amount, 0)
   const currency = payments[0]?.currency ?? 'INR'
@@ -88,10 +81,10 @@ export default async function PaymentsPage({
     <div>
       <PageHeader
         title="Payments"
-        subtitle="Every payment attempt against an order, booking, or membership."
+        subtitle="Customer payments to your business. Your LOCAH plan and invoices belong in Billing."
       />
 
-      <RazorpayConnect businessId={params.businessId} merchant={merchant} />
+      <CashfreeConnect businessId={params.businessId} merchant={merchant} />
 
       {(!merchant || merchant.status !== 'active') ? (
         <p
@@ -104,15 +97,15 @@ export default async function PaymentsPage({
             fontSize: '0.9rem',
           }}
         >
-          Online card payments are not live until this business is linked through Razorpay above.
-          Cash and offline settlement still work in the meantime.
+          Online collection is unavailable until Cashfree vendor verification and a LOCAH fee
+          rule are active. Cash and offline settlement still work.
         </p>
       ) : null}
 
       <p style={{ fontSize: '1.1rem' }}>
-        Net settled:{' '}
+        Successfully paid, less completed refunds:{' '}
         <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {currency} {settled.toFixed(2)}
+          {currency} {received.toFixed(2)}
         </strong>
       </p>
 
@@ -132,6 +125,8 @@ export default async function PaymentsPage({
               <th style={TH}>For</th>
               <th style={TH}>Amount</th>
               <th style={TH}>Method</th>
+              <th style={TH}>Provider</th>
+              <th style={TH}>Business share</th>
               <th style={TH}>Status</th>
               <th style={TH}>Refunded</th>
               <th style={TH}>When</th>
@@ -147,6 +142,11 @@ export default async function PaymentsPage({
                   {payment.currency} {payment.amount}
                 </td>
                 <td style={TD}>{payment.payment_method}</td>
+                <td style={TD}>{payment.provider || '—'}</td>
+                <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
+                  {payment.settlement?.business_amount != null
+                    ? `${payment.currency} ${payment.settlement.business_amount}` : '—'}
+                </td>
                 <td style={TD}>
                   <StatusPill value={payment.status} />
                   {payment.failure_reason ? (

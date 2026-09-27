@@ -21,7 +21,10 @@ async def ingest_payment_webhook(
     session: AsyncSession = Depends(get_service_db_session),
     x_correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
 ) -> dict[str, Any]:
-    correlation_id = x_correlation_id or str(uuid.uuid4())
+    try:
+        correlation_id = str(uuid.UUID(x_correlation_id)) if x_correlation_id else str(uuid.uuid4())
+    except ValueError:
+        correlation_id = str(uuid.uuid4())
     raw_body = await request.body()
     headers = {k: v for k, v in request.headers.items()}
     result = await PaymentWebhookService.process_webhook(

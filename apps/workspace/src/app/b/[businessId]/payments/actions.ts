@@ -36,9 +36,58 @@ export async function refundPayment(formData: FormData) {
   await send(`/v1/platform/businesses/${businessId}/payments/${paymentId}/refunds`, 'POST', {
     amount: Number(formData.get('amount')),
     reason: String(formData.get('reason')),
+    idempotency_key: String(formData.get('idempotency_key') || ''),
   })
   revalidatePath(`/b/${businessId}/payments`)
   revalidatePath(`/b/${businessId}/payments/${paymentId}`)
+}
+
+export async function refreshRefund(formData: FormData) {
+  const businessId = String(formData.get('businessId'))
+  const paymentId = String(formData.get('paymentId'))
+  const refundId = String(formData.get('refundId'))
+  await send(
+    `/v1/platform/businesses/${businessId}/payments/${paymentId}/refunds/${refundId}/refresh`,
+    'POST'
+  )
+  revalidatePath(`/b/${businessId}/payments/${paymentId}`)
+}
+
+export type CashfreeState = { ok: boolean; error: string | null; status?: string }
+
+export async function connectCashfree(
+  _prev: CashfreeState,
+  formData: FormData
+): Promise<CashfreeState> {
+  const businessId = String(formData.get('businessId'))
+  const fields = [
+    'name', 'email', 'phone', 'account_type', 'business_type', 'pan',
+    'gst', 'cin', 'account_holder', 'account_number', 'ifsc',
+  ] as const
+  const body: Record<string, string> = {}
+  for (const field of fields) {
+    const value = String(formData.get(field) || '').trim()
+    if (value) body[field] = value
+  }
+  const result = await trySend(
+    `/v1/platform/businesses/${businessId}/payments/cashfree/vendor`, 'POST', body
+  )
+  revalidatePath(`/b/${businessId}/payments`)
+  if (!result.ok) return { ok: false, error: result.error ?? 'Cashfree setup could not be submitted.' }
+  return { ok: true, error: null, status: String(result.data?.status ?? 'pending') }
+}
+
+export async function refreshCashfree(
+  _prev: CashfreeState,
+  formData: FormData
+): Promise<CashfreeState> {
+  const businessId = String(formData.get('businessId'))
+  const result = await trySend(
+    `/v1/platform/businesses/${businessId}/payments/cashfree/refresh`, 'POST'
+  )
+  revalidatePath(`/b/${businessId}/payments`)
+  if (!result.ok) return { ok: false, error: result.error ?? 'Could not check Cashfree status.' }
+  return { ok: true, error: null, status: String(result.data?.status ?? 'pending') }
 }
 
 export type RazorpayState = { ok: boolean; error: string | null; status?: string }

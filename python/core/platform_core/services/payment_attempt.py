@@ -19,7 +19,10 @@ from platform_core.resolvers.payment_resolver import PaymentResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.business import BusinessService
 from platform_core.services.outbox import OutboxService
-from platform_core.validation.payment import assert_transition_allowed, validate_create_payment_payload
+from platform_core.validation.payment import (
+    assert_transition_allowed,
+    validate_create_payment_payload,
+)
 
 
 class PaymentAttemptService:
@@ -187,26 +190,73 @@ class PaymentAttemptService:
         session: AsyncSession,
         payment: PaymentAttempt,
     ) -> PaymentAttempt:
-        """Create a Razorpay Route order when this Business is on platform payments.
-
-        Legacy merchant-key connections and missing connections stay on the
-        existing stub/processing path. COD is never routed here.
-        """
+        """Create a provider order; never leave an online attempt on a stub path."""
         from decimal import Decimal
 
+        from platform_core.payments.cashfree import CashfreePaymentProvider
+        from platform_core.payments.commission import active_rule, calculate_split
         from platform_core.payments.razorpay import create_route_order, platform_credentials
+
+        cashfree_merchant = await PaymentResolver.resolve_merchant(
+            session, business_id=payment.business_id, provider="cashfree"
+        )
+        if cashfree_merchant is not None and cashfree_merchant.status == "active":
+            vendor_id = str((cashfree_merchant.provider_metadata or {}).get("vendor_id") or "")
+            if not vendor_id:
+                raise ValidationError("Cashfree vendor is not configured")
+            if payment.currency != "INR" or payment.customer_contact_id is None:
+                raise ValidationError("Cashfree requires INR and a customer contact")
+            customer = await CustomerResolver.resolve(
+                session,
+                business_id=payment.business_id,
+                contact_id=payment.customer_contact_id,
+            )
+            if not customer.phone:
+                raise ValidationError("Customer phone is required for online payment")
+            rule = await active_rule(session, payment.business_id)
+            fee, vendor_amount = calculate_split(Decimal(str(payment.amount)), rule)
+            provider = CashfreePaymentProvider.from_environment()
+            provider_order_id = f"locah_{payment.id.hex}"
+            result = await provider.create_order(
+                order_id=provider_order_id,
+                amount=Decimal(str(payment.amount)),
+                currency=payment.currency,
+                customer_id=customer.id.hex,
+                customer_name=customer.display_name,
+                customer_email=customer.email or "",
+                customer_phone=customer.phone,
+                vendor_id=vendor_id,
+                vendor_amount=vendor_amount,
+            )
+            session_id = result.get("payment_session_id")
+            if result.get("order_id") != provider_order_id or not session_id:
+                raise ValidationError("Cashfree did not create a valid payment session")
+            payment.provider = "cashfree"
+            payment.provider_reference = provider_order_id
+            payment.provider_metadata = {
+                "payment_session_id": session_id,
+                "vendor_id": vendor_id,
+                "gross_amount": str(payment.amount),
+                "platform_fee": str(fee),
+                "business_amount": str(vendor_amount),
+                "commission_rule_id": str(rule.id),
+                "commission_rule_version": rule.version,
+                "payment_context": f"MERCHANT_{payment.source_type.upper()}",
+            }
+            await session.flush()
+            return payment
 
         merchant = await PaymentResolver.resolve_merchant(
             session, business_id=payment.business_id, provider="razorpay"
         )
         if merchant is None or merchant.status != "active":
-            return payment
+            raise ValidationError("Online payments are not configured for this Business")
         metadata = merchant.provider_metadata or {}
         if str(metadata.get("connection_mode") or "") != "platform_route":
-            return payment
+            raise ValidationError("Legacy merchant-key checkout is unavailable")
         linked = str(metadata.get("linked_account_id") or "").strip()
         if not linked:
-            return payment
+            raise ValidationError("Online payment settlement account is not ready")
 
         creds = platform_credentials()
         result = await create_route_order(
@@ -278,9 +328,7 @@ class PaymentAttemptService:
         )
         customer_id = validated["customer_contact_id"] or source_customer_id
         if customer_id:
-            await CustomerResolver.resolve(
-                session, business_id=business_id, contact_id=customer_id
-            )
+            await CustomerResolver.resolve(session, business_id=business_id, contact_id=customer_id)
 
         if validated["payment_method"] == "online":
             initial_status = "processing"
@@ -302,9 +350,7 @@ class PaymentAttemptService:
         session.add(payment)
         await session.flush()
         if validated["payment_method"] == "online":
-            payment = await PaymentAttemptService._attach_online_provider(
-                session, payment
-            )
+            payment = await PaymentAttemptService._attach_online_provider(session, payment)
         await PaymentAttemptService._sync_source_payment_status(session, payment)
         after = PaymentAttemptService.serialize(payment)
         await PaymentAttemptService._publish_status(

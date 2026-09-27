@@ -1,12 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   CartItem,
   cartStorageKey,
   placeCheckoutOrder,
   quoteDelivery,
+  verifyCheckoutPayment,
 } from '@/lib/checkout-api'
 
 type Options = {
@@ -17,11 +18,45 @@ type Options = {
 }
 
 type RazorpayCheckout = {
-  provider: string
+  provider: 'razorpay'
   order_id: string
   key_id: string
   amount: number
   currency: string
+}
+
+type CashfreeCheckout = {
+  provider: 'cashfree'
+  order_id: string
+  payment_session_id: string
+  mode: 'sandbox'
+  amount: number
+  currency: string
+}
+
+type CheckoutSession = RazorpayCheckout | CashfreeCheckout
+
+type CashfreeSdk = {
+  checkout: (options: { paymentSessionId: string; redirectTarget: '_modal' }) => Promise<{
+    error?: { message?: string }
+    redirect?: boolean
+    paymentDetails?: unknown
+  }>
+}
+
+let cashfreeSdk: CashfreeSdk | null = null
+
+function loadCashfreeScript(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve()
+  if ((window as unknown as { Cashfree?: unknown }).Cashfree) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js'
+    script.async = true
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error('Could not load secure checkout.'))
+    document.body.appendChild(script)
+  })
 }
 
 function loadRazorpayScript(): Promise<void> {
@@ -77,17 +112,14 @@ export default function CheckoutClient({
   const [serviceable, setServiceable] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const openedCheckoutId = useRef<string | null>(null)
   const [confirmation, setConfirmation] = useState<{
     order_number: string
-    tracking: { href: string }
+    tracking: { href: string; order_id: string; token: string }
+    orderId: string
+    token: string
     state: string
-    checkout?: {
-      provider: string
-      order_id: string
-      key_id: string
-      amount: number
-      currency: string
-    } | null
+    checkout?: CheckoutSession | null
     paymentError?: string | null
   } | null>(null)
 
@@ -118,10 +150,50 @@ export default function CheckoutClient({
   }, [slug, mode, city, line1, postal])
 
   useEffect(() => {
-    if (confirmation?.checkout) {
-      openRazorpayCheckout(confirmation.checkout, options.business.display_name)
+    if (confirmation?.checkout && openedCheckoutId.current !== confirmation.checkout.order_id) {
+      openedCheckoutId.current = confirmation.checkout.order_id
+      if (confirmation.checkout.provider === 'cashfree') {
+        void openCashfreeCheckout(confirmation.checkout, confirmation.orderId, confirmation.token)
+      } else {
+        openRazorpayCheckout(confirmation.checkout as RazorpayCheckout, options.business.display_name)
+      }
     }
+    // The provider session opens once on initial order placement. A retry is
+    // deliberately user-initiated using the button below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [confirmation, options.business.display_name])
+
+  async function openCashfreeCheckout(checkout: CashfreeCheckout, orderId: string, token: string) {
+    try {
+      await loadCashfreeScript()
+      const factory = (window as unknown as {
+        Cashfree?: (options: { mode: 'sandbox' }) => CashfreeSdk
+      }).Cashfree
+      if (!factory) throw new Error('Secure checkout is unavailable')
+      cashfreeSdk ??= factory({ mode: 'sandbox' })
+      const result = await cashfreeSdk.checkout({
+        paymentSessionId: checkout.payment_session_id,
+        redirectTarget: '_modal',
+      })
+      if (result.error) {
+        setConfirmation((current) => current ? {
+          ...current, paymentError: result.error?.message || 'Checkout closed. No payment was confirmed.',
+        } : current)
+      }
+      if (result.redirect) return
+      // paymentDetails is only an SDK result, not proof of a paid order.
+      // SDK completion is not proof of payment. Verify with Cashfree on server.
+      const status = await verifyCheckoutPayment(orderId, token)
+      if (status === 'succeeded') localStorage.removeItem(cartStorageKey(slug))
+      setConfirmation((current) => current ? { ...current, state: status } : current)
+    } catch (err) {
+      setConfirmation((current) => current ? {
+        ...current,
+        state: 'processing',
+        paymentError: err instanceof Error ? err.message : 'Payment status is still being checked',
+      } : current)
+    }
+  }
 
   const subtotal = items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0)
   const grand = subtotal + (mode === 'delivery' ? deliveryCharge : 0)
@@ -152,7 +224,7 @@ export default function CheckoutClient({
         items: items.map((i) => ({
           offering_id: i.offering_id,
           quantity: i.quantity,
-          unit_price: i.unit_price,
+          // Prices shown in the cart are illustrative. Server reprices.
         })),
         fulfilment_mode: mode,
         payment_method: paymentMethod,
@@ -162,16 +234,9 @@ export default function CheckoutClient({
         guest: { name, email, phone: phone || undefined },
         idempotency_key: crypto.randomUUID(),
       })
-      localStorage.removeItem(cartStorageKey(slug))
       const payment = data.payment as
         | {
-            checkout?: {
-              provider: string
-              order_id: string
-              key_id: string
-              amount: number
-              currency: string
-            }
+            checkout?: CheckoutSession
             failure_reason?: string
           }
         | null
@@ -179,6 +244,8 @@ export default function CheckoutClient({
       setConfirmation({
         order_number: data.confirmation.order_number,
         tracking: data.tracking,
+        orderId: data.tracking.order_id,
+        token: data.tracking.token,
         state: data.state,
         checkout: payment?.checkout ?? null,
         paymentError: payment?.failure_reason ?? null,
@@ -191,11 +258,14 @@ export default function CheckoutClient({
   }
 
   if (confirmation) {
+    const paid = confirmation.state === 'succeeded' || confirmation.state === 'paid'
+    const cashfree = confirmation.checkout?.provider === 'cashfree'
     return (
       <div style={{ maxWidth: '32rem', margin: '0 auto', padding: '2rem 1.25rem' }}>
         <h1>
-          {confirmation.checkout && confirmation.state !== 'succeeded' && confirmation.state !== 'paid'
-            ? 'Complete payment'
+          {paid ? 'Payment successful'
+            : confirmation.checkout
+            ? confirmation.paymentError ? 'Payment not confirmed' : 'Confirming your payment'
             : confirmation.state === 'payment_failed' || confirmation.state === 'failed'
               ? 'Order placed — payment did not go through'
               : 'Order confirmed'}
@@ -204,23 +274,36 @@ export default function CheckoutClient({
           Order <strong>{confirmation.order_number}</strong>
         </p>
         <p style={{ opacity: 0.8 }}>
-          {confirmation.checkout && confirmation.state !== 'succeeded' && confirmation.state !== 'paid'
-            ? 'Your order is held. Finish the Razorpay payment to confirm it.'
+          {paid ? 'Payment verified by the server. Your order can now be fulfilled.'
+            : confirmation.checkout
+            ? confirmation.paymentError || 'Your order is held while we confirm the payment. Do not pay twice.'
             : confirmation.state === 'pending_offline'
               ? 'Pay when you collect your order.'
-              : confirmation.state === 'paid' || confirmation.state === 'succeeded'
-                ? 'Payment received.'
-                : confirmation.paymentError
+              : confirmation.paymentError
                   ? confirmation.paymentError
                   : 'The business has received your order.'}
         </p>
-        {confirmation.checkout ? (
+        {error ? <p role="alert" style={{ color: '#b00020' }}>{error}</p> : null}
+        {!paid && cashfree ? <p>
+          <button type="button" onClick={() => {
+            void verifyCheckoutPayment(confirmation.orderId, confirmation.token).then((status) => {
+              setConfirmation((current) => current ? { ...current, state: status } : current)
+            }).catch((err) => setError(err instanceof Error ? err.message : 'Could not check status'))
+          }}>Check payment status</button>
+        </p> : null}
+        {!paid && confirmation.checkout && (!cashfree || confirmation.paymentError) ? (
           <p>
             <button
               type="button"
-              onClick={() => openRazorpayCheckout(confirmation.checkout!, options.business.display_name)}
+              onClick={() => {
+                if (confirmation.checkout?.provider === 'cashfree') {
+                  void openCashfreeCheckout(confirmation.checkout, confirmation.orderId, confirmation.token)
+                } else if (confirmation.checkout) {
+                  openRazorpayCheckout(confirmation.checkout as RazorpayCheckout, options.business.display_name)
+                }
+              }}
             >
-              Pay now
+              {cashfree ? 'Try secure payment again' : 'Pay now'}
             </button>
           </p>
         ) : null}
@@ -364,9 +447,10 @@ export default function CheckoutClient({
                 required
               />
               <input
-                placeholder="Phone (optional)"
+                placeholder={paymentMethod === 'online' ? 'Phone for secure payment' : 'Phone (optional)'}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                required={paymentMethod === 'online'}
               />
             </div>
           </section>

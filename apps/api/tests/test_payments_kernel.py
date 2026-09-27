@@ -234,7 +234,7 @@ def test_cod_payment_offline_settlement_and_order_sync(owner: tuple[dict[str, st
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
-def test_online_payment_webhook_and_refund(owner: tuple[dict[str, str], uuid.UUID]) -> None:
+def test_online_payment_requires_real_provider(owner: tuple[dict[str, str], uuid.UUID]) -> None:
     headers, _ = owner
     client = TestClient(app)
     business_id = _create_business(client, headers)
@@ -253,40 +253,12 @@ def test_online_payment_webhook_and_refund(owner: tuple[dict[str, str], uuid.UUI
         },
         headers=headers,
     )
-    assert pay_resp.status_code == 200, pay_resp.text
-    payment = pay_resp.json()["data"]
-    assert payment["status"] == "processing"
-    payment_id = payment["id"]
-
-    payload = {
-        "event_id": str(uuid.uuid4()),
-        "payment_id": payment_id,
-        "status": "succeeded",
-        "provider_reference": "stub-ref-001",
-    }
-    raw = json.dumps(payload).encode()
-    sig = _webhook_signature(raw)
-    webhook_resp = client.post(
-        "/v1/webhooks/payments/stub",
-        content=raw,
-        headers={"Content-Type": "application/json", "x-payment-signature": sig},
+    assert pay_resp.status_code in {400, 422}, pay_resp.text
+    payments = client.get(
+        f"/v1/platform/businesses/{business_id}/payments", headers=headers
     )
-    assert webhook_resp.status_code == 200, webhook_resp.text
-    assert webhook_resp.json()["data"]["status"] == "processed"
-
-    get_resp = client.get(
-        f"/v1/platform/businesses/{business_id}/payments/{payment_id}",
-        headers=headers,
-    )
-    assert get_resp.json()["data"]["status"] == "succeeded"
-
-    refund_resp = client.post(
-        f"/v1/platform/businesses/{business_id}/payments/{payment_id}/refunds",
-        json={"amount": order["total_amount"], "reason": "Customer return", "version": get_resp.json()["data"]["version"]},
-        headers=headers,
-    )
-    assert refund_resp.status_code == 200, refund_resp.text
-    assert refund_resp.json()["data"]["payment"]["status"] == "refunded"
+    assert payments.status_code == 200
+    assert payments.json()["data"] == []
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")

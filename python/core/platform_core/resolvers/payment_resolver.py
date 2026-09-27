@@ -61,6 +61,15 @@ class PaymentResolver:
                 "amount": float(payment.amount),
                 "currency": payment.currency,
             }
+        elif payment.provider == "cashfree" and meta.get("payment_session_id"):
+            checkout = {
+                "provider": "cashfree",
+                "order_id": payment.provider_reference,
+                "payment_session_id": meta["payment_session_id"],
+                "mode": "sandbox",
+                "amount": float(payment.amount),
+                "currency": payment.currency,
+            }
         if meta.get("gross_amount") is not None:
             settlement = {
                 "gross_amount": meta.get("gross_amount"),
@@ -111,6 +120,24 @@ class PaymentResolver:
     @staticmethod
     def serialize_merchant(connection: MerchantConnection) -> dict[str, Any]:
         metadata = connection.provider_metadata or {}
+        if connection.provider == "cashfree":
+            # Only a small allowlist is visible in generic Workspace responses.
+            # Bank account and KYC details are never stored here or returned.
+            return {
+                "id": str(connection.id),
+                "business_id": str(connection.business_id),
+                "provider": "cashfree",
+                "status": connection.status,
+                "provider_metadata": {
+                    key: metadata[key]
+                    for key in ("vendor_id", "vendor_status", "settlement_method", "masked_account")
+                    if key in metadata
+                },
+                "last_verified_at": (
+                    connection.last_verified_at.isoformat() if connection.last_verified_at else None
+                ),
+                "version": connection.version,
+            }
         stored_mode = str(metadata.get("connection_mode") or "").strip()
         if stored_mode:
             connection_mode = stored_mode
@@ -137,9 +164,7 @@ class PaymentResolver:
             "requires_merchant_keys": connection_mode == "merchant_keys",
             "external_dependency": bool(metadata.get("external_dependency")),
             "last_verified_at": (
-                connection.last_verified_at.isoformat()
-                if connection.last_verified_at
-                else None
+                connection.last_verified_at.isoformat() if connection.last_verified_at else None
             ),
             "verification_error": connection.verification_error,
             "version": connection.version,

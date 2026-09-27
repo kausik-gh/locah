@@ -22,6 +22,7 @@ from platform_core.models import (
     Offering,
     SalesOrder,
 )
+from platform_core.resolvers.order_resolver import OrderResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.business import BusinessService
 from platform_core.services.outbox import OutboxService
@@ -472,6 +473,12 @@ class FulfilmentService:
         job = await FulfilmentService.get_job(session, business_id=business_id, job_id=job_id)
         validated = validate_job_status_payload(payload, current=job.status)
         next_status = validated["status"]
+        if next_status not in {"cancelled", "failed"}:
+            order = await OrderResolver.resolve(
+                session, business_id=business_id, order_id=job.order_id
+            )
+            if order.payment_method == "online" and order.payment_status != "paid":
+                raise ValidationError("Online order cannot be fulfilled before verified payment")
         if job.mode == "pickup" and next_status == "out_for_delivery":
             raise ValidationError("Pickup jobs cannot enter out_for_delivery")
         if job.mode == "delivery" and job.status == "ready" and next_status == "delivered":

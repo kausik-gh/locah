@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,13 +16,87 @@ from platform_api.db import get_service_db_session
 from platform_api.dependencies import require_super_admin
 from platform_core.context import RequestContext
 from platform_core.exceptions import ResourceNotFound
-from platform_core.models import MarketplaceIndexHealth
+from platform_core.models import Business, MarketplaceIndexHealth, PlatformFeeRule
 from platform_core.services.admin_support import AdminSupportService
 from platform_core.services.audit import AuditService
 from platform_core.services.business import BusinessService
 from platform_core.services.marketplace_indexing import MarketplaceIndexingService
+from platform_core.services.outbox import OutboxService
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
+
+
+class CashfreeFeeRuleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pricing_mode: str = Field(pattern=r"^(payg|subscription|custom)$")
+    percentage_bps: int = Field(ge=0, le=10000)
+    fixed_amount: float = Field(default=0, ge=0)
+    minimum_amount: float | None = Field(default=None, ge=0)
+    maximum_amount: float | None = Field(default=None, ge=0)
+    effective_from: datetime | None = None
+    effective_to: datetime | None = None
+
+
+@router.post("/businesses/{business_id}/cashfree/fee-rules")
+async def admin_create_cashfree_fee_rule(
+    business_id: UUID,
+    body: CashfreeFeeRuleRequest,
+    ctx: RequestContext = Depends(require_super_admin()),
+    session: AsyncSession = Depends(get_service_db_session),
+) -> dict[str, Any]:
+    from platform_core.exceptions import ValidationError
+
+    business = (
+        await session.execute(select(Business).where(Business.id == business_id).with_for_update())
+    ).scalars().first()
+    if business is None:
+        raise ResourceNotFound("Business")
+    start = body.effective_from or datetime.now(timezone.utc)
+    if start.tzinfo is None or (body.effective_to and body.effective_to.tzinfo is None):
+        raise ValidationError("Fee rule timestamps must include a timezone")
+    if body.effective_to and body.effective_to <= start:
+        raise ValidationError("Fee rule end must be after its start")
+    if (body.minimum_amount is not None and body.maximum_amount is not None
+            and body.minimum_amount > body.maximum_amount):
+        raise ValidationError("Fee rule minimum exceeds maximum")
+    latest = (
+        await session.execute(
+            select(PlatformFeeRule).where(
+                PlatformFeeRule.business_id == business_id
+            ).order_by(PlatformFeeRule.version.desc()).limit(1)
+        )
+    ).scalars().first()
+    if latest and start <= latest.effective_from:
+        raise ValidationError("New fee rule must start after the previous version")
+    if latest and (latest.effective_to is None or latest.effective_to > start):
+        latest.effective_to = start
+    rule = PlatformFeeRule(
+        business_id=business_id, pricing_mode=body.pricing_mode,
+        percentage_bps=body.percentage_bps, fixed_amount=body.fixed_amount,
+        minimum_amount=body.minimum_amount, maximum_amount=body.maximum_amount,
+        effective_from=start, effective_to=body.effective_to,
+        version=(latest.version + 1) if latest else 1,
+    )
+    session.add(rule)
+    await session.flush()
+    snapshot = {"id": str(rule.id), "business_id": str(business_id),
+                "pricing_mode": rule.pricing_mode, "percentage_bps": rule.percentage_bps,
+                "fixed_amount": float(rule.fixed_amount), "version": rule.version,
+                "effective_from": rule.effective_from.isoformat()}
+    await AuditService.record(
+        session, event_type="payment.commission_rule.changed",
+        actor_identity_id=ctx.identity_id, actor_context="admin",
+        business_id=business_id, resource_type="platform_fee_rule",
+        resource_id=rule.id, action="created", after_state=snapshot,
+    )
+    await OutboxService.publish(
+        session, event_type="payment.commission_rule.changed",
+        payload=snapshot, business_id=business_id,
+        correlation_id=ctx.correlation_id,
+    )
+    await session.commit()
+    return {"data": snapshot, "meta": {"correlation_id": ctx.correlation_id}}
 
 
 @router.get("/businesses/{business_id}")

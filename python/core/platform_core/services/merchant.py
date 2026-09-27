@@ -12,7 +12,12 @@ from platform_core.crypto import decrypt_secret, encrypt_secret
 from platform_core.exceptions import ResourceNotFound, ValidationError
 from platform_core.gates import assert_business_mutable
 from platform_core.models import MerchantConnection
-from platform_core.payments.razorpay import create_linked_account, platform_credentials, verify_key_pair
+from platform_core.payments.cashfree import CashfreePaymentProvider
+from platform_core.payments.razorpay import (
+    create_linked_account,
+    platform_credentials,
+    verify_key_pair,
+)
 from platform_core.resolvers.payment_resolver import PaymentResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.business import BusinessService
@@ -90,6 +95,105 @@ class MerchantService:
             before_state=before,
             after_state=after,
         )
+        return connection
+
+    @staticmethod
+    async def onboard_cashfree(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        correlation_id: str,
+        name: str,
+        email: str,
+        phone: str,
+        kyc_details: dict[str, Any],
+        bank: dict[str, str],
+    ) -> MerchantConnection:
+        business = await BusinessService.get_by_id(session, business_id)
+        assert_business_mutable(business.state, action="set up online payments")
+        existing = await PaymentResolver.resolve_merchant(
+            session, business_id=business_id, provider="cashfree"
+        )
+        if existing and existing.status == "active":
+            raise ValidationError("Cashfree vendor is already active")
+        vendor_id = f"locah_{business_id.hex}"
+        provider = CashfreePaymentProvider.from_environment()
+        result = await provider.create_vendor(
+            vendor_id=vendor_id,
+            name=name,
+            email=email,
+            phone=phone,
+            kyc_details=kyc_details,
+            bank=bank,
+        )
+        if result.get("vendor_id") != vendor_id:
+            raise ValidationError("Cashfree vendor identity mismatch")
+        status = str(result.get("status") or "PENDING").upper()
+        connection = existing or MerchantConnection(business_id=business_id, provider="cashfree")
+        if existing is None:
+            session.add(connection)
+        connection.status = "active" if status == "ACTIVE" else "pending"
+        connection.provider_metadata = {
+            "vendor_id": vendor_id,
+            "vendor_status": status,
+            "settlement_method": "bank",
+            "masked_account": f"••••{bank['account_number'][-4:]}",
+        }
+        connection.last_verified_at = datetime.now(timezone.utc)
+        connection.verification_error = None
+        connection.version = (connection.version or 0) + 1
+        await session.flush()
+        await OutboxService.publish(
+            session,
+            event_type="payment.merchant.updated",
+            payload={
+                "business_id": str(business_id),
+                "provider": "cashfree",
+                "after": MerchantService.serialize(connection),
+            },
+            business_id=business_id,
+            correlation_id=correlation_id,
+        )
+        await AuditService.record(
+            session,
+            event_type="payment.merchant.updated",
+            actor_identity_id=actor_id,
+            actor_context="business",
+            business_id=business_id,
+            resource_type="merchant_connection",
+            resource_id=connection.id,
+            action="cashfree_vendor_submitted",
+            before_state=None,
+            after_state=MerchantService.serialize(connection),
+        )
+        return connection
+
+    @staticmethod
+    async def refresh_cashfree(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+    ) -> MerchantConnection:
+        connection = await PaymentResolver.resolve_merchant(
+            session, business_id=business_id, provider="cashfree"
+        )
+        if connection is None:
+            raise ResourceNotFound("Cashfree vendor")
+        vendor_id = str((connection.provider_metadata or {}).get("vendor_id") or "")
+        if not vendor_id:
+            raise ValidationError("Cashfree vendor reference is missing")
+        result = await CashfreePaymentProvider.from_environment().fetch_vendor(vendor_id)
+        if result.get("vendor_id") != vendor_id:
+            raise ValidationError("Cashfree vendor identity mismatch")
+        status = str(result.get("status") or "PENDING").upper()
+        metadata = dict(connection.provider_metadata or {})
+        metadata["vendor_status"] = status
+        connection.provider_metadata = metadata
+        connection.status = "active" if status == "ACTIVE" else "pending"
+        connection.last_verified_at = datetime.now(timezone.utc)
+        connection.version += 1
+        await session.flush()
         return connection
 
     # ------------------------------------------------------------------
@@ -276,7 +380,9 @@ class MerchantService:
         if existing_account and connection.status == "active":
             return connection
 
-        email = (contact_email or "").strip() or f"business-{business.id.hex[:12]}@payments.locah.app"
+        email = (
+            contact_email or ""
+        ).strip() or f"business-{business.id.hex[:12]}@payments.locah.app"
         result = await create_linked_account(
             email=email,
             legal_business_name=business.display_name,

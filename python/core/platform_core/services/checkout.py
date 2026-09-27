@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.context_resolver import bind_public_context
 from platform_core.exceptions import ResourceNotFound, ValidationError
-from platform_core.models import BusinessModuleState, MediaAsset, MerchantConnection, Offering
+from platform_core.models import Business, BusinessModuleState, MediaAsset, MerchantConnection, Offering
+from platform_core.payments.cashfree import CashfreePaymentProvider
+from platform_core.payments.commission import active_rule
 from platform_core.services.business import BusinessService
 from platform_core.services.customer import CustomerService
 from platform_core.services.fulfilment import ACTIVE_MODULE_STATES, FulfilmentService
@@ -26,7 +28,37 @@ from platform_core.services.payment_attempt import PaymentAttemptService
 
 class CheckoutService:
     @staticmethod
-    async def _resolve_business(session: AsyncSession, slug: str):
+    async def _online_ready(session: AsyncSession, business_id: uuid.UUID) -> bool:
+        connections = (
+            (
+                await session.execute(
+                    select(MerchantConnection).where(
+                        MerchantConnection.business_id == business_id,
+                        MerchantConnection.status == "active",
+                        MerchantConnection.provider.in_(("cashfree", "razorpay")),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        cashfree = next((c for c in connections if c.provider == "cashfree"), None)
+        if cashfree is not None:
+            try:
+                CashfreePaymentProvider.from_environment()
+                await active_rule(session, business_id)
+            except ValidationError:
+                return False
+            return bool((cashfree.provider_metadata or {}).get("vendor_id"))
+        return any(
+            c.provider == "razorpay"
+            and (c.provider_metadata or {}).get("connection_mode") == "platform_route"
+            and (c.provider_metadata or {}).get("linked_account_id")
+            for c in connections
+        )
+
+    @staticmethod
+    async def _resolve_business(session: AsyncSession, slug: str) -> Business:
         business = await BusinessService.get_by_slug(session, slug)
         if business is None or business.deleted_at is not None:
             raise ResourceNotFound("Business")
@@ -38,13 +70,17 @@ class CheckoutService:
     @staticmethod
     async def _orders_active(session: AsyncSession, business_id: uuid.UUID) -> bool:
         state = (
-            await session.execute(
-                select(BusinessModuleState).where(
-                    BusinessModuleState.business_id == business_id,
-                    BusinessModuleState.module_id == "orders",
+            (
+                await session.execute(
+                    select(BusinessModuleState).where(
+                        BusinessModuleState.business_id == business_id,
+                        BusinessModuleState.module_id == "orders",
+                    )
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         return state is not None and state.activation_state in ACTIVE_MODULE_STATES
 
     @staticmethod
@@ -53,15 +89,22 @@ class CheckoutService:
     ) -> dict[str, Any]:
         business = await CheckoutService._resolve_business(session, slug)
         rows = (
-            await session.execute(
-                select(Offering).where(
-                    Offering.business_id == business.id,
-                    Offering.deleted_at.is_(None),
-                    Offering.status == "active",
-                    Offering.visibility == "public",
-                ).order_by(Offering.title.asc()).limit(limit)
+            (
+                await session.execute(
+                    select(Offering)
+                    .where(
+                        Offering.business_id == business.id,
+                        Offering.deleted_at.is_(None),
+                        Offering.status == "active",
+                        Offering.visibility == "public",
+                    )
+                    .order_by(Offering.title.asc())
+                    .limit(limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         # First image per Offering, resolved to a public URL. Scoped to this
         # Business so an Offering cannot surface another tenant's asset by
         # holding its id, the same rule the Website section resolver applies.
@@ -69,15 +112,19 @@ class CheckoutService:
         images: dict[str, str] = {}
         if wanted:
             assets = (
-                await session.execute(
-                    select(MediaAsset).where(
-                        MediaAsset.id.in_(wanted),
-                        MediaAsset.business_id == business.id,
-                        MediaAsset.status == "ready",
-                        MediaAsset.deleted_at.is_(None),
+                (
+                    await session.execute(
+                        select(MediaAsset).where(
+                            MediaAsset.id.in_(wanted),
+                            MediaAsset.business_id == business.id,
+                            MediaAsset.status == "ready",
+                            MediaAsset.deleted_at.is_(None),
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             images = {str(a.id): a.public_url for a in assets if a.public_url}
 
         def _image_for(o: Offering) -> str | None:
@@ -107,31 +154,25 @@ class CheckoutService:
     @staticmethod
     async def checkout_options(session: AsyncSession, *, slug: str) -> dict[str, Any]:
         business = await CheckoutService._resolve_business(session, slug)
-        locations = await LocationService.list_for_business(
-            session, business.id, status="active"
-        )
+        locations = await LocationService.list_for_business(session, business.id, status="active")
         modes = await FulfilmentService.active_modes(session, business.id)
         payments_active = (
-            await session.execute(
-                select(BusinessModuleState).where(
-                    BusinessModuleState.business_id == business.id,
-                    BusinessModuleState.module_id == "payments",
+            (
+                await session.execute(
+                    select(BusinessModuleState).where(
+                        BusinessModuleState.business_id == business.id,
+                        BusinessModuleState.module_id == "payments",
+                    )
                 )
             )
-        ).scalars().first()
-        merchant = (
-            await session.execute(
-                select(MerchantConnection).where(
-                    MerchantConnection.business_id == business.id,
-                    MerchantConnection.status == "active",
-                ).limit(1)
-            )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         payment_methods = ["cod"]
         if (
             payments_active
             and payments_active.activation_state in ACTIVE_MODULE_STATES
-            and merchant is not None
+            and await CheckoutService._online_ready(session, business.id)
         ):
             payment_methods.append("online")
         return {
@@ -202,7 +243,9 @@ class CheckoutService:
             locations = await LocationService.list_for_business(
                 session, business.id, status="active"
             )
-            primary = next((loc for loc in locations if loc.is_primary), locations[0] if locations else None)
+            primary = next(
+                (loc for loc in locations if loc.is_primary), locations[0] if locations else None
+            )
             if primary is None:
                 raise ValidationError("Business has no active location")
             location_id = primary.id
@@ -211,26 +254,22 @@ class CheckoutService:
 
         modes = await FulfilmentService.active_modes(session, business.id)
         payments_active = (
-            await session.execute(
-                select(BusinessModuleState).where(
-                    BusinessModuleState.business_id == business.id,
-                    BusinessModuleState.module_id == "payments",
+            (
+                await session.execute(
+                    select(BusinessModuleState).where(
+                        BusinessModuleState.business_id == business.id,
+                        BusinessModuleState.module_id == "payments",
+                    )
                 )
             )
-        ).scalars().first()
-        merchant = (
-            await session.execute(
-                select(MerchantConnection).where(
-                    MerchantConnection.business_id == business.id,
-                    MerchantConnection.status == "active",
-                ).limit(1)
-            )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         payment_methods = ["cod"]
         if (
             payments_active
             and payments_active.activation_state in ACTIVE_MODULE_STATES
-            and merchant is not None
+            and await CheckoutService._online_ready(session, business.id)
         ):
             payment_methods.append("online")
         if mode not in modes:
@@ -253,6 +292,15 @@ class CheckoutService:
                 "Guest name and email are required",
                 details={"field": "guest"},
             )
+        if payment_method == "online" and not phone:
+            raise ValidationError("Phone number is required for online payment")
+        if payment_method == "online" and phone:
+            digits = "".join(character for character in phone if character.isdigit())
+            if len(digits) == 12 and digits.startswith("91"):
+                digits = digits[2:]
+            if len(digits) != 10:
+                raise ValidationError("Enter a valid 10-digit Indian mobile number")
+            phone = digits
 
         # Doc 05 Part 7.1: a guest checkout is bounded to the transaction and
         # never becomes a Platform Identity. Customer attribution is the
@@ -272,28 +320,38 @@ class CheckoutService:
 
         # Validate offerings exist and are public/active before create.
         order_items: list[dict[str, Any]] = []
+        order_currency: str | None = None
         for raw in items:
             offering_id = uuid.UUID(str(raw["offering_id"]))
             offering = (
-                await session.execute(
-                    select(Offering).where(
-                        Offering.id == offering_id,
-                        Offering.business_id == business.id,
-                        Offering.deleted_at.is_(None),
+                (
+                    await session.execute(
+                        select(Offering).where(
+                            Offering.id == offering_id,
+                            Offering.business_id == business.id,
+                            Offering.deleted_at.is_(None),
+                        )
                     )
                 )
-            ).scalars().first()
-            if offering is None or offering.status != "active":
+                .scalars()
+                .first()
+            )
+            if offering is None or offering.status != "active" or offering.visibility != "public":
                 raise ValidationError(
                     "Cart contains an invalid item",
                     details={"code": "invalid_item", "offering_id": str(offering_id)},
                 )
+            if order_currency is None:
+                order_currency = offering.currency
+            elif offering.currency != order_currency:
+                raise ValidationError("Cart items must use the same currency")
             order_items.append(
                 {
                     "offering_id": offering_id,
                     "variant_id": raw.get("variant_id"),
                     "quantity": int(raw.get("quantity") or 1),
-                    "unit_price": raw.get("unit_price"),
+                    # Browser cart prices are display-only. OrderService resolves
+                    # the current offering/variant price from the database.
                 }
             )
 
@@ -301,6 +359,8 @@ class CheckoutService:
         delivery_charge = Decimal("0")
         delivery_fee_offering_id = None
         if mode == "delivery":
+            if order_currency != "INR":
+                raise ValidationError("Delivery charges require INR")
             if not isinstance(delivery_address, dict):
                 raise ValidationError("Delivery address is required")
             zone, delivery_charge = await FulfilmentService.match_zone(
@@ -321,6 +381,8 @@ class CheckoutService:
                 )
 
         idempotency_key = payload.get("idempotency_key") or str(uuid.uuid4())
+        if payment_method == "online" and order_currency != "INR":
+            raise ValidationError("Online checkout currently supports INR only")
         order = await OrderService.create_order(
             session,
             business_id=business.id,
@@ -331,7 +393,7 @@ class CheckoutService:
                 "location_id": location_id,
                 "customer_contact_id": contact.id,
                 "payment_method": payment_method,
-                "currency": payload.get("currency") or "INR",
+                "currency": order_currency or "INR",
                 "idempotency_key": idempotency_key,
                 "items": order_items,
             },
@@ -351,29 +413,23 @@ class CheckoutService:
         payment_data = None
         payment_state = "order_pending"
         if payment_method == "online":
-            try:
-                payment = await PaymentAttemptService.create_attempt(
-                    session,
-                    business_id=business.id,
-                    actor_id=actor_id,
-                    correlation_id=correlation_id,
-                    payload={
-                        "source_type": "order",
-                        "source_id": str(order.id),
-                        "amount": float(order.total_amount),
-                        "currency": order.currency,
-                        "payment_method": "online",
-                        "customer_contact_id": str(contact.id),
-                        "idempotency_key": f"pay-{idempotency_key}",
-                    },
-                )
-                payment_data = PaymentAttemptService.serialize(payment)
-                payment_state = (
-                    "payment_failed" if payment.status == "failed" else payment.status
-                )
-            except Exception as exc:  # noqa: BLE001
-                payment_state = "payment_failed"
-                payment_data = {"error": str(exc)}
+            payment = await PaymentAttemptService.create_attempt(
+                session,
+                business_id=business.id,
+                actor_id=actor_id,
+                correlation_id=correlation_id,
+                payload={
+                    "source_type": "order",
+                    "source_id": str(order.id),
+                    "amount": float(order.total_amount),
+                    "currency": order.currency,
+                    "payment_method": "online",
+                    "customer_contact_id": str(contact.id),
+                    "idempotency_key": f"pay-{idempotency_key}",
+                },
+            )
+            payment_data = PaymentAttemptService.serialize(payment)
+            payment_state = "payment_failed" if payment.status == "failed" else payment.status
         else:
             payment = await PaymentAttemptService.create_attempt(
                 session,
@@ -394,9 +450,7 @@ class CheckoutService:
             payment_state = payment.status
 
         order_detail = await OrderService.serialize_order_with_items(session, order)
-        tracking_path = (
-            f"/{business.slug}/track/{order.id}?token={job.tracking_token}"
-        )
+        tracking_path = f"/{business.slug}/track/{order.id}?token={job.tracking_token}"
         return {
             "state": payment_state if payment_state != "processing" else "order_pending",
             "order": order_detail,

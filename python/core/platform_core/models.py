@@ -1151,6 +1151,24 @@ class MerchantConnection(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 
+class PlatformFeeRule(Base):
+    __tablename__ = "payments_platform_fee_rules"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    pricing_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    percentage_bps: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    fixed_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    minimum_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    maximum_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class PaymentAttempt(Base):
     __tablename__ = "payments_payment_attempts"
 
@@ -1196,6 +1214,7 @@ class PaymentRefund(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider_reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

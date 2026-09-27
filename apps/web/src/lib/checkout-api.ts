@@ -59,6 +59,15 @@ export async function fetchTracking(orderId: string, token: string) {
   return (await res.json()).data
 }
 
+export async function verifyCheckoutPayment(orderId: string, token: string): Promise<string> {
+  const res = await fetch(
+    `${apiUrl}/v1/public/orders/${orderId}/payment/verify?token=${encodeURIComponent(token)}`,
+    { method: 'POST' }
+  )
+  if (!res.ok) throw new Error('Payment verification is temporarily unavailable')
+  return (await res.json()).data.status as string
+}
+
 export function cartStorageKey(slug: string) {
   return `platform.cart.${slug}`
 }
