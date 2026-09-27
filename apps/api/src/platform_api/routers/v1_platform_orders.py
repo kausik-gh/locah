@@ -38,6 +38,7 @@ class OrderLineItemInput(BaseModel):
     variant_id: UUID | None = None
     quantity: int = Field(ge=1)
     unit_price: float | None = Field(default=None, ge=0)
+    options: dict[str, Any] | None = None
 
 
 class CreateOrderRequest(BaseModel):

@@ -55,7 +55,7 @@ class CheckoutService:
 
     @staticmethod
     async def list_public_offerings(
-        session: AsyncSession, *, slug: str, limit: int = 50
+        session: AsyncSession, *, slug: str, limit: int = 100
     ) -> dict[str, Any]:
         business = await CheckoutService._resolve_business(session, slug)
         rows = (
@@ -90,6 +90,9 @@ class CheckoutService:
             ids = list(o.image_asset_ids or [])
             return images.get(str(ids[0])) if ids else None
 
+        from platform_core.services.offering_public import public_details
+
+        details = await public_details(session, business.id, list(rows))
         return {
             "business": {
                 "id": str(business.id),
@@ -102,9 +105,11 @@ class CheckoutService:
                     "title": o.title,
                     "description": o.description,
                     "offering_type": o.offering_type,
+                    "price_type": o.price_type,
                     "price_amount": float(o.price_amount) if o.price_amount is not None else None,
                     "currency": o.currency,
                     "image_url": _image_for(o),
+                    **details[str(o.id)],
                 }
                 for o in rows
             ],
@@ -294,11 +299,24 @@ class CheckoutService:
                     "Cart contains an invalid item",
                     details={"code": "invalid_item", "offering_id": str(offering_id)},
                 )
+            from platform_core.catalog.offering_kinds import KINDS
+
+            kind = KINDS.get(offering.offering_type)
+            if kind is not None and kind.flow not in ("cart", "give"):
+                # Customers book services and rooms, and enquire about homes or
+                # vehicles; only goods, food, packages and gifts go in a cart.
+                raise ValidationError(
+                    f"{offering.title} is {'booked' if kind.flow == 'booking' else 'enquired about'}, not added to a cart",
+                    details={"code": "not_orderable", "offering_id": str(offering_id)},
+                )
             order_items.append(
                 {
                     "offering_id": offering_id,
                     "variant_id": raw.get("variant_id"),
                     "quantity": int(raw.get("quantity") or 1),
+                    # What was chosen (pack, cut, add-ons, a gift amount) —
+                    # priced by the server from the catalogue.
+                    "options": raw.get("options") or {},
                     # Never the customer's number: the price comes from the
                     # catalogue (Capability Universe §12.6 "cart price =
                     # catalogue price"). Any unit_price sent is ignored.

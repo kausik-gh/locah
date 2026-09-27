@@ -123,6 +123,8 @@ class OrderResolver:
             "line_total": float(item.line_total),
             "track_inventory": item.track_inventory,
             "quantity_reserved": item.quantity_reserved,
+            "options": dict(item.options or {}),
+            "stock_quantity": item.stock_quantity,
             "quantity_deducted": item.quantity_deducted,
             "sort_order": item.sort_order,
         }

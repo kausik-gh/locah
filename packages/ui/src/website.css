@@ -1784,3 +1784,63 @@
     scroll-behavior: smooth;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Offering kinds (Capability Universe §6.3): specs, choosers for packs and
+   choices, gifts, project tabs and the enquiry form. --site-* tokens only.
+   -------------------------------------------------------------------------- */
+[data-locah-site] .ls-offer__kind {
+  margin: 0 0 0.25rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--site-muted);
+}
+[data-locah-site] .ls-specs { display: grid; gap: 0.25rem; margin: 0.6rem 0 0.2rem; font-size: 0.88rem; }
+[data-locah-site] .ls-specs__row { display: grid; grid-template-columns: minmax(7rem, 38%) 1fr; gap: 0.6rem; }
+[data-locah-site] .ls-specs dt { color: var(--site-muted); }
+[data-locah-site] .ls-specs dd { margin: 0; }
+[data-locah-site] .ls-specs ul { margin: 0; padding-left: 1rem; }
+[data-locah-site] .ls-chooser { display: grid; gap: 0.6rem; margin-top: 0.6rem; }
+[data-locah-site] .ls-chooser__select { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--site-muted); }
+[data-locah-site] .ls-chooser__select select { min-height: 44px; }
+[data-locah-site] .ls-choice { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+[data-locah-site] .ls-choice__name { flex-basis: 100%; font-size: 0.8rem; font-weight: 600; color: var(--site-muted); }
+[data-locah-site] .ls-chip {
+  min-height: 40px; padding: 0 0.85rem; border-radius: 999px; border: 1px solid var(--site-border);
+  background: var(--site-bg); color: var(--site-ink); font: inherit; font-size: 0.86rem; cursor: pointer;
+}
+[data-locah-site] .ls-chip:hover { border-color: var(--site-primary); }
+[data-locah-site] .ls-chip.is-on { border-color: var(--site-primary); background: var(--site-primary); color: var(--site-primary-fg); }
+[data-locah-site] .ls-chip:focus-visible { outline: 2px solid var(--site-primary); outline-offset: 2px; }
+[data-locah-site] .ls-offer .ls-item__foot { flex-wrap: wrap; row-gap: 0.7rem; }
+[data-locah-site] .ls-offer__actions { display: inline-flex; flex-wrap: wrap; gap: 0.45rem; justify-content: flex-end; }
+[data-locah-site] .ls-offer__actions:has(> :nth-child(2)) { flex-basis: 100%; justify-content: flex-start; }
+[data-locah-site] .ls-offer__added { margin: 0.5rem 0 0; font-size: 0.86rem; color: var(--site-muted); }
+[data-locah-site] .ls-offer__error { margin: 0.5rem 0 0; font-size: 0.86rem; color: var(--site-primary); font-weight: 600; }
+[data-locah-site] .ls-gift { display: grid; gap: 0.6rem; margin-top: 0.6rem; }
+[data-locah-site] .ls-gift__progress { height: 8px; border-radius: 999px; background: var(--site-bg-alt); overflow: hidden; }
+[data-locah-site] .ls-gift__progress span { display: block; height: 100%; background: var(--site-primary); }
+[data-locah-site] .ls-gift__other { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.86rem; color: var(--site-muted); }
+[data-locah-site] .ls-gift__other input {
+  width: 7rem; min-height: 40px; padding: 0 0.7rem; font: inherit; color: var(--site-ink); background: var(--site-bg);
+  border: 1px solid var(--site-border); border-radius: var(--site-radius);
+}
+[data-locah-site] .ls-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.2rem; }
+[data-locah-site] .ls-tab {
+  min-height: 44px; padding: 0 1.1rem; border-radius: 999px; border: 1px solid var(--site-border);
+  background: transparent; color: var(--site-ink); font: inherit; cursor: pointer;
+}
+[data-locah-site] .ls-tab.is-on { background: var(--site-ink); color: var(--site-bg); border-color: var(--site-ink); }
+[data-locah-site] .ls-enquire { max-width: 720px; display: grid; gap: 1.4rem; }
+[data-locah-site] .ls-enquire__item { display: grid; gap: 1rem; }
+[data-locah-site] .ls-enquire__item img { width: 100%; max-height: 360px; object-fit: cover; border-radius: var(--site-radius); }
+[data-locah-site] .ls-enquiry { display: grid; gap: 0.8rem; max-width: 560px; }
+[data-locah-site] .ls-enquiry label { display: grid; gap: 0.3rem; font-size: 0.88rem; color: var(--site-muted); }
+[data-locah-site] .ls-enquiry input, [data-locah-site] .ls-enquiry textarea {
+  font: inherit; color: var(--site-ink); background: var(--site-bg); min-height: 44px; padding: 0.55rem 0.75rem;
+  border: 1px solid var(--site-border); border-radius: var(--site-radius);
+}
+[data-locah-site] .ls-enquiry .ls-btn { justify-self: start; }
+[data-locah-site] .ls-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+@media (max-width: 560px) {
+  [data-locah-site] .ls-specs__row { grid-template-columns: 1fr; gap: 0; }
+  [data-locah-site] .ls-offer__actions { justify-content: flex-start; }
+}

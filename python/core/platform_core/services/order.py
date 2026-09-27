@@ -66,6 +66,7 @@ class OrderService:
         unit_price = raw.get("unit_price")
         tax_rate = offering.tax_rate
         variant_id = raw.get("variant_id")
+        variant = None
         if variant_id:
             variant = await OfferingResolver.resolve_variant(
                 session, business_id=business_id, variant_id=variant_id
@@ -74,10 +75,15 @@ class OrderService:
                 raise ValidationError("Variant does not belong to product")
             title = f"{offering.title} — {variant.name}"
             sku = variant.sku or sku
-            if unit_price is None and variant.price_amount is not None:
-                unit_price = variant.price_amount
+        from platform_core.services.offering_pricing import price_selection
+
+        priced = None
+        if raw.get("unit_price") is None or raw.get("options"):
+            priced = price_selection(offering, variant, raw.get("options"))
+            if priced.title_suffix:
+                title = f"{title} — {priced.title_suffix}"
         if unit_price is None:
-            unit_price = offering.price_amount
+            unit_price = priced.unit_price if priced is not None else offering.price_amount
         if unit_price is None:
             raise ValidationError(
                 "Unit price is required",
@@ -100,6 +106,8 @@ class OrderService:
             line_tax=float(totals["line_tax"]),
             line_total=float(totals["line_total"]),
             track_inventory=offering.track_inventory,
+            options=priced.options if priced is not None else {},
+            stock_quantity=raw["quantity"] * (priced.stock_per_unit if priced is not None else 1),
             sort_order=sort_order,
         )
 
@@ -123,14 +131,14 @@ class OrderService:
                 offering_id=item.offering_id,
                 location_id=order.location_id,
                 variant_id=item.variant_id,
-                quantity=item.quantity,
+                quantity=item.stock_quantity,
                 actor_id=actor_id,
                 correlation_id=correlation_id,
                 order_id=order.id,
                 reason=f"Order {order.order_number} reservation",
                 actor_context=actor_context,
             )
-            item.quantity_reserved = item.quantity
+            item.quantity_reserved = item.stock_quantity
 
     @staticmethod
     async def _publish_created(

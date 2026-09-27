@@ -149,10 +149,12 @@ export default function CheckoutClient({
     setSubmitting(true)
     try {
       const data = await placeCheckoutOrder(slug, {
+        // Prices are never sent: the server prices each line from the catalogue.
         items: items.map((i) => ({
           offering_id: i.offering_id,
+          variant_id: i.variant_id,
           quantity: i.quantity,
-          unit_price: i.unit_price,
+          options: i.options,
         })),
         fulfilment_mode: mode,
         payment_method: paymentMethod,
@@ -254,7 +256,7 @@ export default function CheckoutClient({
             <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: '0.5rem' }}>
               {items.map((item) => (
                 <li
-                  key={item.offering_id}
+                  key={item.key ?? item.offering_id}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -265,13 +267,14 @@ export default function CheckoutClient({
                 >
                   <div>
                     <div style={{ fontWeight: 600 }}>{item.title}</div>
+                    {item.detail ? <div style={{ opacity: 0.8 }}>{item.detail}</div> : null}
                     <div style={{ opacity: 0.7 }}>
                       {item.currency} {item.unit_price} × {item.quantity}
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => persist(items.filter((i) => i.offering_id !== item.offering_id))}
+                    onClick={() => persist(items.filter((i) => (i.key ?? i.offering_id) !== (item.key ?? item.offering_id)))}
                   >
                     Remove
                   </button>

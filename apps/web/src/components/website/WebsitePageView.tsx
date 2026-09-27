@@ -79,6 +79,32 @@ function strategyDecisions(theme: Record<string, unknown>): StrategyDecision[] {
   })
 }
 
+/** The business's own colours as --site-* variables. Tenant pages outside the
+ *  section renderer (e.g. the enquiry page) use this too, so no LOCAH colour
+ *  ever stands in for the business's theme. */
+export function siteThemeVars(data: PublicWebsitePayload): { styleVars: ThemeVars; paletteMode: string } {
+  const theme = data.theme || {}
+  const type = (data.business.business_type || '').toLowerCase()
+  const personality = String(theme.personality || '') || PERSONALITY[type] || 'clean'
+  const primary = String(theme.primary_color || DEFAULT_PRIMARY[personality] || '#1f3d34')
+  const accent = String(theme.accent_color || primary)
+  const styleVars: ThemeVars = {
+    '--site-primary': primary,
+    '--site-primary-fg': readable(primary),
+    '--site-accent': accent,
+    '--site-accent-fg': readable(accent),
+  }
+  if (theme.text_color) styleVars['--site-ink'] = String(theme.text_color)
+  if (theme.background_color) styleVars['--site-bg'] = String(theme.background_color)
+  if (theme.surface_alt_color) styleVars['--site-bg-alt'] = String(theme.surface_alt_color)
+  if (theme.muted_color) styleVars['--site-muted'] = String(theme.muted_color)
+  const paletteMode = finite(theme.palette_mode, ['light', 'dark'], personality === 'dark' ? 'dark' : 'light')
+  if (theme.palette_mode) {
+    styleVars['--site-border'] = paletteMode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(16, 20, 24, 0.10)'
+  }
+  return { styleVars, paletteMode }
+}
+
 export function WebsitePageView({
   data,
   previewToken,
@@ -108,29 +134,8 @@ export function WebsitePageView({
   )
   const navigationStyle = finite(theme.navigation_style, ['standard', 'compact'], 'standard')
 
-  const primary = String(theme.primary_color || DEFAULT_PRIMARY[personality] || '#1f3d34')
-  const accent = String(theme.accent_color || primary)
   const logo = theme.logo_url ? String(theme.logo_url) : null
-
-  const styleVars: ThemeVars = {
-    '--site-primary': primary,
-    '--site-primary-fg': readable(primary),
-    '--site-accent': accent,
-    '--site-accent-fg': readable(accent),
-  }
-  if (theme.text_color) styleVars['--site-ink'] = String(theme.text_color)
-  if (theme.background_color) styleVars['--site-bg'] = String(theme.background_color)
-  if (theme.surface_alt_color) styleVars['--site-bg-alt'] = String(theme.surface_alt_color)
-  if (theme.muted_color) styleVars['--site-muted'] = String(theme.muted_color)
-  const paletteMode = finite(
-    theme.palette_mode,
-    ['light', 'dark'],
-    personality === 'dark' ? 'dark' : 'light'
-  )
-  if (theme.palette_mode) {
-    styleVars['--site-border'] =
-      paletteMode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(16, 20, 24, 0.10)'
-  }
+  const { styleVars, paletteMode } = siteThemeVars(data)
   // The creative direction: which design language this site speaks. Finite,
   // renderer-backed values only — anything else falls back to the older look.
   const profile = finite(

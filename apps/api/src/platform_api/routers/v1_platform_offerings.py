@@ -66,6 +66,13 @@ class CreateProductRequest(BaseModel):
     low_stock_threshold: int | None = None
     visibility: str = "public"
     image_asset_ids: list[UUID] = Field(default_factory=list)
+    # Capability Universe §6.1/§6.3 kind fields.
+    hsn_sac: str | None = None
+    stock_unit: str | None = None
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    option_groups: list[dict[str, Any]] = Field(default_factory=list)
+    sell_units: list[dict[str, Any]] = Field(default_factory=list)
+    variant_options: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PatchProductRequest(VersionedBody):
@@ -84,6 +91,12 @@ class PatchProductRequest(VersionedBody):
     low_stock_threshold: int | None = None
     visibility: str | None = None
     image_asset_ids: list[UUID] | None = None
+    hsn_sac: str | None = None
+    stock_unit: str | None = None
+    attributes: dict[str, Any] | None = None
+    option_groups: list[dict[str, Any]] | None = None
+    sell_units: list[dict[str, Any]] | None = None
+    variant_options: list[dict[str, Any]] | None = None
 
 
 class CreateVariantRequest(BaseModel):
@@ -94,6 +107,7 @@ class CreateVariantRequest(BaseModel):
     barcode: str | None = None
     price_amount: float | None = None
     sort_order: int = 0
+    attributes: dict[str, str] = Field(default_factory=dict)
 
 
 def _patch_payload(body: BaseModel) -> dict[str, Any]:
@@ -373,3 +387,21 @@ async def create_variant(
         "data": OfferingService.serialize_variant(variant),
         "meta": {"correlation_id": actor.request.correlation_id},
     }
+
+
+@router.post("/{business_id}/products/{product_id}/variants/matrix")
+async def generate_variant_matrix(
+    business_id: UUID,
+    product_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(OFFERINGS_UPDATE, "offerings-catalog")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """One variant per combination of the product's options (size × colour)."""
+    created = await OfferingService.generate_variant_matrix(
+        session, business_id=business_id, offering_id=product_id, actor_id=actor.request.identity_id,
+        correlation_id=actor.request.correlation_id,
+    )
+    await session.commit()
+    return {"data": [OfferingService.serialize_variant(v) for v in created],
+            "meta": {"correlation_id": actor.request.correlation_id, "created": len(created)}}
+

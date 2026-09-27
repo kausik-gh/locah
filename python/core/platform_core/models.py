@@ -595,6 +595,13 @@ class Offering(Base):
     image_asset_ids: Mapped[list[UUID]] = mapped_column(
         ARRAY(PG_UUID(as_uuid=True)), nullable=False, server_default=text("'{}'")
     )
+    # Capability Universe §6.1/§6.3: kind fields, choice groups, packs, units, tax code.
+    hsn_sac: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    option_groups: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    sell_units: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    variant_options: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    stock_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'piece'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -615,6 +622,7 @@ class OfferingVariant(Base):
     sku: Mapped[str | None] = mapped_column(Text, nullable=True)
     barcode: Mapped[str | None] = mapped_column(Text, nullable=True)
     price_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -739,6 +747,12 @@ class OrderLineItem(Base):
     track_inventory: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     quantity_reserved: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     quantity_deducted: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    # Capability Universe §6.3: what was chosen (pack, cut, add-ons, a gift
+    # amount) and how much stock the line takes in the offering's stock unit.
+    options: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    stock_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=lambda ctx: ctx.get_current_parameters()["quantity"]
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

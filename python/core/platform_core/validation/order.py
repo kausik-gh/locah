@@ -90,11 +90,18 @@ def validate_line_item(raw: dict[str, Any], *, index: int) -> dict[str, Any]:
                 "Invalid unit price",
                 details={"errors": [_field_error(f"{prefix}.unit_price", "Must be >= 0")]},
             )
+    options = raw.get("options")
+    if options is not None and not isinstance(options, dict):
+        raise ValidationError(
+            "Invalid choices",
+            details={"errors": [_field_error(f"{prefix}.options", "Must be an object")]},
+        )
     return {
         "offering_id": offering_id,
         "variant_id": variant_id,
         "quantity": quantity,
         "unit_price": parsed_price,
+        "options": options or {},
     }
 
 

@@ -33,6 +33,8 @@ class CheckoutItem(BaseModel):
     quantity: int = Field(default=1, ge=1, le=100)
     # Accepted for older clients and ignored: prices always come from the catalogue.
     unit_price: float | None = None
+    # Pack, cut, modifiers and add-ons, or a gift amount — validated and priced server-side.
+    options: dict[str, Any] | None = None
 
 
 class PlaceOrderRequest(BaseModel):
@@ -110,3 +112,11 @@ async def public_order_tracking(
         session, order_id=order_id, token=token
     )
     return {"data": data, "meta": {}}
+
+
+@router.get("/offering-kinds")
+async def offering_kinds() -> dict[str, Any]:
+    """The kinds of offering and their fields, in owner words (Capability Universe §6.3)."""
+    from platform_core.catalog.offering_kinds import describe
+
+    return {"data": describe()}

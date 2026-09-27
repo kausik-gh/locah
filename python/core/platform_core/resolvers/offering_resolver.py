@@ -130,6 +130,14 @@ class OfferingResolver:
             "low_stock_threshold": offering.low_stock_threshold,
             "visibility": offering.visibility,
             "image_asset_ids": [str(a) for a in (offering.image_asset_ids or [])],
+            "kind_label": _kind_label(offering.offering_type),
+            "missing_fields": _missing(offering),
+            "hsn_sac": offering.hsn_sac,
+            "attributes": dict(offering.attributes or {}),
+            "option_groups": list(offering.option_groups or []),
+            "sell_units": list(offering.sell_units or []),
+            "variant_options": list(offering.variant_options or []),
+            "stock_unit": offering.stock_unit,
             "version": offering.version,
             "created_at": offering.created_at.isoformat(),
             "updated_at": offering.updated_at.isoformat(),
@@ -145,9 +153,24 @@ class OfferingResolver:
             "sku": variant.sku,
             "barcode": variant.barcode,
             "price_amount": float(variant.price_amount) if variant.price_amount is not None else None,
+            "attributes": dict(variant.attributes or {}),
             "sort_order": variant.sort_order,
             "status": variant.status,
             "version": variant.version,
             "created_at": variant.created_at.isoformat(),
             "updated_at": variant.updated_at.isoformat(),
         }
+
+
+def _kind_label(offering_type: str) -> str:
+    from platform_core.catalog.offering_kinds import KINDS
+
+    k = KINDS.get(offering_type)
+    return k.label if k else offering_type.replace("_", " ").capitalize()
+
+
+def _missing(offering: Offering) -> list[str]:
+    from platform_core.catalog.offering_kinds import KINDS, missing_fields
+
+    k = KINDS.get(offering.offering_type)
+    return missing_fields(k, offering.attributes) if k else []

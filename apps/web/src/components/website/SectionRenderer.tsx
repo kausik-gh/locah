@@ -1,3 +1,4 @@
+import { EnquiryForm } from './EnquiryForm'
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
 import { LiveItemsSection } from './LiveItemsSection'
@@ -783,10 +784,16 @@ export function SectionRenderer({
 
     /* ---------------------------------------------------- enquiry_form */
     case 'enquiry_form': {
-      // Leads currently has no anonymous public mutation route. Rendering a
-      // form that posts to a plausible URL would promise a mechanic that does
-      // not exist, so governed generation omits it and legacy drafts fail shut.
-      return null
+      // Enquiries post to /v1/public/websites/{slug}/enquiries and land in the
+      // business's Enquiries as leads — shown only when Leads is on.
+      if (!capabilities?.enquire) return null
+      return (
+        <section className={`ls-section ${alt ? 'ls-section--alt' : ''}`}>
+          <div className="ls-inner ls-inner--narrow">
+            <EnquiryForm slug={businessSlug} businessName={businessName || 'the business'} />
+          </div>
+        </section>
+      )
     }
 
     /* --------------------------------------------------------- gallery */

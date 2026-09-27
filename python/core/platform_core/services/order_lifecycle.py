@@ -87,7 +87,7 @@ class OrderLifecycleService:
         for item in line_items:
             if not item.track_inventory:
                 continue
-            pending = item.quantity - item.quantity_deducted
+            pending = item.stock_quantity - item.quantity_deducted
             if pending <= 0:
                 continue
             await InventoryService.deduct_reserved_for_order(

@@ -1,0 +1,102 @@
+"""Website enquiries become leads (Capability Universe §6.3 enquiry flows,
+§19.2 "every enquiry becomes a lead"; Business OS Guide §4).
+
+A visitor asks about a project, a vehicle, a piece of work or anything else —
+or asks for a site visit or a test drive with a preferred date. It lands in
+Enquiries exactly like one typed in by the team, with where it came from.
+The details are used to reply to this enquiry only; no marketing opt-in is
+taken here.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date, timedelta
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from platform_core.catalog.offering_kinds import KINDS
+from platform_core.exceptions import ValidationError
+from platform_core.models import BusinessModuleState, Offering
+
+PURPOSES = {
+    "enquiry": "Enquiry",
+    "site_visit": "Site visit request",
+    "test_drive": "Test drive request",
+    "callback": "Call-back request",
+}
+
+
+def _bad(field: str, message: str) -> ValidationError:
+    return ValidationError(message, details={"errors": [{"field": field, "message": message}]})
+
+
+class PublicEnquiryService:
+    @staticmethod
+    async def accepting(session: AsyncSession, business_id: uuid.UUID) -> bool:
+        state = (await session.execute(
+            select(BusinessModuleState.activation_state).where(
+                BusinessModuleState.business_id == business_id, BusinessModuleState.module_id == "leads")
+        )).scalar()
+        return state in ("enabled", "ready", "active")
+
+    @staticmethod
+    async def submit(session: AsyncSession, *, slug: str, payload: dict[str, Any], correlation_id: str) -> dict[str, Any]:
+        from platform_core.services.checkout import CheckoutService
+        from platform_core.services.lead import LeadService
+
+        business = await CheckoutService._resolve_business(session, slug)
+        if payload.get("website"):  # honeypot: people never fill a hidden field
+            return {"received": True}
+        if not await PublicEnquiryService.accepting(session, business.id):
+            raise ValidationError("This business is not taking enquiries online yet",
+                                  details={"code": "enquiries_off"})
+        name = str(payload.get("name") or "").strip()
+        if not 1 <= len(name) <= 80:
+            raise _bad("name", "Tell us your name")
+        phone = str(payload.get("phone") or "").strip() or None
+        email = str(payload.get("email") or "").strip() or None
+        if not phone and not email:
+            raise _bad("phone", "Leave a phone number or email so they can reply")
+        message = str(payload.get("message") or "").strip()[:1000] or None
+        purpose = str(payload.get("purpose") or "enquiry")
+        if purpose not in PURPOSES:
+            raise _bad("purpose", "Unknown kind of request")
+        preferred = payload.get("preferred_date")
+        preferred_iso = None
+        if preferred:
+            try:
+                day = date.fromisoformat(str(preferred))
+            except ValueError:
+                raise _bad("preferred_date", "Pick a date") from None
+            if not date.today() <= day <= date.today() + timedelta(days=180):
+                raise _bad("preferred_date", "Pick a date in the next six months")
+            preferred_iso = day.isoformat()
+
+        origin: dict[str, Any] = {"purpose": purpose, "purpose_label": PURPOSES[purpose], "channel": "website"}
+        offering_id = None
+        if payload.get("offering_id"):
+            offering = (await session.execute(
+                select(Offering).where(Offering.id == uuid.UUID(str(payload["offering_id"])),
+                                       Offering.business_id == business.id, Offering.deleted_at.is_(None),
+                                       Offering.status == "active", Offering.visibility == "public")
+            )).scalars().first()
+            if offering is None:
+                raise _bad("offering_id", "That item is no longer listed")
+            offering_id = offering.id
+            k = KINDS.get(offering.offering_type)
+            origin.update({"offering_id": str(offering.id), "offering_title": offering.title,
+                           "offering_kind": k.label if k else offering.offering_type})
+        if preferred_iso:
+            origin["preferred_date"] = preferred_iso
+
+        lead = await LeadService.create_lead(
+            session, business_id=business.id, actor_id=business.primary_owner_identity_id,
+            correlation_id=correlation_id, actor_context="website_enquiry",
+            payload={"display_name": name, "phone": phone, "email": email, "message": message,
+                     "source": "website_enquiry", "origin_context": origin,
+                     "offering_id": str(offering_id) if offering_id else None},
+        )
+        return {"received": True, "reference": str(lead.id)[:8].upper()}
