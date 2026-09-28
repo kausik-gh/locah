@@ -19,6 +19,10 @@ export VOICE_PROVIDER=replay
 export LOCAH_VOICE_REPLAY_FILE=${LOCAH_VOICE_REPLAY_FILE:-$OUT/replay_voice.json}
 export IMAGE_PROVIDER=none
 export LOCAH_JOBS_INERT=1
+# The WhatsApp sandbox: messages are recorded, never delivered (no Meta number).
+export MESSAGING_SANDBOX=1
 export RATE_LIMIT_ENABLED=0
+# The local web (3100) and Workspace (3101) call the API from the browser.
+export CORS_ALLOWED_ORIGINS=http://localhost:3100,http://localhost:3101
 unset GEMINI_API_KEY XAI_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY || true
 exec uv run --no-env-file uvicorn platform_api.main:app --app-dir apps/api/src --port "${API_PORT:-8010}"

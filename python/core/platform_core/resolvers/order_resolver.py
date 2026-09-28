@@ -91,6 +91,7 @@ class OrderResolver:
                 str(order.customer_contact_id) if order.customer_contact_id else None
             ),
             "order_number": order.order_number,
+            "channel": order.channel,
             "status": order.status,
             "payment_method": order.payment_method,
             "payment_status": order.payment_status,
@@ -99,6 +100,8 @@ class OrderResolver:
             "tax_amount": float(order.tax_amount),
             "discount_amount": float(order.discount_amount),
             "total_amount": float(order.total_amount),
+            "round_off": float(order.round_off or 0),
+            "tax_basis": order.tax_basis or {},
             "internal_reference": order.internal_reference,
             "cancellation_reason": order.cancellation_reason,
             "version": order.version,
@@ -123,6 +126,8 @@ class OrderResolver:
             "line_total": float(item.line_total),
             "track_inventory": item.track_inventory,
             "quantity_reserved": item.quantity_reserved,
+            "options": dict(item.options or {}),
+            "stock_quantity": item.stock_quantity,
             "quantity_deducted": item.quantity_deducted,
             "sort_order": item.sort_order,
         }

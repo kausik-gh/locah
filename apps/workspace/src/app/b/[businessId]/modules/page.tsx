@@ -2,136 +2,200 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
-import { EmptyState, GateNotice, PageHeader, StatusPill } from '@/components/ModuleState'
+import { GateNotice, PageHeader } from '@/components/ModuleState'
 import { setModuleState } from './actions'
 
 export const dynamic = 'force-dynamic'
 
-type CatalogModule = {
-  module_id: string
-  display_name: string
-  module_class: string
-  description?: string | null
+type Step = { key: string; label: string; done: boolean }
+type Readiness = {
+  state: string
+  enabled: boolean
+  built: boolean
+  steps: Step[]
+  configured: boolean
+  ready: boolean
+}
+type Pick = {
+  module: string
+  tier: 'always' | 'core' | 'recommended' | 'optional'
+  reason: string
+  label: string
+  built: boolean
+  does: string
+  customer_can: string[]
+  staff_can: string[]
+  readiness: Readiness | null
+}
+type Recommendations = {
+  family_label: string | null
+  modules: Pick[]
+}
+type CatalogueModule = { key: string; label: string; does: string; built: boolean; future: boolean }
+
+const ALWAYS_LABEL: Record<string, string> = {
+  'core-website': 'Website',
+  'core-marketplace-presence': 'Marketplace listing',
 }
 
-type ModuleState = {
-  module_id: string
-  activation_state: string
-}
-
-type Entitlements = {
-  entitled_modules?: string[]
-}
-
-/** Doc 09 CORE-013 Module Catalog. */
-export default async function ModuleCatalogPage({ params }: { params: { businessId: string } }) {
+/**
+ * Modules & integrations (Business OS Guide §3; Founder §50).
+ *
+ * For each tool: what it does, why LOCAH recommends it, what customers get,
+ * what the team gets, and the setup that remains. Switching a tool on is the
+ * owner's choice; "on" is not "ready" until its setup is true in real data.
+ * Tools LOCAH has not built are not shown at all.
+ */
+export default async function ModulesPage({ params }: { params: { businessId: string } }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
-
-  const statesRes = await apiTry<{ data: ModuleState[] }>(
-    `/v1/b/${params.businessId}/modules`,
-    token
-  )
-  if (!statesRes.ok) {
+  const [recRes, catRes] = await Promise.all([
+    apiTry<{ data: Recommendations }>(`/v1/platform/businesses/${params.businessId}/module-recommendations`, token),
+    apiTry<{ data: { modules: CatalogueModule[] } }>(`/v1/public/taxonomy`, token),
+  ])
+  if (!recRes.ok) {
     return (
       <div>
-        <PageHeader title="Modules" />
-        <GateNotice error={statesRes.error} businessId={params.businessId} moduleLabel="Modules" />
+        <PageHeader title="Tools" />
+        <GateNotice error={recRes.error} businessId={params.businessId} moduleLabel="Modules" />
       </div>
     )
   }
-  const states = new Map(
-    (statesRes.data.data || []).map((state) => [state.module_id, state.activation_state])
-  )
+  const rec = recRes.data.data
+  const built = rec.modules.filter((m) => m.built)
+  // Only what is really there: a Storefront tool LOCAH has not built yet is not claimed.
+  const always = rec.modules.filter((m) => m.tier === 'always' && m.built)
+  const running = built.filter((m) => m.tier !== 'always' && m.readiness?.enabled)
+  const suggested = built.filter((m) => (m.tier === 'core' || m.tier === 'recommended') && !m.readiness?.enabled)
+  const useful = built.filter((m) => m.tier === 'optional' && !m.readiness?.enabled)
+  const known = new Set(rec.modules.map((m) => m.module))
+  const more = (catRes.ok ? catRes.data.data.modules : []).filter((m) => m.built && !m.future && !known.has(m.key))
 
-  const [catalogRes, entitlementsRes] = await Promise.all([
-    apiTry<{ data: CatalogModule[] }>(`/v1/platform/modules`, token),
-    apiTry<{ data: Entitlements }>(
-      `/v1/platform/businesses/${params.businessId}/entitlements`,
-      token
-    ),
-  ])
-  const catalog = catalogRes.ok ? catalogRes.data.data || [] : []
-  const entitled = new Set(
-    entitlementsRes.ok ? entitlementsRes.data.data?.entitled_modules || [] : []
-  )
-
-  const optional = catalog.filter((item) => item.module_class !== 'platform_core')
-  const core = catalog.filter((item) => item.module_class === 'platform_core')
-
+  const base = `/b/${params.businessId}`
   return (
-    <div className="ws-modules-page">
+    <div className="bos-page bos-modules">
       <PageHeader
-        title="The tools that fit your business."
-        subtitle="Explore what is available, what is running and what is included in your plan."
+        title="Tools for your business"
+        subtitle={
+          rec.family_label
+            ? `Recommended for ${rec.family_label.toLowerCase()}, adjusted to how you work. Nothing turns on until you choose it.`
+            : 'Tell LOCAH what kind of business you run to get recommendations. Nothing turns on until you choose it.'
+        }
+        actions={<Link className="btn-quiet" href={`${base}/settings/business`}>How your business works</Link>}
       />
 
-      <section>
-        <h2 className="ws-section-title">Available modules <span>{optional.length} to explore</span></h2>
-        <div className="ws-module-grid">
-          {optional.map((item, index) => {
-            const state = states.get(item.module_id)
-            const isEntitled = entitled.size === 0 || entitled.has(item.module_id)
-            const operational = state === 'active' || state === 'ready'
-            return (
-              <article
-                key={item.module_id}
-                className="ws-module-card"
-              >
-                <div className="ws-module-card__head"><span className="ws-module-card__number">{String(index + 1).padStart(2, '0')}</span>{state ? <StatusPill value={state} /> : <span className="ws-module-card__state">{isEntitled ? 'Not enabled' : 'Not in plan'}</span>}</div>
-                <div className="ws-module-card__body">
-                  <Link href={`/b/${params.businessId}/modules/${item.module_id}`} className="ws-module-card__title">
-                    {item.display_name} <span aria-hidden="true">↗</span>
-                  </Link>
-                  {item.description ? <p>{item.description}</p> : <p>Explore what this module does and how it fits your business.</p>}
-                </div>
-                <div className="ws-module-card__foot">
-                  <Link href={`/b/${params.businessId}/modules/${item.module_id}`}>View details</Link>
-                  {isEntitled ? (
-                    <form action={setModuleState}>
-                      <input type="hidden" name="businessId" value={params.businessId} />
-                      <input type="hidden" name="moduleId" value={item.module_id} />
-                      <input
-                        type="hidden"
-                        name="action"
-                        value={operational ? 'deactivate' : 'enable'}
-                      />
-                      <button type="submit" className="btn-quiet">
-                        {operational ? 'Turn off' : 'Turn on'}
-                      </button>
-                    </form>
-                  ) : null}
-                </div>
-              </article>
-            )
-          })}
-        </div>
-        {optional.length === 0 ? <EmptyState>No modules in the catalog.</EmptyState> : null}
-      </section>
-
-      {core.length > 0 ? (
-        <section style={{ marginTop: '2rem' }}>
-          <h2 className="ws-section-title">Always included <span>The foundation</span></h2>
-          <p style={{ opacity: 0.8 }}>
-            These are part of every Business and cannot be turned off.
-          </p>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {core.map((item) => (
-              <span
-                key={item.module_id}
-                style={{
-                  padding: '0.3rem 0.7rem',
-                  borderRadius: '999px',
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
-                }}
-              >
-                {item.display_name}
-              </span>
-            ))}
+      {running.length > 0 ? (
+        <section aria-labelledby="running-h" className="bos-section">
+          <h2 id="running-h" className="bos-section__title">Running <span>{running.length}</span></h2>
+          <div className="bos-grid">
+            {running.map((m) => <ToolCard key={m.module} m={m} businessId={params.businessId} />)}
           </div>
         </section>
       ) : null}
+
+      <section aria-labelledby="suggested-h" className="bos-section">
+        <h2 id="suggested-h" className="bos-section__title">
+          Recommended for you <span>{suggested.length}</span>
+        </h2>
+        {suggested.length > 0 ? (
+          <div className="bos-grid">
+            {suggested.map((m) => <ToolCard key={m.module} m={m} businessId={params.businessId} />)}
+          </div>
+        ) : (
+          <p className="bos-empty">
+            {running.length > 0
+              ? 'Everything we recommend is already running.'
+              : 'Nothing to recommend yet — set what kind of business you run first.'}{' '}
+            <Link href={`${base}/settings/business`}>How your business works</Link>
+          </p>
+        )}
+      </section>
+
+      {useful.length > 0 ? (
+        <details className="bos-section bos-more">
+          <summary className="bos-section__title">Also useful <span>{useful.length}</span></summary>
+          <div className="bos-grid">
+            {useful.map((m) => <ToolCard key={m.module} m={m} businessId={params.businessId} />)}
+          </div>
+        </details>
+      ) : null}
+
+      {more.length > 0 ? (
+        <details className="bos-section bos-more">
+          <summary className="bos-section__title">More tools <span>{more.length}</span></summary>
+          <p className="bos-hint">Any business can use any tool. These are not usually needed for businesses like yours.</p>
+          <ul className="bos-mini-list">
+            {more.map((m) => (
+              <li key={m.key}>
+                <div>
+                  <strong>{m.label}</strong>
+                  <p>{m.does}</p>
+                </div>
+                <form action={setModuleState}>
+                  <input type="hidden" name="businessId" value={params.businessId} />
+                  <input type="hidden" name="moduleId" value={m.key} />
+                  <input type="hidden" name="action" value="enable" />
+                  <button type="submit" className="btn-quiet">Turn on</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+
+      <section aria-labelledby="always-h" className="bos-section">
+        <h2 id="always-h" className="bos-section__title">Always included</h2>
+        <p className="bos-hint">Every business on LOCAH has these.</p>
+        <div className="bos-pills">
+          {always.map((m) => (
+            <span key={m.module} className="bos-pill">{ALWAYS_LABEL[m.module] ?? m.label}</span>
+          ))}
+        </div>
+      </section>
     </div>
+  )
+}
+
+function ToolCard({ m, businessId }: { m: Pick; businessId: string }) {
+  const r = m.readiness
+  const on = !!r?.enabled
+  const todo = (r?.steps ?? []).filter((s) => !s.done)
+  const status = !on ? null : r?.ready ? 'Ready — customers can use it' : `Setup: ${(r?.steps.length ?? 0) - todo.length} of ${r?.steps.length ?? 0} done`
+  return (
+    <article className={`bos-tool${on ? ' is-on' : ''}`} aria-labelledby={`t-${m.module}`}>
+      <header className="bos-tool__head">
+        <h3 id={`t-${m.module}`}>{m.label}</h3>
+        {status ? <span className={`bos-state${r?.ready ? ' is-ready' : ''}`}>{status}</span> : null}
+      </header>
+      <p className="bos-tool__does">{m.does}</p>
+      <p className="bos-tool__why"><span>Why</span>{m.reason}</p>
+      {m.customer_can.length > 0 ? (
+        <div className="bos-tool__cap"><span>Customers can</span><ul>{m.customer_can.map((c) => <li key={c}>{c}</li>)}</ul></div>
+      ) : null}
+      {m.staff_can.length > 0 ? (
+        <div className="bos-tool__cap"><span>Your team can</span><ul>{m.staff_can.map((c) => <li key={c}>{c}</li>)}</ul></div>
+      ) : null}
+      {r && r.steps.length > 0 ? (
+        <div className="bos-tool__setup">
+          <span>{on ? 'Setup' : 'Setup after you turn it on'}</span>
+          <ul>
+            {r.steps.map((s) => (
+              <li key={s.key} className={s.done ? 'is-done' : ''}>
+                <span aria-hidden>{s.done ? '✓' : '○'}</span> {s.label}
+                <span className="sr-only">{s.done ? ' (done)' : ' (not done yet)'}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <footer className="bos-tool__foot">
+        <form action={setModuleState}>
+          <input type="hidden" name="businessId" value={businessId} />
+          <input type="hidden" name="moduleId" value={m.module} />
+          <input type="hidden" name="action" value={on ? 'deactivate' : 'enable'} />
+          <button type="submit" className={on ? 'btn-quiet' : 'btn-primary'}>{on ? 'Turn off' : 'Turn on'}</button>
+        </form>
+      </footer>
+    </article>
   )
 }

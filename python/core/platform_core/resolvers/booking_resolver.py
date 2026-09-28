@@ -82,6 +82,7 @@ class BookingResolver:
             "offering_id": str(booking.offering_id) if booking.offering_id else None,
             "provider_id": str(booking.provider_id) if booking.provider_id else None,
             "booking_number": booking.booking_number,
+            "channel": booking.channel,
             "reservation_mode": booking.reservation_mode,
             "status": booking.status,
             "title": booking.title,

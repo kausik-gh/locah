@@ -8,12 +8,13 @@ export const dynamic = 'force-dynamic'
 
 type Context = {
   module_states: Record<string, string>
+  permissions: string[]
 }
 
 /**
  * Business workspace shell. Fetches only what the sidebar needs — the business
- * list for the switcher, module states for the module-aware nav, and the
- * unread count — in one parallel round. No page logic here.
+ * list for the switcher, module states and the viewer's permissions for the
+ * area navigation, and the unread count — in one parallel round.
  */
 export default async function WorkspaceBusinessLayout({
   children,
@@ -57,6 +58,7 @@ export default async function WorkspaceBusinessLayout({
     notFound()
   }
   const moduleStates = contextRes.ok ? contextRes.data.data.module_states ?? {} : {}
+  const permissions = contextRes.ok ? contextRes.data.data.permissions ?? [] : null
   const unreadCount = unreadRes.ok ? unreadRes.data.data.unread_count : 0
 
   return (
@@ -65,6 +67,7 @@ export default async function WorkspaceBusinessLayout({
         businessId={params.businessId}
         businesses={businesses}
         moduleStates={moduleStates}
+        permissions={permissions}
         unreadCount={unreadCount}
       />
       <main className="ws-page" style={{ flex: 1, minWidth: 0 }}>

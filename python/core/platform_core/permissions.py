@@ -71,6 +71,47 @@ QUOTES_UPDATE = "quotes.update"
 # Issuing binds the business to a price, so it is separate from editing a draft.
 QUOTES_ISSUE = "quotes.issue"
 
+# Invoices & GST (Capability Universe §14). Issuing a numbered tax document,
+# cancelling one and setting the rates it charges are separate authorities:
+# a cashier bills, an accountant or owner sets up tax.
+INVOICES_READ = "invoices.read"
+INVOICES_ISSUE = "invoices.issue"
+INVOICES_CANCEL = "invoices.cancel"
+INVOICES_RECORD_PAYMENT = "invoices.record_payment"
+INVOICES_EXPORT = "invoices.export"
+INVOICES_CONFIGURE = "invoices.configure"
+
+# Counter billing (Capability Universe §14.1): ringing up sales and running a
+# cash shift; approving what is above a cashier's limit with a PIN; setting
+# the counter's rules.
+POS_USE = "pos.use"
+POS_APPROVE = "pos.approve"
+POS_CONFIGURE = "pos.configure"
+
+# Khata / credit book (Capability Universe §6.2, §14.5): seeing who owes what,
+# recording credit and money received, and setting limits / correcting.
+LEDGER_READ = "ledger.read"
+LEDGER_RECORD = "ledger.record"
+LEDGER_MANAGE = "ledger.manage"
+
+# WhatsApp & messages (Capability Universe §6.2 `messaging`, §12.5): reading
+# the business inbox, replying to customers from the business number, and
+# connecting the number / choosing what is sent automatically.
+MESSAGING_READ = "messaging.read"
+MESSAGING_REPLY = "messaging.reply"
+MESSAGING_CONFIGURE = "messaging.configure"
+
+# Reviews (Capability Universe §17.2): seeing them, replying publicly, and
+# choosing what the website features / reporting a violation to LOCAH.
+# No permission deletes or edits a review — there is no such action.
+REVIEWS_READ = "reviews.read"
+REVIEWS_REPLY = "reviews.reply"
+REVIEWS_MANAGE = "reviews.manage"
+
+# Licences & deadlines (Capability Universe §6.2 `compliance`).
+COMPLIANCE_READ = "compliance.read"
+COMPLIANCE_MANAGE = "compliance.manage"
+
 PAYMENTS_READ = "payments.read"
 PAYMENTS_REFUND = "payments.refund"
 PAYMENTS_MANAGE_CONNECTION = "payments.manage_connection"

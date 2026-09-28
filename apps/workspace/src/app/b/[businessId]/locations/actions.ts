@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { platformUrl } from '@platform/config'
+import { sendJson, type ActionResult } from '@/lib/server-send'
 
 const apiUrl = platformUrl('api')
 
@@ -49,4 +50,15 @@ export async function locationLifecycle(formData: FormData) {
   await send(`/v1/platform/businesses/${businessId}/locations/${locationId}/${action}`, 'POST')
   revalidatePath(`/b/${businessId}/locations/${locationId}`)
   revalidatePath(`/b/${businessId}/locations`)
+}
+
+/** Weekly opening hours: {"mon": [["09:00", "18:00"]], ...}; bookings and WhatsApp offer times from these. */
+export async function saveHours(
+  businessId: string,
+  locationId: string,
+  hours: Record<string, unknown> | null
+): Promise<ActionResult> {
+  const r = await sendJson(`/v1/platform/businesses/${businessId}/locations/${locationId}`, 'PATCH', { hours })
+  if (r.ok) revalidatePath(`/b/${businessId}/locations/${locationId}`)
+  return r
 }

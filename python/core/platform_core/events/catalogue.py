@@ -32,6 +32,8 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "business.context_switched",
             "business.override.updated",
             "business_type.changed",
+            "business.classification.changed",
+            "business.traits.changed",
         }
     ),
     "membership": frozenset(
@@ -258,6 +260,48 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "membership.enrolment.expired",
             "membership.enrolment.cancelled",
             "membership.enrolment.completed",
+        }
+    ),
+    # Capability Universe §14 — the one billing engine.
+    "invoicing": frozenset(
+        {
+            "invoicing.settings.updated",
+            "invoicing.tax_rates.changed",
+            "invoice.issued",
+            "invoice.cancelled",
+            "invoice.payment_recorded",
+            "invoice.paid",
+        }
+    ),
+    # Capability Universe §6.2 `ledger`, §14.5 — the khata.
+    "ledger": frozenset(
+        {
+            "ledger.entry.posted",
+            "ledger.limit.overridden",
+        }
+    ),
+    # Capability Universe §17 — verified reviews and their moderation.
+    "reviews": frozenset(
+        {
+            "review.invited",
+            "review.published",
+            "review.updated",
+            "review.replied",
+            "review.featured",
+            "review.reported",
+            "review.removed",
+            "review.restored",
+            "review.redacted",
+        }
+    ),
+    # Capability Universe §6.2 `compliance` — licences and filings.
+    "compliance": frozenset(
+        {
+            "compliance.item.created",
+            "compliance.item.updated",
+            "compliance.item.renewed",
+            "compliance.item.filed",
+            "compliance.item.archived",
         }
     ),
 }

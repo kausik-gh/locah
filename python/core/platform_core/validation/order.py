@@ -90,11 +90,18 @@ def validate_line_item(raw: dict[str, Any], *, index: int) -> dict[str, Any]:
                 "Invalid unit price",
                 details={"errors": [_field_error(f"{prefix}.unit_price", "Must be >= 0")]},
             )
+    options = raw.get("options")
+    if options is not None and not isinstance(options, dict):
+        raise ValidationError(
+            "Invalid choices",
+            details={"errors": [_field_error(f"{prefix}.options", "Must be an object")]},
+        )
     return {
         "offering_id": offering_id,
         "variant_id": variant_id,
         "quantity": quantity,
         "unit_price": parsed_price,
+        "options": options or {},
     }
 
 
@@ -128,7 +135,16 @@ def validate_create_payload(raw: dict[str, Any]) -> dict[str, Any]:
     idempotency_key = raw.get("idempotency_key")
     if idempotency_key is not None:
         idempotency_key = str(idempotency_key).strip() or None
+    # GST place of supply (a two-digit state code), when the buyer's state is
+    # known — for delivery, where the goods go (Capability Universe §14.4).
+    place_of_supply = str(raw.get("place_of_supply") or "").strip() or None
+    if place_of_supply is not None and not (len(place_of_supply) == 2 and place_of_supply.isdigit()):
+        raise ValidationError(
+            "Invalid place of supply",
+            details={"errors": [_field_error("place_of_supply", "Two-digit GST state code")]},
+        )
     return {
+        "place_of_supply": place_of_supply,
         "location_id": validate_uuid(raw["location_id"], field="location_id"),
         "customer_contact_id": validate_optional_uuid(
             raw.get("customer_contact_id"), field="customer_contact_id"

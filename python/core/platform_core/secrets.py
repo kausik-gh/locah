@@ -30,6 +30,8 @@ _warned: set[str] = set()
 _PUBLIC_VALUES = frozenset(
     {
         "preview-dev-secret",
+        "document-link-dev-secret",
+        "pos-approval-dev-secret",
         "test-payment-webhook-secret",
         "super-secret-jwt-token-with-at-least-32-characters-long",
     }

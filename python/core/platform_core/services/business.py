@@ -23,6 +23,7 @@ from platform_core.models import (
     BusinessProfile,
     CommercialEntitlement,
 )
+from platform_core.catalog.modules import storefront_modules
 from platform_core.permissions import ALL_PERMISSIONS, PLATFORM_CORE_MODULE_IDS, ROLE_PRIMARY_OWNER
 from platform_core.services.audit import AuditService
 from platform_core.services.entitlement import EntitlementService, ModuleService
@@ -302,11 +303,39 @@ class BusinessService:
                     activated_at=now,
                 )
             )
+        # Capability Universe §6.1: "Storefront is always on" — every built
+        # Storefront module starts active (unbuilt ones join when they ship).
+        for module_id in storefront_modules():
+            session.add(
+                BusinessModuleState(
+                    business_id=business.id,
+                    module_id=module_id,
+                    activation_state="active",
+                    enabled_at=now,
+                    activated_at=now,
+                )
+            )
         await session.flush()
 
         await BusinessService._set_identity_default_business(
             session, identity_id=identity_id, business_id=business.id
         )
+
+        # Capability Universe §4.4: the picked kind is a column, and its default
+        # operating traits are seeded (never a module grant).
+        picked = input_data.classification or {}
+        if picked.get("category_key"):
+            from platform_core.catalog.taxonomy import resolve
+            from platform_core.services.business_classification import (
+                BusinessClassificationService,
+            )
+
+            if resolve(picked.get("category_key"), picked.get("subcategory_key") or None):
+                await BusinessClassificationService.set_classification(
+                    session, business, category_key=picked["category_key"],
+                    subcategory_key=picked.get("subcategory_key") or None,
+                    actor_id=None, audit=False,
+                )
 
         await OutboxService.publish(
             session,

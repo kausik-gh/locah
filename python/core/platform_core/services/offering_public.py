@@ -1,0 +1,74 @@
+"""What a business's website shows about each offering, by kind (Capability
+Universe §6.3: the kind decides the fields, website section and flow).
+
+Pack prices and choice prices are computed here from the catalogue so the site
+never works a price out itself; checkout prices the line again on the server.
+A cause shows what has actually been given — the sum of its paid gifts — and
+nothing else.
+"""
+
+from __future__ import annotations
+
+import uuid
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from platform_core.catalog.offering_kinds import KINDS
+from platform_core.models import Offering, OfferingVariant, OrderLineItem, SalesOrder
+
+PAISE = Decimal("0.01")
+
+
+async def public_details(
+    session: AsyncSession, business_id: uuid.UUID, offerings: list[Offering]
+) -> dict[str, dict[str, Any]]:
+    ids = [o.id for o in offerings]
+    variants: dict[str, list[dict[str, Any]]] = {}
+    if ids:
+        for v in (await session.execute(
+            select(OfferingVariant).where(OfferingVariant.offering_id.in_(ids), OfferingVariant.deleted_at.is_(None),
+                                          OfferingVariant.status == "active")
+            .order_by(OfferingVariant.sort_order, OfferingVariant.name)
+        )).scalars().all():
+            variants.setdefault(str(v.offering_id), []).append({
+                "id": str(v.id), "name": v.name, "attributes": dict(v.attributes or {}),
+                "price_amount": float(v.price_amount) if v.price_amount is not None else None})
+    causes = [o.id for o in offerings if o.offering_type == "cause"]
+    raised: dict[str, Decimal] = {}
+    if causes:
+        for oid, total in (await session.execute(
+            select(OrderLineItem.offering_id, func.coalesce(func.sum(OrderLineItem.line_total), 0))
+            .join(SalesOrder, SalesOrder.id == OrderLineItem.order_id)
+            .where(OrderLineItem.offering_id.in_(causes), SalesOrder.payment_status == "paid",
+                   SalesOrder.status.notin_(("cancelled", "rejected")), SalesOrder.deleted_at.is_(None))
+            .group_by(OrderLineItem.offering_id)
+        )).all():
+            raised[str(oid)] = Decimal(str(total))
+
+    out: dict[str, dict[str, Any]] = {}
+    for o in offerings:
+        k = KINDS.get(o.offering_type)
+        attrs = dict(o.attributes or {})
+        public_keys = {f.key for f in k.fields if f.public} if k else set()
+        base = Decimal(str(o.price_amount)) if o.price_amount is not None else None
+        packs = []
+        for p in o.sell_units or []:
+            price = (base * Decimal(p["qty"]) / Decimal(1000)).quantize(PAISE, ROUND_HALF_UP) if base is not None else None
+            packs.append({"label": p["label"], "price_amount": float(price) if price is not None else None})
+        item: dict[str, Any] = {
+            "kind": {"label": k.label, "flow": k.flow, "cta": k.cta, "extra_ctas": list(k.extra_ctas)}
+            if k else {"label": o.offering_type, "flow": "enquiry", "cta": "Enquire", "extra_ctas": []},
+            "attributes": {key: val for key, val in attrs.items() if key in public_keys},
+            "labels": {f.key: f.label for f in k.fields} if k else {},
+            "units": {f.key: f.unit for f in k.fields if f.unit} if k else {},
+            "option_groups": list(o.option_groups or []),
+            "packs": packs,
+            "variants": variants.get(str(o.id), []),
+        }
+        if o.offering_type == "cause":
+            item["raised_amount"] = float(raised.get(str(o.id), Decimal(0)))
+        out[str(o.id)] = item
+    return out

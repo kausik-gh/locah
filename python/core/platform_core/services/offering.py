@@ -220,6 +220,14 @@ class OfferingService:
         OfferingService._check_version(offering, expected_version)
         before = OfferingService.serialize(offering)
         validated = validate_product_patch_payload(payload)
+        kind_keys = [k for k in ("attributes", "option_groups", "sell_units", "variant_options", "hsn_sac",
+                                 "stock_unit") if k in validated]
+        if kind_keys:
+            from platform_core.validation.offering import clean_kind_fields
+
+            raw_kind = {k: validated.pop(k) for k in kind_keys}
+            validated.update(clean_kind_fields(offering.offering_type, raw_kind, current={
+                "stock_unit": offering.stock_unit, "sell_units": offering.sell_units}))
         if validated.get("category_id"):
             await OfferingResolver.resolve_category(
                 session,
@@ -367,14 +375,18 @@ class OfferingService:
         await OfferingService._assert_unique_variant_sku(
             session, business_id=business_id, sku=sku
         )
+        from platform_core.validation.offering import validate_barcode
+
+        attributes = OfferingService._variant_attributes(offering, payload.get("attributes"))
         variant = OfferingVariant(
             business_id=business_id,
             offering_id=offering.id,
             name=name,
             sku=sku,
-            barcode=str(payload["barcode"]).strip() if payload.get("barcode") else None,
+            barcode=validate_barcode(payload.get("barcode")),
             price_amount=payload.get("price_amount"),
             sort_order=int(payload.get("sort_order") or 0),
+            attributes=attributes,
         )
         session.add(variant)
         await session.flush()
@@ -404,3 +416,57 @@ class OfferingService:
             after_state=after,
         )
         return variant
+
+
+    # ---------------------------------------------------------------- variant matrix (§6.1)
+    @staticmethod
+    def _variant_attributes(offering: Offering, raw: Any) -> dict[str, str]:
+        """A variant's place in the size × colour matrix; checked against the axes."""
+        if not raw:
+            return {}
+        axes = {a["name"]: a["values"] for a in (offering.variant_options or [])}
+        out: dict[str, str] = {}
+        for key, value in dict(raw).items():
+            if key not in axes or str(value) not in axes[key]:
+                raise ValidationError(
+                    f"{key} = {value} is not one of this product's options",
+                    details={"errors": [{"field": "attributes", "message": "Unknown option"}]},
+                )
+            out[key] = str(value)
+        return out
+
+    @staticmethod
+    async def generate_variant_matrix(
+        session: AsyncSession, *, business_id: uuid.UUID, offering_id: uuid.UUID, actor_id: uuid.UUID,
+        correlation_id: str,
+    ) -> list[OfferingVariant]:
+        """Create one variant per combination of the offering's options that
+        does not exist yet (Capability Universe §6.1 "size × colour matrix").
+        Each gets its own stock; the price follows the product until set."""
+        import itertools
+
+        offering = await OfferingResolver.resolve_operable(session, business_id=business_id, offering_id=offering_id)
+        axes = list(offering.variant_options or [])
+        if not axes:
+            raise ValidationError("Add options such as Size or Colour first",
+                                  details={"errors": [{"field": "variant_options", "message": "No options"}]})
+        combos = list(itertools.product(*[a["values"] for a in axes]))
+        if len(combos) > 200:
+            raise ValidationError("That makes more than 200 variants — use fewer options",
+                                  details={"errors": [{"field": "variant_options", "message": "Too many"}]})
+        existing = (await session.execute(
+            select(OfferingVariant).where(OfferingVariant.offering_id == offering.id,
+                                          OfferingVariant.deleted_at.is_(None))
+        )).scalars().all()
+        have = {tuple(sorted((v.attributes or {}).items())) for v in existing}
+        created = []
+        for i, combo in enumerate(combos):
+            attrs = {a["name"]: value for a, value in zip(axes, combo)}
+            if tuple(sorted(attrs.items())) in have:
+                continue
+            created.append(await OfferingService.create_variant(
+                session, business_id=business_id, offering_id=offering.id, actor_id=actor_id,
+                correlation_id=correlation_id,
+                payload={"name": " / ".join(combo), "attributes": attrs, "sort_order": i},
+            ))
+        return created

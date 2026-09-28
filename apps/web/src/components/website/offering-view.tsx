@@ -1,0 +1,76 @@
+/* Pure helpers shared by the offering card (client) and server-rendered
+   tenant pages such as the enquiry page. No hooks here. */
+
+export type Choice = { label: string; price_delta: string }
+export type OptionGroup = { name: string; required: boolean; max: number; choices: Choice[] }
+export type PublicOffering = {
+  id: string
+  title: string
+  description?: string | null
+  offering_type?: string | null
+  price_type?: string
+  price_amount?: number | null
+  currency?: string
+  image_url?: string | null
+  kind?: { label: string; flow: string; cta: string; extra_ctas: string[] }
+  attributes?: Record<string, unknown>
+  labels?: Record<string, string>
+  units?: Record<string, string>
+  option_groups?: OptionGroup[]
+  packs?: { label: string; price_amount: number | null }[]
+  variants?: { id: string; name: string; price_amount: number | null }[]
+  raised_amount?: number
+}
+
+export function money(amount?: number | null, currency?: string) {
+  if (amount === null || amount === undefined) return null
+  try {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: currency || 'INR',
+      maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    }).format(amount)
+  } catch {
+    return `₹${amount}`
+  }
+}
+
+export function priceLabel(o: PublicOffering): string | null {
+  if (o.offering_type === 'cause') return null
+  if (o.packs?.length) {
+    const first = o.packs.find((p) => p.price_amount !== null)
+    return first ? `${money(first.price_amount, o.currency)} / ${first.label}` : null
+  }
+  if (o.price_type === 'enquiry') return 'Price on request'
+  if (o.price_type === 'free') return 'Free'
+  const p = money(o.price_amount, o.currency)
+  if (!p) return null
+  return o.price_type === 'starting_from' ? `From ${p}` : p
+}
+
+/** A kind's own details, labelled in words, e.g. "Fuel: Petrol". */
+export function Specs({ o, skip = [] }: { o: PublicOffering; skip?: string[] }) {
+  // The kind's own field order (labels arrive in it); the stored attributes
+  // come back in the database's key order.
+  const attrs = o.attributes ?? {}
+  const order = Object.keys(o.labels ?? {}).filter((k) => k in attrs)
+  const rows = (order.length ? order.map((k) => [k, attrs[k]] as [string, unknown]) : Object.entries(attrs))
+    .filter(([k, v]) => !skip.includes(k) && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0))
+    .filter(([k]) => !['min_amount', 'suggested_amounts', 'goal_amount', 'price_per', 'map_link'].includes(k))
+  if (rows.length === 0) return null
+  return (
+    <dl className="ls-specs">
+      {rows.map(([k, v]) => (
+        <div key={k} className="ls-specs__row">
+          <dt>{o.labels?.[k] ?? k}</dt>
+          <dd>
+            {Array.isArray(v) ? (
+              <ul>{v.map((x) => <li key={String(x)}>{String(x)}</li>)}</ul>
+            ) : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : `${String(v)}${o.units?.[k] ? ` ${o.units[k]}` : ''}`}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+

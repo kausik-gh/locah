@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { CartItem, cartStorageKey, fetchPublicOfferings } from '@/lib/checkout-api'
+import { addToBasket, fetchPublicOfferings } from '@/lib/checkout-api'
+import { OfferingCard } from './OfferingCard'
+import type { PublicOffering } from './offering-view'
 
 /**
  * The live-record renderer behind every "list" section type.
@@ -19,16 +21,12 @@ import { CartItem, cartStorageKey, fetchPublicOfferings } from '@/lib/checkout-a
 
 export type ItemKind = 'offerings' | 'menu' | 'plans' | 'rooms' | 'classes'
 
-type Offering = {
-  id: string
-  title: string
-  description?: string | null
-  price_amount?: number | null
-  currency?: string
-  /** Optional — present once the public offerings payload exposes them. */
-  offering_type?: string | null
-  category?: string | null
-  image_url?: string | null
+type Offering = PublicOffering & { category?: string | null }
+
+/** An item that needs choosing (pack, cut, add-ons, size) or is not a cart item. */
+function needsCard(o: Offering) {
+  const flow = o.kind?.flow ?? 'cart'
+  return flow !== 'cart' || Boolean(o.packs?.length || o.option_groups?.length || o.variants?.length)
 }
 
 function money(amount?: number | null, currency?: string) {
@@ -115,28 +113,13 @@ export function LiveItemsSection({
   }, [businessSlug])
 
   function addToCart(o: Offering) {
-    const key = cartStorageKey(businessSlug)
-    let existing: CartItem[] = []
-    try {
-      existing = JSON.parse(localStorage.getItem(key) || '[]')
-    } catch {
-      existing = []
-    }
-    const found = existing.find((i) => i.offering_id === o.id)
-    if (found) found.quantity += 1
-    else
-      existing.push({
-        offering_id: o.id,
-        title: o.title,
-        quantity: 1,
-        unit_price: Number(o.price_amount || 0),
-        currency: o.currency || 'INR',
-      })
-    try {
-      localStorage.setItem(key, JSON.stringify(existing))
-    } catch {
-      /* storage unavailable — the checkout page re-reads from scratch */
-    }
+    addToBasket(businessSlug, {
+      offering_id: o.id,
+      title: o.title,
+      quantity: 1,
+      unit_price: Number(o.price_amount || 0),
+      currency: o.currency || 'INR',
+    })
   }
 
   const filtered = (
@@ -174,6 +157,8 @@ export function LiveItemsSection({
             showPrices={showPrices}
             onAdd={addToCart}
             action={action}
+            slug={businessSlug}
+            capabilities={capabilities}
           />
         ) : kind === 'plans' ? (
           <Plans items={filtered} variant={variant} slug={businessSlug} action={action} />
@@ -189,6 +174,7 @@ export function LiveItemsSection({
             onAdd={addToCart}
             action={action}
             slug={businessSlug}
+            capabilities={capabilities}
           />
         )}
 
@@ -245,6 +231,7 @@ function ItemGrid({
   onAdd,
   action,
   slug,
+  capabilities,
 }: {
   items: Offering[]
   variant: string
@@ -252,47 +239,69 @@ function ItemGrid({
   onAdd: (o: Offering) => void
   action: 'cart' | 'book' | 'enquire' | 'none'
   slug: string
+  capabilities?: Record<string, boolean>
 }) {
   const v = variant === 'list' || variant === 'grid' ? variant : 'cards'
+  const card = (o: Offering) => (
+    <OfferingCard
+      key={o.id}
+      o={o}
+      slug={slug}
+      canOrder={Boolean(capabilities?.order)}
+      canBook={Boolean(capabilities?.book)}
+      canEnquire={Boolean(capabilities?.enquire)}
+    />
+  )
+  // Property projects read as the Capability Universe §19.2 Projects section:
+  // tabs by status, e.g. Upcoming · Live · Completed.
+  const projects = items.filter((o) => o.offering_type === 'property_project')
+  if (projects.length > 0 && projects.length === items.length) return <ProjectTabs items={projects} render={card} />
+  if (v !== 'list') return <div className={`ls-items ls-items--${v}`}>{items.map(card)}</div>
   return (
     <div className={`ls-items ls-items--${v}`}>
       {items.map((o) => {
+        if (needsCard(o)) return card(o)
         const price = showPrices ? money(o.price_amount, o.currency) : null
         return (
           <article key={o.id} className="ls-item">
-            {v !== 'list' && o.image_url ? (
-              <div className="ls-item__media">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={o.image_url} alt="" loading="lazy" />
-              </div>
-            ) : null}
             <div className="ls-item__body">
-              {v === 'list' ? (
-                <>
-                  <div className="ls-item__text">
-                    <h3 className="ls-item__title">{o.title}</h3>
-                    {o.description ? <p className="ls-item__desc">{o.description}</p> : null}
-                  </div>
-                  <span className="ls-item__leader" aria-hidden="true" />
-                  <div className="ls-item__foot">
-                    {price ? <span className="ls-price">{price}</span> : null}
-                    <ItemAction action={action} item={o} slug={slug} onAdd={onAdd} />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h3 className="ls-item__title">{o.title}</h3>
-                  {o.description ? <p className="ls-item__desc">{o.description}</p> : null}
-                  <div className="ls-item__foot">
-                    {price ? <span className="ls-price">{price}</span> : <span />}
-                    <ItemAction action={action} item={o} slug={slug} onAdd={onAdd} />
-                  </div>
-                </>
-              )}
+              <div className="ls-item__text">
+                <h3 className="ls-item__title">{o.title}</h3>
+                {o.description ? <p className="ls-item__desc">{o.description}</p> : null}
+              </div>
+              <span className="ls-item__leader" aria-hidden="true" />
+              <div className="ls-item__foot">
+                {price ? <span className="ls-price">{price}</span> : null}
+                <ItemAction action={action} item={o} slug={slug} onAdd={onAdd} />
+              </div>
             </div>
           </article>
         )
       })}
+    </div>
+  )
+}
+
+const PROJECT_ORDER = ['Upcoming', 'Launching', 'Live', 'Sold out', 'Completed', 'On hold']
+
+function ProjectTabs({ items, render }: { items: Offering[]; render: (o: Offering) => JSX.Element }) {
+  const statusOf = (o: Offering) => String(o.attributes?.project_status ?? 'Live')
+  const tabs = PROJECT_ORDER.filter((s) => items.some((o) => statusOf(o) === s))
+  const [tab, setTab] = useState(tabs.includes('Live') ? 'Live' : tabs[0])
+  return (
+    <div>
+      {tabs.length > 1 ? (
+        <div className="ls-tabs" role="tablist" aria-label="Projects by status">
+          {tabs.map((t) => (
+            <button key={t} type="button" role="tab" aria-selected={tab === t} className={`ls-tab${tab === t ? ' is-on' : ''}`} onClick={() => setTab(t)}>
+              {t}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="ls-items ls-items--cards" role={tabs.length > 1 ? 'tabpanel' : undefined}>
+        {items.filter((o) => tabs.length < 2 || statusOf(o) === tab).map(render)}
+      </div>
     </div>
   )
 }
@@ -302,11 +311,15 @@ function MenuCategorized({
   showPrices,
   onAdd,
   action,
+  slug,
+  capabilities,
 }: {
   items: Offering[]
   showPrices: boolean
   onAdd: (o: Offering) => void
   action: 'cart' | 'book' | 'enquire' | 'none'
+  slug: string
+  capabilities?: Record<string, boolean>
 }) {
   // Group by category; anything uncategorised collects under a neutral heading
   // rather than being dropped.
@@ -327,6 +340,11 @@ function MenuCategorized({
           <div className="ls-menu__items">
             <div className="ls-items ls-items--list">
               {list.map((o) => {
+                if (needsCard(o))
+                  return (
+                    <OfferingCard key={o.id} o={o} slug={slug} canOrder={Boolean(capabilities?.order)}
+                      canBook={Boolean(capabilities?.book)} canEnquire={Boolean(capabilities?.enquire)} />
+                  )
                 const price = showPrices ? money(o.price_amount, o.currency) : null
                 return (
                   <article key={o.id} className="ls-item">
@@ -338,7 +356,7 @@ function MenuCategorized({
                       <span className="ls-item__leader" aria-hidden="true" />
                       <div className="ls-item__foot">
                         {price ? <span className="ls-price">{price}</span> : null}
-                        <ItemAction action={action} item={o} slug="" onAdd={onAdd} />
+                        <ItemAction action={action} item={o} slug={slug} onAdd={onAdd} />
                       </div>
                     </div>
                   </article>

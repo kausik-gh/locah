@@ -96,8 +96,16 @@ def test_every_registry_module_is_seeded() -> None:
     # absence of a projects capability has been met — they have been overridden.
     # The count stays asserted rather than loosened so the next addition is also
     # a conscious decision and not a drift.
+    #
+    # Phase B (2026-09-27) is the next conscious decision: the Business
+    # Capability Universe §6.2 adds 17 modules (pos, ledger, compliance,
+    # dispatch, tasks, attendance, kitchen, ai-employees, connectors, expenses,
+    # procurement, recipes, trade-network, jobs, academics, documents,
+    # donations), directed by the founder's Phase B instructions. Its FUTURE
+    # keys (channel-manager, ticketing) are registered in module_definitions
+    # only, unavailable. 23 + 17 = 40.
     optional = {mid for mid, m in _MODULES.items() if m.module_class == "optional"}
-    assert len(optional) == 23, f"expected 23 optional modules, registry has {len(optional)}"
+    assert len(optional) == 40, f"expected 40 optional modules, registry has {len(optional)}"
 
     for mid, m in _MODULES.items():
         assert db_modules[mid] == m.module_class, (

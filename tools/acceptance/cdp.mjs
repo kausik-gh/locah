@@ -29,6 +29,8 @@ export async function launch({ width = 1440, height = 900, mobile = false } = {}
       '--no-default-browser-check',
       '--use-fake-ui-for-media-stream',
       '--use-fake-device-for-media-stream',
+      // Containers run as root, where Chrome refuses to start sandboxed.
+      ...(process.env.CHROME_NO_SANDBOX ? ['--no-sandbox'] : []),
       'about:blank',
     ],
     { stdio: 'ignore' }
@@ -86,6 +88,14 @@ export async function launch({ width = 1440, height = 900, mobile = false } = {}
         mobile: isMobile,
       })
       await send('Emulation.setTouchEmulationEnabled', { enabled: isMobile })
+    },
+    /** Cut or restore the page's network, as a lost connection would (§14.2 offline tests). */
+    async offline(on) {
+      await send('Network.emulateNetworkConditions', { offline: !!on, latency: 0, downloadThroughput: -1, uploadThroughput: -1 })
+    },
+    /** Render as print (e.g. to check a receipt's print layout) or back to screen. */
+    async media(type) {
+      await send('Emulation.setEmulatedMedia', { media: type || '' })
     },
     async cookie(name, value, url) {
       await send('Network.setCookie', { name, value, url, path: '/' })

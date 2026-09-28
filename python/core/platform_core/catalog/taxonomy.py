@@ -28,28 +28,29 @@ from difflib import SequenceMatcher
 from functools import lru_cache
 from typing import Any
 
-TAXONOMY_VERSION = "2026-09-26.1"
+TAXONOMY_VERSION = "2026-09-27.1"
 
-# Operating traits (Capability Universe §4.3), as used here.
-TRAITS = frozenset({
-    # buyer
-    "b2c", "b2b",
-    # offer
-    "sells_products", "sells_services", "sells_access",
-    # how they transact
-    "order_led", "booking_led", "quote_led", "enquiry_led", "subscription_led", "project_led",
-    "donation_led",
-    # booking kind
-    "appointment", "table", "stay", "class", "rental", "site_visit", "event_date",
-    # fulfilment
-    "walk_in", "pickup", "local_delivery", "shipping", "on_site_service", "digital",
-    # stock
-    "weight_based", "made_to_order", "perishable", "variant_based",
-    # people
-    "provider_based", "field_team",
-    # presentation
-    "portfolio_led", "nonprofit",
-})
+# Operating traits (Capability Universe §4.3) — the complete vocabulary, by group.
+TRAIT_GROUPS: dict[str, tuple[str, ...]] = {
+    "buyer": ("b2c", "b2b"),
+    "offer": ("sells_products", "sells_services", "sells_access"),
+    "transact": ("order_led", "booking_led", "quote_led", "enquiry_led", "subscription_led",
+                 "project_led", "donation_led"),
+    "booking_kind": ("appointment", "table", "stay", "class", "rental", "site_visit", "event_date"),
+    "fulfilment": ("walk_in", "pickup", "local_delivery", "shipping", "on_site_service", "digital"),
+    "stock": ("stock_tracked", "perishable", "weight_based", "variant_based", "serialised",
+              "made_to_order", "ingredient_based"),
+    "people": ("provider_based", "field_team", "shift_staff"),
+    "regulated": ("gst_registered", "composition_scheme", "food_licensed", "health_regulated",
+                  "finance_regulated", "minors_involved"),
+    "presentation": ("portfolio_led", "digital_only", "nonprofit"),
+}
+TRAITS = frozenset(t for group in TRAIT_GROUPS.values() for t in group)
+BOOKING_KINDS = frozenset(TRAIT_GROUPS["booking_kind"])
+
+# Org shape (§4.3, §22): one value; decides role templates and plan tier, not modules.
+ORG_SHAPES: tuple[str, ...] = ("solo", "team", "multi_location", "franchise_brand",
+                               "franchise_outlet", "enterprise")
 
 
 @dataclass(frozen=True)
@@ -83,20 +84,20 @@ def _t(*names: str) -> frozenset[str]:
 
 # Trait sets shared by many subcategories.
 FRESH = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery",
-           "weight_based", "perishable")
-GROCERY = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery", "variant_based")
+           "weight_based", "perishable", "stock_tracked", "food_licensed")
+GROCERY = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery", "variant_based", "stock_tracked")
 HOME_FOOD = _t("b2c", "sells_products", "order_led", "pickup", "local_delivery", "made_to_order",
-               "perishable")
+               "perishable", "food_licensed")
 SHELF_FOOD = _t("b2c", "sells_products", "order_led", "pickup", "local_delivery", "shipping",
-                "made_to_order")
-TIFFIN = _t("b2c", "sells_products", "subscription_led", "order_led", "local_delivery", "perishable")
+                "made_to_order", "food_licensed")
+TIFFIN = _t("b2c", "sells_products", "subscription_led", "order_led", "local_delivery", "perishable", "ingredient_based", "food_licensed")
 DINE = _t("b2c", "sells_products", "order_led", "booking_led", "table", "walk_in", "pickup",
-          "local_delivery")
-CAFE = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery")
+          "local_delivery", "ingredient_based", "food_licensed")
+CAFE = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery", "ingredient_based", "food_licensed")
 BAKERY = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery",
-            "made_to_order", "perishable")
-CATER = _t("b2c", "b2b", "sells_services", "quote_led", "enquiry_led", "event_date", "on_site_service")
-SHOP = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery", "variant_based")
+            "made_to_order", "perishable", "ingredient_based", "food_licensed")
+CATER = _t("b2c", "b2b", "sells_services", "quote_led", "enquiry_led", "event_date", "on_site_service", "ingredient_based", "food_licensed")
+SHOP = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery", "variant_based", "stock_tracked")
 SHOP_SHIP = SHOP | _t("shipping")
 MADE = _t("b2c", "sells_products", "order_led", "enquiry_led", "made_to_order", "pickup", "shipping")
 TAILOR = _t("b2c", "sells_services", "sells_products", "booking_led", "appointment", "made_to_order",
@@ -108,15 +109,15 @@ ARTIST = _t("b2c", "sells_services", "booking_led", "event_date", "enquiry_led",
 GYM = _t("b2c", "sells_access", "subscription_led", "booking_led", "class", "walk_in")
 STUDIO = _t("b2c", "sells_access", "booking_led", "class", "subscription_led")
 COACH = _t("b2c", "sells_services", "booking_led", "appointment", "subscription_led", "digital")
-CLINIC = _t("b2c", "sells_services", "booking_led", "appointment", "walk_in", "provider_based")
-HOSPITAL = CLINIC
-LAB = _t("b2c", "b2b", "sells_services", "booking_led", "appointment", "on_site_service")
-PHARMACY = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery")
+CLINIC = _t("b2c", "sells_services", "booking_led", "appointment", "walk_in", "provider_based", "subscription_led", "health_regulated")
+HOSPITAL = CLINIC - _t("subscription_led")
+LAB = _t("b2c", "b2b", "sells_services", "booking_led", "appointment", "on_site_service", "health_regulated")
+PHARMACY = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery", "stock_tracked", "health_regulated")
 CARE_HOME = _t("b2c", "sells_services", "enquiry_led", "subscription_led", "on_site_service",
-               "field_team")
-THERAPY = _t("b2c", "sells_services", "booking_led", "appointment", "provider_based", "digital")
+               "field_team", "health_regulated")
+THERAPY = _t("b2c", "sells_services", "booking_led", "appointment", "provider_based", "digital", "subscription_led", "health_regulated")
 INSTITUTE = _t("b2c", "sells_services", "enquiry_led", "subscription_led", "class")
-TUTOR = _t("b2c", "sells_services", "booking_led", "class", "enquiry_led", "digital")
+TUTOR = _t("b2c", "sells_services", "booking_led", "class", "enquiry_led", "digital", "subscription_led")
 PRO = _t("b2c", "b2b", "sells_services", "enquiry_led", "booking_led", "appointment")
 CONSULT = _t("b2b", "sells_services", "enquiry_led", "quote_led", "project_led")
 PROPERTY = _t("b2c", "sells_products", "enquiry_led", "booking_led", "site_visit")
@@ -126,16 +127,16 @@ DESIGN = _t("b2c", "b2b", "sells_services", "enquiry_led", "quote_led", "project
 CONTRACTOR = _t("b2c", "b2b", "sells_services", "quote_led", "project_led", "on_site_service",
                 "field_team")
 HOME_SERVICE = _t("b2c", "sells_services", "booking_led", "appointment", "on_site_service",
-                  "field_team")
+                  "field_team", "subscription_led")
 REPAIR = _t("b2c", "sells_services", "walk_in", "enquiry_led", "booking_led", "appointment")
 LAUNDRY = _t("b2c", "sells_services", "order_led", "pickup", "local_delivery", "walk_in")
 DEALER = _t("b2c", "sells_products", "enquiry_led", "booking_led", "site_visit", "walk_in")
 GARAGE = _t("b2c", "sells_services", "booking_led", "appointment", "walk_in")
 DETAILING = _t("b2c", "sells_services", "booking_led", "appointment", "walk_in", "on_site_service",
                "portfolio_led")
-PARTS = _t("b2c", "b2b", "sells_products", "order_led", "walk_in", "pickup", "local_delivery")
+PARTS = _t("b2c", "b2b", "sells_products", "order_led", "walk_in", "pickup", "local_delivery", "stock_tracked")
 RENTAL = _t("b2c", "sells_services", "booking_led", "rental", "pickup", "local_delivery")
-FREIGHT = _t("b2b", "b2c", "sells_services", "quote_led", "enquiry_led", "on_site_service")
+FREIGHT = _t("b2b", "b2c", "sells_services", "quote_led", "enquiry_led", "on_site_service", "order_led")
 RIDE = _t("b2c", "sells_services", "booking_led", "on_site_service")
 STAY = _t("b2c", "sells_services", "booking_led", "stay")
 TOUR = _t("b2c", "sells_services", "enquiry_led", "quote_led", "booking_led", "event_date")
@@ -148,23 +149,23 @@ PHOTO = _t("b2c", "sells_services", "enquiry_led", "quote_led", "event_date", "p
 AGENCY = _t("b2b", "sells_services", "enquiry_led", "quote_led", "project_led", "subscription_led",
             "portfolio_led")
 MAKER = _t("b2c", "b2b", "sells_services", "enquiry_led", "quote_led", "portfolio_led", "digital")
-CREATOR = _t("b2c", "b2b", "sells_services", "sells_products", "enquiry_led", "digital")
-TECH = _t("b2b", "sells_services", "enquiry_led", "quote_led", "project_led", "digital")
-SUPPLY = _t("b2b", "sells_products", "quote_led", "enquiry_led", "shipping", "local_delivery")
-FACTORY = _t("b2b", "sells_products", "quote_led", "made_to_order", "shipping")
+CREATOR = _t("b2c", "b2b", "sells_services", "sells_products", "enquiry_led", "digital", "booking_led", "appointment")
+TECH = _t("b2b", "sells_services", "enquiry_led", "quote_led", "project_led", "digital", "subscription_led")
+SUPPLY = _t("b2b", "sells_products", "quote_led", "enquiry_led", "shipping", "local_delivery", "stock_tracked")
+FACTORY = _t("b2b", "sells_products", "quote_led", "made_to_order", "shipping", "stock_tracked")
 PRINT = _t("b2b", "b2c", "sells_products", "quote_led", "made_to_order", "walk_in", "pickup")
-TRADE = _t("b2b", "sells_products", "order_led", "quote_led", "local_delivery", "shipping")
+TRADE = _t("b2b", "sells_products", "order_led", "quote_led", "local_delivery", "shipping", "stock_tracked")
 FARM = _t("b2c", "b2b", "sells_products", "order_led", "subscription_led", "pickup", "local_delivery",
-          "perishable")
-AGRI = _t("b2c", "b2b", "sells_products", "sells_services", "walk_in", "enquiry_led")
+          "perishable", "stock_tracked", "food_licensed")
+AGRI = _t("b2c", "b2b", "sells_products", "sells_services", "walk_in", "enquiry_led", "stock_tracked")
 ENERGY = _t("b2c", "b2b", "sells_services", "enquiry_led", "quote_led", "project_led", "site_visit",
-            "on_site_service")
-PET_SHOP = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery")
+            "on_site_service", "subscription_led")
+PET_SHOP = _t("b2c", "sells_products", "order_led", "walk_in", "pickup", "local_delivery", "stock_tracked")
 PET_CARE = _t("b2c", "sells_services", "booking_led", "appointment", "stay")
-DAYCARE = _t("b2c", "sells_services", "enquiry_led", "subscription_led", "class")
+DAYCARE = _t("b2c", "sells_services", "enquiry_led", "subscription_led", "class", "minors_involved")
 COWORK = _t("b2b", "b2c", "sells_access", "booking_led", "subscription_led", "rental")
 SECURITY = _t("b2b", "sells_services", "quote_led", "enquiry_led", "subscription_led", "field_team",
-              "on_site_service")
+              "on_site_service", "shift_staff")
 TESTLAB = _t("b2b", "sells_services", "quote_led", "enquiry_led")
 CLUB = _t("b2c", "sells_access", "subscription_led", "booking_led", "event_date")
 NGO = _t("b2c", "donation_led", "nonprofit", "enquiry_led")
@@ -650,6 +651,292 @@ CATEGORIES: tuple[Category, ...] = (
     )),
 )
 
+# ----------------------------------------------------------------------------
+# Subcategories the Capability Universe §4.2 lists as individually selectable
+# that First Launch had folded into a broader entry (the broad entries stay, so
+# nothing already saved changes meaning). Added 2026-09-27 (Phase B, P1-01).
+MINORS = _t("minors_involved")
+FIN = _t("finance_regulated")
+_MORE: dict[str, tuple[Subcategory, ...]] = {
+    "education": (
+        _s("tutor_maths", "Maths tutor", "tutor", TUTOR | MINORS, "maths tuition", "math tutor"),
+        _s("tutor_science", "Science tutor", "tutor", TUTOR | MINORS, "science tuition", "physics tutor",
+           "chemistry tutor"),
+        _s("tutor_german", "German tutor", "tutor", TUTOR, "german teacher", "german lessons"),
+        _s("tutor_ielts", "IELTS tutor", "tutor", TUTOR, "ielts coaching", "ielts classes", "toefl"),
+        _s("tutor_music", "Music tutor", "tutor", TUTOR | MINORS, "music teacher", "piano teacher",
+           "veena teacher"),
+        _s("tutor_art", "Art tutor", "tutor", TUTOR | MINORS, "drawing classes", "art teacher"),
+    ),
+    "professional": (
+        _s("management_consultant", "Management consultant", "consulting", CONSULT, "strategy consultant"),
+        _s("hr_consultant", "HR consultant", "consulting", CONSULT, "hr consultancy", "hr services"),
+        _s("business_consultant", "Business consultant", "consulting", CONSULT, "business advisory"),
+        _s("process_consultancy", "Process consultancy", "consulting", CONSULT, "lean consultant",
+           "six sigma"),
+        _s("iso_consultancy", "Quality / ISO consultancy", "consulting", CONSULT, "iso certification",
+           "quality management"),
+        _s("supply_chain_consultancy", "Supply-chain consultancy", "consulting", CONSULT,
+           "logistics consultant", "supply chain consultant"),
+    ),
+    "finance_insurance": (
+        _s("mortgage_broker", "Mortgage broker", "finance", PRO | FIN, "home loan broker", "mortgage"),
+        _s("investment_adviser", "Investment adviser", "finance", PRO | FIN, "investment advisor",
+           "sebi ria", "stock advisor"),
+        _s("bookkeeping_service", "Bookkeeping service", "professional_firm", PRO | _t("subscription_led"),
+           "bookkeeper", "accounts outsourcing"),
+    ),
+    "real_estate": (
+        _s("real_estate_agency", "Real estate agency", "real_estate_broker", PROPERTY, "property agency"),
+        _s("builder", "Builder", "real_estate_developer", PROPERTY, "house builder", "villa builder"),
+        _s("apartment_projects", "Apartment projects", "real_estate_developer", PROPERTY, "flats",
+           "apartments for sale", "gated community"),
+    ),
+    "design_build": (
+        _s("furniture_designer", "Furniture designer", "design_studio", DESIGN | _t("sells_products",
+           "made_to_order"), "custom furniture", "furniture design"),
+        _s("roofing_contractor", "Roofing contractor", "contractor", CONTRACTOR, "roofing", "roof sheets"),
+        _s("flooring_contractor", "Flooring contractor", "contractor", CONTRACTOR, "flooring", "tiling works"),
+    ),
+    "home_services": (
+        _s("housekeeping", "Housekeeping", "home_service", HOME_SERVICE, "maid service", "house help"),
+        _s("watch_repair", "Watch repair", "repair", REPAIR, "watch service"),
+        _s("shoe_repair", "Shoe repair", "repair", REPAIR, "cobbler"),
+        _s("jewellery_repair", "Jewellery repair", "repair", REPAIR, "jewellery polishing"),
+        _s("furniture_repair", "Furniture repair", "repair", REPAIR, "carpenter", "sofa repair"),
+        _s("electronics_repair", "Electronics repair", "repair", REPAIR, "tv repair", "electronics service"),
+        _s("machinery_repair", "Machinery repair", "repair", REPAIR | _t("b2b", "on_site_service"),
+           "machine repair", "motor rewinding"),
+        _s("printer_service", "Printer service", "repair", REPAIR | _t("b2b"), "printer repair",
+           "photocopier service"),
+    ),
+    "automotive": (
+        _s("mechanic", "Mechanic", "auto_service", GARAGE, "two wheeler mechanic", "car mechanic"),
+    ),
+    "creative": (
+        _s("film_editor", "Editor", "photographer", PHOTO | _t("digital"), "video editor", "film editor"),
+        _s("digital_marketing", "Digital marketing", "creative_agency", AGENCY, "performance marketing"),
+        _s("seo", "SEO", "creative_agency", AGENCY, "seo services", "search engine optimisation"),
+        _s("social_media", "Social media agency", "creative_agency", AGENCY, "social media management"),
+        _s("influencer_management", "Influencer management", "creative_agency", AGENCY,
+           "influencer agency", "talent management"),
+        _s("artist", "Artist", "maker", MAKER, "fine artist", "paintings", "sculptor"),
+        _s("animator", "Animator", "maker", MAKER, "animation", "motion graphics"),
+        _s("fashion_designer", "Fashion designer", "maker", MAKER | _t("sells_products"), "fashion design"),
+    ),
+    "creators": (
+        _s("influencer", "Influencer", "creator", CREATOR, "instagram influencer"),
+        _s("speaker", "Speaker", "coach", COACH | _t("event_date"), "keynote speaker", "trainer (corporate)"),
+        _s("newsletter_creator", "Newsletter creator", "creator", CREATOR | _t("subscription_led"),
+           "newsletter", "substack"),
+    ),
+    "technology": (
+        _s("it_services", "IT services", "software", TECH, "it outsourcing", "managed it"),
+        _s("data_ai_consultancy", "Data & AI consultancy", "software", TECH, "machine learning consultancy",
+           "data science"),
+    ),
+    "industrial": tuple(
+        _s(k, label, "industrial_supplier", SUPPLY, *syn) for k, label, *syn in (
+            ("pumps", "Pumps", "pump dealer", "submersible pumps"),
+            ("valves", "Valves", "valve supplier", "industrial valves"),
+            ("motors", "Motors", "electric motors", "motor dealer"),
+            ("bearings", "Bearings", "bearing dealer"),
+            ("instrumentation", "Instrumentation", "gauges", "sensors", "flow meters"),
+            ("lab_equipment", "Lab equipment", "laboratory equipment", "scientific instruments"),
+            ("safety_equipment", "Safety equipment", "ppe", "safety shoes", "fire safety equipment"),
+            ("electrical_panels", "Panels", "control panels", "electrical panels", "switchgear"),
+            ("industrial_automation", "Automation", "plc", "industrial automation", "scada"),
+            ("machine_tools", "Machine tools", "lathe", "cnc machines", "power tools"),
+        )
+    ) + tuple(
+        _s(k, label, "manufacturer", FACTORY, *syn) for k, label, *syn in (
+            ("food_manufacturer", "Food manufacturer", "food processing", "food factory"),
+            ("textile_manufacturer", "Textile manufacturer", "textile mill", "weaving", "spinning mill"),
+            ("garment_manufacturer", "Garment manufacturer", "garment factory", "apparel manufacturer"),
+            ("plastics_manufacturer", "Plastics manufacturer", "plastic products", "injection moulding"),
+            ("chemical_manufacturer", "Chemical manufacturer", "chemical plant"),
+            ("pharma_manufacturer", "Pharma manufacturer", "pharmaceutical manufacturer", "drug manufacturer"),
+            ("auto_component_manufacturer", "Auto-component manufacturer", "auto parts manufacturer"),
+            ("machinery_manufacturer", "Machinery manufacturer", "machine manufacturer"),
+            ("furniture_manufacturer", "Furniture manufacturer", "furniture factory"),
+            ("packaging_manufacturer", "Packaging manufacturer", "packaging factory"),
+        )
+    ) + tuple(
+        _s(k, label, "manufacturer", FACTORY | _t("project_led", "sells_services", "subscription_led"), *syn)
+        for k, label, *syn in (
+            ("boilers", "Boilers", "boiler manufacturer", "steam boilers"),
+            ("compressors", "Compressors", "air compressors", "compressor dealer"),
+            ("water_treatment_equipment", "Water treatment equipment", "ro plant manufacturer",
+             "effluent treatment plant"),
+            ("conveyors", "Conveyors", "conveyor systems", "material handling"),
+        )
+    ) + tuple(
+        _s(k, label, "manufacturer", FACTORY, *syn) for k, label, *syn in (
+            ("corrugated_boxes", "Corrugated boxes", "carton boxes", "corrugated box manufacturer"),
+            ("labels", "Labels", "label printing", "stickers"),
+            ("bottles", "Bottles", "pet bottles", "bottle manufacturer"),
+            ("flexible_packaging", "Flexible packaging", "pouches", "laminated rolls"),
+        )
+    ) + tuple(
+        _s(k, label, "print_shop", PRINT, *syn) for k, label, *syn in (
+            ("printing_press", "Printing press", "offset printing", "press"),
+            ("digital_printing", "Digital printing", "xerox", "print shop"),
+            ("signage", "Signage", "sign boards", "name boards"),
+            ("flex_printing", "Flex printing", "flex banners", "vinyl printing"),
+            ("engraving", "Engraving", "laser engraving", "trophy engraving"),
+            ("laser_cutting", "Laser cutting", "cnc laser", "acrylic cutting"),
+        )
+    ),
+    "trade": tuple(
+        _s(k, label, "wholesale", TRADE, *syn) for k, label, *syn in (
+            ("fmcg_distributor", "FMCG distributor", "fmcg stockist"),
+            ("pharma_distributor", "Pharma distributor", "medical distributor", "pharma stockist"),
+            ("food_distributor", "Food distributor", "food wholesale"),
+            ("electrical_distributor", "Electrical distributor", "electrical wholesale"),
+            ("building_material_distributor", "Building-material distributor", "cement dealer",
+             "steel dealer", "tiles wholesale"),
+            ("industrial_distributor", "Industrial distributor", "industrial wholesale"),
+        )
+    ) + tuple(
+        _s(k, label, "wholesale", TRADE - _t("local_delivery"), *syn) for k, label, *syn in (
+            ("export_house", "Export house", "export company"),
+            ("garment_exporter", "Garment exporter", "apparel exporter"),
+            ("food_exporter", "Food exporter", "spice exporter", "rice exporter"),
+            ("handicraft_exporter", "Handicraft exporter", "handicrafts export"),
+            ("machinery_importer", "Machinery importer", "machine importer"),
+            ("trading_company", "Trading company", "general trading", "traders"),
+        )
+    ),
+    "agriculture": (
+        _s("organic_farm", "Organic farm", "farm", FARM, "natural farming", "organic farming"),
+        _s("hydroponics", "Hydroponics", "farm", FARM, "hydroponic farm", "microgreens"),
+        _s("irrigation_services", "Irrigation services", "agri_dealer", AGRI | _t("on_site_service",
+           "booking_led"), "drip irrigation", "sprinkler installation"),
+        _s("farm_consultancy", "Farm consultancy", "agri_dealer", AGRI | _t("booking_led", "appointment"),
+           "agri consultant", "farm advisor"),
+        _s("seed_supplier", "Seed supplier", "agri_dealer", AGRI, "seed dealer", "seed shop"),
+        _s("fertiliser_dealer", "Fertiliser dealer", "agri_dealer", AGRI, "fertilizer dealer", "urea dealer"),
+        _s("agri_equipment_dealer", "Agri-equipment dealer", "agri_dealer", AGRI, "farm equipment",
+           "tractor dealer", "sprayer dealer"),
+    ),
+    "energy_env": (
+        _s("battery_storage", "Battery storage", "energy", ENERGY, "inverter installation", "battery backup"),
+        _s("renewable_consultancy", "Renewable consultancy", "energy", ENERGY, "renewable energy consultant"),
+        _s("recycling", "Recycling", "energy", ENERGY | _t("subscription_led"), "recycler", "e-waste"),
+        _s("composting", "Composting", "energy", ENERGY | _t("subscription_led"), "compost", "organic waste"),
+        _s("environmental_consultancy", "Environmental consultancy", "energy", ENERGY,
+           "environmental consultant", "eia consultant"),
+    ),
+    "pets": (
+        _s("pet_food", "Pet food", "pet_shop", PET_SHOP | _t("subscription_led"), "dog food", "cat food"),
+        _s("pet_photography", "Pet photography", "photographer", PHOTO, "pet photographer"),
+    ),
+    "care": (
+        _s("babysitting", "Babysitting", "care_service", CARE_HOME | MINORS, "babysitter", "nanny"),
+        _s("play_school", "Play school", "daycare", DAYCARE, "playschool", "playgroup"),
+        _s("maternity_services", "Maternity services", "care_service",
+           _t("b2c", "sells_services", "booking_led", "appointment", "subscription_led", "health_regulated"),
+           "prenatal classes", "lactation consultant", "doula"),
+        _s("assisted_living", "Assisted living", "care_service", CARE_HOME | _t("stay"), "senior care home"),
+    ),
+    "rentals_spaces": (
+        _s("bike_rental", "Bike rental", "rentals", RENTAL, "cycle rental", "bicycle rental"),
+        _s("tool_rental", "Tool rental", "rentals", RENTAL, "tools on rent", "drill rental"),
+        _s("construction_equipment_rental", "Construction-equipment rental", "rentals", RENTAL | _t("b2b"),
+           "jcb rental", "scaffolding rental", "crane hire"),
+        _s("furniture_rental", "Furniture rental", "rentals", RENTAL, "furniture on rent"),
+        _s("dress_rental", "Dress rental", "rentals", RENTAL, "bridal lehenga rental", "suit rental"),
+        _s("office_rental", "Office rental", "coworking", COWORK, "office space for rent", "serviced office"),
+        _s("incubator", "Incubator", "coworking", COWORK, "startup incubator", "accelerator"),
+        _s("document_storage", "Document storage", "coworking", COWORK - _t("booking_led"),
+           "records storage", "archival storage"),
+    ),
+    "security_staffing": (
+        _s("security_guards", "Guards", "security_facility", SECURITY, "watchman", "bouncers"),
+        _s("alarm_systems", "Alarm systems", "security_facility", SECURITY, "burglar alarm", "intrusion alarm"),
+        _s("commercial_cleaning", "Commercial cleaning", "security_facility", SECURITY, "office cleaning"),
+        _s("maintenance_contracts", "Maintenance contracts", "security_facility", SECURITY,
+           "annual maintenance", "building maintenance"),
+        _s("building_management", "Building management", "security_facility", SECURITY,
+           "apartment management", "society management"),
+        _s("temp_staffing", "Temp staffing", "consulting", CONSULT, "temporary staff", "contract staffing"),
+        _s("domestic_help_agency", "Domestic-help agency", "consulting", CONSULT, "maid agency",
+           "cook agency"),
+    ),
+    "labs": (
+        _s("contract_research", "Contract research", "testing_lab", TESTLAB, "clinical research"),
+        _s("material_testing", "Material testing", "testing_lab", TESTLAB, "material testing lab"),
+        _s("water_testing", "Water testing", "testing_lab", TESTLAB, "water testing lab"),
+        _s("food_testing", "Food testing", "testing_lab", TESTLAB, "food testing lab", "fssai testing"),
+        _s("environmental_testing", "Environmental testing", "testing_lab", TESTLAB, "air quality testing"),
+    ),
+    "community": (
+        _s("sports_club", "Sports club", "community", CLUB, "cricket club", "badminton club"),
+        _s("hobby_club", "Hobby club", "community", CLUB, "photography club", "book club"),
+        _s("association", "Association", "community", CLUB, "residents association", "welfare association"),
+        _s("chamber", "Chamber of commerce", "community", CLUB, "trade association", "business chamber"),
+        _s("member_network", "Member network", "community", CLUB, "networking group", "alumni network"),
+        _s("trust", "Trust", "community", NGO | _t("booking_led", "event_date"), "charitable trust"),
+        _s("community_hall", "Community hall", "banquet_hall", HALL, "community centre hall"),
+        _s("animal_rescue", "Animal rescue", "ngo", NGO, "animal shelter", "stray rescue"),
+        _s("education_ngo", "Education NGO", "ngo", NGO | MINORS, "education charity"),
+        _s("social_enterprise", "Social enterprise", "ngo", NGO | _t("sells_products", "order_led"),
+           "impact enterprise"),
+        _s("charity", "Charity", "ngo", NGO, "charitable organisation"),
+    ),
+}
+
+# Default-trait corrections for First Launch entries so each family's Core
+# modules follow from the traits (MD §2 rule 3); owner edits still win.
+_TRAIT_PATCH: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "electronics": (_t("serialised"), _t()),
+    "mobile_store": (_t("serialised"), _t()),
+    "jewellery": (_t("stock_tracked"), _t()),
+    "school": (MINORS, _t()), "preschool": (MINORS, _t()), "tuition_centre": (MINORS, _t()),
+    "coaching": (MINORS, _t()), "music_school": (MINORS, _t()), "dance_school": (MINORS, _t()),
+    "tutor": (MINORS, _t()), "kids_sports": (MINORS, _t()),
+    "online_educator": (_t("order_led", "subscription_led"), _t()),
+    "financial_adviser": (FIN, _t()), "insurance_agent": (FIN, _t()), "loan_consultant": (FIN, _t()),
+    "wealth_manager": (FIN, _t()),
+    "warehousing": (_t("subscription_led", "stock_tracked"), _t()),
+    "cold_storage": (_t("subscription_led", "stock_tracked"), _t()),
+    "self_storage": (_t("subscription_led"), _t()),
+    "process_equipment": (_t("sells_services", "subscription_led"), _t()),
+    "garage": (_t("stock_tracked"), _t()), "car_wash": (_t("subscription_led"), _t()),
+    "veterinary": (_t("stock_tracked"), _t()),
+    "hospital": (_t(), _t()),
+    # §21.1 "Fruit, vegetable, dairy, egg sellers": daily subscriptions are Core.
+    "fruit_shop": (_t("subscription_led"), _t()), "vegetable_shop": (_t("subscription_led"), _t()),
+    "organic_produce": (_t("subscription_led"), _t()), "eggs": (_t("subscription_led"), _t()),
+    "cloud_kitchen": (_t("subscription_led"), _t()),
+    # §21.2 tailors / bridal / designer labels: fitting appointments.
+    "boutique": (_t("booking_led", "appointment"), _t()), "designer_label": (_t("booking_led", "appointment"), _t()),
+    # §21.9 CA / CS / tax firms run on retainers.
+    "company_secretary": (_t("subscription_led"), _t()), "tax_consultant": (_t("subscription_led"), _t()),
+    "renovation": (_t("site_visit"), _t()),
+    "mechanic": (_t("stock_tracked"), _t()),
+    # §21.8 tyres and batteries are fitted, not only sold.
+    "tyres": (_t("sells_services", "booking_led", "appointment"), _t()),
+    "batteries": (_t("sells_services", "booking_led", "appointment"), _t()),
+    "cultural_centre": (_t("donation_led"), _t()),
+}
+
+
+def _extended() -> tuple[Category, ...]:
+    from dataclasses import replace
+
+    out = []
+    for c in CATEGORIES:
+        subs = []
+        for sub in c.subcategories + _MORE.get(c.key, ()):
+            add, remove = _TRAIT_PATCH.get(sub.key, (_t(), _t()))
+            subs.append(replace(sub, traits=(sub.traits | add) - remove))
+        out.append(replace(c, subcategories=tuple(subs)))
+    return tuple(out)
+
+
+CATEGORIES = _extended()
+
 CATEGORIES_BY_KEY: dict[str, Category] = {c.key: c for c in CATEGORIES}
 SUBCATEGORIES: dict[str, tuple[Category, Subcategory]] = {
     s.key: (c, s) for c in CATEGORIES for s in c.subcategories
@@ -754,7 +1041,17 @@ def tiles() -> list[dict[str, str]]:
 
 
 def catalogue() -> dict[str, Any]:
-    """Everything the picker needs, from this one registry."""
+    """Everything the picker, the traits editor and the Modules page need, from
+    this one registry (§4.4: the frontend reads it through one endpoint and
+    nothing is hard-coded twice)."""
+    from platform_core.catalog.modules import MODULES, STOREFRONT
+    from platform_core.catalog.recommendation import family_key_for
+    from platform_core.services.business_classification import (
+        GROUP_LABELS,
+        ORG_SHAPE_LABELS,
+        TRAIT_LABELS,
+    )
+
     return {
         "version": TAXONOMY_VERSION,
         "tiles": tiles(),
@@ -762,9 +1059,25 @@ def catalogue() -> dict[str, Any]:
             {
                 "key": c.key,
                 "label": c.label,
-                "subcategories": [{"key": s.key, "label": s.label} for s in c.subcategories],
+                "subcategories": [
+                    {"key": s.key, "label": s.label, "traits": sorted(s.traits),
+                     "family": family_key_for(s.key, s.playbook)}
+                    for s in c.subcategories
+                ],
             }
             for c in CATEGORIES
+        ],
+        "trait_groups": [
+            {"key": g, "label": GROUP_LABELS[g],
+             "traits": [{"key": t, "label": TRAIT_LABELS[t]} for t in keys]}
+            for g, keys in TRAIT_GROUPS.items()
+        ],
+        "org_shapes": [{"key": k, "label": v} for k, v in ORG_SHAPE_LABELS.items()],
+        "storefront": list(STOREFRONT),
+        "modules": [
+            {"key": m.key, "label": m.label, "does": m.does, "phase": m.phase,
+             "built": m.built, "future": m.future}
+            for m in MODULES.values()
         ],
     }
 

@@ -192,3 +192,24 @@ def test_checkout_options_only_active_modes(owner: tuple[dict[str, str], uuid.UU
     modes = opts.json()["data"]["fulfilment_modes"]
     assert "pickup" in modes
     assert "delivery" not in modes
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+def test_guest_cannot_set_their_own_price(owner: tuple[dict[str, str], uuid.UUID]) -> None:
+    """Capability Universe §12.6: cart price = catalogue price. A price sent by
+    the browser is ignored; the order is priced from the catalogue."""
+    headers, _ = owner
+    client = TestClient(app)
+    setup = _setup_commerce(client, headers)
+    placed = client.post(
+        f"/v1/public/websites/{setup['business']['slug']}/checkout",
+        json={
+            "items": [{"offering_id": setup["product"]["id"], "quantity": 2, "unit_price": 0.01}],
+            "fulfilment_mode": "pickup",
+            "payment_method": "cod",
+            "guest": {"name": "Guest", "email": f"{uuid.uuid4()}@example.com"},
+        },
+    )
+    assert placed.status_code == 200, placed.text
+    order = placed.json()["data"]["order"]
+    assert float(order["total_amount"]) == 100.0, order

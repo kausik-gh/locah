@@ -79,6 +79,32 @@ function strategyDecisions(theme: Record<string, unknown>): StrategyDecision[] {
   })
 }
 
+/** The business's own colours as --site-* variables. Tenant pages outside the
+ *  section renderer (e.g. the enquiry page) use this too, so no LOCAH colour
+ *  ever stands in for the business's theme. */
+export function siteThemeVars(data: PublicWebsitePayload): { styleVars: ThemeVars; paletteMode: string } {
+  const theme = data.theme || {}
+  const type = (data.business.business_type || '').toLowerCase()
+  const personality = String(theme.personality || '') || PERSONALITY[type] || 'clean'
+  const primary = String(theme.primary_color || DEFAULT_PRIMARY[personality] || '#1f3d34')
+  const accent = String(theme.accent_color || primary)
+  const styleVars: ThemeVars = {
+    '--site-primary': primary,
+    '--site-primary-fg': readable(primary),
+    '--site-accent': accent,
+    '--site-accent-fg': readable(accent),
+  }
+  if (theme.text_color) styleVars['--site-ink'] = String(theme.text_color)
+  if (theme.background_color) styleVars['--site-bg'] = String(theme.background_color)
+  if (theme.surface_alt_color) styleVars['--site-bg-alt'] = String(theme.surface_alt_color)
+  if (theme.muted_color) styleVars['--site-muted'] = String(theme.muted_color)
+  const paletteMode = finite(theme.palette_mode, ['light', 'dark'], personality === 'dark' ? 'dark' : 'light')
+  if (theme.palette_mode) {
+    styleVars['--site-border'] = paletteMode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(16, 20, 24, 0.10)'
+  }
+  return { styleVars, paletteMode }
+}
+
 export function WebsitePageView({
   data,
   previewToken,
@@ -108,29 +134,8 @@ export function WebsitePageView({
   )
   const navigationStyle = finite(theme.navigation_style, ['standard', 'compact'], 'standard')
 
-  const primary = String(theme.primary_color || DEFAULT_PRIMARY[personality] || '#1f3d34')
-  const accent = String(theme.accent_color || primary)
   const logo = theme.logo_url ? String(theme.logo_url) : null
-
-  const styleVars: ThemeVars = {
-    '--site-primary': primary,
-    '--site-primary-fg': readable(primary),
-    '--site-accent': accent,
-    '--site-accent-fg': readable(accent),
-  }
-  if (theme.text_color) styleVars['--site-ink'] = String(theme.text_color)
-  if (theme.background_color) styleVars['--site-bg'] = String(theme.background_color)
-  if (theme.surface_alt_color) styleVars['--site-bg-alt'] = String(theme.surface_alt_color)
-  if (theme.muted_color) styleVars['--site-muted'] = String(theme.muted_color)
-  const paletteMode = finite(
-    theme.palette_mode,
-    ['light', 'dark'],
-    personality === 'dark' ? 'dark' : 'light'
-  )
-  if (theme.palette_mode) {
-    styleVars['--site-border'] =
-      paletteMode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(16, 20, 24, 0.10)'
-  }
+  const { styleVars, paletteMode } = siteThemeVars(data)
   // The creative direction: which design language this site speaks. Finite,
   // renderer-backed values only — anything else falls back to the older look.
   const profile = finite(
@@ -211,7 +216,15 @@ export function WebsitePageView({
   // The tab title is set by each route's generateMetadata, not here — a <title>
   // rendered in the tree lands in <body> on React 18 and duplicates the tag.
   const contact: SiteContact = data.business.contact || {}
-  const reachable = Boolean(contact.phone || contact.whatsapp)
+  // §12.2: the business's connected number opens its WhatsApp menu; the
+  // number the owner published is the fallback.
+  const journey = data.whatsapp || null
+  const waHref = journey
+    ? journey.href
+    : contact.whatsapp
+      ? `https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`
+      : ''
+  const reachable = Boolean(contact.phone || waHref)
   const nav = data.navigation || []
   const sections = data.page.sections.filter((s) => s.is_visible !== false)
   const capabilities = data.capabilities || {}
@@ -376,13 +389,14 @@ export function WebsitePageView({
         ))}
       </main>
 
-      {contact.whatsapp ? (
+      {waHref ? (
         <a
           className="ls-wa-float"
-          href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}
+          href={waHref}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`WhatsApp ${name}`}
+          aria-label={journey ? `${journey.label}, ${name}` : `WhatsApp ${name}`}
+          title={journey ? journey.label : undefined}
         >
           <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
             <path
@@ -397,13 +411,9 @@ export function WebsitePageView({
         // On a phone the two things a visitor most wants are always one tap away.
         <nav className="ls-mobile-bar" aria-label="Contact">
           {contact.phone ? <a href={`tel:${contact.phone}`}>{callLabel}</a> : null}
-          {contact.whatsapp ? (
-            <a
-              href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              WhatsApp
+          {waHref ? (
+            <a href={waHref} target="_blank" rel="noopener noreferrer">
+              {journey ? journey.label : 'WhatsApp'}
             </a>
           ) : null}
         </nav>
@@ -438,7 +448,7 @@ export function WebsitePageView({
             </div>
           ) : null}
           {canOrder && !canBook ? <CommerceCart slug={slug} variant="footer" /> : null}
-          {visitLinks.length > 0 ? (
+          {visitLinks.length > 0 || journey ? (
             <div className="ls-foot__col">
               <p className="ls-foot__heading">Your visit</p>
               {canOrder ? <CommerceCart slug={slug} variant="footer-link" /> : null}
@@ -447,6 +457,11 @@ export function WebsitePageView({
                   {item.label}
                 </Link>
               ))}
+              {journey ? (
+                <a href={journey.href} target="_blank" rel="noopener noreferrer">
+                  {journey.label}
+                </a>
+              ) : null}
             </div>
           ) : null}
         </div>

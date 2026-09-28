@@ -7,6 +7,17 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from platform_core.catalog.offering_kinds import (
+    KINDS,
+    STOCK_UNITS,
+    clean_attributes,
+    clean_option_groups,
+    clean_packs,
+    clean_tax_code,
+    clean_variant_options,
+    gtin_ok,
+    kind,
+)
 from platform_core.exceptions import ValidationError
 
 TITLE_MIN = 1
@@ -16,10 +27,8 @@ BARCODE_MAX = 64
 DESCRIPTION_MAX = 5000
 SLUG_MAX = 120
 
-OFFERING_TYPES = frozenset({
-    "product", "menu_item", "service", "accommodation",
-    "membership_plan", "class_session", "rental", "listing",
-})
+OFFERING_TYPES = frozenset(KINDS)
+KIND_FIELDS = ("attributes", "option_groups", "sell_units", "variant_options", "hsn_sac", "stock_unit")
 OFFERING_STATUSES = frozenset({"draft", "active", "archived"})
 PRICE_TYPES = frozenset({"fixed", "starting_from", "variable", "free", "enquiry"})
 VISIBILITY = frozenset({"public", "private"})
@@ -160,13 +169,19 @@ def validate_product_create_payload(raw: dict[str, Any]) -> dict[str, Any]:
                 "Invalid threshold",
                 details={"errors": [_field_error("low_stock_threshold", "Must be >= 0")]},
             )
+    k = kind(offering_type)
+    if k.flow == "give":  # a cause takes what the giver chooses, above its smallest gift
+        price_type, parsed_price = "variable", None
+    kind_fields = clean_kind_fields(offering_type, raw, current=None)
+    barcode = validate_barcode(raw.get("barcode"))
     return {
+        **kind_fields,
         "offering_type": offering_type,
         "title": validate_title(raw.get("title")),
         "description": description,
         "category_id": validate_optional_uuid(raw.get("category_id"), field="category_id"),
         "sku": validate_sku(raw.get("sku")),
-        "barcode": (str(raw["barcode"]).strip() if raw.get("barcode") else None),
+        "barcode": barcode,
         "status": str(raw.get("status") or "draft").strip().lower(),
         "price_type": price_type,
         "price_amount": parsed_price,
@@ -192,7 +207,10 @@ def validate_product_patch_payload(raw: dict[str, Any]) -> dict[str, Any]:
     if "sku" in raw:
         patch["sku"] = validate_sku(raw["sku"])
     if "barcode" in raw:
-        patch["barcode"] = str(raw["barcode"]).strip() if raw.get("barcode") else None
+        patch["barcode"] = validate_barcode(raw.get("barcode"))
+    for key in KIND_FIELDS:  # cleaned by the service against the offering's kind
+        if key in raw:
+            patch[key] = raw[key]
     if "price_type" in raw:
         pt = str(raw["price_type"]).strip().lower()
         if pt not in PRICE_TYPES:
@@ -223,3 +241,42 @@ def validate_product_patch_payload(raw: dict[str, Any]) -> dict[str, Any]:
     if "image_asset_ids" in raw:
         patch["image_asset_ids"] = raw["image_asset_ids"] or []
     return patch
+
+
+def validate_barcode(value: Any) -> str | None:
+    """Any shop code is allowed; a GTIN-shaped one must have a valid check digit."""
+    if not value:
+        return None
+    code = str(value).strip()
+    if len(code) > BARCODE_MAX:
+        raise ValidationError("Barcode too long", details={"errors": [_field_error("barcode", "Too long")]})
+    if code.isdigit() and len(code) in (8, 12, 13, 14) and not gtin_ok(code):
+        raise ValidationError(
+            "That barcode's last digit does not match — check it was typed or scanned correctly",
+            details={"errors": [_field_error("barcode", "GTIN check digit mismatch")]},
+        )
+    return code
+
+
+def clean_kind_fields(offering_type: str, raw: dict[str, Any], current: dict[str, Any] | None) -> dict[str, Any]:
+    """Kind fields (Capability Universe §6.3) for a create, or the changed ones
+    for an update, validated against the offering's kind."""
+    k = kind(offering_type)
+    cur = current or {}
+    out: dict[str, Any] = {}
+    stock_unit = str(raw.get("stock_unit") or cur.get("stock_unit") or ("g" if k.packs else "piece"))
+    if stock_unit not in STOCK_UNITS:
+        raise ValidationError("Unknown stock unit", details={"errors": [_field_error("stock_unit", "Invalid")]})
+    if current is None or "stock_unit" in raw:
+        out["stock_unit"] = stock_unit
+    if current is None or "attributes" in raw:
+        out["attributes"] = clean_attributes(k, raw.get("attributes"))
+    if current is None or "option_groups" in raw:
+        out["option_groups"] = clean_option_groups(k, raw.get("option_groups"))
+    if current is None or "sell_units" in raw or "stock_unit" in raw:
+        out["sell_units"] = clean_packs(k, raw.get("sell_units", cur.get("sell_units")), stock_unit)
+    if current is None or "variant_options" in raw:
+        out["variant_options"] = clean_variant_options(k, raw.get("variant_options"))
+    if current is None or "hsn_sac" in raw:
+        out["hsn_sac"] = clean_tax_code(raw.get("hsn_sac"), k)
+    return out

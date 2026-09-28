@@ -116,7 +116,12 @@ def listing_actions(
     if flags.get("enquire") and "contact" in paths:
         actions.append({"action": "enquire", "label": "Send an enquiry", "href": base + paths["contact"]})
     whatsapp = _digits(contact.get("whatsapp", ""))
-    if len(whatsapp) >= 10:
+    journeys = _digits(contact.get("whatsapp_order", ""))
+    if len(journeys) >= 10:
+        # The business's connected number: "menu" opens its WhatsApp journeys (§12.2).
+        actions.append({"action": "whatsapp", "label": contact.get("whatsapp_order_label") or "Order on WhatsApp",
+                        "href": f"https://wa.me/{journeys}?text=menu"})
+    elif len(whatsapp) >= 10:
         actions.append({"action": "whatsapp", "label": "WhatsApp", "href": f"https://wa.me/{whatsapp}"})
     phone = _digits(contact.get("phone", ""))
     if len(phone) >= 10:

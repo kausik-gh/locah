@@ -66,6 +66,18 @@ class PermissionDenied(PlatformError):
         )
 
 
+class OutsideLocationScope(PlatformError):
+    """A location-scoped member touched a record at another location."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status.HTTP_403_FORBIDDEN,
+            "PERMISSION_DENIED",
+            "That record belongs to a location you do not look after",
+            {"permission": "location_scope"},
+        )
+
+
 class EntitlementRequired(PlatformError):
     def __init__(self, module_id: str):
         super().__init__(

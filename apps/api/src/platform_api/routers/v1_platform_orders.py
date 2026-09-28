@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -38,6 +38,7 @@ class OrderLineItemInput(BaseModel):
     variant_id: UUID | None = None
     quantity: int = Field(ge=1)
     unit_price: float | None = Field(default=None, ge=0)
+    options: dict[str, Any] | None = None
 
 
 class CreateOrderRequest(BaseModel):
@@ -50,6 +51,11 @@ class CreateOrderRequest(BaseModel):
     discount_amount: float = Field(default=0, ge=0)
     internal_reference: str | None = None
     idempotency_key: str | None = None
+    # GST place of supply (two-digit state code) when the buyer's state is
+    # known and differs from the shop's (Capability Universe §14.4).
+    place_of_supply: str | None = Field(default=None, min_length=2, max_length=2)
+    # Taken in the Workspace: over the phone or in person (Capability Universe §6.1 channel).
+    channel: Literal["phone", "workspace"] = "workspace"
     items: list[OrderLineItemInput] = Field(min_length=1)
 
 

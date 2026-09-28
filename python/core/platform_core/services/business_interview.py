@@ -279,6 +279,22 @@ async def _sync_business(session: AsyncSession, business: Business, bp: Business
         if meta.get("classification") != wanted:
             meta["classification"] = wanted
             business.metadata_ = meta
+        # The P1 columns (Capability Universe §4.4) and the default operating
+        # traits follow the settled kind; an owner's own trait choices survive.
+        from platform_core.catalog.taxonomy import resolve
+        from platform_core.services.business_classification import BusinessClassificationService
+
+        sub = bp.category.subcategory_key or None
+        if resolve(bp.category.category_key, sub) and (
+            business.category_key != bp.category.category_key or business.subcategory_key != sub
+        ):
+            await BusinessClassificationService.set_classification(
+                session, business, category_key=bp.category.category_key,
+                subcategory_key=sub, actor_id=None, audit=False,
+            )
+            meta = dict(business.metadata_ or {})
+            meta["classification"] = wanted
+            business.metadata_ = meta
 
 
 async def _queue_logo(
@@ -889,7 +905,14 @@ class BusinessInterviewService:
             for m, state in entitlement.module_states.items()
             if state.activation_state == "active" and state.entitled
         }
-        pending = set(bp.approved_modules) & set(entitlement.entitled_modules)
+        from platform_core.catalog.modules import MODULES as _CATALOGUE
+
+        # Approved but not built yet (Capability Universe modules still to
+        # come) stay approved and off: nothing unbuilt is ever switched on.
+        pending = {
+            m for m in set(bp.approved_modules) & set(entitlement.entitled_modules)
+            if m not in _CATALOGUE or (_CATALOGUE[m].built and not _CATALOGUE[m].future)
+        }
         while pending:
             ready = {
                 mid
@@ -1058,10 +1081,13 @@ class BusinessInterviewService:
         from platform_core.interview.media_director import draw_missing, record, slug
         from platform_core.interview.site_composer import compose_site
 
+        from platform_core.services.usage_meter import CapReached, UsageMeterService
+
+        ai_capped = await UsageMeterService.over_cap(session, job.business_id, "model_tokens")
         await session.commit()  # no transaction held open across the provider calls
         baseline = direct(bp, business.business_type)
         trade = _trade(bp, baseline.archetype)
-        plan_task = asyncio.create_task(generate_creative_plan(bp, business.business_type))
+        plan_task = None if ai_capped else asyncio.create_task(generate_creative_plan(bp, business.business_type))
         images_started = time.monotonic()
         drawn = await draw_missing(bp, baseline, trade)
         images_ms = int((time.monotonic() - images_started) * 1000)
@@ -1069,6 +1095,8 @@ class BusinessInterviewService:
         provider: Any = None
         latency_ms = 0
         try:
+            if plan_task is None:
+                raise CapReached("model_tokens")  # the owner's monthly AI limit: keep the baseline
             direction, copy, provider, latency_ms = await plan_task
             creative_source = direction.source
         except Exception as exc:  # noqa: BLE001 — the pictures still improve the site
@@ -1104,6 +1132,11 @@ class BusinessInterviewService:
             job.ai_provider = provider.provider_name
             job.model_name = provider.model_name
         job.provider_usage = {**dict(getattr(provider, "last_usage", None) or {}), **meta}
+        if provider is not None:
+            await UsageMeterService.record_model_usage(
+                session, job.business_id, getattr(provider, "last_usage", None),
+                key=f"interview_personalization:{job.id}:{job.attempt_count}", feature="interview_personalization",
+            )
 
         locked = await BusinessInterviewService.load_business(session, job.business_id, lock=True)
         snapshot = job.intake or {}

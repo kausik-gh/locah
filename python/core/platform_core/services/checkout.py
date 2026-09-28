@@ -55,7 +55,7 @@ class CheckoutService:
 
     @staticmethod
     async def list_public_offerings(
-        session: AsyncSession, *, slug: str, limit: int = 50
+        session: AsyncSession, *, slug: str, limit: int = 100
     ) -> dict[str, Any]:
         business = await CheckoutService._resolve_business(session, slug)
         rows = (
@@ -90,6 +90,9 @@ class CheckoutService:
             ids = list(o.image_asset_ids or [])
             return images.get(str(ids[0])) if ids else None
 
+        from platform_core.services.offering_public import public_details
+
+        details = await public_details(session, business.id, list(rows))
         return {
             "business": {
                 "id": str(business.id),
@@ -102,9 +105,11 @@ class CheckoutService:
                     "title": o.title,
                     "description": o.description,
                     "offering_type": o.offering_type,
+                    "price_type": o.price_type,
                     "price_amount": float(o.price_amount) if o.price_amount is not None else None,
                     "currency": o.currency,
                     "image_url": _image_for(o),
+                    **details[str(o.id)],
                 }
                 for o in rows
             ],
@@ -186,7 +191,51 @@ class CheckoutService:
         correlation_id: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
+        """The website's checkout: a guest with a name and email."""
         business = await CheckoutService._resolve_business(session, slug)
+        guest = payload.get("guest") or {}
+        display_name = str(guest.get("name") or "").strip()
+        email = str(guest.get("email") or "").strip().lower()
+        phone = (str(guest.get("phone")).strip() if guest.get("phone") else None) or None
+        if not display_name or not email:
+            raise ValidationError(
+                "Guest name and email are required",
+                details={"field": "guest"},
+            )
+
+        # Doc 05 Part 7.1: a guest checkout is bounded to the transaction and
+        # never becomes a Platform Identity. Customer attribution is the
+        # business-scoped CustomerContact; audit/actor attribution is the
+        # storefront owner acting in a guest-checkout context.
+        actor_id = business.primary_owner_identity_id
+        contact = await CustomerService.find_or_create_contact(
+            session,
+            business_id=business.id,
+            correlation_id=correlation_id,
+            actor_id=actor_id,
+            actor_context="guest_checkout",
+            display_name=display_name,
+            email=email,
+            phone=phone,
+        )
+
+        return await CheckoutService.place_for_contact(
+            session, business=business, contact=contact, correlation_id=correlation_id,
+            payload={**payload, "channel": "web"})
+
+    @staticmethod
+    async def place_for_contact(
+        session: AsyncSession,
+        *,
+        business: Business,
+        contact: Any,
+        correlation_id: str,
+        payload: dict[str, Any],
+        actor_context: str = "guest_checkout",
+    ) -> dict[str, Any]:
+        """One order path for every channel (website, WhatsApp): priced from the
+        catalogue, fulfilment job, payment attempt (Capability Universe §12)."""
+        actor_id = business.primary_owner_identity_id
         if not await CheckoutService._orders_active(session, business.id):
             # Auto-enable is not allowed; require module. For First Launch retail types
             # orders is on the plan — Business must enable. Fallback: if entitled core
@@ -250,32 +299,6 @@ class CheckoutService:
                 details={"payment_method": payment_method},
             )
 
-        guest = payload.get("guest") or {}
-        display_name = str(guest.get("name") or "").strip()
-        email = str(guest.get("email") or "").strip().lower()
-        phone = (str(guest.get("phone")).strip() if guest.get("phone") else None) or None
-        if not display_name or not email:
-            raise ValidationError(
-                "Guest name and email are required",
-                details={"field": "guest"},
-            )
-
-        # Doc 05 Part 7.1: a guest checkout is bounded to the transaction and
-        # never becomes a Platform Identity. Customer attribution is the
-        # business-scoped CustomerContact; audit/actor attribution is the
-        # storefront owner acting in a guest-checkout context.
-        actor_id = business.primary_owner_identity_id
-        contact = await CustomerService.find_or_create_contact(
-            session,
-            business_id=business.id,
-            correlation_id=correlation_id,
-            actor_id=actor_id,
-            actor_context="guest_checkout",
-            display_name=display_name,
-            email=email,
-            phone=phone,
-        )
-
         # Validate offerings exist and are public/active before create.
         order_items: list[dict[str, Any]] = []
         for raw in items:
@@ -294,12 +317,27 @@ class CheckoutService:
                     "Cart contains an invalid item",
                     details={"code": "invalid_item", "offering_id": str(offering_id)},
                 )
+            from platform_core.catalog.offering_kinds import KINDS
+
+            kind = KINDS.get(offering.offering_type)
+            if kind is not None and kind.flow not in ("cart", "give"):
+                # Customers book services and rooms, and enquire about homes or
+                # vehicles; only goods, food, packages and gifts go in a cart.
+                raise ValidationError(
+                    f"{offering.title} is {'booked' if kind.flow == 'booking' else 'enquired about'}, not added to a cart",
+                    details={"code": "not_orderable", "offering_id": str(offering_id)},
+                )
             order_items.append(
                 {
                     "offering_id": offering_id,
                     "variant_id": raw.get("variant_id"),
                     "quantity": int(raw.get("quantity") or 1),
-                    "unit_price": raw.get("unit_price"),
+                    # What was chosen (pack, cut, add-ons, a gift amount) —
+                    # priced by the server from the catalogue.
+                    "options": raw.get("options") or {},
+                    # Never the customer's number: the price comes from the
+                    # catalogue (Capability Universe §12.6 "cart price =
+                    # catalogue price"). Any unit_price sent is ignored.
                 }
             )
 
@@ -332,14 +370,20 @@ class CheckoutService:
             business_id=business.id,
             actor_id=actor_id,
             correlation_id=correlation_id,
-            actor_context="guest_checkout",
+            actor_context=actor_context,
             payload={
+                "channel": payload.get("channel"),
                 "location_id": location_id,
                 "customer_contact_id": contact.id,
                 "payment_method": payment_method,
                 "currency": payload.get("currency") or "INR",
                 "idempotency_key": idempotency_key,
                 "items": order_items,
+                # GST place of supply: where delivered goods go (§14.4).
+                "place_of_supply": (
+                    str(delivery_address.get("state_code") or "").strip() or None
+                    if mode == "delivery" and isinstance(delivery_address, dict) else None
+                ),
             },
         )
 

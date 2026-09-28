@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import {
   CartItem,
   cartStorageKey,
+  fetchGstStates,
   placeCheckoutOrder,
   quoteDelivery,
 } from '@/lib/checkout-api'
@@ -73,6 +74,8 @@ export default function CheckoutClient({
   const [city, setCity] = useState('')
   const [line1, setLine1] = useState('')
   const [postal, setPostal] = useState('')
+  const [stateCode, setStateCode] = useState('')
+  const [states, setStates] = useState<{ code: string; name: string }[]>([])
   const [deliveryCharge, setDeliveryCharge] = useState(0)
   const [serviceable, setServiceable] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -99,6 +102,10 @@ export default function CheckoutClient({
       setItems([])
     }
   }, [slug])
+
+  useEffect(() => {
+    if (mode === 'delivery' && !states.length) fetchGstStates().then(setStates).catch(() => setStates([]))
+  }, [mode, states.length])
 
   useEffect(() => {
     if (mode !== 'delivery' || !city) {
@@ -149,16 +156,18 @@ export default function CheckoutClient({
     setSubmitting(true)
     try {
       const data = await placeCheckoutOrder(slug, {
+        // Prices are never sent: the server prices each line from the catalogue.
         items: items.map((i) => ({
           offering_id: i.offering_id,
+          variant_id: i.variant_id,
           quantity: i.quantity,
-          unit_price: i.unit_price,
+          options: i.options,
         })),
         fulfilment_mode: mode,
         payment_method: paymentMethod,
         location_id: options.locations.find((l) => l.is_primary)?.id || options.locations[0]?.id,
         delivery_address:
-          mode === 'delivery' ? { city, line1, postal_code: postal } : undefined,
+          mode === 'delivery' ? { city, line1, postal_code: postal, state_code: stateCode || undefined } : undefined,
         guest: { name, email, phone: phone || undefined },
         idempotency_key: crypto.randomUUID(),
       })
@@ -254,7 +263,7 @@ export default function CheckoutClient({
             <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: '0.5rem' }}>
               {items.map((item) => (
                 <li
-                  key={item.offering_id}
+                  key={item.key ?? item.offering_id}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -265,13 +274,14 @@ export default function CheckoutClient({
                 >
                   <div>
                     <div style={{ fontWeight: 600 }}>{item.title}</div>
+                    {item.detail ? <div style={{ opacity: 0.8 }}>{item.detail}</div> : null}
                     <div style={{ opacity: 0.7 }}>
                       {item.currency} {item.unit_price} × {item.quantity}
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => persist(items.filter((i) => i.offering_id !== item.offering_id))}
+                    onClick={() => persist(items.filter((i) => (i.key ?? i.offering_id) !== (item.key ?? item.offering_id)))}
                   >
                     Remove
                   </button>
@@ -321,6 +331,12 @@ export default function CheckoutClient({
                   value={postal}
                   onChange={(e) => setPostal(e.target.value)}
                 />
+                {states.length ? (
+                  <select aria-label="State" value={stateCode} onChange={(e) => setStateCode(e.target.value)}>
+                    <option value="">State</option>
+                    {states.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
+                  </select>
+                ) : null}
                 <p>
                   {serviceable
                     ? `Delivery charge: ${deliveryCharge.toFixed(2)}`

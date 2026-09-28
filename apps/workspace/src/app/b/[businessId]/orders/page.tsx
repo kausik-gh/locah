@@ -14,7 +14,18 @@ type OrderRow = {
   payment_method: string
   total_amount: number
   currency: string
+  channel?: string | null
   created_at?: string
+}
+
+/** Where the order came from (Capability Universe §12: every channel ends in the same order). */
+const CHANNEL: Record<string, string> = {
+  web: 'Website',
+  whatsapp: 'WhatsApp',
+  pos: 'Counter',
+  phone: 'Phone',
+  workspace: 'Entered by team',
+  marketplace: 'Marketplace',
 }
 
 /** How the money stands, in words a shop owner uses. The stored values
@@ -105,6 +116,11 @@ export default async function OrdersBoardPage({
           },
           { key: 'status', header: 'Status', render: (o) => <StatusPill value={o.status} /> },
           {
+            key: 'channel',
+            header: 'From',
+            render: (o) => (o.channel ? <span className="bos-tag">{CHANNEL[o.channel] || o.channel}</span> : '—'),
+          },
+          {
             key: 'payment',
             header: 'Payment',
             render: (o) => (
@@ -122,7 +138,7 @@ export default async function OrdersBoardPage({
           <EmptyState title="No orders here">
             {searchParams?.status
               ? `Nothing with status "${searchParams.status}" right now.`
-              : 'Orders placed on your website land here for you to accept.'}
+              : 'Orders placed on your website or WhatsApp land here for you to accept.'}
           </EmptyState>
         }
       />

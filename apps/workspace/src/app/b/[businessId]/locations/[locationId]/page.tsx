@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
-import { apiTry } from '@/lib/api'
+import { apiTry, businessHeaders } from '@/lib/api'
 import { GateNotice, PageHeader, StatusPill } from '@/components/ModuleState'
 import { locationLifecycle, updateLocation } from '../actions'
+import { OpeningHours } from './OpeningHours'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,10 +30,14 @@ export default async function LocationDetailPage({
   const token = await getAccessToken()
   if (!token) redirect('/login')
 
-  const res = await apiTry<{ data: LocationDetail }>(
-    `/v1/platform/businesses/${params.businessId}/locations/${params.locationId}`,
-    token
-  )
+  const [res, me] = await Promise.all([
+    apiTry<{ data: LocationDetail }>(
+      `/v1/platform/businesses/${params.businessId}/locations/${params.locationId}`,
+      token
+    ),
+    apiTry<{ data: { permissions: string[] } }>('/v1/me/context', token, businessHeaders(params.businessId)),
+  ])
+  const perms = new Set(me.ok ? me.data.data.permissions ?? [] : [])
   if (!res.ok) {
     return (
       <div>
@@ -122,21 +127,12 @@ export default async function LocationDetailPage({
         </form>
       </section>
 
-      {location.hours ? (
-        <section style={{ marginTop: '2rem' }}>
-          <h2 >Opening hours</h2>
-          <pre
-            style={{
-              background: 'var(--color-surface)',
-              padding: '1rem',
-              borderRadius: '8px',
-              overflowX: 'auto',
-            }}
-          >
-            {JSON.stringify(location.hours, null, 2)}
-          </pre>
-        </section>
-      ) : null}
+      <OpeningHours
+        businessId={params.businessId}
+        locationId={params.locationId}
+        hours={location.hours}
+        canEdit={perms.has('locations.update')}
+      />
     </div>
   )
 }

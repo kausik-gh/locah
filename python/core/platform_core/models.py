@@ -2,7 +2,21 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, Numeric, Text, Time, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    Numeric,
+    SmallInteger,
+    Text,
+    Time,
+    text,
+)
 from sqlalchemy.dialects.postgresql import (
     ARRAY,
     INET,
@@ -120,6 +134,10 @@ class Business(Base):
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id")
     )
     business_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Capability Universe §4.4 — the kind of business and how it is organised.
+    category_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    subcategory_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    org_shape: Mapped[str | None] = mapped_column(Text, nullable=True)
     characteristics: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
@@ -136,6 +154,24 @@ class Business(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class BusinessTrait(Base):
+    """One operating trait of a Business (Capability Universe §4.3)."""
+
+    __tablename__ = "business_traits"
+
+    business_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True
+    )
+    trait_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    set_by: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class BusinessProfile(Base):
@@ -337,6 +373,9 @@ class MarketplaceBusinessProjection(Base):
     site_paths: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
+    # The verified average of every published review (Capability Universe §17.2).
+    rating_average: Mapped[Any | None] = mapped_column(Numeric(3, 2), nullable=True)
+    rating_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     search_vector: Mapped[Any | None] = mapped_column(TSVECTOR, nullable=True)
 
@@ -573,6 +612,13 @@ class Offering(Base):
     image_asset_ids: Mapped[list[UUID]] = mapped_column(
         ARRAY(PG_UUID(as_uuid=True)), nullable=False, server_default=text("'{}'")
     )
+    # Capability Universe §6.1/§6.3: kind fields, choice groups, packs, units, tax code.
+    hsn_sac: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    option_groups: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    sell_units: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    variant_options: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    stock_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'piece'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -593,6 +639,7 @@ class OfferingVariant(Base):
     sku: Mapped[str | None] = mapped_column(Text, nullable=True)
     barcode: Mapped[str | None] = mapped_column(Text, nullable=True)
     price_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -684,6 +731,14 @@ class SalesOrder(Base):
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
     )
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Capability Universe §14: once the business has a tax profile, orders are
+    # priced by the billing engine — its round-off line and what it decided.
+    # Where it came from (Capability Universe §6.1): web, whatsapp, pos, phone, workspace, marketplace, chitbridge.
+    channel: Mapped[str | None] = mapped_column(Text, nullable=True)
+    round_off: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, server_default=text("0"))
+    tax_basis: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -717,6 +772,12 @@ class OrderLineItem(Base):
     track_inventory: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     quantity_reserved: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     quantity_deducted: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    # Capability Universe §6.3: what was chosen (pack, cut, add-ons, a gift
+    # amount) and how much stock the line takes in the offering's stock unit.
+    options: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    stock_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=lambda ctx: ctx.get_current_parameters()["quantity"]
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -980,6 +1041,7 @@ class Booking(Base):
     provider_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("workforce_members.id"), nullable=True
     )
+    channel: Mapped[str | None] = mapped_column(Text, nullable=True)
     booking_number: Mapped[str] = mapped_column(Text, nullable=False)
     reservation_mode: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
@@ -1235,6 +1297,9 @@ class BusinessMembership(Base):
     location_scope: Mapped[list[UUID] | None] = mapped_column(
         ARRAY(PG_UUID(as_uuid=True)), nullable=True
     )
+    # Capability Universe §7.2: the role template (or "custom:<id>") and scope.
+    role_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_scope: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'business'"))
     invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -1258,6 +1323,10 @@ class BusinessInvitation(Base):
     location_scope: Mapped[list[UUID] | None] = mapped_column(
         ARRAY(PG_UUID(as_uuid=True)), nullable=True
     )
+    role_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_scope: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'business'"))
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    join_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     invited_by: Mapped[UUID] = mapped_column(
@@ -1945,4 +2014,588 @@ class ProjectTask(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+# ---------------------------------------------------------------- invoicing (P1-04)
+def _uuid_pk() -> Mapped[UUID]:
+    return mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+
+
+class InvoicingTaxProfile(Base):
+    """How the business bills (Capability Universe §14.4). Owner / CA data."""
+
+    __tablename__ = "invoicing_tax_profiles"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    prices_include_tax: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    round_off: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    issue_on: Mapped[str] = mapped_column(Text, nullable=False)
+    advances_treatment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_due_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bank_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ca_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvoicingRegistration(Base):
+    """A GST registration (one per state), or the business's 'not registered' row."""
+
+    __tablename__ = "invoicing_registrations"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    scheme: Mapped[str] = mapped_column(Text, nullable=False)
+    gstin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    legal_name: Mapped[str] = mapped_column(Text, nullable=False)
+    trade_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    state_code: Mapped[str] = mapped_column(Text, nullable=False)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    composition_declaration: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvoicingRegister(Base):
+    """A billing counter at a location; its series is GSTIN × FY × register."""
+
+    __tablename__ = "invoicing_registers"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    registration_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoicing_registrations.id"))
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    pad: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("5"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvoicingTaxRate(Base):
+    """A GST rate for an offering or an HSN/SAC code, effective over a date range."""
+
+    __tablename__ = "invoicing_tax_rates"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    offering_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    hsn_sac: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rate: Mapped[Any] = mapped_column(Numeric(5, 2), nullable=False)
+    effective_from: Mapped[Any] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvoicingDocument(Base):
+    """Tax invoice, bill of supply, bill, credit note or debit note (§14.4)."""
+
+    __tablename__ = "invoicing_documents"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    register_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoicing_registers.id"))
+    registration_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoicing_registrations.id"))
+    doc_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
+    series_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fy: Mapped[str | None] = mapped_column(Text, nullable=True)
+    seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    issue_date: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    due_date: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'manual'"))
+    order_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("orders_orders.id"), nullable=True)
+    original_document_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    note_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    restock: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    customer_contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    buyer: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    seller: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    place_of_supply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    intra_state: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    reverse_charge: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    prices_include_tax: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    currency: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'INR'"))
+    taxable_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    cgst_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    sgst_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    igst_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    tax_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    round_off: Mapped[Any] = mapped_column(Numeric(8, 2), nullable=False, server_default=text("0"))
+    grand_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    amount_due: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    amount_paid: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    public_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Counter bills (P1-05): the shift and device they were rung up on, when.
+    shift_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    device_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pos_meta: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    # Sold on the customer's account (khata, P1-06): what is owed sits in their ledger.
+    on_account: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    issued_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class InvoicingDocumentLine(Base):
+    __tablename__ = "invoicing_document_lines"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    document_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("invoicing_documents.id", ondelete="CASCADE")
+    )
+    offering_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    variant_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    order_line_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    original_line_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    hsn_sac: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantity: Mapped[Any] = mapped_column(Numeric(12, 3), nullable=False)
+    unit_price: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False)
+    discount: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    taxable_value: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    tax_rate: Mapped[Any | None] = mapped_column(Numeric(5, 2), nullable=True)
+    cgst: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    sgst: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    igst: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    line_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvoicingPayment(Base):
+    __tablename__ = "invoicing_payments"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    document_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoicing_documents.id"))
+    amount: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    method: Mapped[str] = mapped_column(Text, nullable=False)
+    reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    received_on: Mapped[Any] = mapped_column(Date, nullable=False)
+    recorded_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    shift_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    verification: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'verified'"))
+    verified_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------- counter billing (P1-05)
+class PosSettings(Base):
+    """The owner's counter rules (Capability Universe §14.1–§14.3)."""
+
+    __tablename__ = "pos_settings"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    upi_vpa: Mapped[str | None] = mapped_column(Text, nullable=True)
+    upi_payee_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    return_window_days: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("7"))
+    discount_caps: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    block_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("50"))
+    weighed_label: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    receipt_footer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PosApprovalPin(Base):
+    __tablename__ = "pos_approval_pins"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    identity_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    pin_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    failed_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PosShift(Base):
+    """A cash-drawer shift on one register (§14.1, §14.5)."""
+
+    __tablename__ = "pos_shifts"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    register_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("invoicing_registers.id"))
+    device_id: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'open'"))
+    opened_by: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    opening_cash: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    closed_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expected_cash: Mapped[Any | None] = mapped_column(Numeric(14, 2), nullable=True)
+    counted_cash: Mapped[Any | None] = mapped_column(Numeric(14, 2), nullable=True)
+    variance: Mapped[Any | None] = mapped_column(Numeric(14, 2), nullable=True)
+    close_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class PosCashMovement(Base):
+    __tablename__ = "pos_cash_movements"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    shift_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("pos_shifts.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    amount: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    document_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    client_mutation_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_by: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+
+# ---------------------------------------------------------------- khata / credit book (P1-06)
+class LedgerAccount(Base):
+    """A customer's or supplier's running account (Capability Universe §6.2, §14.5)."""
+
+    __tablename__ = "ledger_accounts"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    party_type: Mapped[str] = mapped_column(Text, nullable=False)
+    customer_contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gstin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    balance: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0"))
+    credit_limit: Mapped[Any | None] = mapped_column(Numeric(14, 2), nullable=True)
+    credit_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    public_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_entry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class LedgerEntry(Base):
+    """One append-only line in an account; balance_after is the running balance."""
+
+    __tablename__ = "ledger_entries"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    account_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("ledger_accounts.id"))
+    seq: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    amount: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    balance_after: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    entry_date: Mapped[Any] = mapped_column(Date, nullable=False)
+    due_date: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    method: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    document_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    shift_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    location_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    over_limit_approved_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+
+class MessagingChannel(Base):
+    """A business's WhatsApp number (Capability Universe §9.1). One per business."""
+
+    __tablename__ = "messaging_channels"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    kind: Mapped[str] = mapped_column(Text, nullable=False, default="whatsapp", server_default=text("'whatsapp'"))
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", server_default=text("'pending'"))
+    display_phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone_number_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    waba_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    coexistence: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    quality_rating: Mapped[str | None] = mapped_column(Text, nullable=True)
+    messaging_limit: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_webhook_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    connected_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+
+
+class MessagingSettings(Base):
+    __tablename__ = "messaging_settings"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    language: Mapped[str] = mapped_column(Text, nullable=False, default="en", server_default=text("'en'"))
+    customer_updates: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict,
+                                                             server_default=text("'{}'::jsonb"))
+    human_pause_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=12, server_default=text("12"))
+    cod_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    first_order_cod_cap: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+
+
+class MessagingTemplate(Base):
+    __tablename__ = "messaging_templates"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    template_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    language: Mapped[str] = mapped_column(Text, primary_key=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="submitted", server_default=text("'submitted'"))
+    provider_template_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rejected_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The category Meta decided at approval (may differ from the one asked for).
+    category: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MessagingConversation(Base):
+    """One customer's WhatsApp thread with the business (Capability Universe §12.5)."""
+
+    __tablename__ = "messaging_conversations"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    channel_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("messaging_channels.id"))
+    contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    wa_id: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False, default="customer", server_default=text("'customer'"))
+    profile_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    state: Mapped[str] = mapped_column(Text, nullable=False, default="open", server_default=text("'open'"))
+    handler: Mapped[str] = mapped_column(Text, nullable=False, default="bot", server_default=text("'bot'"))
+    needs_person: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    topic: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assigned_to: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    unread: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_outbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_human_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    waiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    journey: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict,
+                                                    server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+
+
+class MessagingMessage(Base):
+    __tablename__ = "messaging_messages"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    conversation_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("messaging_conversations.id"))
+    direction: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict,
+                                                    server_default=text("'{}'::jsonb"))
+    template_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_message_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_via: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("clock_timestamp()"))
+    status_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MessagingStaffAlert(Base):
+    __tablename__ = "messaging_staff_alerts"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    identity_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"),
+                                              primary_key=True)
+    phone: Mapped[str] = mapped_column(Text, nullable=False)
+    kinds: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list,
+                                             server_default=text("'{}'"))
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    opted_in_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MessagingQuickReply(Base):
+    __tablename__ = "messaging_quick_replies"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
 PlatformProfile = PlatformIdentity
+
+
+class ReviewInvitation(Base):
+    """One per completed interaction (Capability Universe §17.1); its link is the reviewer's credential."""
+
+    __tablename__ = "reviews_invitations"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    customer_contact_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    declined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Review(Base):
+    """A verified review. Never deleted; rating and text change only on the reviewer's path (§17.2)."""
+
+    __tablename__ = "reviews_reviews"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    invitation_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    customer_contact_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    reviewer_name: Mapped[str] = mapped_column(Text, nullable=False)
+    rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'published'"))
+    featured: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    featured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reply_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reply_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    removed_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    removed_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    appeal_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    appeal_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    appealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    appeal_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    appeal_decided_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    redacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewer_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class ReviewPhoto(Base):
+    __tablename__ = "reviews_photos"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    review_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    media_type: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    sort_order: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default=text("0"))
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReviewReport(Base):
+    __tablename__ = "reviews_reports"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    review_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reported_by: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'open'"))
+    decided_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReviewModerationLog(Base):
+    __tablename__ = "reviews_moderation_log"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    review_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_identity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ComplianceItem(Base):
+    """A licence (expiry date) or a filing (next due date) — Capability Universe §6.2 `compliance`."""
+
+    __tablename__ = "compliance_items"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    item_type: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    licence_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    authority: Mapped[str | None] = mapped_column(Text, nullable=True)
+    issued_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    due_on: Mapped[Any] = mapped_column(Date, nullable=False)
+    recurrence: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'none'"))
+    document_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    show_on_site: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    last_done_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class ComplianceHistory(Base):
+    __tablename__ = "compliance_history"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    item_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    from_due: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    to_due: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_identity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

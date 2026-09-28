@@ -86,6 +86,44 @@ export const PERMISSIONS = {
   // Issuing binds the business to a price, so it is separate from editing.
   QUOTES_ISSUE: 'quotes.issue',
 
+  // Module: invoicing (Capability Universe §14)
+  INVOICES_READ: 'invoices.read',
+  INVOICES_ISSUE: 'invoices.issue',
+  INVOICES_CANCEL: 'invoices.cancel',
+  INVOICES_RECORD_PAYMENT: 'invoices.record_payment',
+  INVOICES_EXPORT: 'invoices.export',
+  // Tax profile, GST registrations, registers and rates — owner / CA data.
+  INVOICES_CONFIGURE: 'invoices.configure',
+
+  // Module: pos — counter billing (Capability Universe §14.1)
+  POS_USE: 'pos.use',
+  // Approves, with a PIN, a discount above the cap, a void or a late return.
+  POS_APPROVE: 'pos.approve',
+  POS_CONFIGURE: 'pos.configure',
+
+  // Module: ledger — khata / credit book (Capability Universe §14.5)
+  LEDGER_READ: 'ledger.read',
+  LEDGER_RECORD: 'ledger.record',
+  // Credit limits, supplier accounts, opening balances and corrections.
+  LEDGER_MANAGE: 'ledger.manage',
+
+  // Module: messaging — WhatsApp & messages (Capability Universe §12.5)
+  MESSAGING_READ: 'messaging.read',
+  // Replies to customers from the business's WhatsApp number.
+  MESSAGING_REPLY: 'messaging.reply',
+  // Connects the number, submits templates, chooses automatic updates.
+  MESSAGING_CONFIGURE: 'messaging.configure',
+
+  // Module: reviews — verified reviews (Capability Universe §17.2). No
+  // permission deletes or edits a review.
+  REVIEWS_READ: 'reviews.read',
+  REVIEWS_REPLY: 'reviews.reply',
+  REVIEWS_MANAGE: 'reviews.manage',
+
+  // Module: compliance — licences & deadlines (Capability Universe §6.2)
+  COMPLIANCE_READ: 'compliance.read',
+  COMPLIANCE_MANAGE: 'compliance.manage',
+
   // Module: projects
   PROJECTS_READ: 'projects.read',
   PROJECTS_CREATE: 'projects.create',

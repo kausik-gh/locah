@@ -1,0 +1,68 @@
+export type KindField = {
+  key: string
+  label: string
+  type: 'text' | 'long_text' | 'int' | 'money' | 'choice' | 'list' | 'bool' | 'date' | 'year'
+  required: boolean
+  choices: string[]
+  unit: string | null
+  help: string | null
+}
+
+export type Kind = {
+  key: string
+  source: string
+  label: string
+  plural: string
+  flow: 'cart' | 'booking' | 'membership' | 'enquiry' | 'give'
+  cta: string
+  extra_ctas: string[]
+  help: string
+  options: boolean
+  packs: boolean
+  variants: boolean
+  stockable: boolean
+  tax_code: 'HSN' | 'SAC'
+  fields: KindField[]
+}
+
+export type Choice = { label: string; price_delta: string | number }
+export type OptionGroup = { name: string; required: boolean; max: number; choices: Choice[] }
+export type Pack = { label: string; qty: number }
+export type Axis = { name: string; values: string[] }
+
+export type Offering = {
+  id: string
+  title: string
+  description: string | null
+  offering_type: string
+  kind_label: string
+  status: string
+  visibility: string
+  price_type: string
+  price_amount: number | null
+  currency: string
+  tax_rate: number | null
+  hsn_sac: string | null
+  sku: string | null
+  barcode: string | null
+  track_inventory: boolean
+  low_stock_threshold: number | null
+  stock_unit: string
+  attributes: Record<string, unknown>
+  option_groups: OptionGroup[]
+  sell_units: Pack[]
+  variant_options: Axis[]
+  missing_fields: string[]
+  version: number
+}
+
+export type Variant = { id: string; name: string; price_amount: number | null; attributes: Record<string, string> }
+
+export function inr(amount: number | null | undefined) {
+  if (amount === null || amount === undefined) return null
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+  }).format(amount)
+}

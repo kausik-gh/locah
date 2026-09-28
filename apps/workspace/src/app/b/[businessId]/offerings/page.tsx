@@ -1,144 +1,90 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
-import { DataTable, EmptyState, GateNotice, PageHeader, Section, StatusPill } from '@/components/ui'
-import { archiveOffering, createOffering, restoreOffering } from './actions'
+import { GateNotice, PageHeader } from '@/components/ui'
+import { ArchiveButton } from './ArchiveButton'
+import { inr, type Offering } from './types'
 
 export const dynamic = 'force-dynamic'
 
-type Offering = {
-  id: string
-  title: string
-  offering_type: string
-  status: string
-  price_amount: number | null
-  currency: string
-  track_inventory: boolean
+function priceText(o: Offering): string {
+  if (o.offering_type === 'cause') return 'People choose what to give'
+  if (o.sell_units?.length && o.price_amount !== null) {
+    const per = String(o.attributes?.price_per ?? 'kg')
+    return `${inr(o.price_amount)} per ${per}`
+  }
+  if (o.price_type === 'enquiry') return 'Price on request'
+  if (o.price_type === 'free') return 'Free'
+  const p = inr(o.price_amount)
+  if (!p) return 'No price yet'
+  return o.price_type === 'starting_from' ? `From ${p}` : p
 }
-type Category = { id: string; name: string; status: string }
 
-/** Doc 11 §7 Offerings Catalog — what the business sells. */
+/**
+ * Catalogue (Capability Universe §6.3: one catalogue, many kinds). Grouped by
+ * kind so a restaurant sees its menu and a developer its projects, with what
+ * each item still needs before it can show properly.
+ */
 export default async function OfferingsPage({ params }: { params: { businessId: string } }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
-
-  const [res, catRes] = await Promise.all([
-    apiTry<{ data: Offering[] }>(`/v1/platform/businesses/${params.businessId}/products`, token),
-    apiTry<{ data: Category[] }>(
-      `/v1/platform/businesses/${params.businessId}/product-categories`,
-      token
-    ),
-  ])
+  const res = await apiTry<{ data: Offering[] }>(`/v1/platform/businesses/${params.businessId}/products`, token)
+  const base = `/b/${params.businessId}/offerings`
+  const header = (
+    <PageHeader
+      title="Products & services"
+      subtitle="Everything people can buy, book, join, give to or ask about — kept in one place."
+      actions={<Link className="btn" href={`${base}/new`}>Add</Link>}
+    />
+  )
   if (!res.ok) {
     return (
-      <div>
-        <PageHeader title="Offerings" />
-        <GateNotice error={res.error} businessId={params.businessId} moduleLabel="the Offerings Catalog" />
+      <div className="bos-page">
+        {header}
+        <GateNotice error={res.error} businessId={params.businessId} moduleLabel="Products & services" />
       </div>
     )
   }
-  const offerings = res.data.data || []
-  const categories = catRes.ok ? catRes.data.data || [] : []
+  const offerings = res.data.data.filter((o) => o.title !== 'Delivery fee')
+  const groups = new Map<string, Offering[]>()
+  for (const o of offerings) groups.set(o.kind_label, [...(groups.get(o.kind_label) ?? []), o])
 
   return (
-    <div className="ws-catalogue-page">
-      <PageHeader
-        title="Your catalogue"
-        subtitle="What people can buy, book or enquire about. Keep the list current in one place."
-      />
-
-      <div className="ws-catalogue-summary"><span>{offerings.length} offering{offerings.length === 1 ? '' : 's'}</span><span>{offerings.filter(o => o.status === 'active').length} active</span><a href="#add-offering">Add an offering ↓</a></div>
-
-      <DataTable
-        rows={offerings}
-        rowKey={(o) => o.id}
-        columns={[
-          { key: 'title', header: 'Title', render: (o) => o.title },
-          {
-            key: 'type',
-            header: 'Type',
-            render: (o) => (
-              <span style={{ textTransform: 'capitalize', color: 'var(--color-muted)' }}>
-                {o.offering_type.replace(/_/g, ' ')}
-              </span>
-            ),
-          },
-          { key: 'status', header: 'Status', render: (o) => <StatusPill value={o.status} /> },
-          {
-            key: 'price',
-            header: 'Price',
-            align: 'num',
-            render: (o) => (o.price_amount === null ? '—' : new Intl.NumberFormat('en-IN', { style: 'currency', currency: o.currency || 'INR', maximumFractionDigits: 2 }).format(o.price_amount)),
-          },
-          {
-            key: 'stock',
-            header: 'Stock tracked',
-            render: (o) => (o.track_inventory ? 'Yes' : 'No'),
-          },
-          {
-            key: 'action',
-            header: '',
-            render: (o) => (
-              <form action={o.status === 'archived' ? restoreOffering : archiveOffering}>
-                <input type="hidden" name="businessId" value={params.businessId} />
-                <input type="hidden" name="offeringId" value={o.id} />
-                <button type="submit" className="btn-quiet">
-                  {o.status === 'archived' ? 'Restore' : 'Archive'}
-                </button>
-              </form>
-            ),
-          },
-        ]}
-        empty={
-          <EmptyState title="Nothing in the catalog yet">
-            Add your first offering below — it stays a draft until you mark it active, so nothing
-            goes public before you are ready.
-          </EmptyState>
-        }
-      />
-
-      {categories.length > 0 ? (
-        <Section title="Categories">
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-            {categories.map((c) => (
-              <span
-                key={c.id}
-                style={{
-                  padding: '0.2rem 0.7rem',
-                  borderRadius: '999px',
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
-                  fontSize: '0.85rem',
-                }}
-              >
-                {c.name}
-              </span>
-            ))}
-          </div>
-        </Section>
-      ) : null}
-
-      <div id="add-offering" className="ws-catalogue-form"><Section title="Add an offering">
-        <p>Start with the essentials. You can keep the new offering as a draft.</p>
-        <form action={createOffering} className="ws-form-grid">
-          <input type="hidden" name="businessId" value={params.businessId} />
-          <label>Title<input name="title" placeholder="What is it called?" required /></label>
-          <label>Description<textarea name="description" placeholder="Describe this offering" /></label>
-          <label>Type<select name="offering_type" defaultValue="product">
-            <option value="product">Product</option>
-            <option value="service">Service</option>
-            <option value="class_session">Class or session</option>
-          </select></label>
-          <label>Price<input name="price_amount" type="number" min="0" step="0.01" placeholder="Optional" /></label>
-          <label>Visibility<select name="status" defaultValue="draft">
-            <option value="draft">Save as draft</option>
-            <option value="active">Publish as active</option>
-          </select></label>
-          <button type="submit" style={{ justifySelf: 'start' }}>
-            Add offering
-          </button>
-        </form>
-      </Section></div>
+    <div className="bos-page">
+      {header}
+      {offerings.length === 0 ? (
+        <div className="bos-empty">
+          Nothing here yet. Add what you sell, the services people book, or what they can enquire about — each
+          stays a draft until you make it live.{' '}
+          <Link href={`${base}/new`}>Add the first one</Link>
+        </div>
+      ) : (
+        [...groups.entries()].map(([label, items]) => (
+          <section key={label} className="bos-section" aria-labelledby={`k-${label}`} style={{ marginTop: '1.4rem' }}>
+            <h2 className="bos-section__title" id={`k-${label}`}>
+              {label} <span>{items.length}</span>
+            </h2>
+            <ul className="bos-catalogue">
+              {items.map((o) => (
+                <li key={o.id} className={o.status === 'archived' ? 'is-muted' : ''}>
+                  <Link href={`${base}/${o.id}`} className="bos-catalogue__main">
+                    <strong>{o.title}</strong>
+                    <span>{priceText(o)}</span>
+                    {o.missing_fields?.length ? (
+                      <span className="bos-catalogue__needs">Needs: {o.missing_fields.join(', ')}</span>
+                    ) : null}
+                  </Link>
+                  <span className={`bos-state${o.status === 'active' ? ' is-ready' : ' is-off'}`}>
+                    {o.status === 'active' ? 'Live' : o.status === 'draft' ? 'Draft' : 'Archived'}
+                  </span>
+                  <ArchiveButton businessId={params.businessId} offeringId={o.id} archived={o.status === 'archived'} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
+      )}
     </div>
   )
 }

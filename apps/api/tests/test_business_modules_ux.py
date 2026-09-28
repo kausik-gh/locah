@@ -76,7 +76,15 @@ def test_available_comes_from_the_registry_and_excludes_what_is_recommended():
     resolve_recommendations(bp, entitled())
     available = available_modules(bp, entitled())
     ids = [item.module_id for item in available]
-    optional = {row["module_id"] for row in ModuleRegistry.list_modules() if row["module_class"] == "optional"}
+    # Registered is not built: a Capability Universe module whose data, API,
+    # permissions and UI do not exist yet is never offered (MD §2 rule 7).
+    from platform_core.catalog.modules import MODULES as CATALOGUE
+
+    optional = {
+        row["module_id"] for row in ModuleRegistry.list_modules()
+        if row["module_class"] == "optional"
+        and (row["module_id"] not in CATALOGUE or CATALOGUE[row["module_id"]].built)
+    }
     recommended = {item.module_id for item in bp.recommended_modules}
     assert set(ids) == optional - recommended
     # Nothing core, nothing already recommended, nothing listed twice.

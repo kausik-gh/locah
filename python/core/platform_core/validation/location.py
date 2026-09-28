@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from platform_core.exceptions import ValidationError
@@ -137,6 +138,48 @@ def validate_notes(notes: str | None) -> str | None:
     return normalized
 
 
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+_HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def validate_hours(value: Any) -> dict[str, Any] | None:
+    """Weekly opening hours: {"mon": [["09:00", "13:00"], ["16:00", "21:00"]], ...}.
+
+    A day left out or empty is closed. Up to three spans a day, each opening
+    before it closes; an optional note ("Closed on festival days"). The same
+    hours set when bookings and WhatsApp offer times (journeys._hours_for).
+    """
+    if value is None:
+        return None
+    bad = ValidationError("Invalid opening hours", details={"errors": [
+        _field_error("hours", "Give each day's opening and closing times as HH:MM")]})
+    if not isinstance(value, dict) or set(value) - {*DAYS, "note"}:
+        raise bad
+    out: dict[str, Any] = {}
+    for day in DAYS:
+        spans = value.get(day) or []
+        if not isinstance(spans, list) or len(spans) > 3:
+            raise bad
+        clean = []
+        for span in spans:
+            if (not isinstance(span, (list, tuple)) or len(span) != 2
+                    or not all(isinstance(t, str) and _HHMM.match(t) for t in span) or span[0] >= span[1]):
+                raise bad
+            clean.append([span[0], span[1]])
+        clean.sort()
+        if any(a[1] > b[0] for a, b in zip(clean, clean[1:], strict=False)):
+            raise bad
+        if clean:
+            out[day] = clean
+    note = value.get("note")
+    if note is not None:
+        if not isinstance(note, str) or len(note) > 200:
+            raise bad
+        if note.strip():
+            out["note"] = note.strip()
+    return out
+
+
 def validate_location_create_payload(raw: dict[str, Any]) -> dict[str, Any]:
     latitude = validate_latitude(raw.get("latitude"))
     longitude = validate_longitude(raw.get("longitude"))
@@ -145,7 +188,7 @@ def validate_location_create_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "name": validate_location_name(raw.get("name")),
         "timezone": validate_timezone(raw.get("timezone")),
         "address": raw.get("address"),
-        "hours": raw.get("hours"),
+        "hours": validate_hours(raw.get("hours")),
         "internal_code": validate_internal_code(raw.get("internal_code")),
         "phone": validate_phone(raw.get("phone"), field="phone"),
         "email": validate_email(raw.get("email"), field="email"),
@@ -165,7 +208,7 @@ def validate_location_patch_payload(raw: dict[str, Any]) -> dict[str, Any]:
     if "address" in raw:
         patch["address"] = raw["address"]
     if "hours" in raw:
-        patch["hours"] = raw["hours"]
+        patch["hours"] = validate_hours(raw["hours"])
     if "internal_code" in raw:
         patch["internal_code"] = validate_internal_code(raw["internal_code"])
     if "phone" in raw:

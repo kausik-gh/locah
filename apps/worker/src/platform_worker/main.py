@@ -57,6 +57,15 @@ async def _poll_lanes(session_factory: Any, worker_id: str) -> None:
         if job_count:
             logger.info("worker.async_jobs_processed", count=job_count)
 
+    # Automation ladders (Capability Universe §24 #4): renewals, reminders,
+    # dunning and recalls run as due steps here — one engine, no per-module crons.
+    async with session_factory() as session:
+        from platform_core.automation import AutomationEngine
+
+        step_count = await AutomationEngine.run_due(session, worker_id)
+        if step_count:
+            logger.info("worker.automation_steps_processed", count=step_count)
+
 
 async def main() -> None:
     global running
