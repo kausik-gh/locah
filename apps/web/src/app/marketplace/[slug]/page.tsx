@@ -142,6 +142,12 @@ export default async function MarketplaceBusinessProfilePage({
                 </p>
               </div>
               <h1 className="mx-prof__name">{b.display_name}</h1>
+              {Boolean(b.rating_count) && b.rating_average != null ? (
+                <p className="mx-prof__rating" aria-label={`${b.rating_average.toFixed(1)} out of 5 from ${b.rating_count} verified reviews`}>
+                  <span aria-hidden="true">★</span> {b.rating_average.toFixed(1)} · {b.rating_count} verified {b.rating_count === 1 ? 'review' : 'reviews'}
+                  <Link href={`/${b.slug}/reviews`}>Read reviews</Link>
+                </p>
+              ) : null}
               {b.tagline && b.tagline !== b.description && b.tagline !== b.display_name ? (
                 <p className="mx-prof__tag">{b.tagline}</p>
               ) : null}

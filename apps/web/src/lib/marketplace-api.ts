@@ -1,10 +1,8 @@
 import { platformUrl } from '@platform/config'
 const apiUrl = platformUrl('api')
 
-/** What every Marketplace surface shows about a Business. Every field comes
- *  from what the Business published; there are deliberately no ratings,
- *  review counts, popularity, opening status or delivery times here, because
- *  LOCAH does not record them. */
+/** What every Marketplace surface shows about a Business. Ratings are derived
+ *  from published, verified reviews; never inferred from popularity. */
 export type ListingAction = {
   action: 'order' | 'book' | 'join' | 'enquire' | 'whatsapp' | 'call' | 'visit_website' | string
   label: string
@@ -37,6 +35,8 @@ export type Listing = {
   capability_flags?: Record<string, boolean>
   actions?: ListingAction[]
   distance_km?: number | null
+  rating_average?: number | null
+  rating_count?: number
   reason?: string | null
 }
 

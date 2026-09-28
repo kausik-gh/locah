@@ -19,10 +19,9 @@ IST = ZoneInfo("Asia/Kolkata")
 
 
 def _enable_reviews_in_test(business_id: str) -> None:
-    # The module stays unavailable to owners until the rest of P1-09 ships.
-    sql("""INSERT INTO business_module_states (business_id, module_id, activation_state)
-           VALUES (:b, 'reviews', 'enabled')
-           ON CONFLICT (business_id, module_id) DO UPDATE SET activation_state = 'enabled'""", b=business_id)
+    # Assert the built Storefront tool is active for a newly created Business.
+    assert sql("SELECT activation_state FROM business_module_states WHERE business_id = :b AND module_id = 'reviews'",
+               b=business_id) == [("active",)]
 
 
 def _due_daytime() -> datetime:

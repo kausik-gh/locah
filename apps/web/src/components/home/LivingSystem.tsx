@@ -68,8 +68,10 @@ const POLLEN = Array.from({ length: 18 }, (_, i) => {
   const a = (i * 137.508 * Math.PI) / 180
   const r = 60 + ((i * 53) % 190)
   return {
-    x: 300 + Math.cos(a) * r * 1.15,
-    y: 240 + Math.sin(a) * r * 0.78,
+    // V8's server/client trig can differ in the last bit. Keep the SVG
+    // attributes stable across SSR and hydration instead of warning on cx/cy.
+    x: Number((300 + Math.cos(a) * r * 1.15).toFixed(3)),
+    y: Number((240 + Math.sin(a) * r * 0.78).toFixed(3)),
     r: 1.6 + (i % 3) * 0.9,
     d: 7 + (i % 5) * 1.6,
     delay: -(i * 0.7),

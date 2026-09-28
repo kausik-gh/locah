@@ -193,7 +193,7 @@ _OPTIONAL_MODULES: dict[str, ModuleDefinition] = {
         "Reviews",
         "optional",
         "Transaction-linked feedback",
-        ("orders",),
+        ("core-business-profile",),
         features=("reviews.core",),
     ),
     "analytics": _mod(

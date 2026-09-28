@@ -30,7 +30,7 @@ INSERT INTO module_definitions (id, name, module_class, description, dependencie
 ('payroll', 'Payroll', 'optional', 'Compensation and payout coordination', '{workforce}'),
 ('messaging', 'Messaging', 'optional', 'External messaging channels', '{core-notifications}'),
 ('marketing', 'Marketing', 'optional', 'Campaigns and promotional audiences', '{customer-relationships}'),
-('reviews', 'Reviews', 'optional', 'Transaction-linked feedback', '{orders}'),
+('reviews', 'Reviews', 'optional', 'Transaction-linked feedback', '{core-business-profile}'),
 ('analytics', 'Analytics', 'optional', 'Business reporting and insights', '{core-workspace}'),
 ('business-passport', 'Business Passport', 'optional', 'Verified credential dossier', '{core-business-profile}'),
 ('business-community', 'Business Community', 'optional', 'Community posts and follows', '{core-marketplace-presence}'),
@@ -109,6 +109,11 @@ INSERT INTO website_section_types (id, label, description, content_schema, allow
  '{"type":"object","properties":{"title":{"type":"string","maxLength":120},"show_upcoming_only":{"type":"boolean"},"max_items":{"type":"integer","minimum":1,"maximum":20}}}',
  ARRAY['schedule', 'cards'],
  'offerings-catalog', 110),
+
+('reviews_section', 'Verified customer reviews', 'Published reviews from completed customer interactions',
+ '{"type":"object","properties":{"title":{"type":"string","maxLength":120},"subtitle":{"type":"string","maxLength":300}}}',
+ ARRAY['cards', 'list'],
+ 'reviews', 115),
 
 -- Call-to-action / enquiry sections
 ('cta_band', 'Call to Action', 'Prominent call-to-action strip',

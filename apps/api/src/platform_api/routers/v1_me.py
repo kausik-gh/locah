@@ -1,4 +1,5 @@
 from typing import Any
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -10,6 +11,7 @@ from platform_api.dependencies import get_request_context
 from platform_core.context import RequestContext
 from platform_core.services.consumer_activity import ConsumerActivityService
 from platform_core.services.identity import IdentityService
+from platform_core.services.reviews import review_token
 
 router = APIRouter(prefix="/v1/me", tags=["identity"])
 
@@ -92,7 +94,7 @@ async def get_my_activity(
     Activity remains separate from Workspace"). No Business permission is
     consulted and none is required — the rows belong to the caller.
 
-    Coverage is currently Bookings only. Orders and Payments do not write to
+    Coverage is bookings and review invitations for linked customers. Orders and Payments do not write to
     `consumer_activity_projections` yet, and guest activity is not linked to an
     account pending FL-DEC-024, so this feed is deliberately partial rather
     than padded with data it cannot truthfully claim.
@@ -104,6 +106,30 @@ async def get_my_activity(
         business_id=business_id,
         limit=limit,
     )
+    # The projection is identity-scoped. Derive the one-use action link only
+    # for an invitation whose newest activity is still an open request; never
+    # expose review credentials on a business-scoped or public list.
+    seen_reviews: set[str] = set()
+    for item in activities:
+        if item["resource_type"] != "review_invitation":
+            continue
+        key = item["resource_id"]
+        if key in seen_reviews:
+            continue
+        seen_reviews.add(key)
+        if item["activity_type"] != "review.requested":
+            continue
+        summary = item.get("summary") or {}
+        slug = summary.get("business_slug")
+        expires = summary.get("expires_at")
+        if not isinstance(slug, str) or not isinstance(expires, str):
+            continue
+        try:
+            if datetime.fromisoformat(expires) <= datetime.now(timezone.utc):
+                continue
+            item["action_url"] = f"/{slug}/review/{review_token(UUID(item['business_id']), UUID(key))}"
+        except (ValueError, TypeError):
+            continue
     return {
         "data": activities,
         "meta": {
@@ -111,6 +137,6 @@ async def get_my_activity(
             "count": len(activities),
             # Named so the consumer UI can state its own limits truthfully
             # instead of implying an empty feed means no activity happened.
-            "covered_resource_types": ["booking"],
+            "covered_resource_types": ["booking", "review_invitation"],
         },
     }

@@ -177,6 +177,9 @@ class MarketplaceIndexingService:
                 offering_titles=offering_titles,
             )
             placement = category_labels(facts.placement.family_id, facts.placement.category_id)
+            from platform_core.services.reviews import ReviewService
+
+            rating = await ReviewService.summary(session, business_id)
 
             projection = (
                 await session.execute(
@@ -209,6 +212,8 @@ class MarketplaceIndexingService:
                 "logo_url": facts.logo_url,
                 "highlights": facts.highlights,
                 "offering_count": offering_count,
+                "rating_average": rating["average"],
+                "rating_count": rating["count"],
                 "published_at": facts.published_at,
                 "public_contact": facts.public_contact,
                 "site_paths": facts.site_paths,

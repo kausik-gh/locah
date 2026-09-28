@@ -281,7 +281,7 @@ def test_low_stock_ladder_runs_once_and_is_visible(monkeypatch: Any) -> None:
                 "'inventory.low_stock' and recipient_identity_id = :o", b=bid, o=owner_id)
     assert [n[0] for n in notes] == ["Mutton curry cut is running low"]
     feed = client.get(f"/v1/platform/businesses/{bid}/automations", headers=owner).json()["data"]
-    assert [a["key"] for a in feed["automations"]] == ["stock.low", "chat.waiting"]
+    assert [a["key"] for a in feed["automations"]] == ["stock.low", "review.request", "chat.waiting", "compliance.due"]
     assert feed["activity"][0]["status"] == "done" and "low" in feed["activity"][0]["outcome"]
 
 
@@ -291,7 +291,8 @@ def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
     — the owner is never shown a switch that does nothing. Booking reminders,
     order tracking, bill and khata reminders and waiting chats have steps since
     WhatsApp (P1-07); reviews have a wired request step in P1-09, but their
-    unfinished module is not shown to owners yet. Each shows only while its
+    unfinished module is not shown to owners yet. Compliance reminders are
+    wired too, while that module is still hidden. Each shows only while its
     module is on."""
     from platform_core.automation import LADDERS, is_wired
 
@@ -300,10 +301,12 @@ def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
                                                    "bookings", "fulfilment"))
     shown = [a["key"] for a in client.get(f"/v1/platform/businesses/{bid}/automations",
                                           headers=owner).json()["data"]["automations"]]
-    assert shown == ["booking.reminder", "stock.low", "order.tracking", "lead.followup", "chat.waiting"]
+    assert shown == ["booking.reminder", "stock.low", "order.tracking", "review.request",
+                     "lead.followup", "chat.waiting", "compliance.due"]
     assert "membership.renewal" not in shown
     assert {k for k in LADDERS if is_wired(k)} == {"stock.low", "lead.followup", "booking.reminder", "order.tracking",
-                                                   "invoice.overdue", "ledger.statement", "chat.waiting", "review.request"}
+                                                   "invoice.overdue", "ledger.statement", "chat.waiting",
+                                                   "review.request", "compliance.due"}
 
 
 @DB

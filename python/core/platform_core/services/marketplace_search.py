@@ -172,6 +172,8 @@ def serialize_listing(
         "logo_url": row.logo_url,
         "highlights": list(row.highlights or [])[:4],
         "offering_count": int(row.offering_count or 0),
+        "rating_average": float(row.rating_average) if row.rating_average is not None else None,
+        "rating_count": int(row.rating_count or 0),
         "published_at": row.published_at.isoformat() if row.published_at else None,
         "actions": listing_actions(row),
         # Only ever a distance between two exact points; see VisitorPlace.
@@ -643,6 +645,8 @@ class MarketplaceSearchService:
                 "logo_url": projection.logo_url,
                 "highlights": list(projection.highlights or []),
                 "offering_count": int(projection.offering_count or 0),
+                "rating_average": float(projection.rating_average) if projection.rating_average is not None else None,
+                "rating_count": int(projection.rating_count or 0),
                 "published_at": listing["published_at"],
                 "public_contact": dict(projection.public_contact or {}),
                 "distance_km": _shown_distance(projection, km, place),

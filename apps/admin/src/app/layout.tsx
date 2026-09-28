@@ -1,5 +1,6 @@
 import React from 'react'
 import Link from 'next/link'
+import './reviews.css'
 
 export const metadata = {
   title: 'LOCAH Admin',
@@ -11,6 +12,7 @@ const NAV = [
   { href: '/audit', label: 'Audit & Activity' },
   { href: '/system', label: 'System Health' },
   { href: '/marketplace/indexing', label: 'Indexing' },
+  { href: '/reviews', label: 'Review moderation' },
 ]
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

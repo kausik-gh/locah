@@ -139,8 +139,7 @@ class ConsumerActivityService:
         — which a consumer (no membership) never satisfies — silently
         dropping rows the caller is otherwise fully entitled to see.
 
-        Only Bookings feed this projection today (BookingService and
-        BookingLifecycleService are its only writers), and only for a
+        Bookings and review invitations feed this projection today, and only for a
         CustomerContact carrying an identity_id — a guest booking writes
         nothing, pending FL-DEC-024 guest-to-authenticated linking.
         """

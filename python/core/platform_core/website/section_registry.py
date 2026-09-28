@@ -256,6 +256,13 @@ CORE_SECTION_SCHEMAS: dict[str, dict[str, Any]] = {
             "max_items": {"type": "integer", "minimum": 1, "maximum": 20},
         },
     },
+    "reviews_section": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "maxLength": 120},
+            "subtitle": {"type": "string", "maxLength": 300},
+        },
+    },
 }
 
 ALLOWED_SECTION_TYPE_IDS = frozenset(CORE_SECTION_SCHEMAS.keys())
@@ -495,6 +502,8 @@ section types or content fields.
 - classes_section: title, max_items (integer), show_upcoming_only (boolean)
     layout_variant: schedule | cards
 - location_list: title, show_map (boolean), show_hours (boolean)
+    layout_variant: cards | list
+- reviews_section: title, subtitle
     layout_variant: cards | list
 
 The list sections (offerings_list, menu_section, plans_section, rooms_section,

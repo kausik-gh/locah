@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { CommerceCart } from './CommerceCart'
+import { PublicLicences } from './PublicLicences'
 import { SectionRenderer, resolvePath, type SiteContact } from './SectionRenderer'
 import { siteFontVariables } from './site-fonts'
 import { withPreviewToken } from './preview-links'
@@ -448,6 +449,7 @@ export function WebsitePageView({
             </div>
           ) : null}
           {canOrder && !canBook ? <CommerceCart slug={slug} variant="footer" /> : null}
+          <PublicLicences slug={slug} />
           {visitLinks.length > 0 || journey ? (
             <div className="ls-foot__col">
               <p className="ls-foot__heading">Your visit</p>

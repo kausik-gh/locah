@@ -27,6 +27,7 @@ from platform_core.models import (
     Business,
     BusinessMembership,
     CustomerContact,
+    ComplianceItem,
     FulfilmentJob,
     InventoryMovement,
     Lead,
@@ -81,7 +82,7 @@ class RoleHomeService:
         now = now or datetime.now(timezone.utc)
         key = await RoleHomeService.role_key(session, membership)
         can = lambda perm, module=None: perm in permissions and (module is None or module in live_modules)  # noqa: E731
-        ctx = _Ctx(session, business.id, now, can)
+        ctx = _Ctx(session, business.id, now, can, key)
         from platform_core.authorization.role_templates import OWNER, ROLE_TEMPLATES
 
         tpl = OWNER if key == "owner" else ROLE_TEMPLATES.get(key)
@@ -107,8 +108,9 @@ class RoleHomeService:
 
 
 class _Ctx:
-    def __init__(self, session: AsyncSession, business_id: uuid.UUID, now: datetime, can: Any) -> None:
-        self.s, self.b, self.now, self.can = session, business_id, now, can
+    def __init__(self, session: AsyncSession, business_id: uuid.UUID, now: datetime, can: Any,
+                 role_key: str) -> None:
+        self.s, self.b, self.now, self.can, self.role_key = session, business_id, now, can, role_key
         local = now.astimezone(IST)
         self.day_start = local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
         self.day_end = self.day_start + timedelta(days=1)
@@ -195,6 +197,32 @@ class _Ctx:
                                   MembershipEnrolment.ends_at < self.now + timedelta(days=7))
             if n:
                 items.append(_item("memberships ending this week", n, "/memberships", tone="info"))
+        if self.role_key == "owner" and self.can("reviews.reply", "reviews"):
+            from platform_core.services.reviews import ReviewService
+
+            low = await ReviewService.low_open(self.s, self.b)
+            if low:
+                contacts = {row.id: row for row in (await self.s.execute(select(CustomerContact).where(
+                    CustomerContact.business_id == self.b,
+                    CustomerContact.id.in_({r.customer_contact_id for r in low}),
+                ))).scalars()}
+                details = []
+                for review in low[:3]:
+                    contact = contacts.get(review.customer_contact_id)
+                    if contact:
+                        details.append(f"{contact.display_name} ({contact.phone})" if self.can(
+                            "customers.read", "customer-relationships") and contact.phone else contact.display_name)
+                items.append(_item("low reviews waiting for your reply", len(low), "/reviews?view=low",
+                                   ", ".join(details), tone="bad"))
+        if self.role_key == "owner" and self.can("compliance.read", "compliance"):
+            today = self.now.astimezone(IST).date()
+            due_items = list((await self.s.execute(select(ComplianceItem).where(
+                ComplianceItem.business_id == self.b, ComplianceItem.status == "active",
+                ComplianceItem.due_on <= today + timedelta(days=7),
+            ).order_by(ComplianceItem.due_on).limit(100))).scalars())
+            if due_items:
+                items.append(_item("licences or filings needing attention", len(due_items), "/licences",
+                                   ", ".join(row.title for row in due_items[:3]), tone="bad"))
         late = [b for b in await self._open_bills() if b["overdue"]]
         if late:
             items.append(_item("bills past their due date", len(late), "/invoices?tab=overdue",

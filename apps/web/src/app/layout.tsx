@@ -14,6 +14,7 @@ import '@platform/ui/website.css'
 // A site's creative direction (profile, type system, cards, nav) on top.
 import '@platform/ui/site-studio.css'
 import '@platform/ui/site-families.css'
+import '@/components/website/reviews.css'
 
 const sans = Plus_Jakarta_Sans({
   subsets: ['latin'],

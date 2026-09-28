@@ -66,7 +66,7 @@ def test_role_catalogue_offers_only_what_this_business_can_use(monkeypatch: Any)
     assert keys == ["manager", "store_keeper", "accountant"]  # cashier waits for POS; P2 roles are not offered
     consultant = create_business(client, owner)
     data = client.get(f"/v1/platform/businesses/{consultant}/roles", headers=owner).json()["data"]
-    assert [t["key"] for t in data["templates"]] == ["manager"]  # no stock or money tools → no store keeper/accountant
+    assert [t["key"] for t in data["templates"]] == ["manager", "accountant"]  # Storefront compliance is on
     assert data["owner"]["home"] == "Needs you now · Today · Your business"
     assert set(data["scopes"]) == {"business", "location"}  # assignment scope is not enforceable yet
 

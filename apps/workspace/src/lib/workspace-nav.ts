@@ -52,6 +52,7 @@ export const AREAS: NavArea[] = [
     children: [
       { href: '/customers', label: 'Customers', perm: 'customers.read', module: 'customer-relationships' },
       { href: '/leads', label: 'Enquiries', perm: 'leads.read', module: 'leads' },
+      { href: '/reviews', label: 'Reviews', perm: 'reviews.read', module: 'reviews' },
     ],
   },
   {
@@ -101,6 +102,7 @@ export const AREAS: NavArea[] = [
       { href: '/settings/invoicing', label: 'Tax & invoicing', perm: 'invoices.read', module: 'invoicing' },
       { href: '/settings/counter', label: 'Counter billing', perm: 'pos.use', module: 'pos' },
       { href: '/settings/automations', label: 'Automations', perm: 'settings.read' },
+      { href: '/compliance', label: 'Licences & due dates', perm: 'compliance.read', module: 'compliance' },
       { href: '/settings/usage', label: 'Usage & limits', perm: 'settings.read' },
     ],
   },

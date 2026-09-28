@@ -105,13 +105,14 @@ LADDERS: dict[str, Ladder] = {lad.key: lad for lad in (
         quiet_hours=False,
     ),
     Ladder(
-        "licence.expiry", "compliance", "Licence reminders", "the licence expiry date", "compliance_item",
+        "compliance.due", "compliance", "Licences & filing reminders", "the date you entered", "compliance_item",
         (
-            LadderStep("minus_30", -30 * D, "30 days before expiry", "Tell you and create a renewal task"),
-            LadderStep("minus_7", -7 * D, "7 days before", "Reminder in Needs you now"),
-            LadderStep("expired", timedelta(0), "On the expiry date", "“Expired” alert"),
+            LadderStep("minus_30", -30 * D, "30 days before", "Notify whoever handles licences and filings"),
+            LadderStep("minus_7", -7 * D, "7 days before", "Reminder in Notifications and Needs you now"),
+            LadderStep("minus_1", -1 * D, "The day before", "Final reminder"),
+            LadderStep("due", timedelta(0), "On the date entered", "Due today alert"),
         ),
-        "the renewal date is updated",
+        "the item is renewed, filed, archived or its date is changed",
         quiet_hours=False,
     ),
 )}

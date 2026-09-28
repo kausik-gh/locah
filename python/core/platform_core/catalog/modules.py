@@ -196,13 +196,13 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         "Verified reviews from real customers; reply, report, and feature the best on your website.",
         customer_can=("Review after a completed order, booking or visit",),
         staff_can=("Reply", "Report a violation", "Feature reviews on the website"),
-        packs=("storefront",), site=("reviews",),
+        packs=("storefront",), site=("reviews",), built=True,
     ),
     ModuleInfo(
         "compliance", "Licences & deadlines", "P1",
         "Your licences and filing dates in one calendar, with reminders before anything expires.",
         staff_can=("Record licences and due dates", "Get reminded before expiry"),
-        packs=("storefront", "back_office"),
+        packs=("storefront", "back_office"), built=True,
     ),
     ModuleInfo(
         "analytics", "Insights", "P1",

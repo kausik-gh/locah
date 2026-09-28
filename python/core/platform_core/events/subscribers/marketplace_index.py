@@ -34,6 +34,10 @@ _TRIGGERS = (
     "module.enabled",
     "module.disabled",
     "module.deactivated",
+    "review.published",
+    "review.updated",
+    "review.removed",
+    "review.restored",
 )
 
 

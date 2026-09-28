@@ -21,6 +21,11 @@ const LINKS = [
     title: 'Marketplace Indexing',
     body: 'Projection staleness, manual re-index, and indexing dead letters.',
   },
+  {
+    href: '/reviews',
+    title: 'Review moderation',
+    body: 'Decide reported reviews and customer appeals with an audit trail.',
+  },
 ]
 
 export default function AdminHomePage() {

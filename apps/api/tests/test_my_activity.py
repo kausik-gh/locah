@@ -2,8 +2,8 @@
 
 Scope is deliberately narrow and these tests pin that narrowness in place:
 
-  * `consumer_activity_projections` is written by BookingService and
-    BookingLifecycleService ONLY. Orders and Payments do not feed it.
+  * Bookings and verified review invitations feed the projection. Orders and
+    Payments do not feed it.
   * a row is written only when the booking's CustomerContact carries an
     `identity_id`. A guest booking writes nothing, pending FL-DEC-024
     (guest-to-authenticated linking).
@@ -11,7 +11,7 @@ Scope is deliberately narrow and these tests pin that narrowness in place:
 `test_orders_do_not_appear_in_my_activity` and
 `test_guest_booking_is_not_attributed_to_an_identity` exist to fail loudly if
 someone later widens the projection without also widening the My Activity UI's
-stated coverage — the surface claims Bookings only, and that claim must stay
+stated coverage — the surface claims bookings and review invitations only, and that claim must stay
 true.
 """
 
@@ -29,6 +29,7 @@ from fastapi.testclient import TestClient
 from platform_api.main import app
 from platform_core.db import get_database_url
 from platform_testing.db_helpers import ensure_auth_user
+from platform_testing.phase_b import drain_events
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -201,7 +202,37 @@ def test_booking_appears_in_my_activity(owner: tuple[dict[str, str], uuid.UUID])
         assert entry["summary"].get("booking_number")
 
         # The surface must be able to state its own coverage truthfully.
-        assert payload["meta"]["covered_resource_types"] == ["booking"]
+    assert payload["meta"]["covered_resource_types"] == ["booking", "review_invitation"]
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+def test_review_invitation_link_is_only_on_the_consumers_open_request(
+    owner: tuple[dict[str, str], uuid.UUID],
+) -> None:
+    headers, _ = owner
+    consumer, consumer_id, email = _new_identity()
+    stranger, _, _ = _new_identity()
+    with TestClient(app) as client:
+        bid = _create_business(client, headers)
+        contact = _create_linked_contact(client, headers, bid, consumer_id, email)
+        booking = _book(client, headers, bid, _primary_location_id(client, headers, bid),
+                        _create_service(client, headers, bid), contact)
+        for status in ("confirmed", "checked_in", "completed"):
+            response = client.post(f"/v1/platform/businesses/{bid}/bookings/{booking}/status",
+                                   json={"status": status}, headers=headers)
+            assert response.status_code == 200, response.text
+        drain_events(bid)
+        activity = client.get("/v1/me/activity", headers=consumer)
+        assert activity.status_code == 200, activity.text
+        invitation = next(row for row in activity.json()["data"] if row["activity_type"] == "review.requested")
+        link = invitation["action_url"]
+        assert link.startswith("/") and "/review/" in link
+        assert client.get("/v1/me/activity", headers=stranger).json()["data"] == []
+        slug, token = link.strip("/").split("/review/")
+        declined = client.post(f"/v1/public/websites/{slug}/review/{token}/decline")
+        assert declined.status_code == 200, declined.text
+        after = client.get("/v1/me/activity", headers=consumer).json()["data"]
+        assert next(row for row in after if row["activity_type"] == "review.declined").get("action_url") is None
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")

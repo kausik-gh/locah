@@ -20,6 +20,40 @@
   padding: 1.1rem 1.2rem; border: 1px dashed var(--color-border-strong); border-radius: var(--radius);
   color: var(--color-muted); font-size: .9rem; background: var(--color-surface);
 }
+/* P1-09 reviews and owner-entered compliance dates use locked Workspace tokens. */
+.bos-review-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .75rem; margin: 1.3rem 0; }
+.bos-review-summary > div { display: grid; gap: .2rem; padding: 1rem 1.15rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.bos-review-summary span, .bos-review-summary small { color: var(--color-muted); font-size: .82rem; }
+.bos-review-summary strong { font-size: 1.8rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.bos-review-list, .bos-compliance__list { display: grid; gap: .85rem; margin: 1.2rem 0; }
+.bos-review-card, .bos-compliance__card, .bos-compliance__detail { padding: 1.15rem 1.3rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.bos-review-card__head { display: flex; justify-content: space-between; gap: .8rem; }
+.bos-review-card__head p { color: var(--color-primary); margin: .3rem 0 0; font-size: .85rem; }
+.bos-review-card__head > span, .bos-review-card__customer { color: var(--color-muted); font-size: .82rem; }
+.bos-review-card__body, .bos-review-card__reply p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.bos-review-card__reply { border-left: 2px solid var(--color-primary); padding-left: .8rem; font-size: .86rem; }
+.bos-review-card__report { font-size: .82rem; color: var(--color-muted); }
+.bos-review-card__photos { display: flex; flex-wrap: wrap; gap: .5rem; margin: .7rem 0; }
+.bos-review-card__photos img { width: 6rem; height: 6rem; object-fit: cover; border-radius: var(--radius); }
+.bos-review-card__actions, .bos-review-card__manage, .bos-compliance__actions { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-top: 1rem; }
+.bos-review-card__actions form, .bos-compliance__actions form { display: grid; gap: .45rem; }
+.bos-review-card__actions textarea { width: min(100%, 36rem); min-width: min(20rem, 100%); }
+.bos-review-card__actions button, .bos-compliance__actions button { justify-self: start; }
+.bos-review-card__actions label, .bos-compliance__actions label, .bos-compliance__form label { font-size: .82rem; font-weight: 650; }
+.bos-compliance__tabs { display: flex; gap: 1rem; margin: 1rem 0; }
+.bos-compliance__tabs a[aria-current=page] { color: var(--color-primary); font-weight: 700; text-decoration: underline; text-underline-offset: .3rem; }
+.bos-compliance__card h2 { font-size: 1.06rem; margin: .5rem 0 .25rem; }
+.bos-compliance__card p { margin: .25rem 0; }
+.bos-compliance__state { display: inline-flex; text-transform: capitalize; font-size: .76rem; font-weight: 700; border: 1px solid var(--color-border); border-radius: 999px; padding: .2rem .55rem; }
+.bos-compliance__state.is-overdue, .bos-compliance__state.is-due_soon { color: var(--color-primary); border-color: var(--color-primary); }
+.bos-compliance__detail { margin-top: 1.5rem; }
+.bos-compliance__detail h2 { font-size: 1.12rem; margin: 0 0 .8rem; }
+.bos-compliance__form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .8rem; margin: 1rem 0; }
+.bos-compliance__form label { display: grid; gap: .35rem; }
+.bos-compliance__form input, .bos-compliance__form select, .bos-compliance__form textarea { width: 100%; }
+.bos-compliance__form .bos-compliance__check { display: flex; align-items: center; gap: .5rem; }
+.bos-compliance__form .bos-compliance__check input { width: auto; }
+.bos-compliance__form button { justify-self: start; align-self: end; }
 .bos-more > summary { cursor: pointer; list-style: none; }
 .bos-more > summary::-webkit-details-marker { display: none; }
 .bos-more > summary::after { content: '▸'; color: var(--color-muted); font-size: .8rem; margin-left: .2rem; }

@@ -130,6 +130,17 @@
   overflow: hidden;
   margin: 0 !important;
 }
+.locah-public .mx-card__rating {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--lc-ink);
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin: 0.15rem 0 0 !important;
+}
+.locah-public .mx-card__rating span { color: #a86a17; }
+.locah-public .mx-card__rating small { color: var(--lc-copy); font-size: 0.76rem; font-weight: 500; }
 .locah-public .mx-card__highlights {
   display: flex;
   flex-wrap: wrap;

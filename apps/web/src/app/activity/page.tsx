@@ -16,11 +16,13 @@ type Activity = {
   activity_type: string
   resource_type: string
   resource_id: string
+  action_url?: string
   occurred_at: string | null
   summary: {
     booking_number?: string
     starts_at?: string
     status?: string
+    label?: string
   }
 }
 
@@ -29,6 +31,9 @@ const ACTIVITY_LABEL: Record<string, string> = {
   'booking.confirmed': 'Confirmed',
   'booking.cancelled': 'Cancelled',
   'booking.completed': 'Completed',
+  'review.requested': 'Review invited',
+  'review.written': 'Review posted',
+  'review.declined': 'Review declined',
 }
 
 /** Maps to the design-system badge tones, not raw hex. */
@@ -48,7 +53,7 @@ const STATUS_TONE: Record<string, string> = {
  * this person's own activity as a customer, never anything they manage as a
  * Business.
  *
- * Coverage is Bookings only. Orders and Payments do not write to
+ * Coverage is bookings and review invitations. Orders and Payments do not write to
  * `consumer_activity_projections` yet, and activity from before signing in is
  * not linked to an account pending FL-DEC-024. The page states both limits
  * rather than letting an incomplete feed read as a complete one.
@@ -101,7 +106,7 @@ export default async function MyActivityPage() {
       <p className="lc-eyebrow">Your record</p>
       <h1>My activity</h1>
       <p className="lc-lead" style={{ marginTop: 'var(--sp-3)' }}>
-        Bookings you have made. This is your own record as a customer, kept separate from any
+        Your bookings and review invitations. This is your own record as a customer, kept separate from any
         business you run.
       </p>
 
@@ -138,7 +143,9 @@ export default async function MyActivityPage() {
                     <p className="lc-card__body" style={{ margin: 0 }}>
                       {ACTIVITY_LABEL[entry.activity_type] ?? entry.activity_type}
                       {entry.summary.booking_number ? ` · ${entry.summary.booking_number}` : ''}
+                      {entry.summary.label ? ` · ${entry.summary.label}` : ''}
                     </p>
+                    {entry.action_url ? <Link className="lc-btn lc-btn--primary" href={entry.action_url} style={{ marginTop: '.65rem' }}>Write your review</Link> : null}
                     {startsAt ? (
                       <p className="lc-small lc-muted" style={{ margin: '0.25rem 0 0' }}>
                         {new Date(startsAt).toLocaleString()}

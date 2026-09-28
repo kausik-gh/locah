@@ -404,3 +404,29 @@ done("P1-09A", {
     "AU-06": dict(status=P, code="completed order or booking → one review invitation, WhatsApp request after 2 hours; replay is idempotent and declined invitations do not send; reviewer page and membership/job sources remain", auto="✓ review.request", test="✓ test_review_invites (2)"),
     "PKT-09": dict(status=P, code="P1-09 in progress: verified order/booking invitation and WhatsApp delivery tested; review APIs, customer/owner/moderator surfaces, compliance, and §17.5 security tests remain", test="✓ test_review_invites (2); §17.5 pending"),
 })
+
+
+# ---------------------------------------------------------------- P1-09B reviewer, owner, moderator and compliance surfaces
+_RV_TEST = "✓ test_reviews + test_review_invites + browser p1_09_review_browser (local Chromium, scratch DB)"
+_CP_TEST = "✓ test_compliance (local scratch DB, platform_api RLS role)"
+done("P1-09B", {
+    "RV-01": dict(status=P, code="one review per completed order or booking in a 30-day window; source completion is checked again at submission. Membership attendance (P2) and closed job cards (P5) do not exist yet", test=_RV_TEST),
+    "RV-02": dict(status=C, code="customer review page accepts 1–5 stars, text and up to three JPEG/PNG/WebP photos; verified source label; desktop and mobile browser submission persisted", web="✓ reviewer page", test=_RV_TEST),
+    "RV-03": dict(status=C, code="one completion invitation, two-hour WhatsApp review request while still open, and identity-scoped review link in My Activity; decline stops the request", auto="✓ review.request", web="✓ My Activity", test=_RV_TEST),
+    "RV-04": dict(status=C, code="owner can reply publicly, report with a listed reason and feature up to six reviews in the structured tenant-site section", ws="✓ Customers › Reviews", web="✓ reviews section", test=_RV_TEST),
+    "RV-05": dict(status=C, code="admin moderation queue, listed removal reason and append-only log, reviewer notice and one appeal with moderator decision; owner cannot remove a review", api="✓ admin reviews", test=_RV_TEST),
+    "RV-06": dict(status=C, code="reviewer alone may update their own rating/text within the allowed window; moderator may redact only selected personal-data spans or remove a photo; business API cannot edit/delete and DB trigger refuses direct business writes", test=_RV_TEST),
+    "RV-07": dict(status=C, code="public average and distribution use every published review, not just featured ones; tenant section shows true average and See all reviews; marketplace projection follows review events", web="✓ website + Marketplace", test=_RV_TEST),
+    "RV-08": dict(status=C, code="1–2 star review creates owner notification and Needs you now item with contact; only reviewer token can change review facts", ws="✓ Needs you now", test=_RV_TEST),
+    "RV-11": dict(status=C, code="restricted-role tests reject business editing/deletion, ineligible or duplicate review, and verify public average; moderator, appeal and reviewer-update paths covered", test=_RV_TEST),
+    "CP-01": dict(status=C, code="owner/CA-entered licence and filing calendar with recurring due dates, history, renew/file/archive and no invented statutory dates", ws="✓ Licences & deadlines", test=_CP_TEST),
+    "CP-02": dict(status=P, code="30/7/1-day and due-day ladder notifies authorised owner/CA and leaves overdue items in Needs you now until renewed; task creation waits for the P2 Tasks module", auto="✓ compliance.due", test=_CP_TEST),
+    "CP-03": dict(status=P, code="each compliance item can hold an HTTPS document link; a managed document vault/upload and access lifecycle are not built", ws="✓ document link", test=_CP_TEST),
+    "CP-04": dict(status=C, code="entered licence/accreditation number can be explicitly shown in the tenant site's footer; blank or private values are omitted", web="✓ public licences", test=_CP_TEST),
+    "AU-06": dict(status=P, code="completed orders/bookings invite once and schedule WhatsApp request; membership attendance and closed jobs wait for P2/P5", test=_RV_TEST),
+    "AU-08": dict(status=P, code="due-date ladder notifies and persists a Needs you now item; task creation waits for P2 Tasks", test=_CP_TEST),
+    "GP-14": dict(status=P, code="verified order/booking reviews, owner replies, low-rating recovery and moderation are live locally; membership/job sources and real provider activation remain", test=_RV_TEST),
+    "GP-15": dict(status=P, code="licence calendar, reminders and owner action list built; actual Tasks item and document vault are pending", test=_CP_TEST),
+    "CO-11": dict(status=P, code="FSSAI number can be entered and opted in for site display; food-specific mandatory-field policy verification remains", test=_CP_TEST),
+    "PKT-09": dict(status=C, code="P1-09 §17.5 security and average tests pass; reviewer, owner, moderator and compliance paths implemented locally. P2/P5 source types, Tasks and document vault remain explicit partial rows", test=_RV_TEST + "; " + _CP_TEST),
+})

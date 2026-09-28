@@ -1,0 +1,16 @@
+.mod-reviews { max-width: 70rem; }
+.mod-reviews section { margin-top: 2rem; }
+.mod-reviews h2 { font-size: 1.2rem; }
+.mod-reviews h2 small { opacity: .65; font-size: .85rem; }
+.mod-review-card { border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.04); border-radius: .7rem; padding: 1.25rem; margin: .8rem 0; line-height: 1.5; }
+.mod-review-card p { margin: .3rem 0 .85rem; }
+.mod-review-actions { display: flex; flex-wrap: wrap; gap: 1.3rem; align-items: flex-end; }
+.mod-review-card form { display: grid; gap: .55rem; max-width: 28rem; margin-top: .75rem; }
+.mod-review-card label { display: grid; gap: .25rem; font-size: .83rem; }
+.mod-review-card input, .mod-review-card select { background: #1b242c; border: 1px solid rgba(255,255,255,.22); color: inherit; border-radius: .3rem; padding: .55rem; }
+.mod-review-card button { justify-self: start; background: #e8eef4; color: #0f1419; border: 0; border-radius: .3rem; padding: .55rem .8rem; font-weight: 650; cursor: pointer; }
+.mod-review-card button:focus-visible, .mod-review-card input:focus-visible, .mod-review-card select:focus-visible { outline: 2px solid #9fd0ff; outline-offset: 2px; }
+.mod-review-card details { margin-top: 1rem; padding-top: .7rem; border-top: 1px solid rgba(255,255,255,.12); }
+.mod-review-card summary { cursor: pointer; }
+.mod-review-photos { display: flex; gap: .6rem; flex-wrap: wrap; margin: .7rem 0; }
+.mod-review-photos img { width: 7rem; height: 7rem; object-fit: cover; border-radius: .4rem; border: 1px solid rgba(255,255,255,.2); }

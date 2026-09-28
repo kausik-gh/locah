@@ -28,6 +28,7 @@ VARIANTS = {
     "gallery": ["grid", "masonry", "carousel"], "enquiry_form": ["default", "compact"],
     "menu_section": ["categorized", "simple"], "rooms_section": ["cards", "list"],
     "plans_section": ["cards", "comparison"], "classes_section": ["schedule", "cards"],
+    "reviews_section": ["cards", "list"],
     "highlights": ["strip", "cards"], "feature_grid": ["cards", "steps", "list"],
     "category_showcase": ["image_cards", "tiles", "chips"],
     "product_showcase": ["category_boards", "commerce_grid", "menu_grid", "compact_list"],

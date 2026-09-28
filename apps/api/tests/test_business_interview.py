@@ -234,6 +234,7 @@ def plan(bp, template=None):
         "rooms_section": ["cards", "list"],
         "plans_section": ["cards", "comparison"],
         "classes_section": ["schedule", "cards"],
+        "reviews_section": ["cards", "list"],
         "highlights": ["strip", "cards"],
         "feature_grid": ["cards", "steps", "list"],
         # Mirrors 20260924010000_website_creative_sections.sql.
@@ -245,7 +246,8 @@ def plan(bp, template=None):
         "fulfilment_strip": ["icons", "steps"],
     }
     rows = [
-        {"id": sid, "available": True, "allowed_variants": variants[sid], "requires_module": None}
+        {"id": sid, "available": True, "allowed_variants": variants[sid],
+         "requires_module": "reviews" if sid == "reviews_section" else None}
         for sid in CORE_SECTION_SCHEMAS
     ]
     result = build_plan(

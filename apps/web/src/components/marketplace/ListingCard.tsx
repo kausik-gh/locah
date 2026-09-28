@@ -9,8 +9,8 @@ import './listing-card.css'
  * The card adapts to what kind of business it is, because people decide
  * differently: a kitchen by what it cooks, a developer by its projects, a
  * salon by whether it takes bookings, a supplier by what it supplies. It
- * never shows a rating, a review count, "popular", "open now" or a delivery
- * time, because LOCAH does not record any of them, and it only offers an
+ * only shows a rating when published verified reviews exist, and never shows
+ * "popular", "open now" or a delivery time without evidence. It only offers an
  * action the API says works right now.
  */
 
@@ -174,6 +174,12 @@ export function ListingCard({
             {listing.display_name}
           </Link>
         </h3>
+        {Boolean(listing.rating_count) && listing.rating_average != null ? (
+          <p className="mx-card__rating" aria-label={`${listing.rating_average.toFixed(1)} out of 5 from ${listing.rating_count} verified reviews`}>
+            <span aria-hidden="true">★</span> {listing.rating_average.toFixed(1)}
+            <small>({listing.rating_count} verified)</small>
+          </p>
+        ) : null}
         {listing.description ? <p className="mx-card__desc">{listing.description}</p> : null}
         {highlights.length > 0 ? (
           <p className="mx-card__highlights">

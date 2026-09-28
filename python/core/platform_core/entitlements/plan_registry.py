@@ -15,9 +15,8 @@ from platform_core.entitlements.module_registry import PHASE_B_MODULE_IDS
 # `invoicing` was registered in First Launch but never packaged; it is a
 # §6.2 P1 module and a dependency of `pos`, so it joins them.
 # MD §5 "Storefront (all)": a Storefront module is on every plan once built.
-# `messaging` (WhatsApp & messages) is the first built (P1-07); reviews,
-# analytics and compliance join when their packets build them.
-_STOREFRONT_BUILT = frozenset({"messaging"})
+# Built Storefront modules are included on every plan; analytics joins when built.
+_STOREFRONT_BUILT = frozenset({"messaging", "reviews", "compliance"})
 _UNPRICED_MODULES = PHASE_B_MODULE_IDS | frozenset({"invoicing"}) | _STOREFRONT_BUILT
 _UNPRICED_FEATURES = frozenset(
     {f"{m}.core" for m in _UNPRICED_MODULES}

@@ -3,6 +3,7 @@ import Link from 'next/link'
 import type { CSSProperties } from 'react'
 import { LiveItemsSection } from './LiveItemsSection'
 import { ProductShowcase } from './ProductShowcase'
+import { ReviewsSection } from './ReviewsSection'
 import { withPreviewToken } from './preview-links'
 
 /**
@@ -894,6 +895,9 @@ export function SectionRenderer({
           altGround={alt}
         />
       )
+
+    case 'reviews_section':
+      return <ReviewsSection slug={businessSlug} title={str(c.title) || 'What our customers say'} subtitle={str(c.subtitle) || undefined} alt={alt} />
 
     /* --------------------------------------------------- location_list */
     case 'location_list': {

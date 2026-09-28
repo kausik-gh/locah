@@ -426,12 +426,13 @@ class ReviewService:
 
     @staticmethod
     async def photo(session: AsyncSession, business_id: uuid.UUID, photo_id: uuid.UUID, *,
-                    own_review: bool = False) -> tuple[bytes, str]:
-        row = (await session.execute(select(ReviewPhoto, Review.status).join(
+                    own_review_id: uuid.UUID | None = None) -> tuple[bytes, str]:
+        row = (await session.execute(select(ReviewPhoto, Review.status, Review.id).join(
             Review, Review.id == ReviewPhoto.review_id).where(
             ReviewPhoto.id == photo_id, ReviewPhoto.business_id == business_id,
             ReviewPhoto.removed_at.is_(None)))).first()
-        if row is None or (row[1] != "published" and not own_review):
+        if row is None or (own_review_id is None and row[1] != "published") or (
+                own_review_id is not None and row[2] != own_review_id):
             raise ResourceNotFound("Photo")
         return bytes(row[0].content), str(row[0].media_type)
 
