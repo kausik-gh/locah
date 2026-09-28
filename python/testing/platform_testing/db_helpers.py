@@ -24,7 +24,7 @@ async def ensure_auth_user(
                 'authenticated',
                 'authenticated',
                 :email,
-                crypt('test-password', extensions.gen_salt('bf')),
+                extensions.crypt('test-password', extensions.gen_salt('bf')),
                 now(),
                 now(),
                 now()

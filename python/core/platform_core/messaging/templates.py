@@ -96,6 +96,16 @@ LIBRARY: dict[str, Template] = {t.key: t for t in (
         "Before a booking, on the booking reminder schedule",
     ),
     Template(
+        "review_request", "Review request", "utility", "customer",
+        ("business name", "completed order or booking", "review link"),
+        {
+            "en": "Thanks for choosing {{1}}. Tell us about {{2}} here: {{3}}. Your feedback helps us improve.",
+            "ta": "வணக்கம்! {{1}}-ஐ தேர்ந்தெடுத்ததற்கு நன்றி. {{2}} பற்றி உங்கள் கருத்தை இங்கே பகிருங்கள்: {{3}}. இது எங்களுக்கு உதவும்.",
+            "hi": "नमस्ते! {{1}} को चुनने के लिए धन्यवाद। {{2}} के बारे में यहाँ अपनी राय दें: {{3}}। आपकी राय हमें बेहतर बनाती है।",
+        },
+        "After a completed order or booking, if the customer has not reviewed or declined",
+    ),
+    Template(
         "payment_due", "Payment due", "utility", "customer",
         ("business name", "amount due", "link to see and pay"),
         {

@@ -16,7 +16,8 @@ from platform_core.events.subscribers import (  # noqa: F401  (registration side
     invoicing_auto,
     marketplace_index,
     messaging_notify,
+    reviews_invite,
 )
 
 __all__ = ["automation_triggers", "fulfilment_cancellation", "invoicing_auto", "marketplace_index",
-           "messaging_notify"]
+           "messaging_notify", "reviews_invite"]

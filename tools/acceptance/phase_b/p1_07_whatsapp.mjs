@@ -59,7 +59,9 @@ try {
   const body = await text()
   check(body.includes('+919840012345') && body.includes('Test number') && body.includes('recorded in the inbox but not delivered'),
     'test number connected and clearly marked as not delivering', results)
-  check(/9 of 9 approved/.test(body.replace(/\s+/g, ' ')), `this phase's templates approved (${(body.match(/\d+ of \d+ approved/) || [''])[0]})`, results)
+  const approval = body.replace(/\s+/g, ' ').match(/(\d+) of (\d+) approved/)
+  check(Boolean(approval && Number(approval[1]) >= 9 && approval[1] === approval[2]),
+    `all message templates approved (${approval?.[0] || 'missing'})`, results)
   // The owner's own alerts: new orders and waiting chats.
   await page.eval(`[...document.querySelectorAll('label')].find(l => l.innerText.includes('Send me alerts on WhatsApp')).querySelector('input').click()`)
   await page.waitFor('My WhatsApp number', { text: true })

@@ -81,30 +81,6 @@ async def _job_status(session: AsyncSession, job_id: uuid.UUID) -> tuple[str, in
     return str(row.status), int(row.attempt_count), row.last_error
 
 
-async def _drain_backlog(session: AsyncSession, worker_id: str, max_polls: int = 25) -> None:
-    """Clear any pending/due-retry jobs left by earlier runs before a test that
-    asserts on `poll_and_execute_jobs`'s exact return count or relies on a
-    single poll claiming precisely the job it just inserted.
-
-    `claim_job_batch` claims the oldest-due `LIMIT 10` jobs from the shared
-    `platform_async_jobs` table system-wide (correct production behaviour —
-    a worker lane has no notion of "this test's jobs"). This dev/test
-    database is shared and durable across runs, not a throwaway per-run
-    instance, so a bounded batch size means a backlog of old rows (stale
-    retries whose backoff has since elapsed, or jobs from a run that never
-    got to poll them) can crowd out — or simply get counted alongside — the
-    row a given test cares about. Draining first (bounded iterations, not a
-    destructive TRUNCATE, so it stays correct even if tests run in parallel
-    against the same database — it only ever consumes what is genuinely due)
-    makes each test's own single poll deterministic without changing what it
-    asserts.
-    """
-    for _ in range(max_polls):
-        processed = await poll_and_execute_jobs(session, worker_id)
-        if processed == 0:
-            return
-
-
 @pytest.mark.asyncio
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 async def test_async_job_claim_and_completion(db_session: AsyncSession) -> None:
@@ -171,7 +147,7 @@ async def test_async_job_retry_on_failure(db_session: AsyncSession) -> None:
     assert "transient failure" in last_error
 
     # Not yet due because of backoff
-    claimed = await claim_job_batch(db_session, "test-job-retry-2")
+    claimed = await claim_job_batch(db_session, "test-job-retry-2", job_type=isolated_type)
     claimed_ids = {str(row["id"]) for row in claimed}
     assert str(job_id) not in claimed_ids
     await db_session.rollback()
@@ -236,15 +212,10 @@ async def test_async_job_dead_letter_on_max_attempts(db_session: AsyncSession) -
 @pytest.mark.asyncio
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 async def test_scheduled_job_materialization(db_session: AsyncSession) -> None:
-    # Same shared-database backlog concern as _drain_backlog above, for the
-    # scheduled-jobs lane: drain any already-due schedules from earlier runs
-    # first so the "materializing again must not duplicate" assertion below
-    # (`again == 0`) reflects only this test's own schedule.
-    for _ in range(25):
-        if await materialize_due_schedules(db_session, "test-scheduler-drain") == 0:
-            break
-    await _drain_backlog(db_session, "test-scheduler-drain-jobs")
-
+    # A unique type keeps this job separate from other test jobs. Do not
+    # globally drain the shared queue: that can claim another test's row when
+    # the suite runs in parallel.
+    isolated_type = f"platform.noop.{uuid.uuid4().hex[:12]}"
     schedule_id = uuid.uuid4()
     await db_session.execute(
         text("""
@@ -253,13 +224,13 @@ async def test_scheduled_job_materialization(db_session: AsyncSession) -> None:
             )
             VALUES (
                 :id,
-                'platform.noop',
+                :schedule_type,
                 '{"source": "schedule"}'::jsonb,
-                now() - interval '1 second',
+                now() - interval '1 century',
                 'pending'
             )
         """),
-        {"id": str(schedule_id)},
+        {"id": str(schedule_id), "schedule_type": isolated_type},
     )
     await db_session.commit()
 
@@ -288,8 +259,11 @@ async def test_scheduled_job_materialization(db_session: AsyncSession) -> None:
         {"id": str(srow.materialized_job_id)},
     )
     jrow = job.one()
-    assert jrow.job_type == "platform.noop"
-    assert jrow.status == "pending"
+    assert jrow.job_type == isolated_type
+    # Another xdist worker may already have acknowledged this no-op job after
+    # materialization. Its identity and causation, not a transient queue
+    # status, prove that this schedule produced the right job.
+    assert jrow.status in {"pending", "processing", "completed"}
     assert str(jrow.causation_id) == str(schedule_id)
 
     # Materializing again must not duplicate THIS schedule. Other due rows on
@@ -325,14 +299,9 @@ async def test_scheduled_job_materialization(db_session: AsyncSession) -> None:
 @pytest.mark.asyncio
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 async def test_concurrent_job_claim_safety(db_session: AsyncSession) -> None:
-    # No drain here. Both claims below are scoped to a job_type nothing else
-    # uses, so this job is the only row either can match and a LIMIT-10 batch
-    # cannot crowd it out. Draining would add nothing, and it is global work:
-    # under `pytest -n` it competes with every other worker, which is how this
-    # test came to fail in parallel while passing on its own.
-    isolated_type = f"platform.noop.{uuid.uuid4().hex[:12]}"
-    job_id = await _insert_async_job(db_session, job_type=isolated_type)
-
+    # Our two claims are type-scoped, but other test workers use the production
+    # unscoped poll against the same durable DB. If one of them gets our row
+    # first, retry with a fresh row rather than misreport a duplicate claim.
     url = get_database_url()
     assert url
     if url.startswith("postgresql://"):
@@ -340,19 +309,26 @@ async def test_concurrent_job_claim_safety(db_session: AsyncSession) -> None:
     engine = create_async_engine(url, echo=False, poolclass=NullPool)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    async with factory() as session_a, factory() as session_b:
-        claimed_a = await claim_job_batch(session_a, "worker-a", limit=10, job_type=isolated_type)
-        claimed_b = await claim_job_batch(session_b, "worker-b", limit=10, job_type=isolated_type)
-        await session_a.commit()
-        await session_b.commit()
+    try:
+        for _ in range(3):
+            isolated_type = f"platform.noop.{uuid.uuid4().hex[:12]}"
+            job_id = await _insert_async_job(db_session, job_type=isolated_type)
+            async with factory() as session_a, factory() as session_b:
+                claimed_a = await claim_job_batch(session_a, "worker-a", limit=10, job_type=isolated_type)
+                claimed_b = await claim_job_batch(session_b, "worker-b", limit=10, job_type=isolated_type)
+                await session_a.commit()
+                await session_b.commit()
 
-    await engine.dispose()
-
-    ids_a = {str(row["id"]) for row in claimed_a}
-    ids_b = {str(row["id"]) for row in claimed_b}
-    # The specific job must be claimed by at most one worker
-    assert not (str(job_id) in ids_a and str(job_id) in ids_b)
-    assert str(job_id) in ids_a or str(job_id) in ids_b
+            ids_a = {str(row["id"]) for row in claimed_a}
+            ids_b = {str(row["id"]) for row in claimed_b}
+            assert not (str(job_id) in ids_a and str(job_id) in ids_b)
+            if str(job_id) in ids_a or str(job_id) in ids_b:
+                return
+            status, _, _ = await _job_status(db_session, job_id)
+            assert status in {"processing", "completed"}, "Neither test worker nor another worker claimed the job"
+        pytest.skip("Unscoped parallel workers claimed all three test rows before the two scoped claims")
+    finally:
+        await engine.dispose()
 
 
 async def test_a_deployed_worker_acknowledges_a_test_job_without_running_it(monkeypatch) -> None:

@@ -445,7 +445,7 @@ def test_the_counter_engine_matches_the_server_engine_to_the_paisa(tmp_path: Any
     engine = Path(__file__).resolve().parents[2] / "workspace" / "src" / "lib" / "pos" / "engine.ts"
     script = tmp_path / "run.mts"
     script.write_text(
-        f"import {{ compute }} from {json.dumps(str(engine))};\n"
+        f"import {{ compute }} from {json.dumps(engine.as_uri())};\n"
         "import { readFileSync } from 'node:fs';\n"
         "const cases = JSON.parse(readFileSync(process.argv[2], 'utf8'));\n"
         "console.log(JSON.stringify(cases.map((c) => { const b = compute(c.lines, c.ctx, c.billDiscount);"

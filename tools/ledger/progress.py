@@ -323,7 +323,7 @@ done("P1-07", {
     "MS-01": dict(status=P, code="one inbox of WhatsApp conversations and messages (in, out, templates, locations, media notes, delivery status); a new number becomes a customer. Other channels (SMS, email) are MS-06, activation required",
                   db="✓ messaging_conversations + messaging_messages + RLS", svc="✓ MessagingService", api="✓ /messaging/*",
                   ws="✓ Reach › WhatsApp inbox", perm="✓ messaging.read / reply / configure", test=_MS_TEST),
-    "MS-02": dict(status=P, code="library of 11 templates (order received / confirmed / out for delivery / delivered, booking confirmed / reminder, payment due, your bill, renewal due, offer, team alert) in English, Tamil and Hindi, parameters in order, checked against WhatsApp's rules; submitted and tracked per business and language. Approval by Meta needs a real number (MS-07); Tamil and Hindi wording needs a native review (VB-22); renewal (P2) and offer (P3) are not sent yet",
+    "MS-02": dict(status=P, code="library of 12 templates (order received / confirmed / out for delivery / delivered, booking confirmed / reminder, review request, payment due, your bill, renewal due, offer, team alert) in English, Tamil and Hindi, parameters in order, checked against WhatsApp's rules; submitted and tracked per business and language. Approval by Meta needs a real number (MS-07); Tamil and Hindi wording needs a native review (VB-22); renewal (P2) and offer (P3) are not sent yet",
                   ws="✓ WhatsApp › Message templates", test=_MS_TEST),
     "MS-03": dict(status=C, code="marketing templates go only to customers with an open WhatsApp marketing opt-in in the consent store; STOP (English, Tamil, Hindi) withdraws it and says so; transactional messages follow the customer's own order or booking",
                   test=_MS_TEST + " (§12.6 consent test)"),
@@ -394,4 +394,13 @@ done("P1-08", {
     "GP-01": dict(status=C, code="one WhatsApp inbox with the customer's orders, bookings and khata beside the chat, and WhatsApp journeys that create the same orders, bookings and enquiries as the website", test=_JR_TEST),
     "CN-23": dict(status=C, code="every WhatsApp message LOCAH sends — journey replies, templates, team alerts, inbox replies — is counted once (idempotent per message) with its category (service, utility, marketing) on the business's monthly meter, capped where the owner sets a limit; so a change in WhatsApp's per-message prices is absorbed by the count, not by guesswork",
                   test="✓ test_messaging (meter + cap) + test_journeys"),
+})
+
+
+# ---------------------------------------------------------------- P1-09A verified review invitations
+done("P1-09A", {
+    "RV-01": dict(status=P, code="completed orders and bookings invite exactly once per interaction, within 30 days; membership check-ins wait for P2 attendance and closed job cards for P5 jobs; reviewer write path and UI are not yet exposed", test="✓ test_review_invites (2)"),
+    "RV-03": dict(status=P, code="completion event records a review invitation and My Activity prompt; a review_request WhatsApp template is sent 2 hours later only when the contact has not reviewed or declined; customer review page and My Activity link remain to build", auto="✓ review.request", test="✓ test_review_invites (2)"),
+    "AU-06": dict(status=P, code="completed order or booking → one review invitation, WhatsApp request after 2 hours; replay is idempotent and declined invitations do not send; reviewer page and membership/job sources remain", auto="✓ review.request", test="✓ test_review_invites (2)"),
+    "PKT-09": dict(status=P, code="P1-09 in progress: verified order/booking invitation and WhatsApp delivery tested; review APIs, customer/owner/moderator surfaces, compliance, and §17.5 security tests remain", test="✓ test_review_invites (2); §17.5 pending"),
 })

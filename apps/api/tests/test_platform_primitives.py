@@ -290,7 +290,9 @@ def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
     """Memberships are built but their renewal ladder has no step code yet (P2)
     — the owner is never shown a switch that does nothing. Booking reminders,
     order tracking, bill and khata reminders and waiting chats have steps since
-    WhatsApp (P1-07); each shows only while its module is on."""
+    WhatsApp (P1-07); reviews have a wired request step in P1-09, but their
+    unfinished module is not shown to owners yet. Each shows only while its
+    module is on."""
     from platform_core.automation import LADDERS, is_wired
 
     _, owner = new_identity(monkeypatch)
@@ -301,7 +303,7 @@ def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
     assert shown == ["booking.reminder", "stock.low", "order.tracking", "lead.followup", "chat.waiting"]
     assert "membership.renewal" not in shown
     assert {k for k in LADDERS if is_wired(k)} == {"stock.low", "lead.followup", "booking.reminder", "order.tracking",
-                                                   "invoice.overdue", "ledger.statement", "chat.waiting"}
+                                                   "invoice.overdue", "ledger.statement", "chat.waiting", "review.request"}
 
 
 @DB
