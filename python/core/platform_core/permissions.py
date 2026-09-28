@@ -116,6 +116,9 @@ PAYMENTS_READ = "payments.read"
 PAYMENTS_REFUND = "payments.refund"
 PAYMENTS_MANAGE_CONNECTION = "payments.manage_connection"
 PAYMENTS_EXPORT = "payments.export"
+# Ask a customer for money (a payment link), confirm UPI that arrived and
+# record cash, UPI or card taken against an order, booking or membership.
+PAYMENTS_COLLECT = "payments.collect"
 
 MEMBERSHIPS_READ = "memberships.read"
 MEMBERSHIPS_CREATE_PLAN = "memberships.create_plan"

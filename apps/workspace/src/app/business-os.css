@@ -740,3 +740,33 @@ ul.bos-pills { list-style: none; margin: 0; padding: 0; }
 .bos-stock-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; max-width: 860px; }
 .bos-stock-lines li { padding: .55rem .8rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: .9rem; }
 .bos-stock > .bos-card, .bos-stock > .bos-section + .bos-card { margin-top: 1.6rem; }
+
+/* ---------------------------------------------------------------- money on a transaction (P1-10D) */
+.bos-money { display: grid; gap: .9rem; max-width: 760px; }
+.bos-money__sum {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: .6rem; margin: 0;
+  padding: .9rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface);
+}
+.bos-money__sum dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--color-muted); }
+.bos-money__sum dd { margin: .2rem 0 0; font-variant-numeric: tabular-nums; font-weight: 600; }
+.bos-money__sum dd.is-balance { font-size: 1.1rem; }
+.bos-money__row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.bos-money__confirm {
+  display: grid; gap: .6rem; padding: .9rem 1rem; border-radius: var(--radius);
+  border: 1px solid var(--status-warn-bd); background: var(--status-warn-bg); color: var(--color-foreground);
+}
+.bos-money__confirm p { margin: 0; }
+.bos-money__form {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .7rem; align-items: end;
+  padding: .9rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface);
+}
+.bos-money__form label { display: grid; gap: .3rem; font-size: .86rem; }
+.bos-money__form .bos-money__wide { grid-column: 1 / -1; }
+.bos-money__form button { justify-self: start; }
+.bos-money__link {
+  display: grid; gap: .6rem; padding: .9rem 1rem; border-radius: var(--radius);
+  border: 1px solid var(--status-good-bd); background: var(--status-good-bg);
+}
+.bos-money__link p { margin: 0; }
+.bos-money__link input { width: 100%; font-size: .85rem; }
+.bos-money__h { font-size: .95rem; margin: .4rem 0 0; }

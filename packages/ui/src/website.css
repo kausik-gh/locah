@@ -1896,3 +1896,27 @@
 }
 [data-locah-site] .ls-account__list li .ls-meta { grid-column: 1; font-size: 0.82rem; }
 [data-locah-site] .ls-account__list li strong { grid-column: 2; grid-row: 1; }
+/* A payment link (P1-10D): amount due, paying now, balance — the business's own colours only. */
+[data-locah-site] .ls-pay__state {
+  margin: 0; padding: 0.7rem 0.9rem; border-radius: var(--site-radius); border: 1px solid var(--site-border);
+  background: var(--site-bg-alt); color: var(--site-ink); font-weight: 600;
+}
+[data-locah-site] .ls-pay__state--paid { border-color: var(--site-accent); }
+[data-locah-site] .ls-pay__state--failed { border-style: dashed; }
+[data-locah-site] .ls-pay__totals dt, [data-locah-site] .ls-pay__totals dd { overflow-wrap: anywhere; }
+[data-locah-site] .ls-pay__method, [data-locah-site] .ls-pay__wait { display: grid; gap: 0.8rem; justify-items: stretch; }
+[data-locah-site] .ls-pay__upi { text-align: center; }
+[data-locah-site] .ls-pay__method .ls-meta, [data-locah-site] .ls-pay__wait .ls-meta { margin: 0; }
+[data-locah-site] .ls-pay__qr summary { cursor: pointer; color: var(--site-muted); font-size: 0.9rem; }
+[data-locah-site] .ls-pay__qr img {
+  display: block; margin: 0.7rem 0 0.4rem; background: #fff; padding: 6px; border-radius: 8px;
+  border: 1px solid var(--site-border);
+}
+[data-locah-site] .ls-pay__utr { display: grid; gap: 0.3rem; font-size: 0.9rem; color: var(--site-muted); }
+[data-locah-site] .ls-pay__utr input {
+  min-height: 44px; padding: 0 0.8rem; border: 1px solid var(--site-border); border-radius: var(--site-radius);
+  background: var(--site-bg); color: var(--site-ink); font: inherit;
+}
+@media (min-width: 640px) {
+  [data-locah-site] .ls-pay__method, [data-locah-site] .ls-pay__wait { justify-items: start; }
+}

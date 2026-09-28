@@ -10,7 +10,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.context_resolver import bind_public_context
@@ -21,6 +21,7 @@ from platform_core.models import (
     MediaAsset,
     MerchantConnection,
     Offering,
+    SalesOrder,
 )
 from platform_core.services.business import BusinessService
 from platform_core.services.customer import CustomerService
@@ -52,6 +53,36 @@ class CheckoutService:
             )
         ).scalars().first()
         return state is not None and state.activation_state in ACTIVE_MODULE_STATES
+
+    @staticmethod
+    async def cod_rules(session: AsyncSession, business_id: uuid.UUID) -> dict[str, Any]:
+        """Cash on delivery as the business set it (read-only; no settings row
+        is created by a visitor)."""
+        from platform_core.models import MessagingSettings
+
+        row = await session.get(MessagingSettings, business_id)
+        return {"on_delivery": True if row is None else bool(row.cod_allowed),
+                "first_order_cap": float(row.first_order_cod_cap) if row is not None
+                and row.first_order_cod_cap is not None else None}
+
+    @staticmethod
+    async def _assert_cod(session: AsyncSession, business_id: uuid.UUID, contact_id: uuid.UUID,
+                          order_id: uuid.UUID, total: Decimal) -> None:
+        rules = await CheckoutService.cod_rules(session, business_id)
+        if not rules["on_delivery"]:
+            raise ValidationError("Cash on delivery is not available — choose pickup",
+                                  details={"code": "cod_off", "field": "payment_method"})
+        cap = rules["first_order_cap"]
+        if cap is None or total <= Decimal(str(cap)):
+            return
+        earlier = (await session.execute(select(func.count()).select_from(SalesOrder).where(
+            SalesOrder.business_id == business_id, SalesOrder.customer_contact_id == contact_id,
+            SalesOrder.id != order_id, SalesOrder.deleted_at.is_(None),
+            SalesOrder.status.notin_(("cancelled", "rejected"))))).scalar_one()
+        if not earlier:
+            raise ValidationError(
+                f"For a first order, cash on delivery is up to ₹{cap:,.0f}. Choose pickup, or order a little less.",
+                details={"code": "cod_first_order_cap", "field": "payment_method", "cap": cap})
 
     @staticmethod
     async def list_public_offerings(
@@ -153,6 +184,7 @@ class CheckoutService:
             },
             "fulfilment_modes": modes,
             "payment_methods": payment_methods,
+            "cod": await CheckoutService.cod_rules(session, business.id),
             "locations": [
                 {
                     "id": str(loc.id),
@@ -397,6 +429,12 @@ class CheckoutService:
                 ),
             },
         )
+
+        if payment_method == "cod" and mode == "delivery":
+            # The same cash-on-delivery rule as WhatsApp orders (§12.4, PY-07):
+            # off entirely, or capped for a customer's first order.
+            await CheckoutService._assert_cod(session, business.id, contact.id, order.id,
+                                              Decimal(str(order.total_amount)))
 
         # Idempotent re-entry: ensure job exists for this order.
         job = await FulfilmentService.create_job_for_order(

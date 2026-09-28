@@ -480,7 +480,7 @@ class LedgerService:
             take = min(open_amt, left)
             session.add(InvoicingPayment(business_id=business_id, document_id=b.id, amount=take,
                                          method=entry.method or "other", reference=f"Khata {entry.reference or ''}".strip()[:120],
-                                         received_on=entry.entry_date, recorded_by=actor_id))
+                                         received_on=entry.entry_date, recorded_by=actor_id, via="khata"))
             b.amount_paid = dec(b.amount_paid) + take
             b.version += 1
             left -= take

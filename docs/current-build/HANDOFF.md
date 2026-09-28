@@ -19,7 +19,7 @@ Branch `main`. Packets done, newest last:
 | P1-01 … P1-09B | see git log | per-packet tests + browser flows (history in git) |
 | P1-10A stock depth | cb8ecc3 | test_stock_depth (19) + browser p1_10a_stock 20/20, p1_10a_counter_serials 8/8 |
 | P1-10B one customer identity | 4eea4b4 | test_customer_identity (3) + browser p1_10b_identity 14/14; suite 1048 |
-| P1-10C module-aware website + Marketplace | this commit | test_module_aware_site (11) + browser p1_10c_site 21/21; suite 1059 |
+| P1-10C module-aware website + Marketplace | 366ad71 | test_module_aware_site (11) + browser p1_10c_site 21/21; suite 1059 |
 
 P1 gate after P1-10C: **TOTAL 240 · COMPLETE 122 · PARTIAL 90 · NOT_STARTED 12 ·
 ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 763 rows (P1 total grew by the
@@ -31,6 +31,29 @@ founder-refinement rows in section A2).
 PAYMENTS.txt` and `Documentations/B2B.txt` (added 2026-09-28/29). Ledger section
 A2 (`tools/ledger/rows_refinements.py`) lists each requirement with its status;
 each document ends with a browser acceptance list that the module's flow must mirror.
+
+### P1-10D1 — collect what is due (IN PROGRESS, committed, not browser-verified)
+
+- Migration `20260929100000_p1_payment_requests.sql` (applied to local
+  locah_test/locah_accept only): `payments_requests` (links; token stored as
+  hash; RLS), `payment_request_business()` token→business, attempts gain
+  request_id/purpose/reference/verified_at/verified_by/attention + statuses
+  cancelled/expired + methods upi_direct/cash/upi/card/bank_transfer + sources
+  invoice/khata; `partially_paid` on orders/bookings/memberships;
+  `bookings.total_amount`; `invoicing_payments.via/payment_attempt_id`.
+- `services/payment_collect.py` (money view, links, customer "I have paid" =
+  claim until the business confirms, withdraw, confirm/not received, record
+  cash/UPI/card/bank, settle into bill/khata exactly once, paid-twice flag,
+  owner overview counting each rupee once). `payment_attempt.apply_status` is
+  idempotent and allows late online success; web checkout honours the COD
+  first-order cap. Permission `payments.collect`.
+- API `v1_payment_collect.py`; web `/{slug}/pay/{token}`; Workspace
+  MoneyPanel on order/booking/bill/khata pages; Payments page rebuilt.
+- Tested: `test_payment_collect` (10) + full suite 1069 on local Postgres.
+- NOT done yet: browser flow (cake advance → UPI claim → confirm → balance,
+  390 px), ledger rows (PY-02/04/05/06/07, FR-PY-01..04), then P1-10D2
+  (dated pre-orders OR-04, formula pricing OK-15). Online payment on links is
+  ACTIVATION_REQUIRED (`ONLINE_LINKS_ACTIVE = False`).
 
 ### P1-10C — the site and the Marketplace follow the tools (Founder §14–16; Guide §4)
 

@@ -12,7 +12,7 @@ SOURCE_TYPES = frozenset({"order", "booking", "membership"})
 PAYMENT_METHODS = frozenset({"online", "cod", "pay_at_business", "pay_later"})
 PAYMENT_STATUSES = frozenset({
     "pending", "processing", "pending_offline", "succeeded",
-    "failed", "partially_refunded", "refunded",
+    "failed", "partially_refunded", "refunded", "cancelled", "expired",
 })
 REFUNDABLE_STATUSES = frozenset({"succeeded", "partially_refunded"})
 MERCHANT_STATUSES = frozenset(
@@ -23,11 +23,16 @@ REASON_MAX = 500
 
 ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     "pending": frozenset({"processing", "pending_offline", "failed"}),
-    "processing": frozenset({"succeeded", "failed", "pending_offline"}),
-    "pending_offline": frozenset({"succeeded", "failed"}),
+    "processing": frozenset({"succeeded", "failed", "pending_offline", "expired", "cancelled"}),
+    "pending_offline": frozenset({"succeeded", "failed", "cancelled"}),
     "succeeded": frozenset({"partially_refunded", "refunded"}),
     "partially_refunded": frozenset({"refunded"}),
-    "failed": frozenset(),
+    # A provider's delayed success on an attempt already written off (Founder
+    # refinement: Payments section 15): the money moved, so it is recorded; a
+    # second payment for the same link is flagged for a refund. Online only.
+    "failed": frozenset({"succeeded"}),
+    "expired": frozenset({"succeeded"}),
+    "cancelled": frozenset({"succeeded"}),
     "refunded": frozenset(),
 }
 

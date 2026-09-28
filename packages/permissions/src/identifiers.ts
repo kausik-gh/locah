@@ -140,6 +140,8 @@ export const PERMISSIONS = {
   PAYMENTS_REFUND: 'payments.refund',
   PAYMENTS_MANAGE_CONNECTION: 'payments.manage_connection',
   PAYMENTS_EXPORT: 'payments.export',
+  // Ask for money (a payment link), confirm UPI that arrived, record money taken.
+  PAYMENTS_COLLECT: 'payments.collect',
 
   // Module: memberships
   MEMBERSHIPS_READ: 'memberships.read',

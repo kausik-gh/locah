@@ -157,6 +157,24 @@ NOTIFICATION_RULES: dict[str, NotificationRule] = {
         resource_type="business",
     ),
     # --- Payments -------------------------------------------------------
+    "payment.confirmation_requested": NotificationRule(
+        notification_type="payment.confirmation_requested",
+        title="A customer says they paid by UPI — check it arrived",
+        category="commercial",
+        severity="warning",
+        required_permission=perm.PAYMENTS_COLLECT,
+        resource_type="payment",
+        resource_id_key="payment_id",
+    ),
+    "payment.paid_twice": NotificationRule(
+        notification_type="payment.paid_twice",
+        title="A payment link was paid twice — a refund is due",
+        category="commercial",
+        severity="warning",
+        required_permission=perm.PAYMENTS_READ,
+        resource_type="payment",
+        resource_id_key="payment_id",
+    ),
     "payment.failed": NotificationRule(
         notification_type="payment.failed",
         title="A payment failed",

@@ -1076,6 +1076,9 @@ class Booking(Base):
     deposit_amount: Mapped[float] = mapped_column(
         Numeric(12, 2), nullable=False, server_default=text("0")
     )
+    # What the booking costs, fixed when it is made (P1-10D); null when the
+    # service has no fixed price.
+    total_amount: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     management_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     management_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -1255,9 +1258,46 @@ class PaymentAttempt(Base):
     failure_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # P1-10D: the link it was paid through, what it was for, the customer's or
+    # counter's reference (UTR, card slip), who confirmed it and when.
+    request_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("payments_requests.id"), nullable=True
+    )
+    purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verified_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    attention: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class PaymentRequest(Base):
+    """A secure link for an amount against a real transaction (P1-10D)."""
+
+    __tablename__ = "payments_requests"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    customer_contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    amount: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'INR'"))
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'open'"))
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 
@@ -2216,6 +2256,10 @@ class InvoicingPayment(Base):
     verification: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'verified'"))
     verified_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # P1-10D: 'khata' when applied from a khata receipt, 'payment_attempt' when a
+    # payment link or recorded payment settled the bill — so money counts once.
+    via: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payment_attempt_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

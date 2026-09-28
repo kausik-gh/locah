@@ -5,6 +5,7 @@ import { apiTry } from '@/lib/api'
 import { DetailShell, GateNotice, PageHeader, Section, StatusPill } from '@/components/ui'
 import { advanceOrderStatus, cancelOrder } from '../actions'
 import { OrderBill } from './OrderBill'
+import { MoneySection } from '@/components/MoneySection'
 
 export const dynamic = 'force-dynamic'
 
@@ -161,9 +162,8 @@ export default async function OrderDetailPage({
         </Section>
       ) : null}
 
-      <p style={{ marginTop: '1.5rem', color: 'var(--color-muted)', fontSize: '0.88rem' }}>
-        Refunds: use the Payments module transaction detail when a payment attempt exists.
-      </p>
+      <MoneySection businessId={params.businessId} token={token} sourceType="order" sourceId={params.orderId}
+        path={`${base}/orders/${params.orderId}`} />
     </DetailShell>
   )
 }

@@ -951,9 +951,12 @@ class InvoiceService:
         received = date.fromisoformat(payload["received_on"]) if payload.get("received_on") else today
         if received > today:
             raise _err("received_on", "The date cannot be in the future")
+        # `_via` / `_payment_attempt_id` are set only by the payments service
+        # (a payment link settling this bill); the API body cannot carry them.
         row = InvoicingPayment(business_id=business_id, document_id=doc.id, amount=amount, method=method,
                                reference=(str(payload.get("reference") or "").strip()[:120] or None),
-                               received_on=received, recorded_by=actor_id)
+                               received_on=received, recorded_by=actor_id, via=payload.get("_via"),
+                               payment_attempt_id=payload.get("_payment_attempt_id"))
         session.add(row)
         doc.amount_paid = dec(doc.amount_paid) + amount
         doc.version += 1

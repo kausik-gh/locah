@@ -13,6 +13,8 @@ import {
 type Options = {
   fulfilment_modes: string[]
   payment_methods: string[]
+  /** Cash on delivery as the business set it (the same rule as its WhatsApp orders). */
+  cod?: { on_delivery: boolean; first_order_cap: number | null }
   locations: Array<{ id: string; name: string; is_primary: boolean }>
   business: { display_name: string; slug: string }
 }
@@ -378,10 +380,18 @@ export default function CheckoutClient({
                     checked={paymentMethod === m}
                     onChange={() => setPaymentMethod(m)}
                   />{' '}
-                  {m === 'cod' ? 'Cash on delivery' : 'Online'}
+                  {m === 'cod' ? (mode === 'delivery' ? 'Cash on delivery' : 'Pay at pickup') : 'Online'}
                 </label>
               ))}
             </div>
+            {mode === 'delivery' && paymentMethod === 'cod' && options.cod && !options.cod.on_delivery ? (
+              <p className="ls-meta">Cash on delivery is not available. Choose pickup to pay when you collect.</p>
+            ) : null}
+            {mode === 'delivery' && paymentMethod === 'cod' && options.cod?.on_delivery && options.cod.first_order_cap !== null ? (
+              <p className="ls-meta">
+                For a first order, cash on delivery is up to ₹{options.cod.first_order_cap.toLocaleString('en-IN')}.
+              </p>
+            ) : null}
           </section>
 
           <section>

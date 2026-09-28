@@ -4,6 +4,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { DetailShell, GateNotice, PageHeader, StatusPill } from '@/components/ui'
 import { BillActions } from './BillActions'
+import { MoneySection } from '@/components/MoneySection'
 import { PAYMENT_LABEL, day, rupees, type Bill } from '../types'
 
 export const dynamic = 'force-dynamic'
@@ -166,6 +167,10 @@ export default async function BillPage({ params }: { params: { businessId: strin
               </section>
             ) : null}
             {d.paid_via_order ? <p className="bos-hint">Paid online with the order.</p> : null}
+            {d.status === 'issued' && !d.doc_kind.endsWith('note') && !d.on_account && !d.order_id ? (
+              <MoneySection businessId={b} token={token} sourceType="invoice" sourceId={d.id}
+                path={`${base}/${d.id}`} title="Ask for payment" />
+            ) : null}
             {(d.related ?? []).length && !d.doc_kind.endsWith('note') ? (
               <section className="bos-card">
                 <h2>Notes against this bill</h2>

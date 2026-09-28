@@ -1,0 +1,373 @@
+"""P1-10D: collect what is due, simply (Founder refinement — Payments; MD §6.1, §12.4).
+
+Pure tests pin the payment state and the UPI/WhatsApp links. Database tests
+take real transactions through the owner and public APIs: an advance and a
+balance on one order by payment link (UPI to the business, confirmed by the
+business), a failed payment retried on the same order, money recorded at the
+counter, a bill and a khata balance paid by link and counted once, a replayed
+and a late provider success, cash on delivery capped for a first order, split
+tender at the counter, and tenant isolation of payment links.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import os
+import uuid
+from datetime import datetime, timezone
+from decimal import Decimal as D
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from platform_api.main import app
+from platform_core.services.payment_collect import payment_state, upi_link, wa_share
+from platform_testing.phase_b import (
+    assert_tenant_isolated,
+    billing_shop,
+    create_business,
+    new_identity,
+    sql,
+)
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+DB = pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+client = TestClient(app)
+WEBHOOK_SECRET = "test-payment-webhook-secret"
+
+
+# ---------------------------------------------------------------- pure
+def test_payment_state_is_separate_from_the_transaction_and_never_guesses() -> None:
+    assert payment_state(D(1000), D(0), D(0), pending=False, last_failed=False) == "unpaid"
+    assert payment_state(D(1000), D(300), D(0), pending=False, last_failed=False) == "partially_paid"
+    assert payment_state(D(1000), D(1000), D(0), pending=False, last_failed=False) == "paid"
+    assert payment_state(D(1000), D(0), D(0), pending=True, last_failed=False) == "pending"
+    assert payment_state(D(1000), D(0), D(0), pending=False, last_failed=True) == "failed"
+    assert payment_state(D(1000), D(1000), D(400), pending=False, last_failed=False) == "partially_refunded"
+    assert payment_state(D(1000), D(1000), D(1000), pending=False, last_failed=False) == "refunded"
+    # An advance paid while the balance is being confirmed stays honest: pending.
+    assert payment_state(D(1000), D(300), D(0), pending=True, last_failed=False) == "pending"
+
+
+def test_upi_is_for_the_exact_amount_and_whatsapp_goes_to_the_customer() -> None:
+    link = upi_link("sweets@okaxis", "Anand Sweets", D("300"), "Order ORD-1 Advance")
+    assert link.startswith("upi://pay?pa=sweets@okaxis&pn=Anand%20Sweets&am=300.00&cu=INR")
+    assert wa_share("98400 12345", "Pay here") == "https://wa.me/919840012345?text=Pay%20here"
+    assert wa_share(None, "x") is None and wa_share("123", "x") is None
+
+
+# ---------------------------------------------------------------- helpers
+def _shop(monkeypatch: Any, *modules: str) -> tuple[dict[str, str], dict[str, Any]]:
+    monkeypatch.setenv("PAYMENT_WEBHOOK_SECRET", WEBHOOK_SECRET)
+    _, owner = new_identity(monkeypatch)
+    shop: dict[str, Any] = dict(billing_shop(client, owner, modules=("pos", "ledger", "customer-relationships",
+                                                                      *modules)))
+    base = shop["base"]
+    cake = client.post(f"{base}/products", json={
+        "status": "active", "offering_type": "product", "title": "Custom cake 2 kg", "price_amount": 1000,
+        "hsn_sac": "1905", "tax_rate": 0}, headers=owner)
+    assert cake.status_code == 200, cake.text
+    shop["cake"] = cake.json()["data"]
+    r = client.put(f"{base}/pos/settings", json={"upi_vpa": "anand@okaxis", "upi_payee_name": "Anand Sweets"},
+                   headers=owner)
+    assert r.status_code == 200, r.text
+    customer = client.post(f"{base}/customers", json={"display_name": "Kavya", "phone": "+919840012345"},
+                           headers=owner)
+    assert customer.status_code == 200, customer.text
+    shop["customer"] = customer.json()["data"]["id"]
+    shop["slug"] = client.get(f"/v1/b/{shop['bid']}", headers=owner).json()["data"]["slug"]
+    return owner, shop
+
+
+def _order(owner: dict[str, str], shop: dict[str, Any], qty: int = 1) -> dict[str, Any]:
+    r = client.post(f"{shop['base']}/orders", json={
+        "location_id": shop["loc"], "payment_method": "pay_at_business", "customer_contact_id": shop["customer"],
+        "items": [{"offering_id": shop["cake"]["id"], "quantity": qty}]}, headers=owner)
+    assert r.status_code == 200, r.text
+    return dict(r.json()["data"])
+
+
+def _ask(owner: dict[str, str], shop: dict[str, Any], source_type: str, source_id: str, amount: float,
+         purpose: str) -> dict[str, Any]:
+    r = client.post(f"{shop['base']}/collect/requests", json={
+        "source_type": source_type, "source_id": source_id, "amount": amount, "purpose": purpose}, headers=owner)
+    assert r.status_code == 200, r.text
+    return dict(r.json()["data"])
+
+
+def _page(shop: dict[str, Any], link: dict[str, Any]) -> str:
+    return f"/v1/public/websites/{shop['slug']}/pay/{link['path'].rsplit('/', 1)[1]}"
+
+
+def _due(owner: dict[str, str], shop: dict[str, Any], source_type: str, source_id: str) -> dict[str, Any]:
+    r = client.get(f"{shop['base']}/collect/due", params={"source_type": source_type, "source_id": source_id},
+                   headers=owner)
+    assert r.status_code == 200, r.text
+    return dict(r.json()["data"])
+
+
+# ---------------------------------------------------------------- advance, balance, retry
+@DB
+def test_advance_then_balance_by_link_with_a_failed_try_on_the_same_order(monkeypatch: Any) -> None:
+    owner, shop = _shop(monkeypatch)
+    order = _order(owner, shop)
+    assert _due(owner, shop, "order", order["id"])["state"] == "unpaid"
+
+    advance = _ask(owner, shop, "order", order["id"], 300, "advance")
+    assert advance["url"].endswith(advance["path"].split("/", 2)[2]) and "₹300" in advance["message"]
+    assert advance["whatsapp"].startswith("https://wa.me/919840012345?text=")
+    page = client.get(_page(shop, advance)).json()["data"]
+    assert (page["state"], page["paying_now"], page["already_paid"], page["balance_after"]) == ("open", 300.0, 0.0,
+                                                                                                700.0)
+    [upi] = page["methods"]  # online stays hidden until the provider is activated
+    assert upi["method"] == "upi_direct" and "am=300.00" in upi["upi_link"]
+
+    # "I have paid" is a claim: the order is not paid until the business confirms.
+    claim = client.post(_page(shop, advance) + "/paid", json={"reference": "UTR 4471"}).json()["data"]
+    assert claim["state"] == "being_confirmed" and claim["state_words"] == "Payment still being confirmed"
+    again = client.post(_page(shop, advance) + "/paid", json={}).json()["data"]
+    assert again["state"] == "being_confirmed"
+    assert sql("select count(*) from payments_payment_attempts where request_id = :r",
+               r=advance["id"]) == [(1,)], "no second attempt while one is being confirmed"
+    assert _due(owner, shop, "order", order["id"])["paid"] == 0.0
+    overview = client.get(f"{shop['base']}/collect/overview", headers=owner).json()["data"]
+    [waiting] = overview["to_confirm"]
+    assert waiting["reference"] == "UTR 4471" and waiting["for"].startswith("Order ")
+
+    ok = client.post(f"{shop['base']}/collect/payments/{waiting['id']}/confirm", json={"arrived": True},
+                     headers=owner)
+    assert ok.status_code == 200, ok.text
+    due = ok.json()["data"]["due"]
+    assert (due["state"], due["paid"], due["balance"]) == ("partially_paid", 300.0, 700.0)
+    assert sql("select payment_status from orders_orders where id = :o", o=order["id"]) == [("partially_paid",)]
+    assert client.get(_page(shop, advance)).json()["data"]["state_words"] == "Payment received"
+    paid_today = client.get(f"{shop['base']}/collect/overview", headers=owner).json()["data"]["paid_today"]
+    assert paid_today["links_and_recorded"] == 300.0
+    too_much = client.post(f"{shop['base']}/collect/requests", json={
+        "source_type": "order", "source_id": order["id"], "amount": 800, "purpose": "balance"}, headers=owner)
+    assert too_much.status_code == 422 and "700" in too_much.text
+
+    # The balance: the first try did not arrive, the retry did — one order throughout.
+    balance = _ask(owner, shop, "order", order["id"], 700, "balance")
+    client.post(_page(shop, balance) + "/paid", json={})
+    first = sql("select id from payments_payment_attempts where request_id = :r", r=balance["id"])[0][0]
+    client.post(f"{shop['base']}/collect/payments/{first}/confirm", json={"arrived": False}, headers=owner)
+    failed = client.get(_page(shop, balance)).json()["data"]
+    assert failed["state"] == "failed" and failed["state_words"] == "Payment failed — try again"
+    assert failed["methods"], "a failed payment can be tried again"
+    retry = client.post(_page(shop, balance) + "/paid", json={}).json()["data"]
+    assert retry["state"] == "being_confirmed"
+    second = sql("select id from payments_payment_attempts where request_id = :r and status = 'pending_offline'",
+                 r=balance["id"])[0][0]
+    client.post(f"{shop['base']}/collect/payments/{second}/confirm", json={"arrived": True}, headers=owner)
+    done = _due(owner, shop, "order", order["id"])
+    assert (done["state"], done["paid"], done["balance"]) == ("paid", 1000.0, 0.0)
+    assert sql("select count(*) from orders_orders where business_id = :b", b=shop["bid"]) == [(1,)]
+    assert sql("select payment_status from orders_orders where id = :o", o=order["id"]) == [("paid",)]
+    attention = client.get(f"{shop['base']}/collect/overview", headers=owner).json()["data"]["needs_attention"]
+    assert not attention, "the failed try was fixed by the retry on the same link"
+
+
+@DB
+def test_the_customer_can_withdraw_a_claim_and_a_cancelled_link_takes_nothing(monkeypatch: Any) -> None:
+    owner, shop = _shop(monkeypatch)
+    order = _order(owner, shop)
+    link = _ask(owner, shop, "order", order["id"], 1000, "full")
+    client.post(_page(shop, link) + "/paid", json={})
+    busy = client.post(f"{shop['base']}/collect/requests/{link['id']}/cancel", headers=owner)
+    assert busy.status_code == 409  # confirm or reject what is waiting first
+    back = client.post(_page(shop, link) + "/not-paid").json()["data"]
+    assert back["state"] == "open" and back["last_attempt"]["status"] == "cancelled"
+    assert client.post(f"{shop['base']}/collect/requests/{link['id']}/cancel", headers=owner).status_code == 200
+    gone = client.post(_page(shop, link) + "/paid", json={}).json()["data"]
+    assert gone["state"] == "cancelled" and gone["methods"] == []
+    assert client.get(f"/v1/public/websites/{shop['slug']}/pay/not-a-real-token").status_code == 404
+
+
+# ---------------------------------------------------------------- money taken by the business
+@DB
+def test_money_recorded_at_the_counter_against_an_order(monkeypatch: Any) -> None:
+    owner, shop = _shop(monkeypatch)
+    order = _order(owner, shop, qty=2)
+    cash = client.post(f"{shop['base']}/collect/record", json={
+        "source_type": "order", "source_id": order["id"], "amount": 500, "method": "cash"}, headers=owner)
+    assert cash.status_code == 200, cash.text
+    assert cash.json()["data"]["due"]["balance"] == 1500.0
+    over = client.post(f"{shop['base']}/collect/record", json={
+        "source_type": "order", "source_id": order["id"], "amount": 1600, "method": "card"}, headers=owner)
+    assert over.status_code == 422
+    card = client.post(f"{shop['base']}/collect/record", json={
+        "source_type": "order", "source_id": order["id"], "amount": 1500, "method": "card",
+        "reference": "Terminal slip 0092"}, headers=owner)
+    assert card.status_code == 200, card.text
+    due = card.json()["data"]["due"]
+    assert due["state"] == "paid" and [a["method_label"] for a in due["attempts"]] == ["Card (own terminal)", "Cash"]
+    assert sql("select payment_status from orders_orders where id = :o", o=order["id"]) == [("paid",)]
+
+
+# ---------------------------------------------------------------- bills and khata, counted once
+@DB
+def test_a_bill_and_a_khata_balance_paid_by_link_are_counted_once(monkeypatch: Any) -> None:
+    owner, shop = _shop(monkeypatch)
+    bill = client.post(f"{shop['base']}/invoices", json={
+        "lines": [{"offering_id": shop["cake"]["id"], "quantity": 1}], "customer_contact_id": shop["customer"]},
+        headers=owner)
+    assert bill.status_code == 200, bill.text
+    bill_id = bill.json()["data"]["id"]
+    due = _due(owner, shop, "invoice", bill_id)
+    assert due["collectable"] and due["balance"] == 1000.0
+    link = _ask(owner, shop, "invoice", bill_id, 1000, "full")
+    client.post(_page(shop, link) + "/paid", json={})
+    [waiting] = client.get(f"{shop['base']}/collect/overview", headers=owner).json()["data"]["to_confirm"]
+    client.post(f"{shop['base']}/collect/payments/{waiting['id']}/confirm", json={"arrived": True}, headers=owner)
+    detail = client.get(f"{shop['base']}/invoices/{bill_id}", headers=owner).json()["data"]
+    assert detail["payment_status"] == "paid" and detail["payments"][0]["method"] == "upi"
+
+    acct = client.post(f"{shop['base']}/ledger/accounts", json={
+        "party_type": "customer", "display_name": "Murugan Traders", "phone": "+919811100001",
+        "opening_balance": 400}, headers=owner).json()["data"]
+    dues = _ask(owner, shop, "khata", acct["id"], 400, "dues")
+    client.post(_page(shop, dues) + "/paid", json={})
+    [waiting] = client.get(f"{shop['base']}/collect/overview", headers=owner).json()["data"]["to_confirm"]
+    client.post(f"{shop['base']}/collect/payments/{waiting['id']}/confirm", json={"arrived": True}, headers=owner)
+    after = client.get(f"{shop['base']}/ledger/accounts/{acct['id']}", headers=owner).json()["data"]
+    assert after["balance"] == 0.0
+
+    paid = client.get(f"{shop['base']}/collect/overview", headers=owner).json()["data"]["paid_today"]
+    # 1000 on the bill (its own payment row) + 400 on the khata (its receipt) — each rupee once.
+    assert (paid["bills_and_counter"], paid["khata"], paid["links_and_recorded"], paid["total"]) == (
+        1000.0, 400.0, 0.0, 1400.0)
+
+
+# ---------------------------------------------------------------- provider truth
+def _webhook(payment_id: str, status: str) -> Any:
+    raw = json.dumps({"event_id": str(uuid.uuid4()), "payment_id": payment_id, "status": status,
+                      "provider_reference": "stub-ref"}).encode()
+    sig = hmac.new(WEBHOOK_SECRET.encode(), raw, hashlib.sha256).hexdigest()
+    return client.post("/v1/webhooks/payments/stub", content=raw,
+                       headers={"Content-Type": "application/json", "x-payment-signature": sig})
+
+
+def _online_attempt(shop: dict[str, Any], order_id: str, request_id: str, amount: float) -> str:
+    """An online attempt on a link, as the provider adapter will create it once
+    activated (it is not: there is no online button today)."""
+    pid = str(uuid.uuid4())
+    sql("INSERT INTO payments_payment_attempts (id, business_id, source_type, source_id, amount, payment_method, "
+        "status, provider, request_id, purpose) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), 'order', "
+        "CAST(:o AS uuid), :a, 'online', 'processing', 'stub', CAST(:r AS uuid), 'full')",
+        id=pid, b=shop["bid"], o=order_id, a=amount, r=request_id)
+    return pid
+
+
+@DB
+def test_a_replayed_success_pays_once_and_a_late_success_is_flagged_for_refund(monkeypatch: Any) -> None:
+    owner, shop = _shop(monkeypatch)
+    order = _order(owner, shop)
+    link = _ask(owner, shop, "order", order["id"], 1000, "full")
+    first = _online_attempt(shop, order["id"], link["id"], 1000)
+    older = _online_attempt(shop, order["id"], link["id"], 1000)
+    assert _webhook(older, "failed").status_code == 200  # the customer's first try failed…
+    assert _webhook(first, "succeeded").status_code == 200  # …the retry succeeded
+    assert _webhook(first, "succeeded").status_code == 200  # replayed under a new event id
+    due = _due(owner, shop, "order", order["id"])
+    assert (due["paid"], due["state"]) == (1000.0, "paid"), "a replay never pays twice"
+    assert sql("select count(*) from platform_outbox_events where event_type = 'payment.completed' "
+               "and payload->>'payment_id' = :p", p=first) == [(1,)]
+
+    # The provider later settles the try it had failed: the money moved, so it
+    # is recorded — and flagged, because the link was already paid.
+    assert _webhook(older, "succeeded").status_code == 200
+    flagged = client.get(f"{shop['base']}/collect/overview", headers=owner).json()["data"]["needs_attention"]
+    assert [(a["id"], a["attention"]) for a in flagged] == [(older, "paid_twice")]
+    # A written-off UPI payment cannot be revived by a webhook-shaped call.
+    upi = _ask(owner, shop, "order", _order(owner, shop)["id"], 1000, "full")
+    client.post(_page(shop, upi) + "/paid", json={})
+    upi_attempt = sql("select id from payments_payment_attempts where request_id = :r", r=upi["id"])[0][0]
+    client.post(f"{shop['base']}/collect/payments/{upi_attempt}/confirm", json={"arrived": False}, headers=owner)
+    assert _webhook(str(upi_attempt), "succeeded").status_code >= 400
+
+
+# ---------------------------------------------------------------- cash on delivery (PY-07)
+@DB
+def test_website_cash_on_delivery_follows_the_first_order_cap(monkeypatch: Any) -> None:
+    _, owner = new_identity(monkeypatch)
+    bid = create_business(client, owner, modules=("offerings-catalog", "orders", "fulfilment", "payments",
+                                                  "customer-relationships", "messaging"))
+    base = f"/v1/platform/businesses/{bid}"
+    slug = client.get(f"/v1/b/{bid}", headers=owner).json()["data"]["slug"]
+    item = client.post(f"{base}/products", json={"status": "active", "offering_type": "product",
+                                                 "title": "Sweets box", "price_amount": 600,
+                                                 "visibility": "public"}, headers=owner).json()["data"]
+    client.patch(f"/v1/b/{bid}/fulfilment/settings", json={"pickup_enabled": True, "delivery_enabled": True},
+                 headers=owner)
+    client.post(f"/v1/b/{bid}/fulfilment/zones", json={"name": "Adyar", "match_type": "postal_prefix",
+                                                       "postal_prefix": "6000", "charge_amount": 0}, headers=owner)
+    assert client.post(f"/v1/b/{bid}/website/publish", headers=owner).status_code == 200
+    client.post(f"/v1/b/{bid}/marketplace/visibility", json={"visibility": "unlisted"}, headers=owner)
+    capped = client.put(f"{base}/messaging/settings", json={"first_order_cod_cap": 1000}, headers=owner)
+    assert capped.status_code == 200, capped.text
+    options = client.get(f"/v1/public/websites/{slug}/checkout/options").json()["data"]
+    assert options["cod"] == {"on_delivery": True, "first_order_cap": 1000.0}
+
+    def checkout(qty: int, mode: str = "delivery") -> Any:
+        body: dict[str, Any] = {"items": [{"offering_id": item["id"], "quantity": qty}], "fulfilment_mode": mode,
+                                "payment_method": "cod", "guest": {"name": "Ravi", "phone": "+919840099887", "email": "ravi@example.com"}}
+        if mode == "delivery":
+            body["delivery_address"] = {"line1": "4 Anna St", "city": "Chennai", "postal_code": "600020"}
+        return client.post(f"/v1/public/websites/{slug}/checkout", json=body)
+
+    big = checkout(2)
+    assert big.status_code == 422 and "cod_first_order_cap" in big.text
+    assert sql("select count(*) from orders_orders where business_id = :b", b=bid) == [(0,)]
+    assert checkout(2, mode="pickup").status_code == 200  # pay at pickup is not cash on delivery
+    assert checkout(2).status_code == 200, "no longer a first order"
+    client.put(f"{base}/messaging/settings", json={"cod_allowed": False}, headers=owner)
+    off = checkout(1)
+    assert off.status_code == 422 and "cod_off" in off.text
+
+
+# ---------------------------------------------------------------- the counter: split tender (PY-05, PY-06)
+@DB
+def test_split_tender_settles_one_bill_and_each_method_counts_in_the_shift(monkeypatch: Any) -> None:
+    _, owner = new_identity(monkeypatch)
+    shop: dict[str, Any] = dict(billing_shop(client, owner, modules=("pos",)))
+    item = client.post(f"{shop['base']}/products", json={
+        "status": "active", "offering_type": "product", "title": "Pressure cooker", "price_amount": 1000,
+        "hsn_sac": "7615", "tax_rate": 0}, headers=owner).json()["data"]
+    opened = client.post(f"{shop['base']}/pos/shifts", json={"register_id": shop["register"]["id"],
+                                                              "device_id": "tab-1", "opening_cash": 0},
+                         headers=owner).json()["data"]
+    sale = {"client_mutation_id": str(uuid.uuid4()), "kind": "pos.sale", "payload": {
+        "shift_id": opened["shift"]["id"], "client_bill_id": str(uuid.uuid4()),
+        "lines": [{"offering_id": item["id"], "quantity": 1, "unit_price": 1000}],
+        "tenders": [{"method": "cash", "amount": 400}, {"method": "upi", "amount": 300},
+                    {"method": "card", "amount": 300, "reference": "Terminal 7781"}],
+        "number": {"block_id": opened["block"]["id"], "value": opened["block"]["next"]},
+        "catalogue_version": datetime.now(timezone.utc).isoformat()}}
+    r = client.post(f"{shop['base']}/sync", json={"device_id": "tab-1", "mutations": [sale]}, headers=owner)
+    assert r.status_code == 200, r.text
+    [res] = r.json()["data"]["results"]
+    assert res["status"] == "applied", res
+    bill = client.get(f"{shop['base']}/invoices/{res['document_id']}", headers=owner).json()["data"]
+    assert bill["payment_status"] == "paid"
+    assert sorted((p["method"], p["amount"]) for p in bill["payments"]) == [("card", 300.0), ("cash", 400.0),
+                                                                             ("upi", 300.0)]
+    assert any(p.get("reference") == "Terminal 7781" for p in bill["payments"] if p["method"] == "card")
+    summary = client.get(f"{shop['base']}/pos/shifts/{opened['shift']['id']}", headers=owner).json()["data"]["summary"]
+    assert (summary["cash_sales"], summary["card"]) == (400.0, 300.0)
+
+
+# ---------------------------------------------------------------- isolation
+@pytest.mark.asyncio
+@DB
+async def test_payment_links_are_tenant_isolated() -> None:
+    async def insert(session: AsyncSession, business_id: uuid.UUID) -> None:
+        await session.execute(text(
+            "INSERT INTO payments_requests (business_id, source_type, source_id, purpose, amount, token_hash, "
+            "expires_at) VALUES (:b, 'order', gen_random_uuid(), 'full', 10, :h, now() + interval '1 day')"),
+            {"b": business_id, "h": uuid.uuid4().hex})
+
+    await assert_tenant_isolated("payments_requests", insert)

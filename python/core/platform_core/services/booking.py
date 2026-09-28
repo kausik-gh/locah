@@ -126,6 +126,7 @@ class BookingService:
 
         title = validated["title"]
         offering_price: float | None = None
+        fixed_price: Decimal | None = None
 
         # Resource configuration is authoritative for capacity. The request may
         # say which resources to consume; it may not say how many places they
@@ -159,6 +160,9 @@ class BookingService:
             title = title or offering.title
             if offering.price_amount is not None:
                 offering_price = float(offering.price_amount)
+                if getattr(offering, "price_type", "fixed") == "fixed" and offering.offering_type in {
+                        "service", "accommodation", "class_session", "rental"}:
+                    fixed_price = Decimal(str(offering.price_amount))
 
             # Stage 6 membership gate (Doc 11 §17.6): if this class/session
             # offering is mapped to one or more membership plans, the customer
@@ -248,6 +252,7 @@ class BookingService:
                 else "pending"
             ),
             deposit_required=deposit_required,
+            total_amount=BookingService._total(fixed_price, validated),
             deposit_amount=float(deposit_amount),
             management_token=secrets.token_urlsafe(24),
             management_token_expires_at=datetime.now(timezone.utc) + timedelta(days=90),
@@ -420,6 +425,19 @@ class BookingService:
             session.add(policy)
             await session.flush()
         return policy
+
+    @staticmethod
+    def _total(price: Decimal | None, validated: dict[str, Any]) -> Decimal | None:
+        """What the booking costs at today's price: a room per night, a class
+        per person, anything else once (P1-10D — so a deposit has a balance)."""
+        if price is None:
+            return None
+        if validated["reservation_mode"] == "accommodation":
+            nights = max((validated["ends_at"].date() - validated["starts_at"].date()).days, 1)
+            return price * nights
+        if validated["reservation_mode"] == "class_session":
+            return price * max(int(validated.get("party_size") or 1), 1)
+        return price
 
     @staticmethod
     def _compute_deposit_amount(policy: BookingsPolicy, *, offering_price: float | None) -> Decimal:

@@ -4,6 +4,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry, businessHeaders } from '@/lib/api'
 import { DetailShell, GateNotice, PageHeader, StatusPill } from '@/components/ui'
 import { AccountActions } from './AccountActions'
+import { MoneySection } from '@/components/MoneySection'
 import { day, owes, rupees, type AccountDetail } from '../types'
 
 export const dynamic = 'force-dynamic'
@@ -117,6 +118,10 @@ export default async function AccountPage({ params }: { params: { businessId: st
           <AccountActions businessId={b} account={a} canRecord={perms.has('ledger.record')} canManage={perms.has('ledger.manage')}
             whatsapp={perms.has('messaging.reply') && wa.ok && wa.data.data.channel?.status === 'connected'} />
         </div>
+        {a.party_type === 'customer' ? (
+          <MoneySection businessId={b} token={token} sourceType="khata" sourceId={a.id}
+            path={`/b/${b}/khata/${a.id}`} title="Ask for the balance" />
+        ) : null}
       </DetailShell>
     </div>
   )

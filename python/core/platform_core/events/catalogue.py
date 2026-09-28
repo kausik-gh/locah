@@ -186,6 +186,9 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "payment.updated",
             "payment.webhook_processed",
             "payment.merchant.updated",
+            "payment.request.created",
+            "payment.confirmation_requested",
+            "payment.paid_twice",
         }
     ),
     "website": frozenset(

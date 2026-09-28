@@ -5,6 +5,7 @@ import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
 import { transitionBooking } from '../actions'
 import { LocalTime } from '@/components/LocalTime'
+import { MoneySection } from '@/components/MoneySection'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,6 +84,8 @@ export default async function BookingDetailPage({
           <button type="submit">Cancel</button>
         </form>
       </div>
+      <MoneySection businessId={params.businessId} token={token} sourceType="booking" sourceId={params.bookingId}
+        path={`/b/${params.businessId}/bookings/${params.bookingId}`} />
       <h2 style={{ marginTop: '2rem', fontSize: '1.2rem' }}>History</h2>
       <ul>
         {history.map((h) => (
