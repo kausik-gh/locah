@@ -114,6 +114,16 @@ export const PERMISSIONS = {
   // Connects the number, submits templates, chooses automatic updates.
   MESSAGING_CONFIGURE: 'messaging.configure',
 
+  // Module: reviews — verified reviews (Capability Universe §17.2). No
+  // permission deletes or edits a review.
+  REVIEWS_READ: 'reviews.read',
+  REVIEWS_REPLY: 'reviews.reply',
+  REVIEWS_MANAGE: 'reviews.manage',
+
+  // Module: compliance — licences & deadlines (Capability Universe §6.2)
+  COMPLIANCE_READ: 'compliance.read',
+  COMPLIANCE_MANAGE: 'compliance.manage',
+
   // Module: projects
   PROJECTS_READ: 'projects.read',
   PROJECTS_CREATE: 'projects.create',

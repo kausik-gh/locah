@@ -101,6 +101,17 @@ MESSAGING_READ = "messaging.read"
 MESSAGING_REPLY = "messaging.reply"
 MESSAGING_CONFIGURE = "messaging.configure"
 
+# Reviews (Capability Universe §17.2): seeing them, replying publicly, and
+# choosing what the website features / reporting a violation to LOCAH.
+# No permission deletes or edits a review — there is no such action.
+REVIEWS_READ = "reviews.read"
+REVIEWS_REPLY = "reviews.reply"
+REVIEWS_MANAGE = "reviews.manage"
+
+# Licences & deadlines (Capability Universe §6.2 `compliance`).
+COMPLIANCE_READ = "compliance.read"
+COMPLIANCE_MANAGE = "compliance.manage"
+
 PAYMENTS_READ = "payments.read"
 PAYMENTS_REFUND = "payments.refund"
 PAYMENTS_MANAGE_CONNECTION = "payments.manage_connection"

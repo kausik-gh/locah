@@ -280,6 +280,30 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "ledger.limit.overridden",
         }
     ),
+    # Capability Universe §17 — verified reviews and their moderation.
+    "reviews": frozenset(
+        {
+            "review.invited",
+            "review.published",
+            "review.updated",
+            "review.replied",
+            "review.featured",
+            "review.reported",
+            "review.removed",
+            "review.restored",
+            "review.redacted",
+        }
+    ),
+    # Capability Universe §6.2 `compliance` — licences and filings.
+    "compliance": frozenset(
+        {
+            "compliance.item.created",
+            "compliance.item.updated",
+            "compliance.item.renewed",
+            "compliance.item.filed",
+            "compliance.item.archived",
+        }
+    ),
 }
 
 KNOWN_EVENT_TYPES: frozenset[str] = frozenset().union(*_CATALOGUE.values())

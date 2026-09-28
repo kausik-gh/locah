@@ -72,7 +72,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
             p.PAYMENTS_READ, p.WEBSITE_READ, p.MARKETPLACE_READ, p.TEAM_READ, p.SETTINGS_READ, p.MODULES_READ,
             p.INVOICES_READ, p.INVOICES_ISSUE, p.INVOICES_CANCEL, p.INVOICES_RECORD_PAYMENT,
             p.POS_USE, p.POS_APPROVE, p.LEDGER_READ, p.LEDGER_RECORD,
-            p.MESSAGING_READ, p.MESSAGING_REPLY,
+            p.MESSAGING_READ, p.MESSAGING_REPLY, p.REVIEWS_READ, p.REVIEWS_REPLY, p.COMPLIANCE_READ,
         },
         (), "P1", system_role=p.ROLE_MANAGER,
     ),
@@ -90,8 +90,9 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
             p.CUSTOMERS_READ, p.INVENTORY_READ, p.INVENTORY_EXPORT, p.SETTINGS_READ,
             p.INVOICES_READ, p.INVOICES_ISSUE, p.INVOICES_CANCEL, p.INVOICES_RECORD_PAYMENT, p.INVOICES_EXPORT,
             p.INVOICES_CONFIGURE, p.LEDGER_READ, p.LEDGER_RECORD, p.LEDGER_MANAGE,
+            p.COMPLIANCE_READ, p.COMPLIANCE_MANAGE,
         },
-        ("payments", "orders", "quotes", "memberships", "invoicing", "ledger"), "P1",
+        ("payments", "orders", "quotes", "memberships", "invoicing", "ledger", "compliance"), "P1",
     ),
     RoleTemplate(
         "cashier", "Cashier", "Bills at the counter, takes payments, handles returns under a limit and the cash shift",
@@ -153,7 +154,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
     RoleTemplate(
         "marketer", "Marketer", "Campaigns and audiences as counts; cannot export phone numbers",
         "business", "workspace", "What is running and what it earned",
-        _READ_BASICS | {p.OFFERINGS_READ, p.WEBSITE_READ, p.MARKETPLACE_READ}, (), "P3",
+        _READ_BASICS | {p.OFFERINGS_READ, p.WEBSITE_READ, p.MARKETPLACE_READ, p.REVIEWS_READ}, (), "P3",
     ),
 )}
 
@@ -180,6 +181,9 @@ PERMISSION_WORDS: dict[str, str] = {
     "ledger.manage": "Set credit limits and correct accounts",
     "messaging.read": "See WhatsApp chats", "messaging.reply": "Reply to customers on WhatsApp",
     "messaging.configure": "Connect WhatsApp and choose automatic messages",
+    "reviews.read": "See reviews", "reviews.reply": "Reply to reviews publicly",
+    "reviews.manage": "Feature reviews on the website and report violations to LOCAH",
+    "compliance.read": "See licences and filing dates", "compliance.manage": "Record and renew licences and filings",
     "pos.use": "Bill at the counter and run a cash shift", "pos.approve": "Approve counter overrides with a PIN",
     "pos.configure": "Set counter billing rules",
     "invoices.read": "See bills and invoices", "invoices.issue": "Issue bills and credit notes",

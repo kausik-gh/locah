@@ -267,11 +267,12 @@ class MessagingService:
                 row = await session.get(MessagingTemplate, (business_id, key, lang))
                 if row is not None and row.status in ("approved", "submitted"):
                     continue
-                status, provider_id = await provider.submit_template(token, channel.waba_id, key, lang)
+                status, provider_id, category = await provider.submit_template(token, channel.waba_id, key, lang)
                 if row is None:
                     row = MessagingTemplate(business_id=business_id, template_key=key, language=lang)
                     session.add(row)
                 row.status, row.provider_template_id, row.submitted_at = status, provider_id, _now()
+                row.category = category
                 row.decided_at = _now() if status in ("approved", "rejected") else None
                 out.append({"key": key, "language": lang, "status": status})
         await session.flush()
@@ -438,12 +439,14 @@ class MessagingService:
             if prior is not None:
                 return prior
         s = await MessagingService.settings(session, business_id)
-        approved = {r.language for r in (await session.execute(select(MessagingTemplate).where(
+        approved = {r.language: r.category for r in (await session.execute(select(MessagingTemplate).where(
             MessagingTemplate.business_id == business_id, MessagingTemplate.template_key == key,
             MessagingTemplate.status == "approved"))).scalars()}
         language = s.language if s.language in approved else "en" if "en" in approved else None
         if language is None:
             raise NotSent(f"The “{template.label}” message is not approved by WhatsApp yet")
+        # What Meta decided at approval wins over what LOCAH asked for.
+        category = approved.get(language) or template.category
         contact = await session.get(CustomerContact, contact_id) if contact_id else None
         if contact is None and audience == "customer":
             contact = await MessagingService.find_contact(session, business_id, wa_id)
@@ -452,11 +455,11 @@ class MessagingService:
         msg = MessagingMessage(
             business_id=business_id, conversation_id=conv.id, direction="out", kind="template",
             body=render(key, language, params), payload={"params": params}, template_key=key, language=language,
-            category=template.category, status="queued", idempotency_key=idempotency_key, sent_via=sent_via,
+            category=category, status="queued", idempotency_key=idempotency_key, sent_via=sent_via,
             sent_by=sent_by)
         session.add(msg)
         # §12.4: marketing needs an explicit, open opt-in on WhatsApp.
-        if template.category == "marketing" and (contact is None or not await ConsentService.has(
+        if category == "marketing" and (contact is None or not await ConsentService.has(
                 session, business_id, contact.id, purpose="marketing", channel="whatsapp")):
             msg.status, msg.error = "blocked", "No marketing opt-in on WhatsApp"
             await session.flush()

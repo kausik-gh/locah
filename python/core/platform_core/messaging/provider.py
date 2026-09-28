@@ -75,7 +75,7 @@ class Provider(Protocol):
                                interactive: dict[str, Any]) -> Sent: ...
 
     async def submit_template(self, token: str | None, waba_id: str | None, key: str,
-                              language: str) -> tuple[str, str | None]: ...
+                              language: str) -> tuple[str, str | None, str | None]: ...
 
 
 class SandboxProvider:
@@ -93,9 +93,10 @@ class SandboxProvider:
         return Sent(f"sandbox.{uuid.uuid4().hex}")
 
     async def submit_template(self, token: str | None, waba_id: str | None, key: str,
-                              language: str) -> tuple[str, str | None]:
-        # The sandbox approves at once; Meta reviews each template (usually minutes to a day).
-        return "approved", f"sandbox-{key}-{language}"
+                              language: str) -> tuple[str, str | None, str | None]:
+        # The sandbox approves at once, in the category asked for; Meta reviews
+        # each template (usually minutes to a day) and decides its category.
+        return "approved", f"sandbox-{key}-{language}", LIBRARY[key].category
 
 
 class MetaCloudProvider:
@@ -146,7 +147,7 @@ class MetaCloudProvider:
             "recipient_type": "individual", "to": to, "type": "interactive", "interactive": interactive})
 
     async def submit_template(self, token: str | None, waba_id: str | None, key: str,
-                              language: str) -> tuple[str, str | None]:
+                              language: str) -> tuple[str, str | None, str | None]:
         t = LIBRARY[key]
         body = t.bodies[language]
         examples = [f"<{p}>" for p in t.params]
@@ -154,8 +155,9 @@ class MetaCloudProvider:
             "name": key, "language": META_LANGUAGE[language], "category": t.category.upper(),
             "components": [{"type": "BODY", "text": body, "example": {"body_text": [examples]}}]})
         status = str(data.get("status") or "PENDING").lower()
+        category = str(data.get("category") or "").lower() or None  # Meta's decision, which may differ
         return ("approved" if status == "approved" else "rejected" if status == "rejected" else "submitted",
-                str(data.get("id") or "") or None)
+                str(data.get("id") or "") or None, category)
 
     async def complete_signup(self, code: str, waba_id: str, phone_number_id: str) -> SignupResult:
         """Embedded Signup's last step: exchange the code for the business's token,

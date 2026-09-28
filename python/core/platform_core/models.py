@@ -2,7 +2,21 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, Numeric, Text, Time, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    Numeric,
+    SmallInteger,
+    Text,
+    Time,
+    text,
+)
 from sqlalchemy.dialects.postgresql import (
     ARRAY,
     INET,
@@ -359,6 +373,9 @@ class MarketplaceBusinessProjection(Base):
     site_paths: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
+    # The verified average of every published review (Capability Universe §17.2).
+    rating_average: Mapped[Any | None] = mapped_column(Numeric(3, 2), nullable=True)
+    rating_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     search_vector: Mapped[Any | None] = mapped_column(TSVECTOR, nullable=True)
 
@@ -2355,6 +2372,8 @@ class MessagingTemplate(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="submitted", server_default=text("'submitted'"))
     provider_template_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     rejected_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The category Meta decided at approval (may differ from the one asked for).
+    category: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -2438,3 +2457,145 @@ class MessagingQuickReply(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 PlatformProfile = PlatformIdentity
+
+
+class ReviewInvitation(Base):
+    """One per completed interaction (Capability Universe §17.1); its link is the reviewer's credential."""
+
+    __tablename__ = "reviews_invitations"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    customer_contact_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    declined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Review(Base):
+    """A verified review. Never deleted; rating and text change only on the reviewer's path (§17.2)."""
+
+    __tablename__ = "reviews_reviews"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    invitation_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    customer_contact_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    reviewer_name: Mapped[str] = mapped_column(Text, nullable=False)
+    rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'published'"))
+    featured: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    featured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reply_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reply_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    removed_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    removed_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    appeal_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    appeal_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    appealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    appeal_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    appeal_decided_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    redacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewer_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class ReviewPhoto(Base):
+    __tablename__ = "reviews_photos"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    review_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    media_type: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    sort_order: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default=text("0"))
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReviewReport(Base):
+    __tablename__ = "reviews_reports"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    review_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reported_by: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'open'"))
+    decided_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReviewModerationLog(Base):
+    __tablename__ = "reviews_moderation_log"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    review_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_identity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ComplianceItem(Base):
+    """A licence (expiry date) or a filing (next due date) — Capability Universe §6.2 `compliance`."""
+
+    __tablename__ = "compliance_items"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    item_type: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    licence_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    authority: Mapped[str | None] = mapped_column(Text, nullable=True)
+    issued_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    due_on: Mapped[Any] = mapped_column(Date, nullable=False)
+    recurrence: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'none'"))
+    document_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    show_on_site: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    last_done_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class ComplianceHistory(Base):
+    __tablename__ = "compliance_history"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    item_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    from_due: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    to_due: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_identity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
