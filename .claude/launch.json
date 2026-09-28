@@ -48,6 +48,30 @@
         "dev"
       ],
       "port": 3000
+    },
+    {
+      "name": "accept-auth",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/acceptance/stack/mock-auth.mjs"],
+      "port": 54321
+    },
+    {
+      "name": "accept-api",
+      "runtimeExecutable": "C:/Program Files/Git/bin/bash.exe",
+      "runtimeArgs": ["tools/acceptance/stack/api.sh"],
+      "port": 8010
+    },
+    {
+      "name": "accept-workspace",
+      "runtimeExecutable": "C:/Program Files/Git/bin/bash.exe",
+      "runtimeArgs": ["tools/acceptance/stack/workspace.sh"],
+      "port": 3101
+    },
+    {
+      "name": "accept-web",
+      "runtimeExecutable": "C:/Program Files/Git/bin/bash.exe",
+      "runtimeArgs": ["tools/acceptance/stack/web.sh"],
+      "port": 3100
     }
   ]
 }

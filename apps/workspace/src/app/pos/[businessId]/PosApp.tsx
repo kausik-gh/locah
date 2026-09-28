@@ -24,7 +24,7 @@ export type PosSetup = {
   khata?: boolean
 }
 type Catalogue = { version: string; items: PosItem[]; today: string }
-type CartLine = { key: string; item: PosItem; variant?: PosVariant; pack?: PosPack; quantity: number; unitPrice: number; discount: number }
+type CartLine = { key: string; item: PosItem; variant?: PosVariant; pack?: PosPack; quantity: number; unitPrice: number; discount: number; serials?: string[] }
 type Customer = { name: string; phone: string; gstin: string }
 type Cart = { lines: CartLine[]; customer: Customer; billDiscount: number; approval?: string; creditApproval?: string }
 type Tender = { method: 'cash' | 'upi' | 'card' | 'khata'; amount: number; reference?: string; to_verify?: boolean }
@@ -177,7 +177,23 @@ export function PosApp({ businessId, businessName, initialToken, apiUrl, billBas
   }
 
   // ---------------------------------------------------------------- cart
-  const add = (item: PosItem, opts: { variant?: PosVariant; pack?: PosPack; quantity?: number } = {}) => {
+  const add = (item: PosItem, opts: { variant?: PosVariant; pack?: PosPack; quantity?: number; serial?: string } = {}) => {
+    if (opts.serial) {
+      const serial = opts.serial
+      setCart((c) => {
+        if (c.lines.some((l) => l.serials?.includes(serial))) return c
+        const same = c.lines.find((l) => l.item.id === item.id)
+        if (same) {
+          const serials = [...(same.serials ?? []), serial]
+          return { ...c, lines: c.lines.map((l) => (l === same ? { ...l, serials, quantity: Math.max(l.quantity, serials.length) } : l)) }
+        }
+        return { ...c, lines: [...c.lines, { key: uid(), item, quantity: 1, unitPrice: item.price, discount: 0, serials: [serial] }] }
+      })
+      setPanel(null)
+      setQuery('')
+      searchRef.current?.focus()
+      return
+    }
     if (!opts.variant && !opts.pack && (item.variants.length || item.packs.length) && opts.quantity === undefined) {
       setChoose(item)
       setPanel('choose')
@@ -200,11 +216,22 @@ export function PosApp({ businessId, businessName, initialToken, apiUrl, billBas
   const discountPct = grossPaise > 0 ? ((cart.lines.reduce((s, l) => s + toPaise(l.discount), 0) + toPaise(cart.billDiscount)) * 100) / grossPaise : 0
   const needsApproval = setup.discount_cap !== null && discountPct > (setup.discount_cap ?? 0) + 1e-9 && !cart.approval
   const noRate = scheme === 'regular' ? cart.lines.filter((l) => l.item.rate === null).map((l) => l.item.title) : []
+  // §15.1 serial captured at sale: one serial per unit before the bill is paid.
+  const noSerial = cart.lines.filter((l) => l.item.serial_tracked && (l.serials?.length ?? 0) !== l.quantity).map((l) => l.item.title)
+  const [serialFor, setSerialFor] = useState<Record<string, string>>({})
+  const addSerial = (l: CartLine) => {
+    const value = (serialFor[l.key] || '').trim().toUpperCase()
+    if (!value) return
+    if (cart.lines.some((x) => x.serials?.includes(value))) { setNotice({ text: `${value} is already on this bill`, bad: true }); return }
+    if (l.item.serials && !l.item.serials.includes(value)) setNotice({ text: `${value} is not on record for ${l.item.title} here — it will be checked when the bill syncs`, bad: true })
+    setLine(l.key, { serials: [...(l.serials ?? []), value] })
+    setSerialFor((s) => ({ ...s, [l.key]: '' }))
+  }
 
   const onScan = (e: React.FormEvent) => {
     e.preventDefault()
     const hit = resolveCode(query, items, setup.settings.weighed_label)
-    if (hit) return add(hit.item, { variant: hit.variant, quantity: hit.quantity })
+    if (hit) return add(hit.item, { variant: hit.variant, quantity: hit.quantity, serial: hit.serial })
     const matches = items.filter((i) => i.title.toLowerCase().includes(query.toLowerCase()))
     if (matches.length === 1) return add(matches[0])
     if (!matches.length) setNotice({ text: `Nothing matches “${query}”`, bad: true })
@@ -267,7 +294,7 @@ export function PosApp({ businessId, businessName, initialToken, apiUrl, billBas
     const now = new Date().toISOString()
     const payload = {
       shift_id: shift.id, client_bill_id: clientId, catalogue_version: catalogue?.version, sold_at: now, sold_offline: !online,
-      lines: cart.lines.map((l) => ({ offering_id: l.item.id, variant_id: l.variant?.id, quantity: l.quantity, unit_price: l.unitPrice, discount: l.discount || undefined, options: l.pack ? { pack: l.pack.label } : undefined })),
+      lines: cart.lines.map((l) => ({ offering_id: l.item.id, variant_id: l.variant?.id, quantity: l.quantity, unit_price: l.unitPrice, discount: l.discount || undefined, options: l.pack ? { pack: l.pack.label } : undefined, serials: l.serials?.length ? l.serials : undefined })),
       bill_discount: cart.billDiscount || undefined,
       customer: cart.customer.phone || cart.customer.name || cart.customer.gstin ? { name: cart.customer.name || undefined, phone: cart.customer.phone || undefined, gstin: cart.customer.gstin || undefined } : undefined,
       tenders, number: used ? { block_id: used.block_id, value: used.value } : undefined, approval: cart.approval,
@@ -377,6 +404,19 @@ export function PosApp({ businessId, businessName, initialToken, apiUrl, billBas
                   )}
                 </div>
                 <strong className="pos-line__total">{rupees(bill.lines[i]?.total ?? 0)}</strong>
+                {l.item.serial_tracked ? (
+                  <div className="pos-serials">
+                    {(l.serials ?? []).map((s) => (
+                      <button key={s} type="button" className="pos-serial" aria-label={`Remove serial ${s}`} onClick={() => setLine(l.key, { serials: (l.serials ?? []).filter((x) => x !== s) })}>{s} ×</button>
+                    ))}
+                    {(l.serials?.length ?? 0) < l.quantity ? (
+                      <form onSubmit={(e) => { e.preventDefault(); addSerial(l) }} className="pos-serial-add">
+                        <label className="sr-only" htmlFor={`serial-${l.key}`}>Serial or IMEI of {l.item.title}</label>
+                        <input id={`serial-${l.key}`} value={serialFor[l.key] || ''} onChange={(e) => setSerialFor((s) => ({ ...s, [l.key]: e.target.value }))} placeholder={`Scan serial / IMEI (${(l.serials?.length ?? 0) + 1} of ${l.quantity})`} autoComplete="off" />
+                      </form>
+                    ) : null}
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -398,6 +438,7 @@ export function PosApp({ businessId, businessName, initialToken, apiUrl, billBas
             <dt className="is-total">Total</dt><dd className="is-total" data-testid="pos-total">{rupees(bill.total)}</dd>
           </dl>
           {noRate.length ? <p className="pos-bad">No GST rate yet for {noRate.join(', ')} — ask the owner to set it before billing.</p> : null}
+          {noSerial.length ? <p className="pos-warn" role="status">Scan the serial / IMEI of each {noSerial.join(', ')} to bill it.</p> : null}
           <div className="pos-actions">
             <button type="button" className="btn-ghost" onClick={hold} disabled={!cart.lines.length}>Hold</button>
             <button type="button" className="btn-ghost" onClick={() => setCart(emptyCart())} disabled={!cart.lines.length}>Clear</button>
@@ -406,7 +447,7 @@ export function PosApp({ businessId, businessName, initialToken, apiUrl, billBas
                 Discount {discountPct.toFixed(1)}% — manager’s PIN
               </button>
             ) : (
-              <button type="button" className="pos-pay" onClick={startPay} disabled={!cart.lines.length || noRate.length > 0}>Pay {rupees(bill.total)}</button>
+              <button type="button" className="pos-pay" onClick={startPay} disabled={!cart.lines.length || noRate.length > 0 || noSerial.length > 0}>Pay {rupees(bill.total)}</button>
             )}
           </div>
           {notice ? <p className={notice.bad ? 'pos-bad' : 'pos-ok'} role="status">{notice.text}</p> : null}

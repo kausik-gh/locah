@@ -619,6 +619,11 @@ class Offering(Base):
     sell_units: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     variant_options: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     stock_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'piece'"))
+    # §15.1 stock depth (P1-10A): batches/expiry, serials/warranty, how it is bought.
+    batch_tracked: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    serial_tracked: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    warranty_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    buy_units: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -667,6 +672,9 @@ class InventoryRecord(Base):
     quantity_on_hand: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     quantity_reserved: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     low_stock_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reorder_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stock_value_paise: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    last_counted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
@@ -698,6 +706,11 @@ class InventoryMovement(Base):
     actor_identity_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
     )
+    reason_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    batch_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    value_delta_paise: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    source_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -778,6 +791,8 @@ class OrderLineItem(Base):
     stock_quantity: Mapped[int] = mapped_column(
         Integer, nullable=False, default=lambda ctx: ctx.get_current_parameters()["quantity"]
     )
+    serials: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
+    batch_allocations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -2178,6 +2193,8 @@ class InvoicingDocumentLine(Base):
     igst: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
     line_total: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
     stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    serials: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
+    batch_allocations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -2599,3 +2616,111 @@ class ComplianceHistory(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     actor_identity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------- P1-10A stock depth (§15.1)
+class InventoryBatch(Base):
+    __tablename__ = "inventory_batches"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    inventory_record_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    offering_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    variant_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    batch_code: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    received_on: Mapped[Any] = mapped_column(Date, nullable=False, server_default=text("CURRENT_DATE"))
+    quantity_received: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity_on_hand: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class InventorySerial(Base):
+    __tablename__ = "inventory_serials"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    inventory_record_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    offering_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    variant_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    serial: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'in_stock'"))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sold_document_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    sold_order_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    customer_contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    warranty_until: Mapped[Any | None] = mapped_column(Date, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class InventoryYield(Base):
+    __tablename__ = "inventory_yields"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    source_offering_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    output_offering_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    yield_bp: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class InventoryConversion(Base):
+    __tablename__ = "inventory_conversions"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    source_offering_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    source_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    outputs: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    trim_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_identity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InventoryCount(Base):
+    __tablename__ = "inventory_counts"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    category_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'open'"))
+    started_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    submitted_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class InventoryCountLine(Base):
+    __tablename__ = "inventory_count_lines"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    count_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    inventory_record_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    expected_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    counted_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    counted_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    counted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

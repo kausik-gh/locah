@@ -125,6 +125,14 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "inventory.stock.replenished",
             "inventory.adjusted",
             "inventory.opening_stock.set",
+            # P1-10A stock depth (§15.1)
+            "inventory.received",
+            "inventory.wastage.recorded",
+            "inventory.converted",
+            "inventory.count.submitted",
+            "inventory.count.variance",
+            "inventory.count.approved",
+            "inventory.count.rejected",
         }
     ),
     "order": frozenset(

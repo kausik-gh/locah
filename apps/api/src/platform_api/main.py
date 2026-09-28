@@ -29,6 +29,7 @@ from platform_api.routers import (
     v1_platform_customers,
     v1_platform_offerings,
     v1_platform_inventory,
+    v1_platform_stock,
     v1_platform_orders,
     v1_platform_booking_resources,
     v1_platform_bookings,
@@ -212,6 +213,7 @@ app.include_router(v1_platform_employees.router)
 app.include_router(v1_platform_customers.router)
 app.include_router(v1_platform_offerings.router)
 app.include_router(v1_platform_inventory.router)
+app.include_router(v1_platform_stock.router)
 app.include_router(v1_platform_orders.router)
 app.include_router(v1_platform_booking_resources.router)
 app.include_router(v1_platform_bookings.router)

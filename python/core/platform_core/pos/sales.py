@@ -131,7 +131,7 @@ async def pos_sale(session: AsyncSession, ctx: SyncContext, p: dict[str, Any]) -
         reductions += money(qty * (catalogue - charged)) + line_discount
         lines.append({"offering_id": str(offering.id), "variant_id": raw.get("variant_id"), "quantity": str(qty),
                       "unit_price": str(charged), "discount": str(line_discount), "options": options,
-                      "unit_label": raw.get("unit_label")})
+                      "unit_label": raw.get("unit_label"), "serials": raw.get("serials") or None})
     bill_discount = money(dec(p.get("bill_discount") or 0))
     reductions += bill_discount
 

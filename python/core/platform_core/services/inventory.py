@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +19,10 @@ from platform_core.resolvers.offering_resolver import OfferingResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.business import BusinessService
 from platform_core.services.outbox import OutboxService
+from platform_core.stock import ledger as stock_ledger
 from platform_core.validation.inventory import validate_adjustment_payload, validate_opening_stock_payload
+
+IST = ZoneInfo("Asia/Kolkata")
 
 
 class InventoryService:
@@ -252,6 +257,12 @@ class InventoryService:
             location_id=validated["location_id"],
             variant_id=validated["variant_id"],
         )
+        if offering.batch_tracked or offering.serial_tracked:
+            raise ValidationError(
+                f"{offering.title} keeps {'batches' if offering.batch_tracked else 'serial numbers'} — "
+                "record its stock with Receive stock so each batch or unit is on record",
+                details={"needs": "receive"},
+            )
         existing = await InventoryResolver.resolve_or_none(
             session,
             business_id=business_id,
@@ -271,9 +282,13 @@ class InventoryService:
             location_id=validated["location_id"],
             variant_id=validated["variant_id"],
         )
+        record = await stock_ledger.lock(session, record)
         before = InventoryService.serialize_record(record, offering=offering)
         delta = validated["quantity"] - record.quantity_on_hand
+        cost = payload.get("total_cost_paise")
+        value = int(cost) if cost not in (None, "") and int(cost) >= 0 else 0
         record.quantity_on_hand = validated["quantity"]
+        record.stock_value_paise = value
         record.version += 1
         movement = InventoryMovement(
             business_id=business_id,
@@ -286,6 +301,7 @@ class InventoryService:
             quantity_after=record.quantity_on_hand,
             reason=validated["reason"],
             actor_identity_id=actor_id,
+            value_delta_paise=value,
         )
         session.add(movement)
         await session.flush()
@@ -333,6 +349,12 @@ class InventoryService:
             variant_id=validated["variant_id"],
         )
         InventoryService._check_version(record, expected_version)
+        if offering.serial_tracked:
+            raise ValidationError(
+                f"{offering.title} keeps serial numbers — use Receive stock or Record wastage for each unit",
+                details={"needs": "serials"},
+            )
+        record = await stock_ledger.lock(session, record)
         before = InventoryService.serialize_record(record, offering=offering)
         new_qty = record.quantity_on_hand + validated["quantity_delta"]
         if new_qty < 0:
@@ -343,6 +365,13 @@ class InventoryService:
                     "quantity_delta": validated["quantity_delta"],
                 },
             )
+        delta = validated["quantity_delta"]
+        if delta < 0:
+            taken = await stock_ledger.take(session, record, offering, -delta, today=datetime.now(IST).date())
+            value = -sum(a.value_paise for a in taken)
+        else:
+            value = stock_ledger.average_value(record, delta)
+            record.stock_value_paise += value
         record.quantity_on_hand = new_qty
         record.version += 1
         movement = InventoryMovement(
@@ -356,6 +385,7 @@ class InventoryService:
             quantity_after=record.quantity_on_hand,
             reason=validated["reason"],
             actor_identity_id=actor_id,
+            value_delta_paise=value,
         )
         session.add(movement)
         await session.flush()
@@ -546,6 +576,7 @@ class InventoryService:
         correlation_id: str,
         order_id: uuid.UUID,
         reason: str,
+        line_item: Any = None,
     ) -> InventoryRecord | None:
         if quantity <= 0:
             return None
@@ -561,6 +592,8 @@ class InventoryService:
             location_id=location_id,
             variant_id=variant_id,
         )
+        if record is not None:
+            record = await stock_ledger.lock(session, record)
         if record is None:
             raise ValidationError(
                 "Inventory record missing for deduction",
@@ -576,6 +609,13 @@ class InventoryService:
                 },
             )
         before = InventoryService.serialize_record(record, offering=offering)
+        taken = await stock_ledger.take(session, record, offering, deduct_qty, today=datetime.now(IST).date())
+        if line_item is not None:
+            line_item.batch_allocations = [a.as_json() for a in taken]
+            if offering.serial_tracked and line_item.serials:
+                await stock_ledger.sell_serials(
+                    session, record, offering, list(line_item.serials), quantity=len(line_item.serials),
+                    strict=False, sold_at=datetime.now(timezone.utc), order_id=order_id)
         record.quantity_on_hand -= deduct_qty
         record.quantity_reserved -= deduct_qty
         record.version += 1
@@ -590,6 +630,9 @@ class InventoryService:
             quantity_after=record.quantity_on_hand,
             reason=f"{reason} (order:{order_id})",
             actor_identity_id=actor_id,
+            value_delta_paise=-sum(a.value_paise for a in taken),
+            source_type="order",
+            source_id=order_id,
         )
         session.add(movement)
         await session.flush()

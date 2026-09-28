@@ -40,6 +40,8 @@ class OpeningStockRequest(BaseModel):
     variant_id: UUID | None = None
     quantity: int = Field(ge=0)
     reason: str | None = None
+    # What the opening stock cost, for its value (§15.1 valuation); optional.
+    total_cost_paise: int | None = Field(default=None, ge=0, le=10_000_000_000)
 
 
 @router.get("/{business_id}/inventory")

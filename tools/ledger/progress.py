@@ -430,3 +430,42 @@ done("P1-09B", {
     "CO-11": dict(status=P, code="FSSAI number can be entered and opted in for site display; food-specific mandatory-field policy verification remains", test=_CP_TEST),
     "PKT-09": dict(status=C, code="P1-09 §17.5 security and average tests pass; reviewer, owner, moderator and compliance paths implemented locally. P2/P5 source types, Tasks and document vault remain explicit partial rows", test=_RV_TEST + "; " + _CP_TEST),
 })
+
+
+# ---------------------------------------------------------------- P1-10A stock depth (§15.1)
+_ST_TEST = ("✓ test_stock_depth (19, platform_api RLS role) + browser p1_10a_stock (20/20) and "
+            "p1_10a_counter_serials (8/8), desktop + 390 px")
+_ST_UI = "✓ Stock: a view per stock profile (counter by weight, batches & expiry, serials & warranty, size × colour, ingredients, reorder) + counts, wastage, item settings"
+done("P1-10A", {
+    "IN-02": dict(status=C, code="stock kept in pieces, grams or millilitres (weighed goods shown in kg); an item's buying units (crate of 24, 25 kg bag) convert on receipt; selling packs convert on sale (P1-03)",
+                  db="✓ offerings.buy_units", svc="✓ /stock/receipts", ws=_ST_UI, test=_ST_TEST),
+    "OF-03": dict(status=C, code="buy by crate, case or bag (buying units per item) and sell per 500 g or per piece; both convert to the one stock unit",
+                  db="✓", svc="✓", ws="✓ Item settings › How you buy it", test=_ST_TEST),
+    "IN-03": dict(status=P, code="owner-entered yields (1 kg whole chicken → 800 g curry cut) and cutting runs: source consumed, outputs weighed, trim reported, the whole's cost carried into the cuts, actual vs usual yield per pair; procurement maths uses yield when Buying/Recipes arrive (P4)",
+                  db="✓ inventory_yields, inventory_conversions", svc="✓ /stock/yields, /stock/conversions", ws="✓ Cut and portion, live trim", test=_ST_TEST),
+    "IN-05": dict(status=C, code="batches with batch number and expiry; every sale (counter, Workspace bill, online and WhatsApp orders) picks first-expiry-first-out, then unbatched stock, then expired stock (reported); cancellations and returns go back to the same batch at the value they left with; expiry alerts 30/7/0 days before through the automation kernel; write-off of an expiring or expired batch",
+                  db="✓ inventory_batches + line batch_allocations", svc="✓", perm="✓ RLS + location scope", ws="✓ Batches & expiry", auto="✓ inventory.expiry", test=_ST_TEST),
+    "IN-06": dict(status=C, code="serial / IMEI per unit received; captured at sale — required on a Workspace bill, scanned into the counter bill (scanning the IMEI on the box adds that phone), recorded on an online order's line before it completes; returns put the serial back; warranty from the sale date and item's warranty months; lookup by serial shows sale, bill and warranty",
+                  db="✓ inventory_serials", svc="✓ /stock/serials/{serial}", ws="✓ Serials & warranty", role="✓ counter", test=_ST_TEST),
+    "IN-08": dict(status=C, code="stock counts by location (and category): the counter counts blind, submits; differences change stock only when someone with inventory.approve approves, applied against current stock so sales during the count are kept; store keepers cannot approve",
+                  db="✓ inventory_counts, inventory_count_lines", svc="✓", perm="✓ inventory.approve", ws="✓ Counts", test=_ST_TEST),
+    "IN-09": dict(status=C, code="wastage with reasons (expired, damaged, trim loss, spoiled, missing, sample, other) in the order each business uses them; batch write-offs; cutting trim; 30-day wastage by reason with cost for those who may see it",
+                  db="✓ movements.reason_code", svc="✓ /stock/wastage", ws="✓ Wastage", test=_ST_TEST),
+    "IN-10": dict(status=P, code="reorder level and fill-up-to level per stock line and location; low-stock alert (P1-02 ladder); suggested quantity to the fill-up level; turning it into a requisition draft arrives with Buying (P4)",
+                  db="✓ reorder_max", svc="✓", ws="✓ Reorder", auto="✓ stock.low", test=_ST_TEST),
+    "IN-12": dict(status=C, code="weighted-average value on every stock line: receipts at what they cost, sales, wastage and counts at the average, returns at the value they left with, cutting runs carry value into the cuts; value visible only with inventory.cost; goods receipts from purchase orders (P4) post through the same receive",
+                  db="✓ stock_value_paise, movements.value_delta_paise", svc="✓", perm="✓ inventory.cost", test=_ST_TEST),
+    "IN-13": dict(status=C, code="online orders, WhatsApp orders (same order service, test_journeys reserves the same stock), counter bills and Workspace bills all move the one stock record with its batches, serials and value",
+                  test=_ST_TEST + "; test_journeys"),
+    "RL-07": dict(status=P, code="store keeper: stock, receiving (with batch, expiry, serials and cost from the supplier's bill), wastage, blind counts at chosen locations — cannot approve counts or see stock value; transfers (P2) and requisitions (P4) not built",
+                  test=_ST_TEST),
+    "GP-06": dict(status=P, code="yields, cutting trim, wastage reasons and approved counts make leakage visible; linking sales to ingredients waits for Recipes (P4)",
+                  test=_ST_TEST),
+    "TS-01": dict(status=P, code="[P1-10A] stock-profile fixtures per subcategory (meat → by weight with yield; pharmacy → batches; mobile store → serials; clothing → sizes; restaurant → ingredients); yield, FEFO and valuation arithmetic tested; tax/BOM fixtures come with their packets",
+                  test="◐"),
+    "PB-102": dict(status=P, code="Core built — counter billing, GST bills, stock with batches and expiry, khata, orders, payments; Rec fulfilment built, dispatch (P2), loyalty (P3), procurement and connectors (P4) not yet", test="✓ fixture"),
+    "PB-202": dict(status=P, code="Core built — serialised items with IMEI at the counter and warranty lookup, GST bills, payments; Rec bookings/leads built, repair job cards (P5) not yet", test="✓ fixture + browser p1_10a_counter_serials"),
+    "PB-201": dict(status=P, code="Core built — size × colour variants with a stock grid, counter, orders, fulfilment, GST bills; Rec reviews built, loyalty/marketing (P3) and connectors (P4) not yet", test="✓ fixture + browser p1_10a_stock"),
+    "PB-206": dict(status=P, code="Core built for cosmetics — batches and expiry at the counter, orders, bills; optical lens orders as jobs (P5) not yet", test="✓ fixture"),
+    "PB-404": dict(status=P, code="Core built — batch/expiry counter billing (earliest expiry sold first, expiry alerts), orders, GST bills, payments; prescription verification, refills (memberships P2), dispatch (P2) and distributor POs (P4) not yet", test="✓ fixture + browser p1_10a_stock"),
+})

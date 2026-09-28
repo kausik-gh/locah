@@ -313,6 +313,19 @@ class PosService:
                  for r in (await session.execute(select(InventoryRecord).where(
                      InventoryRecord.business_id == business_id, InventoryRecord.location_id == location_id,
                      InventoryRecord.offering_id.in_(ids)))).scalars()}
+        # §15.1: units in stock here by serial, so scanning the IMEI on the box
+        # adds that phone — offline too (up to 300 per item on the counter).
+        serials: dict[uuid.UUID, list[str]] = {}
+        serial_ids = [o.id for o in offerings if o.serial_tracked]
+        if serial_ids:
+            from platform_core.models import InventorySerial
+
+            for oid, serial in (await session.execute(select(InventorySerial.offering_id, InventorySerial.serial).where(
+                    InventorySerial.business_id == business_id, InventorySerial.location_id == location_id,
+                    InventorySerial.offering_id.in_(serial_ids), InventorySerial.status == "in_stock")
+                    .order_by(InventorySerial.received_at))).all():
+                if len(serials.setdefault(oid, [])) < 300:
+                    serials[oid].append(serial)
         today = local_today()
         rates = await TaxRateService.resolve(session, business_id, [(o.id, o.hsn_sac, o.tax_rate) for o in offerings],
                                              today)
@@ -339,6 +352,7 @@ class PosService:
                 "rate": _f(rate) if rate is not None else None, "stock_unit": o.stock_unit,
                 "price_per": (o.attributes or {}).get("price_per"), "track_inventory": o.track_inventory,
                 "available": stock.get((o.id, None)), "packs": packs,
+                "serial_tracked": o.serial_tracked, "serials": serials.get(o.id, []),
                 "variants": [{"id": str(v.id), "name": v.name, "sku": v.sku, "barcode": getattr(v, "barcode", None),
                               "price": _f(v.price_amount) if v.price_amount is not None else _f(o.price_amount),
                               "available": stock.get((o.id, v.id))} for v in variants.get(o.id, [])],

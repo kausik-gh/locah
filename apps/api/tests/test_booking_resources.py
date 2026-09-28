@@ -42,24 +42,21 @@ def _factory() -> Any:
 
 
 async def _tenant(session: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
-    """Borrow an existing business/location purely to satisfy foreign keys.
-
-    Every row these tests create is rolled back or deleted; nothing here is
-    meant to survive, and no existing business data is modified.
-    """
-    row = (
-        await session.execute(
-            text(
-                """
-                SELECT b.id, l.id FROM businesses b
-                JOIN business_locations l ON l.business_id = b.id
-                WHERE b.deleted_at IS NULL LIMIT 1
-                """
-            )
-        )
-    ).first()
-    assert row is not None, "no business/location available to anchor the test"
-    return row[0], row[1]
+    """A throwaway business and location of this test's own, purely to satisfy
+    foreign keys — never a borrowed one, so the test runs first on a fresh
+    database and never touches another test's (or anyone's) business."""
+    owner, business_id, location_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    await session.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
+                          {"id": owner, "email": f"{owner}@example.com"})
+    await session.execute(text(
+        "INSERT INTO businesses (id, slug, display_name, state, primary_owner_identity_id, business_type) "
+        "VALUES (:id, :slug, 'Resource test', 'draft', :owner, 'other')"),
+        {"id": business_id, "slug": f"resource-{business_id.hex[:12]}", "owner": owner})
+    await session.execute(text(
+        "INSERT INTO business_locations (id, business_id, name, is_primary) VALUES (:id, :b, 'Main', true)"),
+        {"id": location_id, "b": business_id})
+    await session.flush()
+    return business_id, location_id
 
 
 async def _make_resource(
@@ -401,6 +398,9 @@ async def test_two_concurrent_transactions_cannot_both_take_one_resource() -> No
                 await cleanup.execute(
                     text("DELETE FROM bookings_resources WHERE id = :r"), {"r": str(resource_id)}
                 )
+            if created:  # the throwaway business this test committed
+                await cleanup.execute(text("UPDATE businesses SET deleted_at = now() WHERE id = :b"),
+                                      {"b": str(business_id)})
             await cleanup.commit()
         await engine.dispose()
 

@@ -137,6 +137,11 @@ LEADS_DELETE = "leads.delete"
 INVENTORY_READ = "inventory.read"
 INVENTORY_ADJUST = "inventory.adjust"
 INVENTORY_EXPORT = "inventory.export"
+# Stock counts: variances change stock only when someone with this approves
+# them (§15.1 "variances need approval"); the counter need not hold it.
+INVENTORY_APPROVE = "inventory.approve"
+# What stock cost and is worth — owner, manager and accountant, not the counter.
+INVENTORY_COST = "inventory.cost"
 
 FULFILMENT_READ = "fulfilment.read"
 FULFILMENT_UPDATE_STATUS = "fulfilment.update_status"

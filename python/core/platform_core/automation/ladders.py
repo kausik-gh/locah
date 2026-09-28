@@ -115,4 +115,14 @@ LADDERS: dict[str, Ladder] = {lad.key: lad for lad in (
         "the item is renewed, filed, archived or its date is changed",
         quiet_hours=False,
     ),
+    Ladder(
+        "inventory.expiry", "inventory", "Expiry alerts", "the batch's expiry date", "inventory_batch",
+        (
+            LadderStep("minus_30", -30 * D, "30 days before", "Tell whoever looks after stock at that location"),
+            LadderStep("minus_7", -7 * D, "7 days before", "Reminder in Notifications and Needs you now"),
+            LadderStep("expiry", timedelta(0), "On the expiry date", "Expired today — write it off or return it"),
+        ),
+        "the batch is sold out or written off",
+        quiet_hours=False,
+    ),
 )}

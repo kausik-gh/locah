@@ -234,6 +234,8 @@ class LineBody(BaseModel):
     unit_price: float | None = Field(default=None, ge=0)
     discount: float | None = Field(default=None, ge=0)
     rate: float | None = Field(default=None, ge=0, le=100)
+    # §15.1: one serial or IMEI per unit for items that keep serial numbers.
+    serials: list[str] | None = Field(default=None, max_length=300)
 
 
 class BuyerBody(BaseModel):
@@ -287,6 +289,7 @@ class NoteLine(BaseModel):
     original_line_id: UUID
     quantity: float | None = Field(default=None, gt=0)
     amount: float | None = Field(default=None, gt=0)
+    serials: list[str] | None = Field(default=None, max_length=300)  # which units came back
 
 
 class NoteBody(BaseModel):

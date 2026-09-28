@@ -24,7 +24,7 @@ import base64
 import hashlib
 import hmac
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -140,6 +140,8 @@ class _Line:
     discount: Decimal
     rate: Decimal | None
     stock_quantity: int
+    # §15.1: the serial numbers sold (or returned) on this line.
+    serials: list[str] = field(default_factory=list)
 
 
 def _rate_key(line: _Line) -> tuple[uuid.UUID | None, str | None, Any]:
@@ -325,8 +327,13 @@ class InvoiceService:
                 stock = int(quantity) * stock_per_unit if offering is not None and offering.track_inventory else 0
             else:
                 stock = _stock_for(offering, quantity, unit_label)
+            from platform_core.stock.ledger import clean_serials
+
+            serials = clean_serials(raw.get("serials"))
+            if serials and (offering is None or not offering.serial_tracked):
+                raise _err(f"lines.{i}.serials", f"{title} does not keep serial numbers")
             out.append(_Line(offering, variant.id if variant else None, None, None, title[:300], hsn, unit_label,
-                             quantity, unit_price, discount, rate, stock))
+                             quantity, unit_price, discount, rate, stock, serials))
         # Rates for catalogue lines (and free lines with only an HSN/SAC) come from data.
         need = [i for i, x in enumerate(out) if x.offering is not None or x.rate is None]
         resolved = await TaxRateService.resolve(session, business_id, [_rate_key(out[i]) for i in need], on)
@@ -350,6 +357,7 @@ class InvoiceService:
                 offering, item.variant_id, item.id, None, item.title, offering.hsn_sac if offering else None,
                 _unit_label(offering), Decimal(item.quantity), money(dec(item.unit_price)), ZERO,
                 dec(item.tax_rate) if item.tax_rate is not None else None, int(item.stock_quantity or 0),
+                list(item.serials or []),
             ))
         missing = [i for i, x in enumerate(out) if x.rate is None]
         if missing:
@@ -380,7 +388,7 @@ class InvoiceService:
                 hsn_sac=x.hsn_sac, unit_label=x.unit_label, quantity=x.quantity, unit_price=x.unit_price,
                 discount=out.discount, taxable_value=out.taxable, tax_rate=out.rate,
                 cgst=out.cgst, sgst=out.sgst, igst=out.igst, line_total=out.total,
-                stock_quantity=x.stock_quantity, sort_order=i,
+                stock_quantity=x.stock_quantity, serials=list(x.serials), sort_order=i,
             ))
         return rows
 
@@ -388,7 +396,8 @@ class InvoiceService:
     def _lines_from_rows(rows: list[InvoicingDocumentLine], offerings: dict[uuid.UUID, Offering]) -> list[_Line]:
         return [_Line(offerings.get(r.offering_id) if r.offering_id else None, r.variant_id, r.order_line_id,
                       r.original_line_id, r.title, r.hsn_sac, r.unit_label, dec(r.quantity), dec(r.unit_price),
-                      dec(r.discount), dec(r.tax_rate) if r.tax_rate is not None else None, r.stock_quantity)
+                      dec(r.discount), dec(r.tax_rate) if r.tax_rate is not None else None, r.stock_quantity,
+                      list(r.serials or []))
                 for r in rows]
 
     # ------------------------------------------------------------------ stock
@@ -399,10 +408,25 @@ class InvoiceService:
     ) -> list[dict[str, Any]]:
         """Move stock for a bill's lines. A counter sale already happened, so it
         is never refused for a stale count (`allow_short`): stock goes to zero
-        and the shortfall is returned so the team can recount."""
+        and the shortfall is returned so the team can recount.
+
+        The detail of §15.1 moves with the quantity (platform_core.stock.ledger):
+        value at weighted-average cost; batches first-expiry-first-out, kept on
+        the line so a cancellation or a return goes back to the same batches;
+        serial numbers, required on a Workspace bill and flagged on a counter
+        bill rung up without them."""
         from platform_core.services.inventory import InventoryService
+        from platform_core.stock import ledger
 
         short: list[dict[str, Any]] = []
+        originals: dict[uuid.UUID, InvoicingDocumentLine] = {}
+        if sign > 0 and doc.doc_kind == "credit_note":
+            ids = [r.original_line_id for r in rows if r.original_line_id]
+            if ids:
+                originals = {r.id: r for r in (await session.execute(select(InvoicingDocumentLine).where(
+                    InvoicingDocumentLine.id.in_(ids)))).scalars()}
+        location = await session.get(BusinessLocation, doc.location_id)
+        today = local_today(location.timezone if location else None)
         for row in rows:
             if not row.offering_id or row.stock_quantity <= 0:
                 continue
@@ -412,6 +436,7 @@ class InvoiceService:
             record = await InventoryService._get_or_create_record(
                 session, business_id=doc.business_id, offering=offering, location_id=doc.location_id,
                 variant_id=row.variant_id)
+            record = await ledger.lock(session, record)
             delta = sign * row.stock_quantity
             before = InventoryService.serialize_record(record, offering=offering)
             available = record.quantity_on_hand - record.quantity_reserved
@@ -419,19 +444,43 @@ class InvoiceService:
                 short.append({"offering_id": str(offering.id), "title": offering.title,
                               "sold": -delta, "on_record": record.quantity_on_hand})
                 delta = -record.quantity_on_hand
-                if delta == 0:
-                    continue
             elif delta < 0 and not allow_short and available < -delta:
                 raise ValidationError(
                     f"Only {max(available, 0)} of {offering.title} in stock here — adjust stock or change the line",
                     details={"offering_id": str(offering.id), "available": available, "needed": -delta})
+            value = 0
+            if delta < 0 or (sign < 0 and offering.serial_tracked):
+                if delta < 0:
+                    allocations = await ledger.take(session, record, offering, -delta, today=today)
+                    value = -sum(a.value_paise for a in allocations)
+                    row.batch_allocations = [a.as_json() for a in allocations]
+                    if any(a.expired for a in allocations):
+                        short.append({"offering_id": str(offering.id), "title": offering.title,
+                                      "expired_batch": True})
+                if offering.serial_tracked and doc.doc_kind != "credit_note":
+                    problems = await ledger.sell_serials(
+                        session, record, offering, list(row.serials or []), quantity=row.stock_quantity,
+                        strict=not allow_short, sold_at=datetime.now(timezone.utc), document_id=doc.id,
+                        customer_id=doc.customer_contact_id)
+                    short.extend({"offering_id": str(offering.id), "title": offering.title, "serial": problem}
+                                 for problem in problems)
+            elif delta > 0:
+                source = originals.get(row.original_line_id) if row.original_line_id else row
+                previous = ([ledger.Allocation.from_json(a) for a in (source.batch_allocations or [])]
+                            if source is not None else None)
+                back = await ledger.put_back(session, record, offering, delta, previous)
+                value = sum(a.value_paise for a in back)
+                if offering.serial_tracked:
+                    await ledger.return_serials(session, record, offering, list(row.serials or []))
+            if delta == 0:
+                continue
             record.quantity_on_hand += delta
             record.version += 1
             session.add(InventoryMovement(
                 business_id=doc.business_id, offering_id=offering.id, variant_id=row.variant_id,
                 location_id=doc.location_id, inventory_record_id=record.id, movement_type=movement_type,
                 quantity_delta=delta, quantity_after=record.quantity_on_hand, reason=reason,
-                actor_identity_id=actor_id,
+                actor_identity_id=actor_id, value_delta_paise=value, source_type="invoice", source_id=doc.id,
             ))
             await session.flush()
             await InventoryService._publish_stock_events(
@@ -805,9 +854,17 @@ class InvoiceService:
                     raise _err(f"lines.{i}.quantity", f"Up to {_qty(oq - returned)} of {orig.title} can come back")
                 disc = money(dec(orig.discount) * qty / oq)
                 stock = int((Decimal(orig.stock_quantity) * qty / oq).to_integral_value())
+                from platform_core.stock.ledger import clean_serials
+
+                back = clean_serials(raw.get("serials"))
+                sold = list(orig.serials or [])
+                if back and any(x not in sold for x in back):
+                    raise _err(f"lines.{i}.serials", "Only serial numbers sold on this bill can come back")
+                if not back and sold and qty == oq:
+                    back = sold
                 lines.append(_Line(offering, orig.variant_id, None, orig.id, orig.title, orig.hsn_sac,
                                    orig.unit_label, qty, dec(orig.unit_price), disc,
-                                   dec(orig.tax_rate) if orig.tax_rate is not None else None, stock))
+                                   dec(orig.tax_rate) if orig.tax_rate is not None else None, stock, back))
             else:
                 amount = money(dec(raw.get("amount") or 0))
                 if amount <= 0:

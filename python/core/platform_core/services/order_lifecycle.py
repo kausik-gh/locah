@@ -101,6 +101,7 @@ class OrderLifecycleService:
                 correlation_id=correlation_id,
                 order_id=order.id,
                 reason=f"Order {order.order_number} completed",
+                line_item=item,
             )
             item.quantity_deducted += pending
             item.quantity_reserved = max(item.quantity_reserved - pending, 0)

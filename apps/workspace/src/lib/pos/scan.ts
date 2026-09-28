@@ -22,10 +22,13 @@ export type PosItem = {
   available: number | null
   packs: PosPack[]
   variants: PosVariant[]
+  /** Units in stock here by serial/IMEI (§15.1); the counter captures one per unit sold. */
+  serial_tracked?: boolean
+  serials?: string[]
 }
 export type WeighedFormat = { prefix: string; item_digits: number; value: 'weight' | 'price'; value_digits: number; value_decimals: number }
 
-export type ScanHit = { item: PosItem; variant?: PosVariant; quantity?: number; price?: number }
+export type ScanHit = { item: PosItem; variant?: PosVariant; quantity?: number; price?: number; serial?: string }
 
 export function gtinOk(code: string): boolean {
   if (!/^\d+$/.test(code) || ![8, 12, 13, 14].includes(code.length)) return false
@@ -49,6 +52,10 @@ export function resolveCode(raw: string, items: PosItem[], fmt: WeighedFormat | 
       // A price label: the quantity is what that price buys at the item's rate.
       return { item, quantity: Math.round((value / item.price) * 1000) / 1000 }
     }
+  }
+  const upper = code.toUpperCase()
+  for (const item of items) {
+    if (item.serial_tracked && item.serials?.includes(upper)) return { item, serial: upper }
   }
   for (const item of items) {
     if (item.barcode === code || item.sku === code) return { item }

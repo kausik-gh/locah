@@ -281,7 +281,8 @@ def test_low_stock_ladder_runs_once_and_is_visible(monkeypatch: Any) -> None:
                 "'inventory.low_stock' and recipient_identity_id = :o", b=bid, o=owner_id)
     assert [n[0] for n in notes] == ["Mutton curry cut is running low"]
     feed = client.get(f"/v1/platform/businesses/{bid}/automations", headers=owner).json()["data"]
-    assert [a["key"] for a in feed["automations"]] == ["stock.low", "review.request", "chat.waiting", "compliance.due"]
+    assert [a["key"] for a in feed["automations"]] == ["stock.low", "review.request", "chat.waiting", "compliance.due",
+                                                              "inventory.expiry"]
     assert feed["activity"][0]["status"] == "done" and "low" in feed["activity"][0]["outcome"]
 
 
@@ -302,11 +303,11 @@ def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
     shown = [a["key"] for a in client.get(f"/v1/platform/businesses/{bid}/automations",
                                           headers=owner).json()["data"]["automations"]]
     assert shown == ["booking.reminder", "stock.low", "order.tracking", "review.request",
-                     "lead.followup", "chat.waiting", "compliance.due"]
+                     "lead.followup", "chat.waiting", "compliance.due", "inventory.expiry"]
     assert "membership.renewal" not in shown
     assert {k for k in LADDERS if is_wired(k)} == {"stock.low", "lead.followup", "booking.reminder", "order.tracking",
                                                    "invoice.overdue", "ledger.statement", "chat.waiting",
-                                                   "review.request", "compliance.due"}
+                                                   "review.request", "compliance.due", "inventory.expiry"}
 
 
 @DB

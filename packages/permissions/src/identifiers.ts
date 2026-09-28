@@ -165,6 +165,8 @@ export const PERMISSIONS = {
   INVENTORY_READ: 'inventory.read',
   INVENTORY_ADJUST: 'inventory.adjust',
   INVENTORY_EXPORT: 'inventory.export',
+  INVENTORY_APPROVE: 'inventory.approve',
+  INVENTORY_COST: 'inventory.cost',
 
   // Module: fulfilment
   FULFILMENT_READ: 'fulfilment.read',
