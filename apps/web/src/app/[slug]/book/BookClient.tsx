@@ -28,17 +28,22 @@ type Options = {
 export default function BookClient({
   slug,
   options,
+  customer,
+  authToken,
 }: {
   slug: string
   options: Options
+  /** The signed-in LOCAH customer, if any: the booking joins their own record. */
+  customer?: { name: string; email: string } | null
+  authToken?: string | null
 }) {
   const [locationId, setLocationId] = useState(options.locations[0]?.id || '')
   const [serviceId, setServiceId] = useState(options.services[0]?.id || '')
   const [providerId, setProviderId] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [endsAt, setEndsAt] = useState('')
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [name, setName] = useState(customer?.name ?? '')
+  const [email, setEmail] = useState(customer?.email ?? '')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [errorCode, setErrorCode] = useState<string | null>(null)
@@ -96,7 +101,7 @@ export default function BookClient({
         ends_at: new Date(endsAt).toISOString(),
         payment_method: options.payment_methods[0] || 'cod',
         guest: { name, email, phone: phone || null },
-      })
+      }, authToken)
       setConfirmation({
         id: String(data.id),
         booking_number: String(data.booking_number),
@@ -238,6 +243,7 @@ export default function BookClient({
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            readOnly={Boolean(customer)}
             required
             style={{ display: 'block', width: '100%', marginTop: 4, padding: '0.55rem' }}
           />

@@ -15,7 +15,7 @@ from collections import Counter
 from pathlib import Path
 
 from tools.ledger import rows_ai, rows_commerce, rows_engage, rows_foundation, rows_governance
-from tools.ledger import rows_operate, rows_playbooks
+from tools.ledger import rows_operate, rows_playbooks, rows_refinements
 from tools.ledger import progress
 from tools.ledger.model import PHASES, STATUSES, Row, Section
 
@@ -23,7 +23,9 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "current-build" / "business-os-implementation-ledger.md"
 
 SECTIONS: list[Section] = [
-    *rows_foundation.SECTIONS,
+    *rows_foundation.SECTIONS[:1],
+    *rows_refinements.SECTIONS,
+    *rows_foundation.SECTIONS[1:],
     *rows_commerce.SECTIONS,
     *rows_engage.SECTIONS,
     *rows_operate.SECTIONS,

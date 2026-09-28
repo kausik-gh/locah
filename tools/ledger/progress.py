@@ -469,3 +469,19 @@ done("P1-10A", {
     "PB-206": dict(status=P, code="Core built for cosmetics — batches and expiry at the counter, orders, bills; optical lens orders as jobs (P5) not yet", test="✓ fixture"),
     "PB-404": dict(status=P, code="Core built — batch/expiry counter billing (earliest expiry sold first, expiry alerts), orders, GST bills, payments; prescription verification, refills (memberships P2), dispatch (P2) and distributor POs (P4) not yet", test="✓ fixture + browser p1_10a_stock"),
 })
+
+
+# ---------------------------------------------------------------- P1-10B one customer identity
+_ID_TEST = ("✓ test_customer_identity (3, platform_api RLS role) + browser p1_10b_identity (14/14), desktop + 390 px, "
+            "local worker draining events")
+done("P1-10B", {
+    "FD-01": dict(status=C, code="one LOCAH sign-in across businesses: each tenant site has My account (orders with track/bill/order-again, upcoming and past bookings with the manage link, bills, khata with statement, quotes, memberships) in the business's own colours; signed-in checkout and booking join the customer's own record; guests still check out; earlier guest records join only through the account's verified email (Doc 12), never name or unverified phone",
+                  db="✓ link_verified_customer_contacts(), my_contacts_in_business()", svc="✓ /v1/me/businesses/{slug}/account, /reorder",
+                  perm="✓ identity-checked SECURITY DEFINER functions; account for another identity is empty; reorder of another's order 404",
+                  cust="✓ /{slug}/account + /activity", web="✓ header My account, footer link, signed-in checkout/booking", test=_ID_TEST),
+    "FD-02": dict(status=P, code="My Activity across businesses: orders (with tracking), bills (open the bill), quotes, memberships, bookings, review invitations — each linking back to that business's account page; written by the customer_activity subscriber from order/invoice/quote/membership/fulfilment/payment events; guardian/student portal items join with Academics (P5)",
+                  db="✓", svc="✓ customer_activity subscriber", cust="✓ /activity", test=_ID_TEST),
+    "SF-05": dict(status=C, code="My Activity lists the customer's own orders, bookings, bills, quotes, memberships and review invitations across businesses", test=_ID_TEST),
+    "OR-08": dict(status=C, code="Order again on the business's website refills the cart from an earlier order at today's catalogue price and names what is no longer sold; WhatsApp 'repeat last order' since P1-08", web="✓ /{slug}/checkout?reorder=", test=_ID_TEST),
+    "FR-BK-06": dict(status=P, code="customer account shows upcoming and past bookings with the manage link; front-desk and provider surfaces arrive in P2"),
+})

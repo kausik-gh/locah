@@ -23,10 +23,11 @@ export async function checkBookingAvailability(slug: string, body: Record<string
   }
 }
 
-export async function createPublicBooking(slug: string, body: Record<string, unknown>) {
+/** A signed-in customer's token joins the booking to their own LOCAH record (Founder §12). */
+export async function createPublicBooking(slug: string, body: Record<string, unknown>, authToken?: string | null) {
   const res = await fetch(`${apiUrl}/v1/public/websites/${slug}/bookings`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
     body: JSON.stringify(body),
   })
   const json = await res.json().catch(() => ({}))

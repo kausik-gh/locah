@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_api.db import get_db_session
@@ -235,6 +236,24 @@ async def verify_jwt_payload(
     if not payload.get("sub") or not payload.get("email"):
         raise AuthenticationRequired("Invalid token payload")
     return payload
+
+
+async def optional_customer_identity(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    session: AsyncSession = Depends(get_db_session),
+) -> uuid.UUID | None:
+    """For public routes a signed-in customer also uses (a website checkout or
+    booking): their LOCAH identity when a valid token came with the request,
+    otherwise None — a guest. A token that fails verification is refused, never
+    quietly treated as a guest (Founder §12: one identity across businesses)."""
+    if credentials is None:
+        return None
+    payload = await verify_jwt_payload(credentials)
+    row = (await session.execute(
+        text("SELECT id FROM platform_identities WHERE supabase_user_id = CAST(:s AS uuid)"),
+        {"s": str(payload["sub"])},
+    )).first()
+    return uuid.UUID(str(row[0])) if row else None
 
 
 async def get_request_context(

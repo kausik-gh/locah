@@ -202,7 +202,8 @@ def test_booking_appears_in_my_activity(owner: tuple[dict[str, str], uuid.UUID])
         assert entry["summary"].get("booking_number")
 
         # The surface must be able to state its own coverage truthfully.
-    assert payload["meta"]["covered_resource_types"] == ["booking", "review_invitation"]
+    assert payload["meta"]["covered_resource_types"] == ["order", "booking", "bill", "quote", "membership",
+                                                         "review_invitation"]
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")

@@ -90,10 +90,11 @@ export async function quoteDelivery(slug: string, delivery_address: Record<strin
   return (await res.json()).data
 }
 
-export async function placeCheckoutOrder(slug: string, body: Record<string, unknown>) {
+/** A signed-in customer's token joins the order to their own LOCAH record (Founder §12). */
+export async function placeCheckoutOrder(slug: string, body: Record<string, unknown>, authToken?: string | null) {
   const res = await fetch(`${apiUrl}/v1/public/websites/${slug}/checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
     body: JSON.stringify(body),
   })
   const json = await res.json().catch(() => ({}))

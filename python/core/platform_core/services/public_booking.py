@@ -242,6 +242,7 @@ class PublicBookingService:
         slug: str,
         correlation_id: str,
         payload: dict[str, Any],
+        identity_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
         business = await PublicBookingService._resolve_business(session, slug)
         if not await PublicBookingService._bookings_active(session, business.id):
@@ -261,7 +262,7 @@ class PublicBookingService:
         display_name = str(guest.get("name") or "").strip()
         email = str(guest.get("email") or "").strip().lower()
         phone = (str(guest.get("phone")).strip() if guest.get("phone") else None) or None
-        if not display_name or not email:
+        if identity_id is None and (not display_name or not email):
             raise ValidationError(
                 "Guest name and email are required",
                 details={"field": "guest", "code": "policy_restriction"},
@@ -272,16 +273,23 @@ class PublicBookingService:
         # business-scoped CustomerContact; audit/actor attribution is the
         # storefront owner acting in a guest-checkout context.
         actor_id = business.primary_owner_identity_id
-        contact = await CustomerService.find_or_create_contact(
-            session,
-            business_id=business.id,
-            correlation_id=correlation_id,
-            actor_id=actor_id,
-            actor_context="guest_checkout",
-            display_name=display_name,
-            email=email,
-            phone=phone,
-        )
+        if identity_id is not None:
+            from platform_core.services.customer_account import CustomerAccountService
+
+            contact = await CustomerAccountService.contact_for_identity(
+                session, business_id=business.id, identity_id=identity_id, display_name=display_name,
+                phone=phone, actor_id=actor_id, correlation_id=correlation_id)
+        else:
+            contact = await CustomerService.find_or_create_contact(
+                session,
+                business_id=business.id,
+                correlation_id=correlation_id,
+                actor_id=actor_id,
+                actor_context="guest_checkout",
+                display_name=display_name,
+                email=email,
+                phone=phone,
+            )
 
         booking = await BookingService.create_booking(
             session,

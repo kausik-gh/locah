@@ -17,10 +17,36 @@ Branch `main`. Packets done, newest last:
 | Packet | Commit | Proof |
 | --- | --- | --- |
 | P1-01 … P1-09B | see git log | per-packet tests + browser flows (history in git) |
-| P1-10A stock depth | this commit | test_stock_depth (19) + browser p1_10a_stock 20/20, p1_10a_counter_serials 8/8 |
+| P1-10A stock depth | cb8ecc3 | test_stock_depth (19) + browser p1_10a_stock 20/20, p1_10a_counter_serials 8/8 |
+| P1-10B one customer identity | this commit | test_customer_identity (3) + browser p1_10b_identity 14/14; suite 1048 |
 
-P1 gate after P1-10A: **TOTAL 224 · COMPLETE 110 · PARTIAL 84 · NOT_STARTED 14 ·
-ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 721 rows.
+P1 gate after P1-10B: **TOTAL 240 · COMPLETE 116 · PARTIAL 94 · NOT_STARTED 14 ·
+ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 763 rows (P1 total grew by the
+founder-refinement rows in section A2).
+
+### Founder refinements (authority 1) — read before touching these modules
+
+`Documentations/# FOUNDER REFINEMENT — INVENTORY / BOOKINGS / MEMBERSHIPS /
+PAYMENTS.txt` and `Documentations/B2B.txt` (added 2026-09-28/29). Ledger section
+A2 (`tools/ledger/rows_refinements.py`) lists each requirement with its status;
+each document ends with a browser acceptance list that the module's flow must mirror.
+
+### P1-10B — one customer identity (Founder §12–13; Doc 12 l.848)
+
+- Migration `20260928110000_p1_customer_identity.sql`:
+  `link_verified_customer_contacts()` (links only the calling identity, only on its
+  verified email, only unclaimed contacts) and `my_contacts_in_business()`.
+- `services/customer_account.py`: linking + backfill, per-business account view,
+  reorder at today's price, `contact_for_identity` (signed-in checkout/booking).
+- `events/subscribers/customer_activity.py`: My Activity rows from order, invoice,
+  quote, membership, fulfilment and payment events.
+- API: `optional_customer_identity` on public checkout/booking (invalid token → 401,
+  never guest); `/v1/me/businesses/{slug}/account`, `/orders/{id}/reorder`;
+  `/v1/me/activity` links verified history first and adds action/account links.
+- Web: `/{slug}/account` (tenant theme), header/footer "My account", signed-in
+  checkout (no email field, Order again) and booking, checkout/book pages now use
+  the business theme instead of a stock serif/gradient; `/activity` covers orders,
+  bills, quotes, memberships.
 `CURRENT P1–P5 BUSINESS OS IMPLEMENTATION COMPLETE: NO`.
 
 ### P1-10A — stock depth (Capability Universe §15.1)
@@ -94,7 +120,9 @@ Planned next packets (dependency order):
   `apps/workspace/node_modules/.bin/tsc --noEmit -p apps/workspace`, `next lint`.
 - Browser stack: `.claude/launch.json` entries `accept-auth`, `accept-api`,
   `accept-workspace`, `accept-web` (local DB `locah_accept`, no provider keys,
-  AI replay only). Session: `.venv/Scripts/python.exe tools/acceptance/stack/owner.py
+  AI replay only); worker: `bash tools/acceptance/stack/worker.sh` in the
+  background (drains events so My Activity/automations run). Sessions expire
+  after 12 h — re-mint with `owner.py` (customer `session.json`, owner `owner2.json`). Session: `.venv/Scripts/python.exe tools/acceptance/stack/owner.py
   locah_accept acceptance-out/session.json`. Flows:
   `node tools/acceptance/phase_b/<flow>.mjs` (local Chrome over CDP);
   screenshots in `acceptance-out/phase_b/` — look at them, a passing text

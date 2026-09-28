@@ -352,6 +352,9 @@ export function WebsitePageView({
             })}
           </nav>
           <div className="ls-nav__actions">
+            {(canOrder || canBook) && !previewToken ? (
+              <a className="ls-nav__link ls-nav__account" href={`/${slug}/account`}>My account</a>
+            ) : null}
             {canOrder ? <CommerceCart slug={slug} /> : null}
             {ctaLabel && ctaTarget ? (
               <a
@@ -454,6 +457,7 @@ export function WebsitePageView({
             <div className="ls-foot__col">
               <p className="ls-foot__heading">Your visit</p>
               {canOrder ? <CommerceCart slug={slug} variant="footer-link" /> : null}
+              {(canOrder || canBook) && !previewToken ? <a href={`/${slug}/account`}>My orders and bookings</a> : null}
               {visitLinks.map((item) => (
                 <Link key={item.href} href={item.href}>
                   {item.label}

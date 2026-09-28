@@ -11,6 +11,7 @@ from platform_api.dependencies import get_request_context
 from platform_core.context import RequestContext
 from platform_core.services.consumer_activity import ConsumerActivityService
 from platform_core.services.identity import IdentityService
+from platform_core.services.invoicing import share_token
 from platform_core.services.reviews import review_token
 
 router = APIRouter(prefix="/v1/me", tags=["identity"])
@@ -99,6 +100,12 @@ async def get_my_activity(
     account pending FL-DEC-024, so this feed is deliberately partial rather
     than padded with data it cannot truthfully claim.
     """
+    # Verified-email guest history joins this identity first (Doc 12: verified
+    # identifiers only); idempotent, so every visit is safe.
+    from platform_core.services.customer_account import CustomerAccountService
+
+    if await CustomerAccountService.link_verified(session, ctx.identity_id):
+        await session.commit()
     activities = await ConsumerActivityService.list_for_identity(
         session,
         identity_id=ctx.identity_id,
@@ -111,6 +118,16 @@ async def get_my_activity(
     # expose review credentials on a business-scoped or public list.
     seen_reviews: set[str] = set()
     for item in activities:
+        summary = item.get("summary") or {}
+        slug = summary.get("business_slug")
+        if isinstance(slug, str) and item["resource_type"] != "review_invitation":
+            item["account_url"] = f"/{slug}/account"
+            finished = summary.get("status") in ("completed", "cancelled", "rejected")
+            if item["resource_type"] == "order" and summary.get("tracking_token") and not finished:
+                item["action_url"] = f"/{slug}/track/{item['resource_id']}?token={summary['tracking_token']}"
+            elif item["resource_type"] == "bill":
+                item["action_url"] = f"/{slug}/bill/{share_token(UUID(item['business_id']), UUID(item['resource_id']))}"
+            summary.pop("tracking_token", None)
         if item["resource_type"] != "review_invitation":
             continue
         key = item["resource_id"]
@@ -137,6 +154,53 @@ async def get_my_activity(
             "count": len(activities),
             # Named so the consumer UI can state its own limits truthfully
             # instead of implying an empty feed means no activity happened.
-            "covered_resource_types": ["booking", "review_invitation"],
+            "covered_resource_types": ["order", "booking", "bill", "quote", "membership", "review_invitation"],
         },
     }
+
+
+
+# ---------------------------------------------------------------- one business's "My account" (Founder §12)
+async def _public_business(session: AsyncSession, slug: str) -> Any:
+    from platform_core.exceptions import ResourceNotFound
+    from platform_core.services.business import BusinessService
+
+    business = await BusinessService.get_by_slug(session, slug)
+    if business is None or business.deleted_at is not None or business.visibility == "private":
+        raise ResourceNotFound("Business")
+    return business
+
+
+@router.get("/businesses/{slug}/account")
+async def my_account_with_business(
+    slug: str,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Everything this signed-in customer has with one business — orders,
+    bookings, bills, khata, quotes, memberships — for "My account" on that
+    business's website. Identity-scoped: only contacts linked to the caller."""
+    from platform_core.services.customer_account import CustomerAccountService
+
+    if await CustomerAccountService.link_verified(session, ctx.identity_id):
+        await session.commit()
+    business = await _public_business(session, slug)
+    data = await CustomerAccountService.account(session, business, ctx.identity_id)
+    await session.commit()
+    return {"data": data, "meta": {"correlation_id": ctx.correlation_id}}
+
+
+@router.get("/businesses/{slug}/orders/{order_id}/reorder")
+async def reorder_lines(
+    slug: str,
+    order_id: UUID,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Order again (§12.3 "Repeat last order" on the website): the lines of one
+    of the caller's orders at today's price, and which can no longer be bought."""
+    from platform_core.services.customer_account import CustomerAccountService
+
+    business = await _public_business(session, slug)
+    data = await CustomerAccountService.reorder(session, business, ctx.identity_id, order_id)
+    return {"data": data, "meta": {"correlation_id": ctx.correlation_id}}

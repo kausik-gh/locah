@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_api.db import get_db_session
+from platform_api.dependencies import optional_customer_identity
 from platform_core.services.public_booking import PublicBookingService
 
 router = APIRouter(prefix="/v1/public", tags=["bookings-public"])
@@ -20,7 +21,7 @@ class GuestPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    email: str
+    email: str | None = None  # required for guests; a signed-in customer uses their verified email
     phone: str | None = None
 
 
@@ -100,12 +101,14 @@ async def create_public_booking(
     slug: str,
     body: CreatePublicBookingRequest,
     session: AsyncSession = Depends(get_db_session),
+    identity_id: UUID | None = Depends(optional_customer_identity),
 ) -> dict[str, Any]:
     data = await PublicBookingService.create_public_booking(
         session,
         slug=slug,
         correlation_id=str(uuid.uuid4()),
         payload=body.model_dump(mode="json"),
+        identity_id=identity_id,
     )
     await session.commit()
     return {"data": data, "meta": {}}

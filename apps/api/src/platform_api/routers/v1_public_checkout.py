@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_api.db import get_db_session
+from platform_api.dependencies import optional_customer_identity
 from platform_core.services.checkout import CheckoutService
 from platform_core.services.fulfilment import FulfilmentService
 
@@ -21,7 +22,7 @@ class GuestPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    email: str
+    email: str | None = None  # required for guests; a signed-in customer uses their verified email
     phone: str | None = None
 
 
@@ -91,12 +92,14 @@ async def place_checkout_order(
     slug: str,
     body: PlaceOrderRequest,
     session: AsyncSession = Depends(get_db_session),
+    identity_id: UUID | None = Depends(optional_customer_identity),
 ) -> dict[str, Any]:
     data = await CheckoutService.place_order(
         session,
         slug=slug,
         correlation_id=str(uuid.uuid4()),
         payload=body.model_dump(mode="json"),
+        identity_id=identity_id,
     )
     await session.commit()
     return {"data": data, "meta": {}}

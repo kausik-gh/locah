@@ -61,14 +61,24 @@ function openRazorpayCheckout(checkout: RazorpayCheckout, name: string) {
 export default function CheckoutClient({
   slug,
   options,
+  customer,
+  authToken,
+  reorder,
+  unavailable,
 }: {
   slug: string
   options: Options
+  /** The signed-in LOCAH customer, if any: the order joins their own record. */
+  customer?: { name: string; email: string } | null
+  authToken?: string | null
+  /** "Order again": the lines of an earlier order at today's price. */
+  reorder?: CartItem[] | null
+  unavailable?: string[]
 }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [mode, setMode] = useState(options.fulfilment_modes[0] || '')
   const [paymentMethod, setPaymentMethod] = useState(options.payment_methods[0] || 'cod')
-  const [name, setName] = useState('')
+  const [name, setName] = useState(customer?.name ?? '')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [city, setCity] = useState('')
@@ -95,13 +105,22 @@ export default function CheckoutClient({
   } | null>(null)
 
   useEffect(() => {
+    if (reorder && reorder.length) {
+      setItems(reorder)
+      try {
+        localStorage.setItem(cartStorageKey(slug), JSON.stringify(reorder))
+      } catch {
+        /* storage unavailable — the cart still holds the lines */
+      }
+      return
+    }
     try {
       const raw = localStorage.getItem(cartStorageKey(slug))
       setItems(raw ? (JSON.parse(raw) as CartItem[]) : [])
     } catch {
       setItems([])
     }
-  }, [slug])
+  }, [slug, reorder])
 
   useEffect(() => {
     if (mode === 'delivery' && !states.length) fetchGstStates().then(setStates).catch(() => setStates([]))
@@ -168,9 +187,9 @@ export default function CheckoutClient({
         location_id: options.locations.find((l) => l.is_primary)?.id || options.locations[0]?.id,
         delivery_address:
           mode === 'delivery' ? { city, line1, postal_code: postal, state_code: stateCode || undefined } : undefined,
-        guest: { name, email, phone: phone || undefined },
+        guest: customer ? { name: name || customer.name, phone: phone || undefined } : { name, email, phone: phone || undefined },
         idempotency_key: crypto.randomUUID(),
-      })
+      }, authToken)
       localStorage.removeItem(cartStorageKey(slug))
       const payment = data.payment as
         | {
@@ -249,6 +268,8 @@ export default function CheckoutClient({
         <Link href={`/${slug}`}>← {options.business.display_name}</Link>
       </p>
       <h1 style={{ fontSize: '2rem', margin: '0.75rem 0' }}>Checkout</h1>
+      {reorder && reorder.length ? <p className="ls-meta" role="status">Your earlier order, at today&apos;s prices. Change anything before you place it.</p> : null}
+      {unavailable && unavailable.length ? <p className="ls-meta" role="status">No longer sold: {unavailable.join(', ')}.</p> : null}
 
       {items.length === 0 ? (
         <section>
@@ -365,20 +386,34 @@ export default function CheckoutClient({
 
           <section>
             <h2>Contact</h2>
+            {customer ? (
+              <p className="ls-meta">
+                Ordering as <strong>{customer.name || customer.email}</strong> · {customer.email}. It will be in{' '}
+                <Link href={`/${slug}/account`}>your account</Link>.
+              </p>
+            ) : (
+              <p className="ls-meta">
+                <a href={`/login?destination=${encodeURIComponent(`/${slug}/checkout`)}`}>Sign in</a> to keep this order with your others, or check out as a guest.
+              </p>
+            )}
             <div style={{ display: 'grid', gap: '0.5rem' }}>
               <input
+                aria-label="Name"
                 placeholder="Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
               />
-              <input
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+              {customer ? null : (
+                <input
+                  type="email"
+                  aria-label="Email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              )}
               <input
                 placeholder="Phone (optional)"
                 value={phone}
@@ -391,7 +426,7 @@ export default function CheckoutClient({
             Total: {items[0]?.currency || 'INR'} {grand.toFixed(2)}
           </p>
           {error ? <p style={{ color: '#b00020' }}>{error}</p> : null}
-          <button type="submit" disabled={submitting || !mode}>
+          <button type="submit" className="ls-btn" disabled={submitting || !mode}>
             {submitting
               ? 'Placing order…'
               : paymentMethod === 'online'

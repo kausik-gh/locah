@@ -1874,3 +1874,25 @@
 [data-locah-site] .ls-khata__pay { display: grid; gap: 0.8rem; justify-items: start; }
 [data-locah-site] .ls-khata__qr { width: 180px; height: 180px; background: #fff; padding: 6px; border-radius: 8px; border: 1px solid var(--site-border); }
 [data-locah-site] .ls-khata__h { margin: 0 0 0.7rem; font-size: 1rem; }
+/* "My account" on a business's website (P1-10B): the customer's own records, the business's own colours. */
+[data-locah-site] .ls-account { max-width: 720px; display: grid; gap: 1.4rem; }
+[data-locah-site] .ls-account__head { display: grid; gap: 0.35rem; }
+[data-locah-site] .ls-account__head .ls-title, [data-locah-site] .ls-account__signin .ls-title { margin: 0; font-size: clamp(1.4rem, 4vw, 1.9rem); }
+[data-locah-site] .ls-account__signin { display: grid; gap: 0.8rem; }
+[data-locah-site] .ls-account__block { display: grid; gap: 0.7rem; }
+[data-locah-site] .ls-account__block h2 { margin: 0; font-size: 1.05rem; }
+[data-locah-site] .ls-account__card {
+  display: grid; gap: 0.45rem; padding: 1rem 1.1rem; border: 1px solid var(--site-border); border-radius: var(--site-radius);
+  background: var(--site-bg);
+}
+[data-locah-site] .ls-account__card p { margin: 0; }
+[data-locah-site] .ls-account__row { display: flex; justify-content: space-between; gap: 1rem; font-variant-numeric: tabular-nums; }
+[data-locah-site] .ls-account__items { margin: 0; padding-left: 1.1rem; color: var(--site-muted); font-size: 0.9rem; }
+[data-locah-site] .ls-account__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+[data-locah-site] .ls-account__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.1rem; border-top: 1px solid var(--site-border); }
+[data-locah-site] .ls-account__list li {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.1rem 1rem; padding: 0.6rem 0; border-bottom: 1px solid var(--site-border);
+  font-variant-numeric: tabular-nums;
+}
+[data-locah-site] .ls-account__list li .ls-meta { grid-column: 1; font-size: 0.82rem; }
+[data-locah-site] .ls-account__list li strong { grid-column: 2; grid-row: 1; }

@@ -190,13 +190,24 @@ class CheckoutService:
         slug: str,
         correlation_id: str,
         payload: dict[str, Any],
+        identity_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
-        """The website's checkout: a guest with a name and email."""
+        """The website's checkout: a guest with a name and email, or a signed-in
+        LOCAH customer whose order joins their own record (Founder §12)."""
         business = await CheckoutService._resolve_business(session, slug)
         guest = payload.get("guest") or {}
         display_name = str(guest.get("name") or "").strip()
         email = str(guest.get("email") or "").strip().lower()
         phone = (str(guest.get("phone")).strip() if guest.get("phone") else None) or None
+        if identity_id is not None:
+            from platform_core.services.customer_account import CustomerAccountService
+
+            contact = await CustomerAccountService.contact_for_identity(
+                session, business_id=business.id, identity_id=identity_id, display_name=display_name,
+                phone=phone, actor_id=business.primary_owner_identity_id, correlation_id=correlation_id)
+            return await CheckoutService.place_for_contact(
+                session, business=business, contact=contact, correlation_id=correlation_id,
+                payload={**payload, "channel": "web"})
         if not display_name or not email:
             raise ValidationError(
                 "Guest name and email are required",

@@ -17,12 +17,19 @@ type Activity = {
   resource_type: string
   resource_id: string
   action_url?: string
+  account_url?: string
   occurred_at: string | null
   summary: {
     booking_number?: string
+    order_number?: string
+    number?: string
     starts_at?: string
+    ends_at?: string | null
     status?: string
-    label?: string
+    label?: string | null
+    total?: number
+    items?: number
+    amount_due?: number
   }
 }
 
@@ -36,10 +43,25 @@ const ACTIVITY_LABEL: Record<string, string> = {
   'review.declined': 'Review declined',
 }
 
+/** Words for records other than bookings and reviews: the kind of record, then its state. */
+const KIND_LABEL: Record<string, string> = { order: 'Order', bill: 'Bill', quote: 'Quote', membership: 'Membership' }
+
+function label(a: Activity): string {
+  if (ACTIVITY_LABEL[a.activity_type]) return ACTIVITY_LABEL[a.activity_type]
+  const kind = KIND_LABEL[a.resource_type]
+  return kind ?? a.activity_type
+}
+
+const ACTION_WORD: Record<string, string> = { review_invitation: 'Write your review', order: 'Track', bill: 'Open the bill' }
+
 /** Maps to the design-system badge tones, not raw hex. */
 const STATUS_TONE: Record<string, string> = {
   confirmed: 'good',
   completed: 'good',
+  active: 'good',
+  accepted: 'good',
+  issued: 'ink',
+  ready: 'good',
   pending: 'warn',
   cancelled: 'bad',
   no_show: 'bad',
@@ -106,8 +128,8 @@ export default async function MyActivityPage() {
       <p className="lc-eyebrow">Your record</p>
       <h1>My activity</h1>
       <p className="lc-lead" style={{ marginTop: 'var(--sp-3)' }}>
-        Your bookings and review invitations. This is your own record as a customer, kept separate from any
-        business you run.
+        Your orders, bookings, bills, quotes, memberships and review invitations with businesses on LOCAH. This is
+        your own record as a customer, kept separate from any business you run.
       </p>
 
       {entries.length === 0 ? (
@@ -141,11 +163,17 @@ export default async function MyActivityPage() {
                       {entry.business_name ?? 'A business'}
                     </h2>
                     <p className="lc-card__body" style={{ margin: 0 }}>
-                      {ACTIVITY_LABEL[entry.activity_type] ?? entry.activity_type}
+                      {label(entry)}
                       {entry.summary.booking_number ? ` · ${entry.summary.booking_number}` : ''}
+                      {entry.summary.order_number ? ` ${entry.summary.order_number}` : ''}
+                      {entry.summary.number ? ` ${entry.summary.number}` : ''}
                       {entry.summary.label ? ` · ${entry.summary.label}` : ''}
+                      {typeof entry.summary.total === 'number' ? ` · ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(entry.summary.total)}` : ''}
                     </p>
-                    {entry.action_url ? <Link className="lc-btn lc-btn--primary" href={entry.action_url} style={{ marginTop: '.65rem' }}>Write your review</Link> : null}
+                    <p style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', margin: '.65rem 0 0' }}>
+                      {entry.action_url ? <Link className="lc-btn lc-btn--primary" href={entry.action_url}>{ACTION_WORD[entry.resource_type] ?? 'Open'}</Link> : null}
+                      {entry.account_url ? <Link className="lc-btn lc-btn--ghost" href={entry.account_url}>Everything with {entry.business_name ?? 'this business'}</Link> : null}
+                    </p>
                     {startsAt ? (
                       <p className="lc-small lc-muted" style={{ margin: '0.25rem 0 0' }}>
                         {new Date(startsAt).toLocaleString()}
@@ -170,10 +198,9 @@ export default async function MyActivityPage() {
       <section style={{ marginTop: 'var(--sp-9)', maxWidth: '42rem' }}>
         <h2 style={{ fontSize: '1.05rem', marginBottom: 'var(--sp-3)' }}>What is not here yet</h2>
         <ul className="lc-muted lc-small" style={{ paddingLeft: '1.1rem', lineHeight: 1.9 }}>
-          <li>Orders and payments — these are not part of your activity record yet.</li>
           <li>
-            Anything you did before signing in. Bookings made as a guest stay with the business
-            you booked with and are not attached to this account.
+            Things you did as a guest with a different email. Guest orders and bookings join this account only when
+            they carry the email you signed in with — LOCAH never matches on a name or an unverified phone.
           </li>
         </ul>
       </section>
