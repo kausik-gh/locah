@@ -28,13 +28,14 @@ export function typeLabel(t?: string | null) {
  *  Keys are those emitted by marketplace_indexing: order, book, join, enquire,
  *  contact, visit_website. The last two are true for everyone, so they say
  *  nothing useful on a card and are left out. */
-function capabilityChips(flags?: Record<string, boolean>): string[] {
+function capabilityChips(flags?: Record<string, boolean | string | null>): string[] {
   if (!flags) return []
   const out: string[] = []
   if (flags.order) out.push('Order online')
   if (flags.book) out.push('Book')
   if (flags.join) out.push('Memberships')
-  if (flags.enquire) out.push('Enquire')
+  if (flags.request_quote) out.push('Get a quote')
+  else if (flags.enquire) out.push('Enquire')
   return out.slice(0, 3)
 }
 
@@ -45,7 +46,7 @@ export type MarketplaceBusiness = {
   description?: string | null
   business_type?: string | null
   city?: string | null
-  capability_flags?: Record<string, boolean>
+  capability_flags?: Record<string, boolean | string | null>
 }
 
 export function BusinessCard({ business, featured = false }: { business: MarketplaceBusiness; featured?: boolean }) {

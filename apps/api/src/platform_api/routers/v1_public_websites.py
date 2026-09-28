@@ -28,6 +28,14 @@ async def get_public_home(
     return {"data": data, "meta": {}}
 
 
+@router.get("/{slug}/plans")
+async def get_public_plans(slug: str, session: AsyncSession = Depends(get_db_session)) -> dict[str, Any]:
+    """Membership plans on the site's Plans section: active and public only."""
+    from platform_core.services.membership_plan import public_plans
+
+    return {"data": {"plans": await public_plans(session, slug=slug)}, "meta": {}}
+
+
 @router.get("/{slug}/pages/{page_slug}")
 async def get_public_page(
     slug: str,

@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.models import (
     Business,
-    BusinessModuleState,
     BusinessProfile,
     Website,
 )
@@ -28,29 +27,20 @@ class EligibilityResult:
 
 async def _capability_flags(
     session: AsyncSession, business_id: uuid.UUID
-) -> dict[str, bool]:
-    result = await session.execute(
-        select(BusinessModuleState.module_id, BusinessModuleState.activation_state).where(
-            BusinessModuleState.business_id == business_id
-        )
-    )
-    active = {
-        row[0]: row[1] == "active"
-        for row in result.all()
-    }
-    return {
-        "order": bool(active.get("orders")),
-        "book": bool(active.get("bookings")),
-        "contact": True,  # Core website/contact always available when published
-        "visit_website": True,
-        "enquire": bool(active.get("leads")),
-        "join": bool(active.get("memberships")),
-    }
+) -> dict[str, Any]:
+    """From module *readiness* (built, switched on and set up), never from a
+    module merely being switched on (Guide §4; Founder §16)."""
+    from platform_core.website.capabilities import site_capabilities
+
+    flags: dict[str, Any] = await site_capabilities(session, business_id)
+    flags.pop("_kinds", None)
+    flags.pop("_traits", None)
+    return flags
 
 
 async def capability_flags(
     session: AsyncSession, business_id: uuid.UUID
-) -> dict[str, bool]:
+) -> dict[str, Any]:
     """What a visitor can actually do with this Business, right now.
 
     The same answer the Marketplace listing is built from, exposed because a

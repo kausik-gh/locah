@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { RESERVED_SLUGS } from '@/lib/reserved-slugs'
 import { fetchPublicWebsite } from '@/lib/public-website'
-import { fetchPublicOfferings } from '@/lib/checkout-api'
+import { fetchPublicOfferings, fetchPublicPlans } from '@/lib/checkout-api'
 import { siteThemeVars } from '@/components/website/WebsitePageView'
 import { EnquiryForm } from '@/components/website/EnquiryForm'
 import { Specs, priceLabel, type PublicOffering } from '@/components/website/offering-view'
@@ -15,7 +15,7 @@ export default async function EnquirePage({
   searchParams,
 }: {
   params: { slug: string }
-  searchParams: { offering_id?: string; purpose?: string }
+  searchParams: { offering_id?: string; plan_id?: string; purpose?: string }
 }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
   const site = await fetchPublicWebsite(params.slug)
@@ -23,6 +23,9 @@ export default async function EnquirePage({
   const { styleVars, paletteMode } = siteThemeVars(site)
   const offerings = ((await fetchPublicOfferings(params.slug)).offerings ?? []) as PublicOffering[]
   const offering = searchParams.offering_id ? offerings.find((o) => o.id === searchParams.offering_id) : undefined
+  const plan = searchParams.plan_id
+    ? (await fetchPublicPlans(params.slug)).find((p) => p.id === searchParams.plan_id)
+    : undefined
   const name = site.business.display_name
   const open = Boolean(site.capabilities?.enquire)
   return (
@@ -44,12 +47,25 @@ export default async function EnquirePage({
                 <Specs o={offering} />
               </div>
             </article>
+          ) : plan ? (
+            <article className="ls-enquire__item">
+              <div>
+                <p className="ls-offer__kind">Plan</p>
+                <h1 className="ls-title">{plan.title}</h1>
+                <p className="ls-price">
+                  {new Intl.NumberFormat('en-IN', { style: 'currency', currency: plan.currency || 'INR', maximumFractionDigits: 0 }).format(Number(plan.price_amount))}
+                  {plan.duration_days ? ` · ${plan.duration_days} days` : ''}
+                </p>
+                {plan.description ? <p className="ls-item__desc">{plan.description}</p> : null}
+              </div>
+            </article>
           ) : (
             <h1 className="ls-title">Contact {name}</h1>
           )}
           {open ? (
             <EnquiryForm slug={params.slug} businessName={name} offeringId={offering?.id}
-              offeringTitle={offering?.title} purpose={searchParams.purpose} />
+              offeringTitle={offering?.title} planId={plan?.id} planTitle={plan?.title}
+              purpose={plan ? 'membership' : searchParams.purpose} />
           ) : (
             <p className="ls-meta">{name} is not taking enquiries online yet. Use the contact details on their site.</p>
           )}

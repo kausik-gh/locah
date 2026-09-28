@@ -48,7 +48,8 @@ export type EnquiryBody = {
   email?: string
   message?: string
   offering_id?: string
-  purpose?: 'enquiry' | 'site_visit' | 'test_drive' | 'callback'
+  plan_id?: string
+  purpose?: 'enquiry' | 'site_visit' | 'test_drive' | 'callback' | 'quote_request' | 'membership'
   preferred_date?: string
   website?: string
 }
@@ -78,6 +79,23 @@ export async function fetchPublicOfferings(slug: string) {
   })
   if (!res.ok) return { offerings: [] as Array<Record<string, unknown>> }
   return (await res.json()).data
+}
+
+/** Membership plans the business shows publicly (active + public only). */
+export type PublicPlan = {
+  id: string
+  title: string
+  description: string | null
+  price_amount: string
+  currency: string
+  billing_model: string
+  duration_days: number | null
+}
+
+export async function fetchPublicPlans(slug: string): Promise<PublicPlan[]> {
+  const res = await fetch(`${apiUrl}/v1/public/websites/${slug}/plans`, { next: { revalidate: 30 } })
+  if (!res.ok) return []
+  return ((await res.json()).data?.plans ?? []) as PublicPlan[]
 }
 
 export async function quoteDelivery(slug: string, delivery_address: Record<string, unknown>) {

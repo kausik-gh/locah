@@ -113,7 +113,7 @@ export function ProductShowcase({
   businessSlug: string
   businessName: string
   contact?: SiteContact
-  capabilities?: Record<string, boolean>
+  capabilities?: Record<string, boolean | string | null>
   alt?: boolean
 }) {
   const [active, setActive] = useState('All')

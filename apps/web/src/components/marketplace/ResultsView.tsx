@@ -19,6 +19,8 @@ const CAPABILITIES: Array<{ id: string; label: string }> = [
   { id: 'book', label: 'Book' },
   { id: 'enquire', label: 'Send an enquiry' },
   { id: 'join', label: 'Plans and memberships' },
+  { id: 'request_quote', label: 'Quotes on request' },
+  { id: 'donate', label: 'Accepts donations' },
 ]
 
 const SORTS: Array<{ id: string; label: string; needsPlace?: boolean }> = [

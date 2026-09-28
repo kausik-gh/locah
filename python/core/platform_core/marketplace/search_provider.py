@@ -20,7 +20,7 @@ MBP = MarketplaceBusinessProjection
 
 # Capability filters a visitor can ask for. Each maps to the flag the
 # projection carries; "order" additionally needs something live to order.
-CAPABILITY_FILTERS = ("order", "book", "enquire", "join")
+CAPABILITY_FILTERS = ("order", "book", "enquire", "join", "request_quote", "donate")
 
 _TOKEN = re.compile(r"[^\W_]+", re.UNICODE)
 

@@ -4,6 +4,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
 import { businessSiteUrl, platformUrl } from '@platform/config'
+import { ToolsOnSite, type SiteAction, type ToolSection } from './ToolsOnSite'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,10 @@ type WebsiteResponse = {
 
 type Business = { slug: string; display_name: string; visibility: string }
 
+type SiteCapabilities = {
+  data: { primary: string | null; primary_label: string | null; actions: SiteAction[]; auto_sections: ToolSection[] }
+}
+
 export default async function WebsiteOverviewPage({
   params,
 }: {
@@ -28,9 +33,10 @@ export default async function WebsiteOverviewPage({
   const token = await getAccessToken()
   if (!token) redirect('/login')
 
-  const [res, bizRes] = await Promise.all([
+  const [res, bizRes, capRes] = await Promise.all([
     apiTry<WebsiteResponse>(`/v1/b/${params.businessId}/website`, token),
     apiTry<{ data: Business }>(`/v1/b/${params.businessId}`, token),
+    apiTry<SiteCapabilities>(`/v1/b/${params.businessId}/website/capabilities`, token),
   ])
 
   if (!res.ok) {
@@ -107,6 +113,15 @@ export default async function WebsiteOverviewPage({
 
       {builtBy ? (
         <p style={{ color: 'var(--color-muted)', marginBottom: '1.25rem' }}>{builtBy}</p>
+      ) : null}
+
+      {capRes.ok ? (
+        <ToolsOnSite
+          businessId={params.businessId}
+          primaryLabel={capRes.data.data.primary_label}
+          actions={capRes.data.data.actions}
+          sections={capRes.data.data.auto_sections}
+        />
       ) : null}
 
       <h2 className="ws-section-title">Make it yours <span>Manage your website</span></h2>

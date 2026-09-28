@@ -18,9 +18,10 @@ Branch `main`. Packets done, newest last:
 | --- | --- | --- |
 | P1-01 … P1-09B | see git log | per-packet tests + browser flows (history in git) |
 | P1-10A stock depth | cb8ecc3 | test_stock_depth (19) + browser p1_10a_stock 20/20, p1_10a_counter_serials 8/8 |
-| P1-10B one customer identity | this commit | test_customer_identity (3) + browser p1_10b_identity 14/14; suite 1048 |
+| P1-10B one customer identity | 4eea4b4 | test_customer_identity (3) + browser p1_10b_identity 14/14; suite 1048 |
+| P1-10C module-aware website + Marketplace | this commit | test_module_aware_site (11) + browser p1_10c_site 21/21; suite 1059 |
 
-P1 gate after P1-10B: **TOTAL 240 · COMPLETE 116 · PARTIAL 94 · NOT_STARTED 14 ·
+P1 gate after P1-10C: **TOTAL 240 · COMPLETE 122 · PARTIAL 90 · NOT_STARTED 12 ·
 ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 763 rows (P1 total grew by the
 founder-refinement rows in section A2).
 
@@ -30,6 +31,34 @@ founder-refinement rows in section A2).
 PAYMENTS.txt` and `Documentations/B2B.txt` (added 2026-09-28/29). Ledger section
 A2 (`tools/ledger/rows_refinements.py`) lists each requirement with its status;
 each document ends with a browser acceptance list that the module's flow must mirror.
+
+### P1-10C — the site and the Marketplace follow the tools (Founder §14–16; Guide §4)
+
+- `platform_core/website/capabilities.py`: one answer from module readiness +
+  live offering kinds + traits — `decide` (actions incl. request_quote,
+  site_visit, test_drive, donate, show_address), `pick_primary` (the business's
+  way of trading leads; an action whose section is hidden is skipped),
+  `auto_sections` (a ready tool's section on the home page when the design has
+  none), `published_auto_paths` (Marketplace landing places).
+- Read by `website_publish.load_public_page` (sections above contact;
+  digital-only strips address/map/location list), `marketplace/eligibility`
+  (projection flags), `marketplace_search.listing_actions`, WhatsApp journeys
+  (`messaging/journeys._ctx` drops orders/bookings/leads that are not ready).
+- Migration `20260928120000_p1_module_aware_site.sql`: `websites.auto_sections_hidden`.
+- API: `GET /v1/b/{id}/website/capabilities`, `PATCH /v1/b/{id}/website/auto-sections`
+  (event `website.auto_sections.changed`), public `GET /v1/public/websites/{slug}/plans`;
+  enquiry purposes `quote_request`, `membership` (+ `plan_id`).
+- Marketplace reindexes on plan/provider/fulfilment/stock/traits/tool-section
+  events; `_ensure_health` is insert-if-absent (a worker reindex racing an
+  opt-in used to 500).
+- Web: Plans section reads real membership plans (period shown, "Ask to join"),
+  quote form, header button from `primary_path`, My account for plan sellers;
+  the Marketplace card leads with the business's own primary action.
+- Workspace `/b/{id}/website`: "What customers can do on your site" (live
+  actions, "Not yet: <missing step>") and "Sections your tools add" (show/hide).
+- Honest partials: tool sections are placed above contact, not by the design
+  strategy; digital product delivery / meeting links not built; buying a plan
+  online with payment is the Memberships packet (P2).
 
 ### P1-10B — one customer identity (Founder §12–13; Doc 12 l.848)
 
@@ -78,28 +107,22 @@ each document ends with a browser acceptance list that the module's flow must mi
 
 ## Remaining work snapshot (P1 first)
 
-P1 NOT_STARTED (14): FD-04 (website recomposes when modules change), OK-15
-(formula-priced jewellery), OR-04 (dated pre-orders), OR-08 (reorder), PY-02
-(payment links), PY-05/PY-06 (split tender / cash-card records as payment
-domain — POS already does both; audit and close), CR-04 (segments), CR-08 +
-CO-01 (DPDP export/erase), OM-18 (digital-only), OM-21 (solo navigation),
+P1 NOT_STARTED (12): OK-15 (formula-priced jewellery), OR-04 (dated
+pre-orders), PY-02 + FR-PY-03 (payment links), PY-05/PY-06 (split tender /
+cash-card records as payment domain — POS already does both; audit and close),
+CR-04 (segments), CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation),
 IS-01 (basic insights), PKT-10 (P1-10 packet).
-P1 PARTIAL groups: FD-01/02 (customer identity + My Activity), FD-03/05/10 +
-OM-06/07/09/19 (module-aware website + Marketplace readiness actions), GP-22 +
-PR-10 (English/Tamil/Hindi), payments provider (Cashfree = ACTIVATION),
-playbook rows waiting on P2–P5 modules.
+P1 PARTIAL groups: FD-02 (portal items with Academics), FD-03 (strategy
+placement of tool sections), OM-09 (portfolio kind), OM-18 (digital delivery),
+GP-22 + PR-10 (English/Tamil/Hindi), payments provider (Cashfree =
+ACTIVATION), playbook rows waiting on P2–P5 modules.
 
 Planned next packets (dependency order):
-1. **P1-10B** customer identity on tenant sites + My Activity across modules
-   (FD-01, FD-02, SF-05), reorder (OR-08).
-2. **P1-10C** module-aware website + Marketplace actions from real readiness
-   (FD-03/04/05/10, OM-06/07/09/18/19) — use `module_readiness.readiness()`,
-   not `activation_state == 'active'` (today's `marketplace/eligibility.capability_flags`).
-3. **P1-10D** payment links (provider-neutral; Cashfree edge ACTIVATION),
+1. **P1-10D** payment links (provider-neutral; Cashfree edge ACTIVATION),
    COD first-order cap, dated pre-orders, formula pricing, PY-05/06 audit.
-4. **P1-10E** EN/TA/HI UI strings, basic insights from real data, solo
+2. **P1-10E** EN/TA/HI UI strings, basic insights from real data, solo
    navigation, tags/segments, DPDP export/erase; then the P1 gate.
-5. P2 → P5 per MD §26.2 / ledger sections W–AL, then E2E flows (section BG).
+3. P2 → P5 per MD §26.2 / ledger sections W–AL, then E2E flows (section BG).
 
 ## How to run things locally (Windows)
 
@@ -121,7 +144,11 @@ Planned next packets (dependency order):
 - Browser stack: `.claude/launch.json` entries `accept-auth`, `accept-api`,
   `accept-workspace`, `accept-web` (local DB `locah_accept`, no provider keys,
   AI replay only); worker: `bash tools/acceptance/stack/worker.sh` in the
-  background (drains events so My Activity/automations run). Sessions expire
+  background (drains events so My Activity/automations run). On Windows,
+  stopping that background task leaves its Python children running old code;
+  they race the new worker and write stale projections — find them with
+  `Get-CimInstance Win32_Process` (command line `*platform_worker*`) and stop
+  them before restarting. Restart `accept-api` after backend changes. Sessions expire
   after 12 h — re-mint with `owner.py` (customer `session.json`, owner `owner2.json`). Session: `.venv/Scripts/python.exe tools/acceptance/stack/owner.py
   locah_accept acceptance-out/session.json`. Flows:
   `node tools/acceptance/phase_b/<flow>.mjs` (local Chrome over CDP);

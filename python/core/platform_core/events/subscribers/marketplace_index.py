@@ -38,6 +38,21 @@ _TRIGGERS = (
     "review.updated",
     "review.removed",
     "review.restored",
+    # P1-10C: actions follow module *readiness*, so what makes a module ready
+    # (a published plan, a bookable provider, pickup/delivery switched on)
+    # reindexes too.
+    "membership.plan.created",
+    "membership.plan.updated",
+    "membership.plan.archived",
+    "workforce.member_created",
+    "workforce.member_updated",
+    "fulfilment.settings_updated",
+    "inventory.opening_stock.set",
+    "inventory.received",
+    # The business's way of trading picks the listing's first action, and a
+    # section the owner hides is no longer somewhere an action can land.
+    "business.traits.changed",
+    "website.auto_sections.changed",
 )
 
 

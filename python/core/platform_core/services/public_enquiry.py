@@ -19,13 +19,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.catalog.offering_kinds import KINDS
 from platform_core.exceptions import ValidationError
-from platform_core.models import BusinessModuleState, Offering
+from platform_core.models import BusinessModuleState, MembershipPlan, Offering
 
 PURPOSES = {
     "enquiry": "Enquiry",
     "site_visit": "Site visit request",
     "test_drive": "Test drive request",
     "callback": "Call-back request",
+    # "Get a quote" on the website / Marketplace (RFQ intake): the team quotes from the lead.
+    "quote_request": "Quote request",
+    # "Ask to join" on a plan: the team enrols the member (online join with
+    # payment is the Memberships packet).
+    "membership": "Membership enquiry",
 }
 
 
@@ -89,6 +94,16 @@ class PublicEnquiryService:
             k = KINDS.get(offering.offering_type)
             origin.update({"offering_id": str(offering.id), "offering_title": offering.title,
                            "offering_kind": k.label if k else offering.offering_type})
+        if payload.get("plan_id"):
+            plan = (await session.execute(
+                select(MembershipPlan).where(MembershipPlan.id == uuid.UUID(str(payload["plan_id"])),
+                                             MembershipPlan.business_id == business.id,
+                                             MembershipPlan.deleted_at.is_(None), MembershipPlan.status == "active",
+                                             MembershipPlan.visibility == "public")
+            )).scalars().first()
+            if plan is None:
+                raise _bad("plan_id", "That plan is no longer offered")
+            origin.update({"plan_id": str(plan.id), "plan_title": plan.name})
         if preferred_iso:
             origin["preferred_date"] = preferred_iso
 

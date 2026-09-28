@@ -261,3 +261,17 @@ class MembershipPlanService:
             after_state=after,
         )
         return plan
+
+
+async def public_plans(session: AsyncSession, *, slug: str) -> list[dict[str, Any]]:
+    """The plans a visitor can see on the business's website: active and
+    public only, cheapest first — what "Plans" on the site is filled from."""
+    from platform_core.services.checkout import CheckoutService
+
+    business = await CheckoutService._resolve_business(session, slug)
+    plans = await MembershipPlanService.list_plans(session, business_id=business.id, status="active",
+                                                   visibility="public")
+    plans.sort(key=lambda p: (float(p.price_amount or 0), p.name))
+    return [{"id": str(p.id), "title": p.name, "description": p.description,
+             "price_amount": str(p.price_amount), "currency": p.currency, "billing_model": p.billing_model,
+             "duration_days": p.duration_days} for p in plans]

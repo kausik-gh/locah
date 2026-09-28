@@ -25,6 +25,7 @@ class EnquiryRequest(BaseModel):
     email: str | None = Field(default=None, max_length=254)
     message: str | None = Field(default=None, max_length=1000)
     offering_id: uuid.UUID | None = None
+    plan_id: uuid.UUID | None = None
     purpose: str = "enquiry"
     preferred_date: str | None = None
     website: str | None = None  # honeypot

@@ -137,6 +137,12 @@ async def _ctx(session: AsyncSession, conv: MessagingConversation) -> Ctx:
     live = {r[0] for r in (await session.execute(text(
         "SELECT module_id FROM business_module_states WHERE business_id = :b "
         "AND activation_state IN ('enabled', 'ready', 'active')"), {"b": str(conv.business_id)})).all()}
+    # The same readiness answer the website and Marketplace use (Guide §4):
+    # ordering, booking and enquiring are offered only once they are set up.
+    from platform_core.services.module_readiness import readiness
+
+    states = await readiness(session, conv.business_id, modules=("orders", "bookings", "leads"))
+    live -= {m for m, st in states.items() if not st["ready"]}
     return Ctx(session, conv, business, contact, live)
 
 

@@ -37,9 +37,18 @@ class MarketplaceIndexingService:
         )
         health = result.scalars().first()
         if health is None:
-            health = MarketplaceIndexHealth(business_id=business_id, last_status="never")
-            session.add(health)
-            await session.flush()
+            # The worker's reindex and an owner's opt-in can both be first:
+            # insert-if-absent, then read whichever row won (never a 500).
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+            await session.execute(
+                pg_insert(MarketplaceIndexHealth)
+                .values(business_id=business_id, last_status="never")
+                .on_conflict_do_nothing(index_elements=["business_id"])
+            )
+            health = (await session.execute(
+                select(MarketplaceIndexHealth).where(MarketplaceIndexHealth.business_id == business_id)
+                .execution_options(populate_existing=True))).scalars().one()
         return health
 
     @staticmethod
@@ -176,6 +185,14 @@ class MarketplaceIndexingService:
                 location=location,
                 offering_titles=offering_titles,
             )
+            if eligibility.website is not None:
+                from platform_core.website.capabilities import published_auto_paths
+
+                # Sections a ready tool adds to the home page are landing places too.
+                for key, path in (await published_auto_paths(
+                        session, business_id, version_id=eligibility.website.published_version_id,
+                        hidden=eligibility.website.auto_sections_hidden or [])).items():
+                    facts.site_paths.setdefault(key, path)
             placement = category_labels(facts.placement.family_id, facts.placement.category_id)
             from platform_core.services.reviews import ReviewService
 

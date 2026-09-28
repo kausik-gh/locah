@@ -113,7 +113,14 @@ def listing_actions(
         actions.append({"action": "book", "label": "Book", "href": f"{base}/book"})
     if flags.get("join") and "join" in paths:
         actions.append({"action": "join", "label": "See plans", "href": base + paths["join"]})
-    if flags.get("enquire") and "contact" in paths:
+    if flags.get("request_quote"):
+        # RFQ intake (§21.10): lands as a lead the team quotes from.
+        actions.append({"action": "request_quote", "label": "Get a quote", "href": f"{base}/enquire?purpose=quote_request"})
+    if flags.get("site_visit"):
+        actions.append({"action": "site_visit", "label": "Book a site visit", "href": f"{base}/enquire?purpose=site_visit"})
+    if flags.get("donate") and "browse" in paths:
+        actions.append({"action": "donate", "label": "Donate", "href": base + paths["browse"]})
+    if flags.get("enquire") and "contact" in paths and not flags.get("request_quote"):
         actions.append({"action": "enquire", "label": "Send an enquiry", "href": base + paths["contact"]})
     whatsapp = _digits(contact.get("whatsapp", ""))
     journeys = _digits(contact.get("whatsapp_order", ""))
@@ -127,6 +134,9 @@ def listing_actions(
     if len(phone) >= 10:
         actions.append({"action": "call", "label": "Call", "href": f"tel:+{phone}" if len(phone) > 10 else f"tel:{phone}"})
     actions.append({"action": "visit_website", "label": "Visit website", "href": base})
+    # The business's own way of trading leads (§22: booking-led → Book, quote-led → Get a quote).
+    primary = flags.get("primary")
+    actions.sort(key=lambda a: 0 if a["action"] == primary else 1)
     return actions
 
 

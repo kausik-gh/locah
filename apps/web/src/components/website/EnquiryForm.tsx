@@ -8,6 +8,13 @@ const TITLES: Record<string, string> = {
   site_visit: 'Book a site visit',
   test_drive: 'Book a test drive',
   callback: 'Ask for a call back',
+  quote_request: 'Get a quote',
+  membership: 'Ask to join',
+}
+
+const MESSAGE_HINT: Record<string, string> = {
+  quote_request: 'What do you need? Quantities, sizes, dates — whatever helps them price it',
+  membership: 'Anything they should know before you start',
 }
 
 /**
@@ -20,12 +27,16 @@ export function EnquiryForm({
   businessName,
   offeringId,
   offeringTitle,
+  planId,
+  planTitle,
   purpose = 'enquiry',
 }: {
   slug: string
   businessName: string
   offeringId?: string
   offeringTitle?: string
+  planId?: string
+  planTitle?: string
   purpose?: string
 }) {
   const p = (purpose in TITLES ? purpose : 'enquiry') as NonNullable<EnquiryBody['purpose']>
@@ -60,6 +71,7 @@ export function EnquiryForm({
             preferred_date: String(f.get('preferred_date') || '') || undefined,
             website: String(f.get('website') || '') || undefined,
             offering_id: offeringId,
+            plan_id: planId,
             purpose: p,
           })
           setRef(r.reference ?? null)
@@ -72,6 +84,7 @@ export function EnquiryForm({
     >
       <h2 className="ls-title">{TITLES[p]}</h2>
       {offeringTitle ? <p className="ls-sub">About: {offeringTitle}</p> : null}
+      {planTitle ? <p className="ls-sub">Plan: {planTitle}</p> : null}
       <label>
         <span>Your name</span>
         <input name="name" required maxLength={80} autoComplete="name" />
@@ -91,8 +104,8 @@ export function EnquiryForm({
         </label>
       ) : null}
       <label>
-        <span>Message</span>
-        <textarea name="message" rows={4} maxLength={1000} />
+        <span>{MESSAGE_HINT[p] ?? 'Message'}</span>
+        <textarea name="message" rows={4} maxLength={1000} required={p === 'quote_request'} />
       </label>
       <label className="ls-hp" aria-hidden="true">
         <span>Leave this empty</span>

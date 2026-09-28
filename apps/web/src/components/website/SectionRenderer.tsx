@@ -283,7 +283,7 @@ export function SectionRenderer({
   index?: number
   /** The business's live capabilities, so a section never offers an action the
    *  business cannot fulfil. Absent means "unknown", which is treated as off. */
-  capabilities?: Record<string, boolean>
+  capabilities?: Record<string, boolean | string | null>
   /** Direct contact the owner published. Absent means none. */
   contact?: SiteContact
   businessName?: string
@@ -789,9 +789,13 @@ export function SectionRenderer({
       // business's Enquiries as leads — shown only when Leads is on.
       if (!capabilities?.enquire) return null
       return (
-        <section className={`ls-section ${alt ? 'ls-section--alt' : ''}`}>
+        <section id={str(c.anchor) || undefined} className={`ls-section ${alt ? 'ls-section--alt' : ''}`}>
           <div className="ls-inner ls-inner--narrow">
-            <EnquiryForm slug={businessSlug} businessName={businessName || 'the business'} />
+            <EnquiryForm
+              slug={businessSlug}
+              businessName={businessName || 'the business'}
+              purpose={capabilities?.request_quote ? 'quote_request' : 'enquiry'}
+            />
           </div>
         </section>
       )
@@ -839,6 +843,7 @@ export function SectionRenderer({
           maxItems={num(c.max_items)}
           offeringTypes={strArray(c.offering_types)}
           altGround={alt}
+          anchor={str(c.anchor) || undefined}
         />
       )
 
@@ -866,6 +871,7 @@ export function SectionRenderer({
           subtitle={c.subtitle ? str(c.subtitle) : undefined}
           variant={v}
           altGround={alt}
+          anchor={str(c.anchor) || 'plans'}
         />
       )
 
@@ -879,6 +885,7 @@ export function SectionRenderer({
           subtitle={c.subtitle ? str(c.subtitle) : undefined}
           variant={v}
           sectionClass={`ls-rooms--${v || 'list'}`}
+          offeringTypes={strArray(c.offering_types)}
           altGround={alt}
         />
       )
@@ -892,6 +899,7 @@ export function SectionRenderer({
           title={str(c.title) || 'Classes'}
           variant={v}
           maxItems={num(c.max_items)}
+          offeringTypes={strArray(c.offering_types)}
           altGround={alt}
         />
       )

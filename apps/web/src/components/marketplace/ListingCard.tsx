@@ -45,11 +45,11 @@ const VARIANT_BY_FAMILY: Record<string, Variant> = {
 // Every action appears in every order, so none is dropped: a developer that
 // takes site-visit bookings shows Book, a restaurant that takes tables too.
 const LEAD_ACTION: Record<Variant, string[]> = {
-  food: ['order', 'book', 'whatsapp', 'call', 'enquire', 'join'],
-  property: ['enquire', 'book', 'whatsapp', 'call', 'order', 'join'],
-  appointment: ['book', 'join', 'whatsapp', 'call', 'enquire', 'order'],
-  trade: ['enquire', 'order', 'call', 'whatsapp', 'book', 'join'],
-  general: ['order', 'book', 'enquire', 'join', 'whatsapp', 'call'],
+  food: ['order', 'book', 'whatsapp', 'call', 'enquire', 'join', 'request_quote', 'donate', 'site_visit'],
+  property: ['site_visit', 'enquire', 'book', 'whatsapp', 'call', 'request_quote', 'order', 'join', 'donate'],
+  appointment: ['book', 'join', 'whatsapp', 'call', 'enquire', 'request_quote', 'order', 'donate', 'site_visit'],
+  trade: ['request_quote', 'enquire', 'order', 'call', 'whatsapp', 'book', 'join', 'site_visit', 'donate'],
+  general: ['order', 'book', 'request_quote', 'enquire', 'join', 'donate', 'site_visit', 'whatsapp', 'call'],
 }
 
 export function variantFor(listing: Pick<Listing, 'family'>): Variant {
@@ -58,12 +58,12 @@ export function variantFor(listing: Pick<Listing, 'family'>): Variant {
 
 export function pickActions(listing: Listing, max = 2): ListingAction[] {
   const actions = (listing.actions || []).filter((a) => a.action !== 'visit_website')
+  // The business's own way of trading leads (a quote-led fabricator: "Get a
+  // quote"; a subscription-led gym: its plans); the family order ranks the rest.
+  const primary = listing.capability_flags?.primary
   const order = LEAD_ACTION[variantFor(listing)]
-  const ranked = [...actions].sort((a, b) => {
-    const ia = order.indexOf(a.action)
-    const ib = order.indexOf(b.action)
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
-  })
+  const rank = (a: ListingAction) => (a.action === primary ? -1 : order.indexOf(a.action) < 0 ? 99 : order.indexOf(a.action))
+  const ranked = [...actions].sort((a, b) => rank(a) - rank(b))
   return ranked.slice(0, max)
 }
 
@@ -77,6 +77,9 @@ const SHORT_LABEL: Record<string, string> = {
   book: 'Book',
   enquire: 'Enquire',
   join: 'Plans',
+  request_quote: 'Get a quote',
+  site_visit: 'Site visit',
+  donate: 'Donate',
   whatsapp: 'WhatsApp',
   call: 'Call',
 }

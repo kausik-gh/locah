@@ -208,7 +208,7 @@ export function WebsitePageView({
     'standard'
   )
   const motionIntensity = finite(theme.motion_intensity, ['subtle', 'lively'], 'subtle')
-  const navCta =
+  const designedCta =
     theme.nav_cta && typeof theme.nav_cta === 'object'
       ? (theme.nav_cta as { label?: unknown; href?: unknown })
       : null
@@ -231,10 +231,27 @@ export function WebsitePageView({
   const capabilities = data.capabilities || {}
   const canOrder = Boolean(capabilities.order)
   const canBook = Boolean(capabilities.book)
+  // A member's plans live in their account too (P1-10B), so plans earn the link.
+  const hasAccount = canOrder || canBook || Boolean(capabilities.join)
+  // The header's call to action must lead somewhere that works right now
+  // (Guide §4): a designed "Order now" or "Book" whose tool is not ready yet
+  // gives way to the business's primary action — or to nothing.
+  const designedHref = designedCta ? String(designedCta.href || '') : ''
+  const needs =
+    /checkout|#shop|#menu|#products/.test(designedHref) ? 'order'
+      : designedHref.includes('/book') ? 'book'
+        : /#plans|#join/.test(designedHref) ? 'join' : null
+  const primaryPath = typeof capabilities.primary_path === 'string' ? capabilities.primary_path : ''
+  const primaryLabel = typeof capabilities.primary_label === 'string' ? capabilities.primary_label : ''
+  const navCta =
+    designedCta && (!needs || capabilities[needs])
+      ? designedCta
+      : primaryPath && primaryLabel
+        ? { label: primaryLabel, href: primaryPath }
+        : null
   // The basket link is added in the footer only once something can be bought.
   const visitLinks = [
     canBook ? { label: 'Book', href: `/${slug}/book` } : null,
-    canBook ? { label: 'Your orders & bookings', href: '/activity' } : null,
   ].filter((item): item is { label: string; href: string } => item !== null)
 
   // How loudly each section should speak. The design strategy decides this per
@@ -264,7 +281,9 @@ export function WebsitePageView({
     ? data.page.slug === 'home'
       ? ctaHref
       : `/${slug}${ctaHref}`
-    : ctaHref
+    : ctaHref.startsWith('/')
+      ? withPreviewToken(navHref(ctaHref), previewToken)
+      : ctaHref
   const callLabel =
     profile === 'bold_food_commerce' || profile === 'editorial_home_food' ? 'Call to order' : 'Call'
 
@@ -352,7 +371,7 @@ export function WebsitePageView({
             })}
           </nav>
           <div className="ls-nav__actions">
-            {(canOrder || canBook) && !previewToken ? (
+            {hasAccount && !previewToken ? (
               <a className="ls-nav__link ls-nav__account" href={`/${slug}/account`}>My account</a>
             ) : null}
             {canOrder ? <CommerceCart slug={slug} /> : null}
@@ -457,7 +476,9 @@ export function WebsitePageView({
             <div className="ls-foot__col">
               <p className="ls-foot__heading">Your visit</p>
               {canOrder ? <CommerceCart slug={slug} variant="footer-link" /> : null}
-              {(canOrder || canBook) && !previewToken ? <a href={`/${slug}/account`}>My orders and bookings</a> : null}
+              {hasAccount && !previewToken ? (
+                <a href={`/${slug}/account`}>{canOrder || canBook ? 'My orders and bookings' : 'My account'}</a>
+              ) : null}
               {visitLinks.map((item) => (
                 <Link key={item.href} href={item.href}>
                   {item.label}

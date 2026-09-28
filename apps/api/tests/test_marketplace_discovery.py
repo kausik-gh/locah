@@ -488,7 +488,7 @@ def test_capability_filter_needs_the_module_and_something_to_order(owner: dict[s
     assert _search(client, q=tag)["counts"]["businesses"] >= 1
     assert not any(b["business_id"] == business["id"] for b in _search(client, q=tag, can="order")["businesses"])
     facets = _search(client, q=tag)["facets"]
-    assert set(facets["capabilities"]) == {"order", "book", "enquire", "join"}
+    assert set(facets["capabilities"]) == {"order", "book", "enquire", "join", "request_quote", "donate"}
 
 
 @needs_db

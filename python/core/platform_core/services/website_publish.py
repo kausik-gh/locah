@@ -307,13 +307,67 @@ class WebsitePublishService:
         await MediaService.attach_section_asset_urls(
             session, serialized_page.get("sections") or [], business_id=business.id
         )
-        from platform_core.marketplace.eligibility import capability_flags
+        from platform_core.website import capabilities as caps
 
         # A section renders a "buy" or "book" control only where the module
-        # behind it is actually on. Without this the renderer decided from the
-        # section type alone, which is a guess about the business rather than a
-        # fact about it.
-        capabilities = await capability_flags(session, business.id)
+        # behind it is actually *ready* — built, switched on and set up — the
+        # same answer the Marketplace listing uses (Guide §4; Founder §16).
+        contact = await _public_contact(session, business.id)
+        capabilities = await caps.site_capabilities(
+            session, business.id, has_whatsapp=bool(contact.get("whatsapp")), has_phone=bool(contact.get("phone")))
+        kinds = capabilities.pop("_kinds", {})
+        traits = capabilities.pop("_traits", [])
+        # Every visible section of this version, with the page it is on: the
+        # tools' sections and the header's main button both depend on it.
+        placed: list[tuple[Any, Any]] = []
+        for p in pages:
+            if not (p.is_published or is_preview):
+                continue
+            for s in await WebsiteResolver.list_sections(session, page_id=p.id):
+                if s.is_visible:
+                    placed.append((p, s))
+        # A module that became ready shows up on the home page without a
+        # rebuild when the owner's design has nothing for it (Founder §15).
+        extra = caps.auto_sections(
+            {**capabilities, "_kinds": kinds}, {s.section_type_id for _, s in placed},
+            hidden=website.auto_sections_hidden or [],
+            published_reviews=await caps.published_review_count(session, business.id), traits=traits)
+        if extra and (page.slug == "home" or page.page_type == "home"):
+            rows = list(serialized_page.get("sections") or [])
+            at = next((i for i, r in enumerate(rows) if r.get("section_type_id") == "contact"), len(rows))
+            for n, section in enumerate(extra):
+                section["page_id"] = str(page.id)
+                section["sort_order"] = (rows[at - 1]["sort_order"] + 1 + n) if at > 0 else n
+            rows[at:at] = extra
+            serialized_page["sections"] = rows
+        if not capabilities.get("show_address", True):
+            # Digital-only (§22): no address or map anywhere on the site.
+            kept = []
+            for row in serialized_page.get("sections") or []:
+                if row.get("section_type_id") == "location_list":
+                    continue
+                if row.get("section_type_id") == "contact":
+                    row = {**row, "content": {k: v for k, v in (row.get("content") or {}).items()
+                                              if k not in {"address", "map_url"}}}
+                kept.append(row)
+            serialized_page["sections"] = kept
+
+        def landing(action: str) -> str | None:
+            types, default_anchor = caps.LANDING_SECTIONS[action]
+            for p, s in placed:
+                if s.section_type_id in types:
+                    anchor = (s.content or {}).get("anchor") or (default_anchor if s.section_type_id == "plans_section"
+                                                                 else None)
+                    base = "/" if (p.slug == "home" or p.page_type == "home") else f"/{p.slug}"
+                    return f"{base}#{anchor}" if isinstance(anchor, str) and anchor else base
+            for row in extra:
+                if row["section_type_id"] in types:
+                    return f"/#{row['content'].get('anchor') or default_anchor}"
+            return None
+
+        capabilities.update(caps.pick_primary(
+            capabilities, traits, landings={a: landing(a) for a in caps.LANDING_SECTIONS},
+            has_whatsapp=bool(contact.get("whatsapp")), has_phone=bool(contact.get("phone"))))
 
         return {
             "business": {
@@ -323,7 +377,7 @@ class WebsitePublishService:
                 "business_type": business.business_type,
                 # Only the fields a visitor can use: a number to call or
                 # WhatsApp and an email, exactly as the owner published them.
-                "contact": await _public_contact(session, business.id),
+                "contact": contact,
             },
             "capabilities": capabilities,
             # §12.2 "Order on WhatsApp": the business's connected number, when

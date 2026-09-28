@@ -32,7 +32,8 @@ export type Listing = {
   highlights?: Array<{ title: string; image_url: string | null }>
   offering_count?: number
   published_at?: string | null
-  capability_flags?: Record<string, boolean>
+  /** What works right now; `primary` is the action this business leads with. */
+  capability_flags?: Record<string, boolean | string | null>
   actions?: ListingAction[]
   distance_km?: number | null
   rating_average?: number | null

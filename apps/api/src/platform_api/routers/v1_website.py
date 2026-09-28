@@ -408,3 +408,112 @@ async def apply_template(
     await session.commit()
     aggregate = await WebsiteService.get_aggregate(session, business_id=business_id)
     return {"data": aggregate, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+# ---------------------------------------------------------------- what the business's tools add (P1-10C)
+_ACTION_WORDS = {
+    "order": "Customers can order online", "book": "Customers can book", "join": "Customers can see and join plans",
+    "request_quote": "Customers can ask for a quote", "enquire": "Customers can send an enquiry",
+    "site_visit": "Customers can ask for a site visit", "test_drive": "Customers can ask for a test drive",
+    "donate": "Supporters can donate", "track": "Customers can track their order",
+}
+_ACTION_MODULE = {
+    "order": "orders", "book": "bookings", "join": "memberships", "request_quote": "quotes", "enquire": "leads",
+    "site_visit": "leads", "test_drive": "leads", "donate": "orders", "track": "fulfilment",
+}
+# Actions worth a "not yet" line when their tool is on but unfinished; the
+# others only exist for businesses that list the right things (a project, a car).
+_ALWAYS_OFFERED = {"order", "book", "join", "request_quote", "enquire", "track"}
+_SECTION_WORDS = {
+    "orders": "Your shop, so people can order", "memberships": "Your plans, so people can join",
+    "bookings": "A way to book", "reviews": "Your verified reviews", "leads": "An enquiry form",
+}
+
+
+class AutoSectionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    module: str = Field(min_length=1, max_length=60)
+    hidden: bool
+
+
+@router.get("/{business_id}/website/capabilities")
+async def website_capabilities(
+    business_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(WEBSITE_READ)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """What customers can do on this site right now (from real module readiness),
+    and the sections the business's tools add when its design has none."""
+    from sqlalchemy import select
+
+    from platform_core.website import capabilities as caps
+
+    website = await WebsiteResolver.resolve_website(session, business_id=business_id)
+    flags = await caps.site_capabilities(session, business_id)
+    kinds, traits = flags.pop("_kinds", {}), flags.pop("_traits", [])
+    version_id = website.published_version_id
+    if version_id is None:
+        from platform_core.models import WebsiteVersion
+
+        version_id = (await session.execute(select(WebsiteVersion.id).where(
+            WebsiteVersion.business_id == business_id, WebsiteVersion.version_type == "draft",
+            WebsiteVersion.superseded_at.is_(None)))).scalars().first()
+    types = await caps.section_types(session, version_id)
+    reviews = await caps.published_review_count(session, business_id)
+    would = caps.auto_sections({**flags, "_kinds": kinds}, types, hidden=[], published_reviews=reviews, traits=traits)
+    hidden = set(website.auto_sections_hidden or [])
+    from platform_core.services.module_readiness import readiness
+
+    states = await readiness(session, business_id)
+    actions = []
+    for key, label in _ACTION_WORDS.items():
+        module = _ACTION_MODULE[key]
+        state = states.get(module) or {}
+        if flags.get(key):
+            actions.append({"key": key, "label": label, "live": True, "module": module, "next_step": None})
+        elif key in _ALWAYS_OFFERED and state.get("enabled"):
+            # Switched on but not set up yet: say the one thing still missing.
+            todo = next((st["label"] for st in state.get("steps") or [] if not st["done"]), None)
+            if key == "request_quote" and not (states.get("leads") or {}).get("ready"):
+                todo = todo or "Switch on Enquiries so quote requests have somewhere to land"
+            actions.append({"key": key, "label": label, "live": False, "module": module,
+                            "next_step": todo or "Finish setting this up"})
+    return {"data": {
+        "primary": flags.get("primary"), "primary_label": flags.get("primary_label"),
+        "actions": actions,
+        "auto_sections": [{"module": s["module"], "section_type": s["section_type_id"],
+                           "label": _SECTION_WORDS.get(s["module"], s["module"]),
+                           "state": "hidden" if s["module"] in hidden else "showing"} for s in would]
+        + [{"module": m, "section_type": None, "label": _SECTION_WORDS.get(m, m), "state": "hidden"}
+           for m in sorted(hidden) if m not in {s["module"] for s in would}],
+    }, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.patch("/{business_id}/website/auto-sections")
+async def set_auto_section(
+    business_id: UUID, body: AutoSectionBody,
+    actor: BusinessActorContext = Depends(require_business_actor(WEBSITE_EDIT)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Show or hide a section a tool adds (the owner's design stays theirs)."""
+    from platform_core.exceptions import ValidationError
+    from platform_core.services.audit import AuditService
+    from platform_core.services.outbox import OutboxService
+    from platform_core.website.capabilities import AUTO_SECTION_MODULES
+
+    if body.module not in AUTO_SECTION_MODULES:
+        raise ValidationError("That tool does not add a section")
+    website = await WebsiteResolver.resolve_website(session, business_id=business_id)
+    hidden = set(website.auto_sections_hidden or [])
+    hidden = hidden | {body.module} if body.hidden else hidden - {body.module}
+    website.auto_sections_hidden = sorted(hidden)
+    await AuditService.record(session, event_type="website.auto_section.changed",
+                              actor_identity_id=actor.request.identity_id, actor_context="business",
+                              business_id=business_id, resource_type="website", resource_id=website.id,
+                              action="hide" if body.hidden else "show", after_state={"hidden": sorted(hidden)})
+    await OutboxService.publish(session, event_type="website.auto_sections.changed",
+                                payload={"business_id": str(business_id), "hidden": sorted(hidden)},
+                                business_id=business_id, correlation_id=actor.request.correlation_id)
+    await session.commit()
+    return {"data": {"hidden": sorted(hidden)}, "meta": {"correlation_id": actor.request.correlation_id}}

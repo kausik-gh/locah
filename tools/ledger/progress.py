@@ -485,3 +485,26 @@ done("P1-10B", {
     "OR-08": dict(status=C, code="Order again on the business's website refills the cart from an earlier order at today's catalogue price and names what is no longer sold; WhatsApp 'repeat last order' since P1-08", web="✓ /{slug}/checkout?reorder=", test=_ID_TEST),
     "FR-BK-06": dict(status=P, code="customer account shows upcoming and past bookings with the manage link; front-desk and provider surfaces arrive in P2"),
 })
+
+
+# ---------------------------------------------------------------- P1-10C module-aware website + Marketplace
+_MA_TEST = ("✓ test_module_aware_site (11, platform_api RLS role) + test_journeys/test_marketplace_* + browser "
+            "p1_10c_site (21/21), desktop + 390 px, local worker reindexing")
+done("P1-10C", {
+    "FD-03": dict(status=P, code="one capability answer (website/capabilities.py) from module readiness, offering kinds and traits feeds the website, its header button, the Marketplace listing and WhatsApp; a ready tool adds its section to the home page when the design has none (Orders → shop, Memberships → Plans, Bookings → classes / rooms / book band, Reviews → verified reviews, Enquiries → enquiry or quote form), above the contact details, each hideable by the owner; placing those sections by the design strategy (CreativeDirector) rather than above contact, and P2+ tools' sections, remain",
+                  db="✓ websites.auto_sections_hidden", svc="✓ website/capabilities.py", ws="✓ Website › What customers can do / Sections your tools add",
+                  web="✓ auto sections, readiness-gated controls", test=_MA_TEST),
+    "FD-04": dict(status=C, code="switching a tool on and setting it up changes the live site with no rebuild (within the one-minute page cache): a gym that publishes a plan gains Plans with Ask to join, a 'See plans' header button and My account; bookable classes or rooms add their section, other bookable services a Book band; archiving the last plan or hiding the section takes them away again",
+                  web="✓", test=_MA_TEST),
+    "FD-05": dict(status=C, code="Marketplace actions (Order, Book, See plans, Get a quote, Book a site visit, Donate, Enquire, Call, WhatsApp, Visit) come from the same readiness answer and land where the site has that section (including a tool's own section); the business's way of trading (booking-, subscription-, quote-, donation-led) picks the first action on the card; reindexed when plans, providers, pickup/delivery, stock, traits or tool sections change",
+                  svc="✓ listing_actions + marketplace.index triggers", cust="✓ card honours the business's lead action", test=_MA_TEST),
+    "FD-10": dict(status=C, code="a module's customer actions appear only when it is built, switched on and set up (module_readiness) on the website, the Marketplace listing, WhatsApp menus and the owner's home; the Workspace website page says what is still missing for each tool that is on but not ready",
+                  ws="✓ 'Not yet: Publish at least one plan'", web="✓", test=_MA_TEST),
+    "OM-06": dict(status=C, code="booking-led businesses (trait) lead with Book on their site header and Marketplace card once Bookings is ready", test=_MA_TEST),
+    "OM-07": dict(status=C, code="quote-led businesses lead with 'Get a quote' (Quotes + Enquiries ready): header button, a quote form on the home page and a Marketplace action; the request lands in Enquiries as a 'Quote request' lead the team quotes from",
+                  web="✓", test=_MA_TEST),
+    "OM-18": dict(status=P, code="digital-only businesses publish no address or map anywhere on the site (location list removed, contact address stripped); digital product delivery and meeting links are not built yet",
+                  web="✓", test=_MA_TEST),
+    "OM-19": dict(status=C, code="a business with no online selling gets an information site whose main button is Call or WhatsApp, WhatsApp journeys and the counter (P1-04, P1-07/08); switching ordering on later adds the shop, basket and Order button without a rebuild",
+                  test=_MA_TEST),
+})

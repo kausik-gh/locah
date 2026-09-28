@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { addToBasket, fetchPublicOfferings } from '@/lib/checkout-api'
+import { addToBasket, fetchPublicOfferings, fetchPublicPlans } from '@/lib/checkout-api'
 import { OfferingCard } from './OfferingCard'
 import type { PublicOffering } from './offering-view'
 
@@ -21,7 +21,7 @@ import type { PublicOffering } from './offering-view'
 
 export type ItemKind = 'offerings' | 'menu' | 'plans' | 'rooms' | 'classes'
 
-type Offering = PublicOffering & { category?: string | null }
+type Offering = PublicOffering & { category?: string | null; plan?: boolean; period?: string | null }
 
 /** An item that needs choosing (pack, cut, add-ons, size) or is not a cart item. */
 function needsCard(o: Offering) {
@@ -59,7 +59,7 @@ function money(amount?: number | null, currency?: string) {
  */
 function actionFor(
   kind: ItemKind,
-  capabilities?: Record<string, boolean>
+  capabilities?: Record<string, boolean | string | null>
 ): 'cart' | 'book' | 'enquire' | 'none' {
   const can = (flag: string) => Boolean(capabilities?.[flag])
   if (kind === 'menu' || kind === 'offerings') return can('order') ? 'cart' : 'none'
@@ -80,6 +80,7 @@ export function LiveItemsSection({
   sectionClass,
   altGround,
   capabilities,
+  anchor,
 }: {
   businessSlug: string
   kind: ItemKind
@@ -91,17 +92,42 @@ export function LiveItemsSection({
   showPrices?: boolean
   sectionClass?: string
   altGround?: boolean
-  capabilities?: Record<string, boolean>
+  capabilities?: Record<string, boolean | string | null>
+  anchor?: string
 }) {
   const [items, setItems] = useState<Offering[]>([])
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
 
   useEffect(() => {
     let live = true
-    fetchPublicOfferings(businessSlug)
-      .then((data) => {
+    // Plans come from the Memberships module (active, public plans); a
+    // business that only lists plans in its catalogue falls back to those —
+    // never to its whole catalogue.
+    const load =
+      kind === 'plans'
+        ? fetchPublicPlans(businessSlug).then(async (plans) =>
+            plans.length > 0
+              ? plans.map(
+                  (p) =>
+                    ({
+                      id: p.id,
+                      title: p.title,
+                      description: p.description,
+                      price_amount: Number(p.price_amount),
+                      currency: p.currency,
+                      plan: true,
+                      period: planPeriod(p.duration_days),
+                    }) as Offering
+                )
+              : (((await fetchPublicOfferings(businessSlug)).offerings || []) as Offering[]).filter(
+                  (o) => o.offering_type === 'membership_plan'
+                )
+          )
+        : fetchPublicOfferings(businessSlug).then((data) => ((data.offerings || []) as Offering[]) ?? [])
+    load
+      .then((rows) => {
         if (!live) return
-        setItems(((data.offerings || []) as Offering[]) ?? [])
+        setItems(rows)
         setState('ready')
       })
       .catch(() => {
@@ -110,7 +136,7 @@ export function LiveItemsSection({
     return () => {
       live = false
     }
-  }, [businessSlug])
+  }, [businessSlug, kind])
 
   function addToCart(o: Offering) {
     addToBasket(businessSlug, {
@@ -138,7 +164,7 @@ export function LiveItemsSection({
   if ((state === 'ready' && filtered.length === 0) || state === 'error') return null
 
   return (
-    <section className={`ls-section ${altGround ? 'ls-section--alt' : ''} ${sectionClass || ''}`}>
+    <section id={anchor} className={`ls-section ${altGround ? 'ls-section--alt' : ''} ${sectionClass || ''}`}>
       <div className="ls-inner">
         {(title || subtitle) && (
           <div
@@ -239,7 +265,7 @@ function ItemGrid({
   onAdd: (o: Offering) => void
   action: 'cart' | 'book' | 'enquire' | 'none'
   slug: string
-  capabilities?: Record<string, boolean>
+  capabilities?: Record<string, boolean | string | null>
 }) {
   const v = variant === 'list' || variant === 'grid' ? variant : 'cards'
   const card = (o: Offering) => (
@@ -319,7 +345,7 @@ function MenuCategorized({
   onAdd: (o: Offering) => void
   action: 'cart' | 'book' | 'enquire' | 'none'
   slug: string
-  capabilities?: Record<string, boolean>
+  capabilities?: Record<string, boolean | string | null>
 }) {
   // Group by category; anything uncategorised collects under a neutral heading
   // rather than being dropped.
@@ -370,6 +396,22 @@ function MenuCategorized({
   )
 }
 
+/** "for 30 days", "a month", "a year" — how long one payment lasts. */
+function planPeriod(days: number | null | undefined) {
+  if (!days) return null
+  if (days === 30 || days === 31) return '/ month'
+  if (days === 90) return '/ 3 months'
+  if (days === 180) return '/ 6 months'
+  if (days === 365 || days === 366) return '/ year'
+  return `for ${days} days`
+}
+
+function planHref(slug: string, p: Offering) {
+  return p.plan
+    ? `/${slug}/enquire?plan_id=${p.id}&purpose=membership`
+    : `/${slug}/enquire?offering_id=${p.id}`
+}
+
 function Plans({
   items,
   variant,
@@ -400,14 +442,14 @@ function Plans({
                   <strong>{p.title}</strong>
                 </td>
                 <td className="ls-meta">{p.description || '—'}</td>
-                <td data-num="">{money(p.price_amount, p.currency) || '—'}</td>
+                <td data-num="">
+                  {money(p.price_amount, p.currency) || '—'}
+                  {p.period ? <span className="ls-meta"> {p.period}</span> : null}
+                </td>
                 <td>
                   {action === 'enquire' ? (
-                    <Link
-                      className="ls-btn ls-btn--outline"
-                      href={`/${slug}/enquire?offering_id=${p.id}`}
-                    >
-                      Choose
+                    <Link className="ls-btn ls-btn--outline" href={planHref(slug, p)}>
+                      {p.plan ? 'Ask to join' : 'Choose'}
                     </Link>
                   ) : null}
                 </td>
@@ -429,12 +471,13 @@ function Plans({
           <h3 className="ls-plan__name">{p.title}</h3>
           <div className="ls-plan__price">
             <span className="ls-plan__amount">{money(p.price_amount, p.currency) || '—'}</span>
+            {p.period ? <span className="ls-plan__period">{p.period}</span> : null}
           </div>
           {p.description ? <p className="ls-plan__desc">{p.description}</p> : null}
           <div className="ls-plan__cta">
             {action === 'enquire' ? (
-              <Link className="ls-btn" href={`/${slug}/enquire?offering_id=${p.id}`}>
-                Get started
+              <Link className="ls-btn" href={planHref(slug, p)}>
+                {p.plan ? 'Ask to join' : 'Get started'}
               </Link>
             ) : null}
           </div>

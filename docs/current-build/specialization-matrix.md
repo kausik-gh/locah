@@ -31,3 +31,22 @@ experience and must not be claimed as specialised.
 | Reorder (always) | every stock-keeping business | reorder at, fill up to | to-reorder list first | min/max per line; suggested quantity; counts; requisition draft P4 | free now, reorder level, suggestion | "Record opening stock… LOCAH tells you what is running low." |
 
 Proof: `apps/api/tests/test_stock_depth.py` (per-subcategory lens fixtures, meat cutting/value/trim, pharmacy FEFO + expiry ladder, electronics serials/warranty, blind count + approval + role limits, RLS isolation for every new table); browser `tools/acceptance/phase_b/p1_10a_stock.mjs` (meat, pharmacy, mobile store, clothing; desktop + 390 px) and `p1_10a_counter_serials.mjs` (IMEI at the counter). Not yet specialised: `lots`, `van stock`, `parts`, `client-owned stock`, `harvest lots` lenses (P2–P5 with transfers, jobs and warehousing).
+
+## website + Marketplace actions (P1-10C)
+
+| | |
+|---|---|
+| Sources | Founder §14–16 (module-aware site, changes without rebuild, Marketplace actions from readiness); PDF §4 (never present a module as working before it is); MD §22 operating models (booking-, quote-, subscription-, donation-led; digital-only; offline-first) |
+| Decided by | module readiness (`services/module_readiness.readiness()`: built + switched on + set up), live public offering kinds, operating traits — `platform_core/website/capabilities.py` (`decide`, `auto_sections`, `pick_primary`), fixture-tested |
+| Shared, never changes | one capability answer read by the website, its header button, the Marketplace listing and WhatsApp menus; the owner's own sections are never rewritten — a tool's section is added only where the design has none and can be hidden (`websites.auto_sections_hidden`) |
+
+| Business | What the site and card lead with | Section a ready tool adds | Proof |
+|---|---|---|---|
+| Subscription-led (gym, coaching, tiffin plan) | "See plans" → `#plans` | Plans (active public plans, period shown, "Ask to join" → membership enquiry lead) | browser p1_10c_site; test_module_aware_site |
+| Booking-led (salon, clinic, studio) | "Book now" → `/book` | Classes (class kinds) / Rooms (room kinds) / Book band (other bookable services) | test_module_aware_site |
+| Quote-led / project-led (fabricator, contractor, printer) | "Get a quote" → quote form | Enquiry form titled "Get a quote" (lands as a "Quote request" lead) | browser p1_10c_site (390 px) |
+| Order-led (shop, kitchen, bakery) | "Order now" → the page's shop anchor | Shop ("Order online") when the design shows no products | test_module_aware_site |
+| Donation-led (trust, temple) | "Donate" | — (causes list through the shop) | test_module_aware_site |
+| Property / vehicles | "Book a site visit" / test drive (leads + a live project or vehicle) | Enquiry form | test_module_aware_site |
+| Digital-only | — | no address, map or location list anywhere | test_module_aware_site |
+| Offline-first / nothing ready | Call or WhatsApp | none — an information site | test_module_aware_site |
