@@ -29,14 +29,14 @@ Cells: ✓ built and exercised by a test here · ◐ partly built · ✗ not bui
 | Phase | Total | COMPLETE | PARTIAL | NOT_STARTED | ACTIVATION_REQUIRED | FUTURE |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | 21 | 17 | 4 | 0 | 0 | 0 |
-| P1 | 261 | 137 | 95 | 7 | 22 | 0 |
+| P1 | 261 | 138 | 95 | 6 | 22 | 0 |
 | P2 | 207 | 3 | 73 | 123 | 8 | 0 |
 | P3 | 74 | 0 | 2 | 57 | 15 | 0 |
 | P4 | 84 | 0 | 10 | 66 | 8 | 0 |
 | P5 | 97 | 0 | 41 | 55 | 1 | 0 |
 | P6 | 13 | 0 | 0 | 0 | 0 | 13 |
 | X | 36 | 18 | 14 | 2 | 2 | 0 |
-| **All** | **793** | **175** | **239** | **310** | **56** | **13** |
+| **All** | **793** | **176** | **239** | **309** | **56** | **13** |
 
 Open decisions: 11 of 13 · Verify-at-build items: 23
 
@@ -823,7 +823,7 @@ Computed from real data only.
 
 | ID | PH | SOURCE SECTION | CAPABILITY | MODULE KEY | EXISTING / EXTEND / NEW / FUTURE | CURRENT CODE STATUS | DATABASE | SERVICE/API | PERMISSIONS/RLS | WORKSPACE SURFACE | CUSTOMER SURFACE | WEBSITE CONTRIBUTION | ROLE SURFACE | AUTOMATION | INTEGRATION | TEST STATUS | FINAL STATUS |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| IS-01 | P1 | MD §26.3 P1-10 | Basic insights from real data only (sales, orders, bookings, collections) | insights | NEW | absent | — | — | — | — | — | — | — | — | — | — | **NOT_STARTED** |
+| IS-01 | P1 | MD §26.3 P1-10 | Basic insights from real data only (sales, orders, bookings, collections) | insights | NEW | [P1-10E] Insights › Your numbers: sales (issued bills less credit notes, counter share), orders (value, by channel, cancelled apart), bookings (held, came in, waiting, did not come, cancelled) and money received (the same count as Payments, split by bills/counter, orders·bookings·plans, khata) for today, the last 7 days and this month; each number opens its page; a tool that is off is named, never a zero; no permission and location scope are respected (a location-limited manager sees their locations and is not shown business-wide money); Home's Today band links to it. Trends and comparisons are the later Analytics module (First Launch §12.2) | — | ✓ insights/basic.py; GET /insights?period= | ✓ per-card permission + module; ORM location scope | ✓ Insights › Your numbers; Home › Today link | — | — | — | — | — | ✓ test_basic_insights (5, platform_api RLS role) + browser p1_10e_insights (14/14, Playwright Chromium), desktop + 390 px | **COMPLETE** |
 | IS-02 | P5 | MD §26.2 | Advanced insights per role (owner, manager, accountant, marketer) | insights | NEW | absent | — | — | — | — | — | — | — | — | — | — | **NOT_STARTED** |
 | IS-03 | P4 | MD §16.6 | Supplier scorecard (private to buyer): on-time, fill rate, short-weight, price history with jump alerts | insights | NEW | absent | — | — | — | — | — | — | — | — | — | — | **NOT_STARTED** |
 

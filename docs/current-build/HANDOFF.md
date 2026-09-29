@@ -22,6 +22,7 @@ Branch `main`. Packets done, newest last:
 | P1-10C module-aware website + Marketplace | 366ad71 | test_module_aware_site (11) + browser p1_10c_site 21/21; suite 1059 |
 | P1-10D1 collect what is due (payments) | see git log ("feat(p1-10d1)… browser-verified") | test_payment_collect (15) + browser p1_10d1_payments 83/83 (Playwright Chromium, desktop + 390 px); suite 1073 |
 | P1-10D2a dated pre-orders | see git log ("feat(p1-10d2a)") | test_preorders (10) + browser p1_10d2_preorders 31/31; p1_03, p1_08, p1_10b, p1_10d1 re-run green on the new checkout; suite 1083 |
+| P1-10E1 basic insights | see git log ("feat(p1-10e1)") | test_basic_insights (5) + browser p1_10e_insights 14/14 (desktop + 390 px); payments-collect, role-home tests re-run |
 | P1-10D2b formula pricing | see git log ("feat(p1-10d2b)") | test_formula_pricing (7) + browser p1_10d2_formula 28/28 (Playwright Chromium, desktop + 390 px); suite 1090 |
 
 P1 gate after P1-10C: **TOTAL 240 · COMPLETE 122 · PARTIAL 90 · NOT_STARTED 12 ·
@@ -39,6 +40,9 @@ P1 gate after P1-10D2a: **TOTAL 261 · COMPLETE 136 · PARTIAL 95 · NOT_STARTED
 ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 P1 gate after P1-10D2b: **TOTAL 261 · COMPLETE 137 · PARTIAL 95 · NOT_STARTED 7 ·
+ACTIVATION_REQUIRED 22 · FUTURE 0.**
+
+P1 gate after P1-10E1: **TOTAL 261 · COMPLETE 138 · PARTIAL 95 · NOT_STARTED 6 ·
 ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 ### Founder refinements (authority 1) — read before touching these modules
@@ -72,6 +76,22 @@ MD §11.2 closes the AI Receptionist's tool list ("Nothing else") and §11.3
 sends restaurant phone orders to a WhatsApp link; the Orders refinement
 authorises AI phone ordering for simple orders where enabled. The founder
 wins; the WhatsApp-link/human path remains for long, custom or risky orders.
+
+### P1-10E1 — basic insights from real data (DONE, browser-verified)
+
+- `platform_core/insights/basic.py` (`summary`, `window`, `rupees`) and
+  `GET /v1/platform/businesses/{id}/insights?period=today|7d|month` (in
+  `v1_workspace_home.py`; any member, each card gated by its permission and
+  whether the tool is on). Sales = issued bills less credit notes; orders =
+  placed in the period, cancelled/declined apart, by channel; bookings =
+  starting in the period by outcome; money received =
+  `PaymentCollectService.received(first, until)` — the same function the
+  Payments page now uses for "paid today", so the two never disagree.
+- Location scope: ORM filter on orders/bookings/bills; money received is
+  business-wide, so a location-limited viewer gets "whole_business_only".
+- Workspace: Insights › Your numbers (`/b/{id}/insights`), period tabs, a card
+  per number linking to its page, "Not counted here because the tool is off";
+  Home's Today band links to it.
 
 ### P1-10D2b — formula pricing (DONE, browser-verified)
 
@@ -249,19 +269,20 @@ wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 
 ## Remaining work snapshot (P1 first)
 
-P1 NOT_STARTED (7): FR-OR-18 (order edits that revalidate), CR-04 (segments),
-CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation), IS-01 (basic
-insights), PKT-10 (P1-10 packet).
+P1 NOT_STARTED (6): FR-OR-18 (order edits that revalidate), CR-04 (segments),
+CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation), PKT-10 (P1-10
+packet — languages remain).
 P1 PARTIAL groups: FD-02 (portal items with Academics), FD-03 (strategy
 placement of tool sections), OM-09 (portfolio kind), OM-18 (digital delivery),
 GP-22 + PR-10 (English/Tamil/Hindi), payments provider (Cashfree =
 ACTIVATION), playbook rows waiting on P2–P5 modules.
 
 Planned next packets (dependency order):
-1. **P1-10E** EN/TA/HI UI strings, basic insights from real data (IS-01),
-   solo navigation (OM-21), tags/segments (CR-03/CR-04), DPDP export/erase
-   (CR-08, CO-01), order edits that revalidate (FR-OR-18), pilot hardening
-   (PKT-10); then the P1 gate.
+1. **P1-10E** (E1 insights done) → E2 tags + rule-built segments (CR-03,
+   CR-04) → E3 DPDP per-customer export/erase (CR-08, CO-01) → E4 solo
+   navigation (OM-21) → E5 order edits that revalidate + phone-order screen
+   (FR-OR-18, FR-OR-13) → E6 English/Tamil/Hindi strings (PKT-10, PR-10);
+   then the P1 gate.
 2. P2 → P5 per MD §26.2 / ledger sections W–AL, then E2E flows (section BG).
 
 ## How to run things locally (Linux / Claude Code cloud) — used since P1-10D1

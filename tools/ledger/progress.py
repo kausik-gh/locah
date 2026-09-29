@@ -589,3 +589,12 @@ done("P1-10D2", {
     "PB-203": dict(status=P, code="Core built — formula-priced items from a daily rate board, counter billing at today's rate, GST tax invoices that keep weight × rate + making, orders (custom orders can ask an advance, P1-10D2a), stock per piece; Rec leads and bookings built. Hallmark HUID per piece can be kept as the piece's serial number but is not yet named or checked as a HUID",
                    test="✓ fixture + browser p1_10d2_formula"),
 })
+
+
+# ---------------------------------------------------------------- P1-10E1 basic insights (MD §26.3 P1-10; First Launch §12.1)
+done("P1-10E", {
+    "IS-01": dict(status=C, code="Insights › Your numbers: sales (issued bills less credit notes, counter share), orders (value, by channel, cancelled apart), bookings (held, came in, waiting, did not come, cancelled) and money received (the same count as Payments, split by bills/counter, orders·bookings·plans, khata) for today, the last 7 days and this month; each number opens its page; a tool that is off is named, never a zero; no permission and location scope are respected (a location-limited manager sees their locations and is not shown business-wide money); Home's Today band links to it. Trends and comparisons are the later Analytics module (First Launch §12.2)",
+                  svc="✓ insights/basic.py; GET /insights?period=", perm="✓ per-card permission + module; ORM location scope",
+                  ws="✓ Insights › Your numbers; Home › Today link",
+                  test="✓ test_basic_insights (5, platform_api RLS role) + browser p1_10e_insights (14/14, Playwright Chromium), desktop + 390 px"),
+})

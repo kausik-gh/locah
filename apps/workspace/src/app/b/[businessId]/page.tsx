@@ -93,7 +93,11 @@ export default async function WorkspaceHomePage({ params }: { params: { business
                 </Link>
               ))}
             </div>
-          ) : band.items && band.items.length > 0 ? (
+          ) : null}
+          {band.key === 'today' ? (
+            <p className="bos-band__more"><Link href={`${base}/insights?period=7d`}>Your numbers for the week and month →</Link></p>
+          ) : null}
+          {band.stats ? null : band.items && band.items.length > 0 ? (
             <ul className="bos-attention">
               {band.items.map((i) => (
                 <li key={`${i.label}-${i.href}`}>

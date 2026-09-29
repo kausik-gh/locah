@@ -76,8 +76,8 @@ export const AREAS: NavArea[] = [
       { href: '/workforce', label: 'Staff & rota', perm: 'workforce.read', module: 'workforce' },
     ],
   },
-  // Insights and AI Employees join as their tools ship (analytics, AI staff);
-  // campaigns join Reach in P3. Until then they have nothing to show.
+  // AI Employees join as their tools ship (P3); campaigns join Reach in P3.
+  // Until then they have nothing to show.
   {
     key: 'reach',
     label: 'Reach',
@@ -86,7 +86,12 @@ export const AREAS: NavArea[] = [
       { href: '/whatsapp', label: 'WhatsApp', perm: 'messaging.read', module: 'messaging' },
     ],
   },
-  { key: 'insights', label: 'Insights', children: [] },
+  {
+    key: 'insights',
+    label: 'Insights',
+    // Basic insights from real data (IS-01) are part of the Workspace; the deeper Analytics tool comes later.
+    children: [{ href: '/insights', label: 'Your numbers', anyPerm: ['orders.read', 'bookings.read', 'invoices.read', 'payments.read'] }],
+  },
   { key: 'ai', label: 'AI employees', children: [] },
   {
     key: 'modules',

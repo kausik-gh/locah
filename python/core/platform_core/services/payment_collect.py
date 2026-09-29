@@ -688,14 +688,16 @@ class PaymentCollectService:
             PaymentAttempt.source_id == source_id, PaymentAttempt.deleted_at.is_(None),
             PaymentAttempt.status.in_(PAID_STATUSES)))).scalar())
 
-    # ------------------------------------------------------------------ the owner's overview (§14)
+    # ------------------------------------------------------------------ money received, counted once
     @staticmethod
-    async def overview(session: AsyncSession, business_id: uuid.UUID, *, today: date) -> dict[str, Any]:
-        """Paid today, waiting for you, failed, what is owed, refunds — verified
-        money only, each rupee counted once."""
-        start = datetime.combine(today, datetime.min.time(), tzinfo=timezone(timedelta(hours=5, minutes=30)))
-        end = start + timedelta(days=1)
-        b = {"b": str(business_id), "start": start, "end": end, "today": today}
+    async def received(session: AsyncSession, business_id: uuid.UUID, first: date, until: date) -> dict[str, float]:
+        """Verified money received on days ``first`` ≤ day < ``until`` (India time),
+        each rupee counted once: links and recorded payments on orders, bookings
+        and plans; bill and counter payments; khata payments not already a bill
+        payment. The Payments page (today) and Insights (a period) read this."""
+        ist = timezone(timedelta(hours=5, minutes=30))
+        b = {"b": str(business_id), "start": datetime.combine(first, datetime.min.time(), tzinfo=ist),
+             "end": datetime.combine(until, datetime.min.time(), tzinfo=ist), "first": first, "until": until}
         link_money = _d((await session.execute(text(
             "SELECT coalesce(sum(amount), 0) FROM payments_payment_attempts WHERE business_id = CAST(:b AS uuid) "
             "AND deleted_at IS NULL AND status IN ('succeeded', 'partially_refunded', 'refunded') "
@@ -704,12 +706,22 @@ class PaymentCollectService:
             b)).scalar())
         bill_money = _d((await session.execute(text(
             "SELECT coalesce(sum(amount), 0) FROM invoicing_payments WHERE business_id = CAST(:b AS uuid) "
-            "AND received_on = :today AND verification = 'verified' AND via IS DISTINCT FROM 'khata'"),
-            b)).scalar())
+            "AND received_on >= :first AND received_on < :until AND verification = 'verified' "
+            "AND via IS DISTINCT FROM 'khata'"), b)).scalar())
         khata_money = _d((await session.execute(text(
             "SELECT coalesce(sum(-amount), 0) FROM ledger_entries WHERE business_id = CAST(:b AS uuid) "
-            "AND kind = 'payment_received' AND entry_date = :today "
+            "AND kind = 'payment_received' AND entry_date >= :first AND entry_date < :until "
             "AND (idempotency_key IS NULL OR idempotency_key NOT LIKE 'billpay:%')"), b)).scalar())
+        return {"total": float(link_money + bill_money + khata_money), "links_and_recorded": float(link_money),
+                "bills_and_counter": float(bill_money), "khata": float(khata_money)}
+
+    # ------------------------------------------------------------------ the owner's overview (§14)
+    @staticmethod
+    async def overview(session: AsyncSession, business_id: uuid.UUID, *, today: date) -> dict[str, Any]:
+        """Paid today, waiting for you, failed, what is owed, refunds — verified
+        money only, each rupee counted once."""
+        paid = await PaymentCollectService.received(session, business_id, today, today + timedelta(days=1))
+        b = {"b": str(business_id)}
         waiting = (await session.execute(select(PaymentAttempt).where(
             PaymentAttempt.business_id == business_id, PaymentAttempt.deleted_at.is_(None),
             PaymentAttempt.payment_method == "upi_direct", PaymentAttempt.status == "pending_offline")
@@ -747,8 +759,7 @@ class PaymentCollectService:
             b)).all()}
         needs = [a for a in attention if a.attention or a.request_id not in fixed]
         return {
-            "paid_today": {"total": _f(link_money + bill_money + khata_money), "links_and_recorded": _f(link_money),
-                           "bills_and_counter": _f(bill_money), "khata": _f(khata_money)},
+            "paid_today": paid,
             "to_confirm": [PaymentCollectService._attempt_row(a) | {"for": await label(a)} for a in waiting],
             "counter_upi_to_verify": counter_to_verify,
             "needs_attention": [PaymentCollectService._attempt_row(a) | {"for": await label(a)} for a in needs],
