@@ -307,7 +307,7 @@ def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
     assert "membership.renewal" not in shown
     assert {k for k in LADDERS if is_wired(k)} == {"stock.low", "lead.followup", "booking.reminder", "order.tracking",
                                                    "invoice.overdue", "ledger.statement", "chat.waiting",
-                                                   "review.request", "compliance.due", "inventory.expiry"}
+                                                   "review.request", "compliance.due", "inventory.expiry", "task.due"}
 
 
 @DB

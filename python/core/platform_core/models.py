@@ -2970,3 +2970,89 @@ class QueueTurnNotice(Base):
     customer_contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     booking_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+# ---------------------------------------------------------------- shared tasks (Guide Â§6.2 tasks)
+class WorkTask(Base):
+    """One task. related_type / related_id point at the record it belongs to."""
+
+    __tablename__ = "tasks_tasks"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'open'"))
+    priority: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'normal'"))
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    assignee_member_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    related_type: Mapped[str] = mapped_column(Text, nullable=False)
+    related_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    occurrence_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class TaskChecklistItem(Base):
+    __tablename__ = "tasks_checklist_items"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    task_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("tasks_tasks.id"))
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    photo_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    done_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    proof_media_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskHistory(Base):
+    __tablename__ = "tasks_history"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    task_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    from_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    to_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_identity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskChecklistTemplate(Base):
+    __tablename__ = "tasks_checklist_templates"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'custom'"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class TaskChecklistTemplateItem(Base):
+    __tablename__ = "tasks_checklist_template_items"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    template_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("tasks_checklist_templates.id")
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    photo_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+

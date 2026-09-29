@@ -116,6 +116,12 @@ LADDERS: dict[str, Ladder] = {lad.key: lad for lad in (
         quiet_hours=False,
     ),
     Ladder(
+        "task.due", "tasks", "Task due", "the task's due time", "task",
+        (LadderStep("due", timedelta(0), "When the task is due", "Signal that the task is due"),),
+        "the task is completed, cancelled, or the due time changes",
+        quiet_hours=False,
+    ),
+    Ladder(
         "inventory.expiry", "inventory", "Expiry alerts", "the batch's expiry date", "inventory_batch",
         (
             LadderStep("minus_30", -30 * D, "30 days before", "Tell whoever looks after stock at that location"),
