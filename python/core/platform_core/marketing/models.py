@@ -1,4 +1,5 @@
 """Marketing & Campaigns models (MK-01 through MK-10; MS-26; MD §6.2, §18.1–§18.4, §25.1)."""
+# mypy: allow-subclassing-any
 
 from __future__ import annotations
 

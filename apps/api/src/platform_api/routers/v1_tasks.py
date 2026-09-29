@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -100,7 +100,7 @@ def _meta(actor: BusinessActorContext) -> dict[str, str]:
 
 
 async def _one(session: AsyncSession, task: Any) -> dict[str, Any]:
-    return TaskService.serialize(task, await TaskService.items(session, task))
+    return cast(dict[str, Any], TaskService.serialize(task, await TaskService.items(session, task)))
 
 
 @router.get("/{business_id}/tasks")

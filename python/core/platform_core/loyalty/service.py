@@ -636,7 +636,7 @@ class ReferralService:
         )
         ref = (await session.execute(q)).scalars().first()
         if ref is not None:
-            return ref.code
+            return str(ref.code)
 
         suffix = secrets.token_hex(3).upper()
         code = f"REF-{suffix}"

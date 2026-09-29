@@ -7,6 +7,8 @@ Security is proved separately in test_growth_rls.py.
 
 from __future__ import annotations
 
+from typing import cast
+
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -72,7 +74,7 @@ async def _contact(session: AsyncSession, business_id: uuid.UUID, name: str, pho
     )
     session.add(contact)
     await session.flush()
-    return contact.id
+    return cast(uuid.UUID, contact.id)
 
 
 @pytest.mark.asyncio

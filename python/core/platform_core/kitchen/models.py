@@ -1,4 +1,5 @@
 """Kitchen tables. Preparation truth, separate from the sales order."""
+# mypy: allow-subclassing-any
 
 from __future__ import annotations
 

@@ -60,7 +60,7 @@ class MarketingResultsService:
             MarketingBroadcastRecipient.business_id == business_id,
             MarketingBroadcastRecipient.campaign_id == campaign_id,
         )
-        rec_stats = (await session.execute(q_recipients)).first()
+        rec_stats = (await session.execute(q_recipients)).first() or (0, 0, 0, 0, 0)
 
         total_targeted = rec_stats[0] or 0
         sent_count = rec_stats[1] or 0

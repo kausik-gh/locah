@@ -1,4 +1,5 @@
 """P5 job-card persistence; separate from Projects' coordination record."""
+# mypy: allow-subclassing-any
 
 from __future__ import annotations
 

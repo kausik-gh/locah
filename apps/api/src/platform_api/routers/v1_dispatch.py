@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -57,7 +57,7 @@ class StatusRequest(BaseModel):
 
 
 def _can_assign(actor: BusinessActorContext) -> bool:
-    return actor.request.has_permission(DISPATCH_ASSIGN)
+    return cast(bool, actor.request.has_permission(DISPATCH_ASSIGN))
 
 
 @router.post("/{business_id}/dispatch/jobs")

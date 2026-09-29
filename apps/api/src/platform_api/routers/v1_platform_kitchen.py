@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -54,7 +54,7 @@ def _meta(actor: BusinessActorContext) -> dict[str, str]:
 
 
 def _locations(actor: BusinessActorContext) -> tuple[UUID, ...] | None:
-    return scoped_locations(actor.actor_membership)
+    return cast(tuple[UUID, ...] | None, scoped_locations(actor.actor_membership))
 
 
 def _station(station: Any) -> dict[str, Any]:

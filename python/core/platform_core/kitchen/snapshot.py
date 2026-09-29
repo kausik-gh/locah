@@ -70,8 +70,8 @@ def redact(value: str | None) -> str:
 def modifier_snapshot(options: dict[str, Any] | None) -> tuple[dict[str, Any], list[str]]:
     """Choices and written notes only. Price deltas are not preparation facts."""
     raw = options or {}
-    choices = raw.get("choices") if isinstance(raw.get("choices"), dict) else {}
-    notes = raw.get("notes") if isinstance(raw.get("notes"), dict) else {}
+    choices: dict[Any, Any] = raw["choices"] if isinstance(raw.get("choices"), dict) else {}
+    notes: dict[Any, Any] = raw["notes"] if isinstance(raw.get("notes"), dict) else {}
     record_choices: dict[str, list[str]] = {}
     record_notes: dict[str, str] = {}
     lines: list[str] = []

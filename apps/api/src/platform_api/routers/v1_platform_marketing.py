@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
@@ -51,7 +51,7 @@ async def _enabled_traits(session: AsyncSession, business: Business | None) -> f
         return frozenset()
     from platform_core.services.business_classification import BusinessClassificationService
 
-    return await BusinessClassificationService.effective_traits(session, business)
+    return cast(frozenset[str], await BusinessClassificationService.effective_traits(session, business))
 
 
 # -----------------------------------------------------------------------------
@@ -261,7 +261,7 @@ async def prepare_campaign(
         business_traits=traits,
     )
     await _keep(session)
-    return result
+    return cast(dict[str, Any], result)
 
 
 @router.post("/{business_id}/marketing/campaigns/{campaign_id}/approve")
@@ -298,7 +298,7 @@ async def dispatch_campaign(
         session, business_id, campaign_id
     )
     await _keep(session)
-    return result
+    return cast(dict[str, Any], result)
 
 
 @router.get("/{business_id}/marketing/campaigns/{campaign_id}/results")
@@ -308,9 +308,9 @@ async def get_campaign_results(
     session: AsyncSession = Depends(get_db_session),
     context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
-    return await MarketingResultsService.get_campaign_results(
+    return cast(dict[str, Any], await MarketingResultsService.get_campaign_results(
         session, business_id, campaign_id
-    )
+    ))
 
 
 @router.get("/{business_id}/marketing/offers")
@@ -374,14 +374,14 @@ async def evaluate_offer_code(
     session: AsyncSession = Depends(get_db_session),
     context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
-    return await OfferService.evaluate_offer(
+    return cast(dict[str, Any], await OfferService.evaluate_offer(
         session,
         business_id,
         body.code,
         cart_total_paise=body.cart_total_paise,
         customer_contact_id=body.customer_contact_id,
         delivery_fee_paise=body.delivery_fee_paise,
-    )
+    ))
 
 
 @router.get("/{business_id}/marketing/audiences/{segment_id}")
@@ -392,9 +392,9 @@ async def get_audience_counts(
     session: AsyncSession = Depends(get_db_session),
     context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
-    return await MarketingAudienceService.resolve_segment_audience(
+    return cast(dict[str, Any], await MarketingAudienceService.resolve_segment_audience(
         session, business_id, segment_id, channel=channel
-    )
+    ))
 
 
 @router.get("/{business_id}/marketing/policy")
@@ -452,4 +452,4 @@ async def test_meta_spend_request(
         session, business_id, requested_spend_paise=body.requested_spend_paise
     )
     await _keep(session)
-    return result
+    return cast(dict[str, Any], result)

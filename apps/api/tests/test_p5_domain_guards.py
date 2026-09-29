@@ -128,7 +128,7 @@ async def test_retrying_a_job_part_does_not_consume_stock_twice(monkeypatch: pyt
             self.reads = 0
 
     session = Session()
-    args = (cast(AsyncSession, session), business_id, job_id, record_id, 2, [],
+    args: tuple[Any, ...] = (cast(AsyncSession, session), business_id, job_id, record_id, 2, [],
             "retry-1", uuid.uuid4(), str(uuid.uuid4()))
     first = await JobService.consume_part(*args)
     second = await JobService.consume_part(*args)

@@ -3,6 +3,7 @@
 The workforce member on a job is an existing staff record. Dispatch does not
 keep a second identity for the same person.
 """
+# mypy: allow-subclassing-any
 
 from __future__ import annotations
 

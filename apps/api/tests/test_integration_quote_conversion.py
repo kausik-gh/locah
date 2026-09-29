@@ -11,7 +11,7 @@ refused and creates nothing. Replays change nothing.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -32,7 +32,7 @@ def owner(monkeypatch: Any) -> dict[str, str]:
     user_id = uuid.uuid4()
     email = f"{user_id}@example.com"
     _seed(user_id, email)
-    return _headers(user_id, email)
+    return cast(dict[str, str], _headers(user_id, email))
 
 
 def _accepted(owner: dict[str, str], bid: str, **quote: Any) -> str:

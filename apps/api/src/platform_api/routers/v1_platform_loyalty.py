@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
@@ -213,7 +213,7 @@ async def earn_customer_points(
         reason=body.reason,
     )
     await _keep(session)
-    return result
+    return cast(dict[str, Any], result)
 
 
 @router.post("/{business_id}/loyalty/customers/{contact_id}/validate-redemption")
@@ -224,13 +224,13 @@ async def validate_points_redemption(
     session: AsyncSession = Depends(get_db_session),
     context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
-    return await LoyaltyPointsService.validate_redemption(
+    return cast(dict[str, Any], await LoyaltyPointsService.validate_redemption(
         session,
         business_id,
         contact_id,
         points_to_redeem=body.points_to_redeem,
         order_amount_paise=body.order_amount_paise,
-    )
+    ))
 
 
 @router.post("/{business_id}/loyalty/customers/{contact_id}/redeem")
@@ -252,7 +252,7 @@ async def redeem_customer_points(
         idempotency_key=body.idempotency_key,
     )
     await _keep(session)
-    return result
+    return cast(dict[str, Any], result)
 
 
 @router.post("/{business_id}/loyalty/customers/{contact_id}/stamps/award")
@@ -273,7 +273,7 @@ async def award_customer_stamp(
         program_id=body.program_id,
     )
     await _keep(session)
-    return result
+    return cast(dict[str, Any], result)
 
 
 @router.get("/{business_id}/loyalty/customers/{contact_id}/referral")
@@ -323,7 +323,7 @@ async def qualify_referral(
         referee_points=body.referee_points,
     )
     await _keep(session)
-    return result
+    return cast(dict[str, Any], result)
 
 
 @router.post("/{business_id}/loyalty/vouchers")
@@ -361,7 +361,7 @@ async def validate_gift_voucher(
     session: AsyncSession = Depends(get_db_session),
     context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
-    return await GiftVoucherService.validate_voucher(session, business_id, code)
+    return cast(dict[str, Any], await GiftVoucherService.validate_voucher(session, business_id, code))
 
 
 @router.post("/{business_id}/loyalty/vouchers/{code}/redeem")
@@ -382,7 +382,7 @@ async def redeem_gift_voucher(
         idempotency_key=body.idempotency_key,
     )
     await _keep(session)
-    return result
+    return cast(dict[str, Any], result)
 
 
 class CreateStampProgramRequest(BaseModel):

@@ -113,7 +113,7 @@ class Eligibility:
 
     async def decide(self, session: AsyncSession, business_id: uuid.UUID,
                      enrolment_id: uuid.UUID) -> MembershipCheckinDecision:
-        return MembershipCheckinDecision(enrolment_id, self.contact_id, self.state)  # type: ignore[arg-type]
+        return MembershipCheckinDecision(enrolment_id, self.contact_id, self.state)
 
 
 def test_attendance_api_requires_authentication_and_rejects_geo_claims() -> None:

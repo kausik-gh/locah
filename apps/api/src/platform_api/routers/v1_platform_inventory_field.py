@@ -5,7 +5,7 @@ The jobs lane calls consume and return-unused. This router does not import jobs.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -27,7 +27,7 @@ def _meta(actor: BusinessActorContext) -> dict[str, str]:
 
 
 def _scope(actor: BusinessActorContext) -> list[UUID] | None:
-    return actor.actor_membership.location_scope
+    return cast(list[UUID] | None, actor.actor_membership.location_scope)
 
 
 class LineBody(BaseModel):

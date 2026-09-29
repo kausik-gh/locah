@@ -10,7 +10,7 @@ import asyncio
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,7 +31,7 @@ def owner(monkeypatch: Any) -> dict[str, str]:
     user_id = uuid.uuid4()
     email = f"{user_id}@example.com"
     _seed(user_id, email)
-    return _headers(user_id, email)
+    return cast(dict[str, str], _headers(user_id, email))
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def stranger(monkeypatch: Any) -> dict[str, str]:
     user_id = uuid.uuid4()
     email = f"{user_id}@example.com"
     _seed(user_id, email)
-    return _headers(user_id, email)
+    return cast(dict[str, str], _headers(user_id, email))
 
 pytestmark = pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 
@@ -60,7 +60,7 @@ def _engine_url() -> str:
     assert url
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    return url
+    return cast(str, url)
 
 
 def _run(script: Any) -> Any:
@@ -110,7 +110,7 @@ def _join_sales(client: TestClient, owner: dict[str, str], business_id: str, mon
         headers=owner,
     )
     assert given.status_code == 200, given.text
-    return headers
+    return cast(dict[str, str], headers)
 
 
 # ---------------------------------------------------------------- intake

@@ -1,4 +1,5 @@
 """Loyalty & Rewards models (LY-01, LY-02, LY-03, LY-04; MD §6.2, §18.2, §21.3)."""
+# mypy: allow-subclassing-any
 
 from __future__ import annotations
 

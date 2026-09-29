@@ -17,7 +17,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,7 +72,7 @@ TERMS_MAX = 20000
 
 
 def _money_str(value: Any) -> str:
-    return money_str(value)
+    return str(money_str(value))
 
 
 class QuoteService:
@@ -1074,7 +1074,7 @@ class QuoteService:
     async def discount_limit(session: AsyncSession, business_id: uuid.UUID) -> Decimal:
         row = await session.get(QuoteSettings, business_id)
         if row is None:
-            return DEFAULT_DISCOUNT_LIMIT
+            return Decimal(DEFAULT_DISCOUNT_LIMIT)
         return Decimal(str(row.executive_discount_limit_percent))
 
     @staticmethod
@@ -1413,7 +1413,7 @@ class QuoteService:
         )
         contract = conversion_contract(quote=detail, plan=plan, target=target)
         if quote.conversion_target == target:
-            return contract
+            return cast(dict[str, Any], contract)
         quote.conversion_target = target
         quote.version += 1
         await session.flush()
@@ -1435,7 +1435,7 @@ class QuoteService:
             action="conversion_requested",
             after_state={"target": target},
         )
-        return contract
+        return cast(dict[str, Any], contract)
 
     # ------------------------------------------------------------- sweeping
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,7 +39,7 @@ def _token(owner: dict[str, str], bid: str, lane: str, name: str, **extra: Any) 
     body = {"lane_id": lane, "party_label": name, **extra}
     made = client.post(f"/v1/platform/businesses/{bid}/queue/entries", headers=owner, json=body)
     assert made.status_code == 200, made.text
-    return made.json()["data"]
+    return cast(dict[str, Any], made.json()["data"])
 
 
 def _provider(owner: dict[str, str], bid: str, loc: str, name: str, identity: uuid.UUID | None = None) -> str:
