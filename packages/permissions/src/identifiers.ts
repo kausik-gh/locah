@@ -135,6 +135,10 @@ export const PERMISSIONS = {
   // who schedules but does not scope.
   PROJECTS_ASSIGN: 'projects.assign',
 
+  DOCUMENTS_READ: 'documents.read',
+  DOCUMENTS_MANAGE: 'documents.manage',
+  DOCUMENTS_REQUEST: 'documents.request',
+
   // Module: payments
   PAYMENTS_READ: 'payments.read',
   PAYMENTS_REFUND: 'payments.refund',

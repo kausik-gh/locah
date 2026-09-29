@@ -264,6 +264,10 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "project.phase.completed",
         }
     ),
+    "document": frozenset({
+        "document.created", "document.requested", "document.uploaded",
+        "form.submitted", "document.signed",
+    }),
     "membership_plan": frozenset(
         {
             "membership.plan.created",
