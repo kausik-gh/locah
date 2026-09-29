@@ -236,6 +236,10 @@ ATTENDANCE_READ = "attendance.read"
 ATTENDANCE_RECORD = "attendance.record"
 ATTENDANCE_MANAGE = "attendance.manage"
 
+# Forms, secure document requests and signatures (DOCUMENTS_READ is above).
+DOCUMENTS_MANAGE = "documents.manage"
+DOCUMENTS_REQUEST = "documents.request"
+
 ALL_PERMISSIONS: frozenset[str] = frozenset(
     str(v) for k, v in globals().items() if k.isupper() and isinstance(v, str) and "." in v
 )

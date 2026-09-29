@@ -392,7 +392,12 @@ _CATALOGUE: dict[str, frozenset[str]] = {
     "expenses": frozenset({"expense.created"}),
     "donations": frozenset({"donation.received"}),
     "connectors": frozenset({"connector.sync.completed"}),
-    "documents": frozenset({"document.recorded"}),
+    # One documents owner: the supply lane's business-document register and the
+    # forms / secure requests / signatures workflow.
+    "documents": frozenset({
+        "document.recorded", "document.created", "document.requested", "document.uploaded",
+        "form.submitted", "document.signed",
+    }),
     # Business OS Guide §6.2 walk-in queue. queue.turn_soon is the Messaging contract.
     "queue": frozenset(
         {

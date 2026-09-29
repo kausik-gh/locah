@@ -306,10 +306,10 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
     ),
     ModuleInfo(
         "documents", "Forms & files", "P5",
-        "Templates, intake and consent forms, uploads and signatures.",
-        customer_can=("Fill and sign forms",),
-        staff_can=("Send forms", "Store signed documents"),
-        packs=("back_office",),
+        "Templates, intake and consent forms, secure upload requests and typed or drawn signatures.",
+        customer_can=("Fill and sign a form from a private link", "Upload a requested document"),
+        staff_can=("Build forms and templates", "Send secure request links", "See signed submissions"),
+        packs=("back_office",), built=True,
     ),
     ModuleInfo(
         "donations", "Donations", "P5",

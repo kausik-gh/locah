@@ -168,6 +168,10 @@ export const PERMISSIONS = {
   ATTENDANCE_RECORD: 'attendance.record',
   ATTENDANCE_MANAGE: 'attendance.manage',
 
+  // Module: documents — forms, secure requests and signatures (documents.read is above)
+  DOCUMENTS_MANAGE: 'documents.manage',
+  DOCUMENTS_REQUEST: 'documents.request',
+
   // Module: payments
   PAYMENTS_READ: 'payments.read',
   PAYMENTS_REFUND: 'payments.refund',
