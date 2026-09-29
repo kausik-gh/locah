@@ -5,6 +5,7 @@ import { RESERVED_SLUGS } from '@/lib/reserved-slugs'
 import { fetchPublicWebsite } from '@/lib/public-website'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { siteThemeVars } from '@/components/website/WebsitePageView'
+import { askToErase } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +18,7 @@ type Account = {
   quotes: { id: string; number: string; title: string | null; status: string; total: number; valid_until: string | null; url: string | null }[]
   memberships: { id: string; plan: string; status: string; starts_at: string; ends_at: string | null; days_left: number | null }[]
   khata: { balance: number; url: string } | null
+  erasure_request?: { status: 'open' | 'done' | 'declined'; asked_at: string; reason: string | null } | null
 }
 
 const rupees = (v: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(v)
@@ -32,7 +34,7 @@ const ORDER_WORDS: Record<string, string> = {
  * this business's records only, in this business's own colours. The links are
  * the ones the business already sends — tracking, bill, statement, booking.
  */
-export default async function AccountPage({ params }: { params: { slug: string } }) {
+export default async function AccountPage({ params, searchParams }: { params: { slug: string }; searchParams?: { privacy?: string } }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
   const site = await fetchPublicWebsite(params.slug)
   if (!site) notFound()
@@ -111,6 +113,26 @@ export default async function AccountPage({ params }: { params: { slug: string }
 
       {past.length ? <section className="ls-account__block" aria-labelledby="acc-p"><h2 id="acc-p">Past bookings</h2>
         <ul className="ls-account__list">{past.map((b) => <li key={b.id}><span>{b.title}</span><span className="ls-meta">{at(b.starts_at)} · {b.status}</span></li>)}</ul></section> : null}
+
+      {a.linked ? <section className="ls-account__block" id="acc-data" aria-labelledby="acc-d"><h2 id="acc-d">Your details</h2>
+        <div className="ls-account__card">
+          <p className="ls-meta">Download everything {name} keeps about you, or ask them to delete your details. Bills they must keep by law stay with them.</p>
+          <p className="ls-account__actions"><a className="ls-btn ls-btn--outline" href={`/${params.slug}/account/my-data`} download>Download my data</a></p>
+          {searchParams?.privacy === 'asked' ? <p className="ls-meta" role="status">Your request was sent to {name}.</p> : null}
+          {searchParams?.privacy === 'failed' ? <p className="ls-meta" role="status">Your request could not be sent just now — try again in a moment.</p> : null}
+          {a.erasure_request?.status === 'open' ? (
+            <p className="ls-meta">You asked {name} to delete your details on {when(a.erasure_request.asked_at)}. They will act on it once nothing is still open with you.</p>
+          ) : a.erasure_request?.status === 'declined' ? (
+            <p className="ls-meta">{name} could not delete your details yet: {a.erasure_request.reason}</p>
+          ) : (
+            <form action={askToErase} className="ls-account__erase">
+              <input type="hidden" name="slug" value={params.slug} />
+              <label className="ls-meta" htmlFor="erase-note">Anything they should know — optional</label>
+              <input id="erase-note" name="note" maxLength={500} />
+              <button type="submit" className="ls-btn ls-btn--outline">Ask {name} to delete my details</button>
+            </form>
+          )}
+        </div></section> : null}
     </>,
   )
 }

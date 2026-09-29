@@ -56,3 +56,24 @@ async def insights(
         has=lambda module: module in live,
         business_wide=scoped_locations(actor.actor_membership) is None)
     return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.get("/{business_id}/calendar")
+async def one_calendar(
+    business_id: UUID,
+    days: int = Query(default=7, ge=1, le=31),
+    actor: BusinessActorContext = Depends(require_business_member()),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """One calendar (OM-21, MD §22): bookings, orders wanted, follow-ups,
+    memberships ending and licences due for the days ahead, within what this
+    person may see."""
+    from platform_core.authorization.resolver import AuthorizationService
+    from platform_core.services.one_calendar import agenda
+
+    permissions = frozenset(await AuthorizationService.effective_permissions(
+        session, business_id=business_id, identity_id=actor.request.identity_id))
+    live = {k for k, v in (await module_states(session, business_id)).items() if v in ("enabled", "ready", "active")}
+    data = await agenda(session, business_id, days=days,
+                        can=lambda perm, module: perm in permissions and module in live)
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}

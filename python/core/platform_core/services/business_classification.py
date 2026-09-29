@@ -93,6 +93,22 @@ def default_org_shape(business: Business) -> str:
     return "solo" if fam and fam.people.lower().startswith(("solo", "often solo")) else "team"
 
 
+async def run_solo(session: AsyncSession, business_id: uuid.UUID) -> bool:
+    """One person runs it: the organisation shape (chosen, or the family's default)
+    is solo and the business has a single active member (OM-21, MD §22). A second
+    person joining brings the team menus back — nothing to switch."""
+    from sqlalchemy import func, select
+
+    from platform_core.models import BusinessMembership
+
+    business = await session.get(Business, business_id)
+    if business is None or (business.org_shape or default_org_shape(business)) != "solo":
+        return False
+    members = (await session.execute(select(func.count()).select_from(BusinessMembership).where(
+        BusinessMembership.business_id == business_id, BusinessMembership.status == "active"))).scalar() or 0
+    return int(members) <= 1
+
+
 class BusinessClassificationService:
     # ------------------------------------------------------------- reading
 

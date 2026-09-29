@@ -1889,6 +1889,8 @@
 [data-locah-site] .ls-account__row { display: flex; justify-content: space-between; gap: 1rem; font-variant-numeric: tabular-nums; }
 [data-locah-site] .ls-account__items { margin: 0; padding-left: 1.1rem; color: var(--site-muted); font-size: 0.9rem; }
 [data-locah-site] .ls-account__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+[data-locah-site] .ls-account__erase { display: grid; gap: 0.4rem; margin-top: 0.8rem; max-width: 28rem; }
+[data-locah-site] .ls-account__erase input { font: inherit; padding: 0.55rem 0.7rem; border: 1px solid var(--site-border); border-radius: var(--site-radius); background: var(--site-bg); color: var(--site-ink); }
 [data-locah-site] .ls-account__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.1rem; border-top: 1px solid var(--site-border); }
 [data-locah-site] .ls-account__list li {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.1rem 1rem; padding: 0.6rem 0; border-bottom: 1px solid var(--site-border);

@@ -155,6 +155,8 @@ export const PERMISSIONS = {
   CUSTOMERS_UPDATE: 'customers.update',
   CUSTOMERS_MANAGE_NOTES: 'customers.manage_notes',
   CUSTOMERS_EXPORT: 'customers.export',
+  // DPDP erasure (CR-08): owner by default, grantable.
+  CUSTOMERS_ERASE: 'customers.erase',
 
   // Module: leads
   LEADS_READ: 'leads.read',

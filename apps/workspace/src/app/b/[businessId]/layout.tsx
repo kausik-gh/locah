@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic'
 type Context = {
   module_states: Record<string, string>
   permissions: string[]
+  solo?: boolean
 }
 
 /**
@@ -60,6 +61,7 @@ export default async function WorkspaceBusinessLayout({
   const moduleStates = contextRes.ok ? contextRes.data.data.module_states ?? {} : {}
   const permissions = contextRes.ok ? contextRes.data.data.permissions ?? [] : null
   const unreadCount = unreadRes.ok ? unreadRes.data.data.unread_count : 0
+  const solo = contextRes.ok ? Boolean(contextRes.data.data.solo) : false
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--color-background)' }}>
@@ -69,6 +71,7 @@ export default async function WorkspaceBusinessLayout({
         moduleStates={moduleStates}
         permissions={permissions}
         unreadCount={unreadCount}
+        solo={solo}
       />
       <main className="ws-page" style={{ flex: 1, minWidth: 0 }}>
         {children}

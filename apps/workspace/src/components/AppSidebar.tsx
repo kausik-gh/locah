@@ -104,12 +104,15 @@ export function AppSidebar({
   moduleStates,
   permissions,
   unreadCount,
+  solo = false,
 }: {
   businessId: string
   businesses: NavBusiness[]
   moduleStates: Record<string, string>
   permissions: string[] | null
   unreadCount: number
+  /** One person runs this business: no team menus, one calendar (OM-21). */
+  solo?: boolean
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -154,7 +157,7 @@ export function AppSidebar({
   }
 
   const base = `/b/${businessId}`
-  const areas = useMemo(() => visibleAreas(moduleStates, permissions), [moduleStates, permissions])
+  const areas = useMemo(() => visibleAreas(moduleStates, permissions, solo), [moduleStates, permissions, solo])
   // The most specific link that matches the page is the active one, so
   // Settings › Automations does not also light up Business settings.
   const activeHref = useMemo(() => {
@@ -256,6 +259,10 @@ export function AppSidebar({
                 collapsed={railed}
                 badge={unreadCount}
               />
+              {area.children.filter((c) => c.href !== '').map((item) => (
+                <NavLink key={item.href} href={`${base}${item.href}`} label={item.label}
+                  active={isActive(item.href)} collapsed={railed} />
+              ))}
             </div>
           ) : (
             <div key={area.key} role="group" aria-label={area.label}>

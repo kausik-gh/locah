@@ -847,3 +847,23 @@ ul.bos-pills { list-style: none; margin: 0; padding: 0; }
 @media (max-width: 700px) { .bos-seg-rule { grid-template-columns: 1fr 1fr; } }
 .bos-seg-rule > * { min-width: 0; }
 .bos-seg-rule input, .bos-seg-rule select { width: 100%; min-width: 0; box-sizing: border-box; }
+
+/* Their data (P1-10E3, DPDP export / erasure). */
+.bos-privacy { margin-top: 1.5rem; max-width: 40rem; }
+.bos-privacy__ask { border: 1px solid var(--status-warn-bd); background: var(--status-warn-bg); border-radius: var(--radius); padding: .7rem .9rem; margin-bottom: .8rem; }
+.bos-privacy__ask p { margin: 0 0 .5rem; }
+.bos-privacy__decline { display: flex; flex-wrap: wrap; gap: .5rem; }
+.bos-privacy__decline input { flex: 1 1 16rem; min-width: 0; }
+.bos-privacy__open { margin: .3rem 0 0; padding-left: 1.1rem; }
+.bos-privacy__erase ul { margin: .3rem 0 .8rem; padding-left: 1.1rem; font-size: .9rem; color: var(--color-muted); }
+.bos-danger { background: var(--status-bad-fg); border-color: var(--status-bad-fg); color: #fff; margin-top: .6rem; }
+.bos-danger:disabled { opacity: .5; }
+
+/* Calendar (P1-10E4, OM-21): one agenda for the days ahead. */
+.bos-agenda { list-style: none; padding: 0; margin: .4rem 0 0; display: grid; gap: .4rem; }
+.bos-agenda__row { display: grid; grid-template-columns: 6.5rem 1fr; gap: .8rem; align-items: baseline; padding: .6rem .8rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); text-decoration: none; color: inherit; min-height: 44px; }
+.bos-agenda__row:hover { border-color: var(--color-primary); }
+.bos-agenda__time { font-variant-numeric: tabular-nums; font-weight: 600; }
+.bos-agenda__what { display: grid; gap: .1rem; min-width: 0; }
+.bos-agenda__what span { color: var(--color-muted); font-size: .88rem; }
+@media (max-width: 700px) { .bos-agenda__row { grid-template-columns: 4.8rem 1fr; } }

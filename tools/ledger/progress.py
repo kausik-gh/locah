@@ -611,3 +611,25 @@ done("P1-10E", {
                   perm="✓ customers.read to view, customers.update to save", ws="✓ Customers › Segments (builder, list, members)",
                   test=_SEG_TEST),
 })
+
+
+# ---------------------------------------------------------------- P1-10E3 per-customer export and erasure (MD §25.1 DPDP)
+_DPDP_TEST = ("✓ test_customer_privacy (3, platform_api RLS role: export, request, blockers, erasure, kept bill, "
+              "permissions, location scope, isolation) + browser p1_10e_privacy (17/17, Playwright Chromium), desktop + 390 px")
+done("P1-10E", {
+    "CR-08": dict(status=C, code="per-customer export (their record, consents, notes, activity, orders with lines and delivery address, bookings, bills, payments, khata with entries, memberships, quotes, enquiries, reviews, WhatsApp messages) as one file — by the owner on the customer page and by the customer from 'My account' on the business's site; erasure removes name, phone, email, tags, notes, enquiry text, WhatsApp chat, delivery addresses and their My Activity entries, withdraws consents, and keeps issued bills (buyer as billed, CGST Act s.36) and khata entries on an anonymous record; it waits while an order is in progress, a booking is upcoming, a membership runs or a khata balance stands, and needs the name typed; the customer's erasure request reaches the owner (Home + notification), who erases or declines with a reason the customer sees. Export and erasure need a whole-business viewer; erasure needs the new customers.erase (owner by default); the audit records who and when, never the erased details",
+                  db="✓ contacts.erased_at, customer_relationships_privacy_requests (RLS)",
+                  svc="✓ customers/privacy.py; /customers/{id}/export|erase|privacy, /customers/privacy-requests, /me/businesses/{slug}/my-data|erasure-request",
+                  perm="✓ customers.export, customers.erase (new), whole-business only", ws="✓ Customer › Their data; Home request",
+                  cust="✓ My account › Your details (download, ask to delete, status)", web="✓", test=_DPDP_TEST),
+    "CO-01": dict(status=P, code="consent store (PM-08), per-customer export and erasure (CR-08) and the retention defaults stated at erasure (bills 72 months, khata entries 8 years, sales records kept without name) are built; automatic purging on those periods is not, and guardian-first flows arrive with Academics (§20.4, P5). DPDP Rules commencement dates were not verified online in this build (no network lookups made)",
+                  test=_DPDP_TEST),
+})
+
+
+# ---------------------------------------------------------------- P1-10E4 solo businesses (MD §22)
+done("P1-10E", {
+    "OM-21": dict(status=P, code="a business whose organisation shape is solo (chosen, or its family's default) and that has one active member gets no team menus (People, Roles, Staff & rota), a Calendar under Home — bookings, orders wanted for a day, follow-ups, memberships ending and licences due in one list, each opening its record, within the viewer's permissions — and 'Invite someone' under Settings; a second person joining brings the team menus back. 'AI employees act as the staff' waits for the AI employee runtime (P3)",
+                  svc="✓ /me/context solo; GET /calendar (services/one_calendar.py)", ws="✓ solo navigation; Home › Calendar",
+                  test="✓ test_solo_calendar (2) + browser p1_10e_solo (10/10, Playwright Chromium), desktop + 390 px"),
+})

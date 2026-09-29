@@ -182,6 +182,15 @@ class _Ctx:
             if low:
                 items.append(_item("items low or out of stock", len(low), "/inventory?stock_status=low_stock",
                                    ", ".join(r["title"] for r in low[:3])))
+        if self.can("customers.erase", "customer-relationships"):
+            # DPDP (MD §25.1): a customer asked for their details to be deleted.
+            from platform_core.customers.privacy import PrivacyRequests
+
+            asks = [r for r in await PrivacyRequests.open_for(self.s, self.b) if r["kind"] == "erasure"]
+            if asks:
+                items.append(_item("customers asked you to delete their details", len(asks),
+                                   f"/customers/{asks[0]['contact_id']}" if len(asks) == 1 else "/customers",
+                                   ", ".join(str(r["display_name"]) for r in asks[:3]), tone="bad"))
         if self.can("offerings.update", "offerings-catalog"):
             # OK-15: items priced from a daily rate keep yesterday's price until today's is entered.
             from platform_core.pricing.formula import RateService
@@ -228,7 +237,7 @@ class _Ctx:
                 ComplianceItem.due_on <= today + timedelta(days=7),
             ).order_by(ComplianceItem.due_on).limit(100))).scalars())
             if due_items:
-                items.append(_item("licences or filings needing attention", len(due_items), "/licences",
+                items.append(_item("licences or filings needing attention", len(due_items), "/compliance",
                                    ", ".join(row.title for row in due_items[:3]), tone="bad"))
         late = [b for b in await self._open_bills() if b["overdue"]]
         if late:

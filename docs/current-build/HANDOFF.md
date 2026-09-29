@@ -22,6 +22,8 @@ Branch `main`. Packets done, newest last:
 | P1-10C module-aware website + Marketplace | 366ad71 | test_module_aware_site (11) + browser p1_10c_site 21/21; suite 1059 |
 | P1-10D1 collect what is due (payments) | see git log ("feat(p1-10d1)… browser-verified") | test_payment_collect (15) + browser p1_10d1_payments 83/83 (Playwright Chromium, desktop + 390 px); suite 1073 |
 | P1-10D2a dated pre-orders | see git log ("feat(p1-10d2a)") | test_preorders (10) + browser p1_10d2_preorders 31/31; p1_03, p1_08, p1_10b, p1_10d1 re-run green on the new checkout; suite 1083 |
+| P1-10E4 solo navigation + calendar | see git log ("feat(p1-10e3, p1-10e4)") | test_solo_calendar (2) + browser p1_10e_solo 10/10 (desktop + 390 px) |
+| P1-10E3 DPDP export + erasure | see git log ("feat(p1-10e3, p1-10e4)") | test_customer_privacy (3) + browser p1_10e_privacy 17/17 (desktop + 390 px) |
 | P1-10E2 tags + segments | see git log ("feat(p1-10e2)") | test_customer_segments (5) + browser p1_10e_segments 13/13 (desktop + 390 px) |
 | P1-10E1 basic insights | see git log ("feat(p1-10e1)") | test_basic_insights (5) + browser p1_10e_insights 14/14 (desktop + 390 px); payments-collect, role-home tests re-run |
 | P1-10D2b formula pricing | see git log ("feat(p1-10d2b)") | test_formula_pricing (7) + browser p1_10d2_formula 28/28 (Playwright Chromium, desktop + 390 px); suite 1090 |
@@ -48,6 +50,13 @@ ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 P1 gate after P1-10E2: **TOTAL 261 · COMPLETE 140 · PARTIAL 94 · NOT_STARTED 5 ·
 ACTIVATION_REQUIRED 22 · FUTURE 0.**
+
+P1 gate after P1-10E3: **TOTAL 261 · COMPLETE 141 · PARTIAL 95 · NOT_STARTED 3 ·
+ACTIVATION_REQUIRED 22 · FUTURE 0.**
+
+P1 gate after P1-10E4: **TOTAL 261 · COMPLETE 141 · PARTIAL 96 · NOT_STARTED 2 ·
+ACTIVATION_REQUIRED 22 · FUTURE 0.** Full suite before E4: 1102 passed + the
+permission-registry parity test fixed (TS `CUSTOMERS_ERASE` added).
 
 ### Founder refinements (authority 1) — read before touching these modules
 
@@ -80,6 +89,40 @@ MD §11.2 closes the AI Receptionist's tool list ("Nothing else") and §11.3
 sends restaurant phone orders to a WhatsApp link; the Orders refinement
 authorises AI phone ordering for simple orders where enabled. The founder
 wins; the WhatsApp-link/human path remains for long, custom or risky orders.
+
+### P1-10E4 — solo businesses: no team menus, one calendar (DONE, browser-verified; OM-21 PARTIAL)
+
+- `business_classification.run_solo(session, business_id)`: org shape (chosen
+  or family default) is `solo` AND one active member. `/v1/me/context` returns
+  `solo`; the Workspace layout passes it to `AppSidebar` → `visibleAreas(...,
+  solo)`; nav children carry `shape: 'solo' | 'team'` (Team area items are
+  `team`; Home › Calendar and Settings › Invite someone are `solo`). The
+  sidebar now renders extra Home-area children after Notifications.
+- `services/one_calendar.py` + `GET /v1/platform/businesses/{id}/calendar?days=7|30`
+  (any member; each kind gated by permission + tool); page `/b/{id}/calendar`.
+- Fixed in passing: Home's "licences or filings" link pointed to `/licences`
+  (no such page) — now `/compliance`.
+- Open: "AI employees act as the staff" (P3 AI runtime).
+
+### P1-10E3 — per-customer export and erasure (DONE, browser-verified)
+
+- Migration `20260929150000_p1_customer_privacy.sql`: `contacts.erased_at`,
+  `customer_relationships_privacy_requests` (access/erasure, open/done/declined,
+  one open erasure per contact; RLS; no DELETE). Applied to local DBs only.
+- New permission `customers.erase` (in `permissions.py`; owner gets it through
+  ALL_PERMISSIONS, no template grants it).
+- `platform_core/customers/privacy.py`: `export`, `blockers`, `erase`
+  (explicit per-table SQL, business-scoped), `KEPT` (retention defaults shown
+  and returned), `PrivacyRequests`. Staff routes in `v1_platform_customers.py`
+  (`/privacy-requests` declared before `/{customer_id}`); customer routes in
+  `v1_me.py` (`/businesses/{slug}/my-data`, `/erasure-request`).
+- Workspace: customer page "Their data" (request + decline, download, erase
+  with blockers / what stays / type-the-name); Home "customers asked you to
+  delete their details". Tenant site: My account › Your details (download via
+  `/{slug}/account/my-data` route handler, ask to delete, status/decline reason).
+- Open (CO-01 PARTIAL): no automatic purge on the retention periods; guardian
+  flows are P5; the customer is not messaged when erased/declined (they see it
+  in their account).
 
 ### P1-10E2 — customer tags and rule-built segments (DONE, browser-verified)
 
@@ -292,17 +335,15 @@ wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 
 ## Remaining work snapshot (P1 first)
 
-P1 NOT_STARTED (5): FR-OR-18 (order edits that revalidate), CR-08 + CO-01
-(DPDP export/erase), OM-21 (solo navigation), PKT-10 (P1-10 packet —
-languages remain).
+P1 NOT_STARTED (2): FR-OR-18 (order edits that revalidate), PKT-10 (P1-10
+packet — languages remain).
 P1 PARTIAL groups: FD-02 (portal items with Academics), FD-03 (strategy
 placement of tool sections), OM-09 (portfolio kind), OM-18 (digital delivery),
 GP-22 + PR-10 (English/Tamil/Hindi), payments provider (Cashfree =
 ACTIVATION), playbook rows waiting on P2–P5 modules.
 
 Planned next packets (dependency order):
-1. **P1-10E** (E1 insights, E2 tags + segments done) → E3 DPDP per-customer export/erase (CR-08, CO-01) → E4 solo
-   navigation (OM-21) → E5 order edits that revalidate + phone-order screen
+1. **P1-10E** (E1 insights, E2 tags + segments, E3 DPDP, E4 solo done) → E5 order edits that revalidate + phone-order screen
    (FR-OR-18, FR-OR-13) → E6 English/Tamil/Hindi strings (PKT-10, PR-10);
    then the P1 gate.
 2. P2 → P5 per MD §26.2 / ledger sections W–AL, then E2E flows (section BG).

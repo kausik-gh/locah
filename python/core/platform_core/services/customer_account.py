@@ -218,7 +218,7 @@ class CustomerAccountService:
         slug = business.slug
         out: dict[str, Any] = {"business": {"id": str(business.id), "slug": slug, "name": business.display_name},
                                "linked": bool(mine), "orders": [], "bookings": [], "bills": [], "quotes": [],
-                               "memberships": [], "khata": None}
+                               "memberships": [], "khata": None, "erasure_request": None}
         if not mine:
             return out
         now = datetime.now(timezone.utc)
@@ -296,6 +296,12 @@ class CustomerAccountService:
                 acct.public_token_hash = _hash(token)
                 await session.flush()
             out["khata"] = {"balance": _f(acct.balance), "url": f"/{slug}/khata/{token}"}
+        # DPDP (MD §25.1): their latest request to delete their details, and how it stands.
+        ask = (await session.execute(text(
+            "SELECT status, created_at, resolution_note FROM customer_relationships_privacy_requests "
+            "WHERE business_id = CAST(:b AS uuid) AND contact_id = ANY(CAST(:ids AS uuid[])) AND kind = 'erasure' "
+            "ORDER BY created_at DESC LIMIT 1"), {"b": str(business.id), "ids": [str(c) for c in mine]})).first()
+        out["erasure_request"] = {"status": ask[0], "asked_at": ask[1].isoformat(), "reason": ask[2]} if ask else None
         return out
 
     # ------------------------------------------------------------ order again
