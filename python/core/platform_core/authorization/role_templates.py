@@ -32,7 +32,7 @@ CURRENT_PHASES = frozenset({"P1"})
 # provider and the sales executive, since assignment scope is enforced (P2-01).
 # Their later tools (a provider's crew app, a sales executive's site visits)
 # join their permissions as those ship.
-READY_AHEAD = frozenset({"provider", "sales_executive"})
+READY_AHEAD = frozenset({"provider", "sales_executive", "technician", "teacher"})
 
 
 @dataclass(frozen=True)
@@ -69,6 +69,8 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
             p.CUSTOMERS_READ, p.CUSTOMERS_UPDATE, p.CUSTOMERS_MANAGE_NOTES,
             p.LEADS_READ, p.LEADS_CREATE, p.LEADS_UPDATE_STATUS, p.LEADS_ASSIGN,
             p.PROJECTS_READ, p.PROJECTS_CREATE, p.PROJECTS_UPDATE, p.PROJECTS_MANAGE_LIFECYCLE, p.PROJECTS_ASSIGN,
+            p.JOBS_READ, p.JOBS_CREATE, p.JOBS_ASSIGN, p.JOBS_COMPLETE, p.JOBS_USE_PARTS,
+            p.ACADEMICS_READ, p.ACADEMICS_MANAGE, p.ACADEMICS_TEACH,
             p.INVENTORY_READ, p.INVENTORY_ADJUST, p.INVENTORY_EXPORT, p.INVENTORY_APPROVE, p.INVENTORY_COST,
             p.FULFILMENT_READ, p.FULFILMENT_UPDATE_STATUS, p.FULFILMENT_MANAGE_CONFIG,
             p.OFFERINGS_READ, p.OFFERINGS_UPDATE, p.OFFERINGS_MANAGE_AVAILABILITY,
@@ -139,8 +141,10 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
         ("fulfilment",), "P2",
     ),
     RoleTemplate(
-        "technician", "Technician", "Assigned job cards, parts used, photos and that asset's service history",
-        "assignment", "crew", "My next job", frozenset(), (), "P5",
+        "technician", "Technician", "Assigned job cards, parts used and that asset's service history",
+        "assignment", "workspace", "My next job",
+        _READ_BASICS | {p.JOBS_READ, p.JOBS_COMPLETE, p.JOBS_USE_PARTS, p.INVENTORY_READ},
+        ("jobs",), "P5",
     ),
     RoleTemplate(
         "housekeeping", "Housekeeping", "Assigned room and area tasks",
@@ -154,8 +158,10 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
         ("leads", "quotes"), "P2",
     ),
     RoleTemplate(
-        "teacher", "Teacher", "Own batches: attendance, assessments, announcements",
-        "assignment", "workspace", "Today's classes", frozenset(), (), "P5",
+        "teacher", "Teacher", "Own batches: classes, marks and notices. Not the customer book and not fees",
+        "assignment", "workspace", "Today's classes",
+        _READ_BASICS | {p.ACADEMICS_READ, p.ACADEMICS_TEACH},
+        ("academics",), "P5",
     ),
     RoleTemplate(
         "marketer", "Marketer", "Campaigns and audiences as counts; cannot export phone numbers",
@@ -219,6 +225,10 @@ PERMISSION_WORDS: dict[str, str] = {
     "permissions.read": "See who can do what", "permissions.update": "Change who can do what",
     "projects.read": "See projects", "projects.create": "Start projects", "projects.update": "Edit projects",
     "projects.manage_lifecycle": "Open and close projects", "projects.assign": "Assign project work",
+    "jobs.read": "See job cards", "jobs.create": "Start job cards", "jobs.assign": "Assign job cards",
+    "jobs.complete": "Move a job card along and complete it", "jobs.use_parts": "Record parts used on a job",
+    "academics.read": "See courses and batches", "academics.manage": "Create courses, batches and enrolments",
+    "academics.teach": "Schedule classes, enter marks and post notices",
     "quotes.read": "See quotes", "quotes.create": "Write quotes", "quotes.update": "Edit quotes",
     "quotes.issue": "Send quotes",
     "settings.read": "See settings", "settings.update": "Change settings",

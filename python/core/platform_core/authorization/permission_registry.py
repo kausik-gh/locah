@@ -34,6 +34,9 @@ _RESOURCE_LABELS: dict[str, str] = {
     "inventory": "Inventory",
     "fulfilment": "Fulfilment",
     "workforce": "Workforce",
+    "projects": "Projects",
+    "jobs": "Job cards",
+    "academics": "Courses & batches",
 }
 
 
