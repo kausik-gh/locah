@@ -88,6 +88,11 @@ POS_USE = "pos.use"
 POS_APPROVE = "pos.approve"
 POS_CONFIGURE = "pos.configure"
 
+# Kitchen display (Capability Universe §7.1–§7.2). The pass, not the order.
+KITCHEN_READ = "kitchen.read"
+KITCHEN_ADVANCE = "kitchen.advance"
+KITCHEN_CONFIGURE = "kitchen.configure"
+
 # Khata / credit book (Capability Universe §6.2, §14.5): seeing who owes what,
 # recording credit and money received, and setting limits / correcting.
 LEDGER_READ = "ledger.read"

@@ -26,13 +26,13 @@ SCOPE_WORDS = {
 }
 SURFACES = {"workspace": "Workspace", "pos": "Counter billing (POS)", "crew": "Crew app", "kitchen": "Kitchen display"}
 # Surfaces that exist today (POS since P1-05); crew and kitchen join in P2.
-BUILT_SURFACES = frozenset({"workspace", "pos"})
+BUILT_SURFACES = frozenset({"workspace", "pos", "kitchen"})
 CURRENT_PHASES = frozenset({"P1"})
 # Later-phase roles whose scope, surface and permissions all work today: the
 # provider and the sales executive, since assignment scope is enforced (P2-01).
 # Their later tools (a provider's crew app, a sales executive's site visits)
 # join their permissions as those ship.
-READY_AHEAD = frozenset({"provider", "sales_executive"})
+READY_AHEAD = frozenset({"provider", "sales_executive", "kitchen"})
 
 
 @dataclass(frozen=True)
@@ -78,6 +78,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
             p.MODULES_READ,
             p.INVOICES_READ, p.INVOICES_ISSUE, p.INVOICES_CANCEL, p.INVOICES_RECORD_PAYMENT,
             p.POS_USE, p.POS_APPROVE, p.LEDGER_READ, p.LEDGER_RECORD,
+            p.KITCHEN_READ, p.KITCHEN_ADVANCE, p.KITCHEN_CONFIGURE,
             p.MESSAGING_READ, p.MESSAGING_REPLY, p.REVIEWS_READ, p.REVIEWS_REPLY, p.COMPLIANCE_READ,
         },
         (), "P1", system_role=p.ROLE_MANAGER,
@@ -125,7 +126,8 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
     ),
     RoleTemplate(
         "kitchen", "Kitchen", "Tickets for their station; no prices or phone numbers",
-        "location", "kitchen", "What to cook next", frozenset({p.ORDERS_READ}), ("orders",), "P2",
+        "location", "kitchen", "What to cook next",
+        _READ_BASICS | {p.KITCHEN_READ, p.KITCHEN_ADVANCE}, ("kitchen",), "P2",
     ),
     RoleTemplate(
         "dispatcher", "Dispatcher", "Dispatch board: assign crew, reassign failed jobs",
@@ -192,6 +194,8 @@ PERMISSION_WORDS: dict[str, str] = {
     "compliance.read": "See licences and filing dates", "compliance.manage": "Record and renew licences and filings",
     "pos.use": "Bill at the counter and run a cash shift", "pos.approve": "Approve counter overrides with a PIN",
     "pos.configure": "Set counter billing rules",
+    "kitchen.read": "See the kitchen pass", "kitchen.advance": "Start, ready and serve tickets",
+    "kitchen.configure": "Choose kitchen stations and what each one cooks",
     "invoices.read": "See bills and invoices", "invoices.issue": "Issue bills and credit notes",
     "invoices.cancel": "Cancel bills", "invoices.record_payment": "Record money received on bills",
     "invoices.export": "Export for the CA", "invoices.configure": "Set up GST and tax rates",

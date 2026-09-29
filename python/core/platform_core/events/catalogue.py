@@ -296,6 +296,17 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "ledger.limit.overridden",
         }
     ),
+    # Capability Universe §6.2 kitchen. Preparation truth, not a second order.
+    # `kitchen.preparation.completed` is the event Recipe/BOM subscribes to.
+    "kitchen": frozenset(
+        {
+            "kitchen.ticket.created",
+            "kitchen.ticket.started",
+            "kitchen.ticket.ready",
+            "kitchen.preparation.completed",
+            "kitchen.ticket.cancelled",
+        }
+    ),
     # Capability Universe §17 — verified reviews and their moderation.
     "reviews": frozenset(
         {

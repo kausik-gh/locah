@@ -47,6 +47,8 @@ export const AREAS: NavArea[] = [
     children: [
       { href: '~/pos', label: 'Counter (POS)', perm: 'pos.use', module: 'pos' },
       { href: '/orders', label: 'Orders', perm: 'orders.read', module: 'orders' },
+      { href: '~/kds', label: 'Kitchen display', perm: 'kitchen.read', module: 'kitchen' },
+      { href: '/kitchen', label: 'Kitchen stations', perm: 'kitchen.configure', module: 'kitchen' },
       { href: '/bookings', label: 'Bookings', perm: 'bookings.read', module: 'bookings' },
       { href: '/fulfilment', label: 'Deliveries & pickup', perm: 'fulfilment.read', module: 'fulfilment' },
       { href: '/memberships', label: 'Memberships', perm: 'memberships.read', module: 'memberships' },

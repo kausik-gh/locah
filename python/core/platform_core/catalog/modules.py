@@ -242,7 +242,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         "kitchen", "Kitchen display", "P2",
         "Order tickets by kitchen station with bump and prep timers.",
         staff_can=("See what to cook next", "Bump tickets when done"),
-        packs=("food_service",), depends_on=("orders",), surfaces=("kitchen",),
+        packs=("food_service",), depends_on=("orders",), surfaces=("kitchen",), built=True,
     ),
     ModuleInfo(
         "marketing", "Campaigns & offers", "P3",

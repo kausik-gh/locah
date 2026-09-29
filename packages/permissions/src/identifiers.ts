@@ -101,6 +101,11 @@ export const PERMISSIONS = {
   POS_APPROVE: 'pos.approve',
   POS_CONFIGURE: 'pos.configure',
 
+  // Module: kitchen — the pass. No prices and no phone numbers.
+  KITCHEN_READ: 'kitchen.read',
+  KITCHEN_ADVANCE: 'kitchen.advance',
+  KITCHEN_CONFIGURE: 'kitchen.configure',
+
   // Module: ledger — khata / credit book (Capability Universe §14.5)
   LEDGER_READ: 'ledger.read',
   LEDGER_RECORD: 'ledger.record',

@@ -64,6 +64,7 @@ from platform_api.routers import (
     v1_platform_ledger,
     v1_platform_messaging,
     v1_platform_pos,
+    v1_platform_kitchen,
     v1_reviews,
     v1_admin_reviews,
     v1_compliance,
@@ -256,6 +257,7 @@ app.include_router(v1_platform_ledger.router)
 app.include_router(v1_platform_ledger.public_router)
 app.include_router(v1_platform_messaging.router)
 app.include_router(v1_platform_pos.router)
+app.include_router(v1_platform_kitchen.router)
 app.include_router(v1_reviews.router)
 app.include_router(v1_reviews.public_router)
 app.include_router(v1_admin_reviews.router)
