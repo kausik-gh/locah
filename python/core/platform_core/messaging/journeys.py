@@ -335,9 +335,19 @@ async def _next_choice(ctx: Ctx, offering: Offering) -> bool:
                               [(f"o:pack:{i}", str(pk["label"]), "") for i, pk in enumerate(packs[:10])]))
         return True
     choices = dict(opts.get("choices") or {})
+    notes = dict(opts.get("notes") or {})
     for gi, g in enumerate(offering.option_groups or []):
-        if g["name"] in choices or f"skip:{g['name']}" in (p.get("skipped") or []):
+        if g["name"] in choices or g["name"] in notes or f"skip:{g['name']}" in (p.get("skipped") or []):
             continue
+        if g.get("text"):
+            # The message on the cake: the customer types it (or skips it when it is optional).
+            ctx.save(step="note", note_group=gi)
+            ask = f"{offering.title}: type the {g['name'].lower()} (up to {g['max_length']} letters)."
+            if g["required"]:
+                await ctx.say(ask)
+            else:
+                await ctx.ask(buttons(ask, [("o:note:-", f"No {g['name'].lower()}")]))
+            return True
         rows = [(f"o:opt:{gi}:{ci}", str(c["label"]),
                  f"+{_inr(c['price_delta'])}" if Decimal(str(c["price_delta"])) else "")
                 for ci, c in enumerate(g["choices"][:9])]
@@ -381,6 +391,34 @@ async def order_option(ctx: Ctx, arg: str) -> bool:
         opts["choices"] = {**(opts.get("choices") or {}), g["name"]: [g["choices"][int(ci)]["label"]]}
         p["options"] = opts
     ctx.save(pending=p)
+    return await _next_choice(ctx, offering)
+
+
+async def order_note(ctx: Ctx, arg: str) -> bool:
+    """Skip an optional text box."""
+    p = dict(ctx.j.get("pending") or {})
+    offering = await _pending_offering(ctx)
+    g = (offering.option_groups or [])[int(ctx.j.get("note_group") or 0)]
+    p["skipped"] = [*(p.get("skipped") or []), f"skip:{g['name']}"]
+    ctx.save(pending=p, step=None)
+    return await _next_choice(ctx, offering)
+
+
+async def _note_typed(ctx: Ctx, said: str) -> bool:
+    p = dict(ctx.j.get("pending") or {})
+    if not p:
+        ctx.save(step=None)
+        return False
+    offering = await _pending_offering(ctx)
+    g = (offering.option_groups or [])[int(ctx.j.get("note_group") or 0)]
+    value = " ".join(said.split())
+    if len(value) > int(g["max_length"]):
+        await ctx.say(f"That is {len(value)} letters — up to {g['max_length']}, please. Type it again.")
+        return True
+    opts = dict(p.get("options") or {})
+    opts["notes"] = {**(opts.get("notes") or {}), g["name"]: value}
+    p["options"] = opts
+    ctx.save(pending=p, step=None)
     return await _next_choice(ctx, offering)
 
 
@@ -477,6 +515,8 @@ async def order_checkout(ctx: Ctx, arg: str) -> bool:
     priced = await _price_cart(ctx, cart)
     if priced["problems"]:
         return await _fix_problems(ctx, priced)
+    if not ctx.j.get("due") and await _ask_due(ctx, priced):
+        return True
     modes = [m for m in await FulfilmentService.active_modes(ctx.session, ctx.business.id)
              if m in ("delivery", "pickup")]
     if not modes:
@@ -488,6 +528,67 @@ async def order_checkout(ctx: Ctx, arg: str) -> bool:
     await ctx.ask(buttons(_cart_text(priced) + "\n\nDelivery or pickup?",
                           [("o:mode:delivery", "Delivery"), ("o:mode:pickup", "Pickup")]))
     return True
+
+
+async def _preorder_plan(ctx: Ctx, priced: dict[str, Any], wanted: Any = None) -> tuple[Any, Any]:
+    """The same pre-order answer the website and a phone order get (P1-10D2)."""
+    from platform_core.orders import preorder as po
+
+    cart = list(ctx.j.get("cart") or [])
+    location = await ctx.session.get(BusinessLocation, await _stock_location(ctx))
+    lines = await po.lines_for(ctx.session, ctx.business.id, [
+        (uuid.UUID(str(cart[ln["i"]]["offering_id"])), ln["qty"], ln["total"]) for ln in priced["lines"]])
+    zone = po.zone_of(location)
+    plan = await po.plan(ctx.session, business_id=ctx.business.id, location=location, lines=lines,
+                         requested=po.parse_requested(wanted, zone) if wanted else None, require=False)
+    return plan, zone
+
+
+async def _ask_due(ctx: Ctx, priced: dict[str, Any]) -> bool:
+    """Items made to order need a day (and a time when there is a choice)."""
+    plan, _ = await _preorder_plan(ctx, priced)
+    if not plan.offered:
+        return False
+    rows = [(f"o:due:{d['date']}", d["label"], ", ".join(_hour(t) for t in d["times"]))
+            for d in plan.dates if not d["full"]][:9]
+    if not plan.needed:
+        rows.insert(0, ("o:due:-", "As soon as possible", ""))
+    if not rows:
+        await ctx.ask(buttons("No day is open for these items right now.",
+                              [("talk_to_person", "Talk to a person"), ("o:start", "Change the cart")]))
+        return True
+    head = "When do you need it?" + (f" Earliest: {plan.public(_)['earliest_words']}." if plan.earliest else "")
+    await ctx.ask(listing(head, "Days", rows))
+    return True
+
+
+def _hour(hhmm: str) -> str:
+    t = time.fromisoformat(hhmm)
+    return t.strftime("%I:%M %p").lstrip("0").replace(":00 ", " ").lower()
+
+
+async def order_due(ctx: Ctx, arg: str) -> bool:
+    if arg == "-":
+        ctx.save(due="asap")
+        return await order_checkout(ctx, "")
+    priced = await _price_cart(ctx, list(ctx.j.get("cart") or []))
+    plan, _ = await _preorder_plan(ctx, priced)
+    day = next((d for d in plan.dates if d["date"] == arg and not d["full"]), None)
+    if day is None:
+        await ctx.say("That day is not open any more.")
+        return await _ask_due(ctx, priced)
+    if len(day["times"]) == 1:
+        ctx.save(due={"date": arg, "time": day["times"][0]})
+        return await order_checkout(ctx, "")
+    await ctx.ask(listing(f"{day['label']}: what time?", "Times",
+                          [(f"o:dtime:{arg}T{t}", _hour(t), "") for t in day["times"][:10]]))
+    return True
+
+
+async def order_due_time(ctx: Ctx, arg: str) -> bool:
+    day, _, at = arg.partition("T")
+    ctx.save(due={"date": day, "time": at})
+    return await order_checkout(ctx, "")
 
 
 def _cart_text(priced: dict[str, Any], charge: Decimal = Decimal(0)) -> str:
@@ -635,7 +736,16 @@ async def _payment(ctx: Ctx) -> bool:
     where = f"Deliver to {_t(_address_words(ctx.j.get('address') or {}), 120)}" if ctx.j.get("mode") == "delivery" \
         else "Pickup"
     pay = "Pay on delivery" if ctx.j.get("mode") == "delivery" else "Pay at pickup"
-    await ctx.ask(buttons(f"{_cart_text(priced, charge)}\n{where} · {pay}\n\nPlace this order?",
+    wanted = ctx.j.get("due") if isinstance(ctx.j.get("due"), dict) else None
+    ahead = ""
+    if wanted:
+        plan, zone = await _preorder_plan(ctx, priced, wanted)
+        from platform_core.orders.preorder import when_words
+
+        ahead = f"\nReady: {when_words(plan.due_at, zone)}" if plan.due_at else ""
+        if plan.advance > 0:
+            ahead += f"\nAdvance {_inr(plan.advance)} now (a link to pay it follows), the rest at {pay.split()[-1]}"
+    await ctx.ask(buttons(f"{_cart_text(priced, charge)}\n{where} · {pay}{ahead}\n\nPlace this order?",
                           [("o:place", "Place order"), ("o:start", "Change"), ("o:clear", "Cancel")]))
     return True
 
@@ -671,6 +781,7 @@ async def order_place(ctx: Ctx, arg: str) -> bool:
                                                                           "quantity")} for line in j["cart"]],
                      "fulfilment_mode": j.get("mode") or "pickup", "payment_method": "cod",
                      "delivery_address": j.get("address") if j.get("mode") == "delivery" else None,
+                     "due": j.get("due") if isinstance(j.get("due"), dict) else None,
                      "idempotency_key": f"wa-{ctx.conv.id}-{j.get('cart_id')}", "channel": "whatsapp"})
     except PlatformError as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
@@ -682,15 +793,17 @@ async def order_place(ctx: Ctx, arg: str) -> bool:
     order = result["order"]
     track = business_site_url(ctx.business.slug, f"/track/{order['id']}?token={result['tracking']['token']}")
     ctx.save(cart=None, cart_id=None, pending=None, confirmed_total=None, charge=None, address=None, mode=None,
-             modes=None, last_address=None, pay=None, cat=None, last_order=order["order_number"])
+             modes=None, last_address=None, pay=None, cat=None, due=None, last_order=order["order_number"])
     await ctx.say(f"Order {order['order_number']} placed for {_inr(order['total_amount'])}. "
                   f"{ctx.business.display_name} will confirm it here. Follow it: {track}")
+    if result.get("advance"):
+        await ctx.say(f"Please pay the {_inr(result['advance']['amount'])} advance here: {result['advance']['url']}")
     return True
 
 
 async def order_clear(ctx: Ctx, arg: str) -> bool:
     ctx.save(cart=None, cart_id=None, pending=None, confirmed_total=None, charge=None, address=None, mode=None,
-             step=None)
+             step=None, due=None)
     await ctx.say("Cart cleared. Send menu any time.")
     return True
 
@@ -1021,9 +1134,9 @@ async def cancel_pick(ctx: Ctx, arg: str) -> bool:
         o = await ctx.session.get(SalesOrder, uuid.UUID(rid))
         if o is None or o.customer_contact_id != (ctx.contact.id if ctx.contact else None):
             return await cancel_start(ctx, "")
-        if o.status != "pending":
-            await ctx.ask(buttons(f"Order {o.order_number} is already {STATUS_WORDS.get(o.status, o.status)}, so it "
-                                  "can't be cancelled here.", [("talk_to_person", "Talk to a person"), ("menu", "Menu")]))
+        why = _why_not_cancel(o)
+        if why:
+            await ctx.ask(buttons(why, [("talk_to_person", "Talk to a person"), ("menu", "Menu")]))
             return True
         await ctx.ask(buttons(f"Cancel order {o.order_number}?", [("c:yes", "Yes, cancel it"), ("menu", "Keep it")]))
         return True
@@ -1034,6 +1147,23 @@ async def cancel_pick(ctx: Ctx, arg: str) -> bool:
     await ctx.ask(buttons(f"{b.title} on {local}.", [("c:yes", "Cancel it"), ("m:book", "Book another time"),
                                                      ("talk_to_person", "Talk to a person")]))
     return True
+
+
+def _why_not_cancel(o: SalesOrder) -> str | None:
+    """A customer cancels an order while it waits to be accepted; an order for a
+    day (a pre-order) until the notice its terms gave (P1-10D2)."""
+    hours = (o.preorder_terms or {}).get("cancel_hours") if o.due_at else None
+    if o.due_at is not None and hours is not None:
+        if o.status not in ("pending", "accepted"):
+            return (f"Order {o.order_number} is already {STATUS_WORDS.get(o.status, o.status)}, so it "
+                    "can't be cancelled here.")
+        if datetime.now(timezone.utc) > o.due_at - timedelta(hours=int(hours)):
+            return f"It's too close to the day to cancel here ({hours} hours' notice)."
+        return None
+    if o.status != "pending":
+        return (f"Order {o.order_number} is already {STATUS_WORDS.get(o.status, o.status)}, so it "
+                "can't be cancelled here.")
+    return None
 
 
 async def cancel_yes(ctx: Ctx, arg: str) -> bool:
@@ -1049,7 +1179,7 @@ async def cancel_yes(ctx: Ctx, arg: str) -> bool:
     try:
         if what["kind"] == "order":
             o = await ctx.session.get(SalesOrder, uuid.UUID(what["id"]))
-            if o is None or o.status != "pending":
+            if o is None or _why_not_cancel(o):
                 return await cancel_start(ctx, "")
             await OrderLifecycleService.transition_status(
                 ctx.session, business_id=ctx.business.id, order_id=o.id, actor_id=owner,
@@ -1080,7 +1210,7 @@ async def cancel_yes(ctx: Ctx, arg: str) -> bool:
 
 ROUTES: list[tuple[str, Any]] = [
     ("m:order", order_start), ("o:start", order_start), ("o:cat", order_category), ("o:page", order_page),
-    ("o:item", order_item), ("o:var", order_variant), ("o:pack", order_pack), ("o:opt", order_option),
+    ("o:item", order_item), ("o:var", order_variant), ("o:pack", order_pack), ("o:opt", order_option), ("o:note", order_note), ("o:due", order_due), ("o:dtime", order_due_time),
     ("o:qty", order_qty), ("o:checkout", order_checkout), ("o:fix", order_fix), ("o:drop", order_drop),
     ("o:mode", order_mode), ("o:addr", order_address), ("o:place", order_place), ("o:clear", order_clear),
     ("m:book", book_start), ("b:svc", book_service), ("b:loc", book_location), ("b:day", book_day),
@@ -1090,4 +1220,4 @@ ROUTES: list[tuple[str, Any]] = [
     ("c:booking", lambda c, a: cancel_pick(c, "booking:" + a)), ("c:yes", cancel_yes),
 ]
 TEXT_STEPS: dict[str, Any] = {"qty": _qty_typed, "address": _address_typed, "time": _time_typed,
-                              "enquiry": _enquiry_typed}
+                              "enquiry": _enquiry_typed, "note": _note_typed}

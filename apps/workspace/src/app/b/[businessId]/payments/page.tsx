@@ -162,6 +162,8 @@ export default async function PaymentsPage({ params }: { params: { businessId: s
                   <p>
                     {a.attention === 'paid_twice'
                       ? 'Paid twice on the same link — refund the extra payment.'
+                      : a.attention === 'refund_due'
+                        ? 'The order was cancelled — refund what was paid.'
                       : a.failure_reason || 'Payment failed.'}
                   </p>
                 </div>

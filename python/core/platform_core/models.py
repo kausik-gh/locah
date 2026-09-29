@@ -618,6 +618,9 @@ class Offering(Base):
     hsn_sac: Mapped[str | None] = mapped_column(Text, nullable=True)
     attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     option_groups: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # Pre-order rules (P1-10D2): needs a date or may take one, notice, cutoff,
+    # ready times, festival window, daily limit, advance, cancel window.
+    preorder: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     sell_units: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     variant_options: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     stock_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'piece'"))
@@ -750,6 +753,12 @@ class SalesOrder(Base):
     # priced by the billing engine — its round-off line and what it decided.
     # Where it came from (Capability Universe §6.1): web, whatsapp, pos, phone, workspace, marketplace, chitbridge.
     channel: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Dated pre-orders (P1-10D2): when it is wanted, the advance its items ask
+    # for, and the terms the customer confirmed (never rewritten later).
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    preorder: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    advance_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    preorder_terms: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     round_off: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, server_default=text("0"))
     tax_basis: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")

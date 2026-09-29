@@ -21,6 +21,7 @@ Branch `main`. Packets done, newest last:
 | P1-10B one customer identity | 4eea4b4 | test_customer_identity (3) + browser p1_10b_identity 14/14; suite 1048 |
 | P1-10C module-aware website + Marketplace | 366ad71 | test_module_aware_site (11) + browser p1_10c_site 21/21; suite 1059 |
 | P1-10D1 collect what is due (payments) | see git log ("feat(p1-10d1)… browser-verified") | test_payment_collect (15) + browser p1_10d1_payments 83/83 (Playwright Chromium, desktop + 390 px); suite 1073 |
+| P1-10D2a dated pre-orders | see git log ("feat(p1-10d2a)") | test_preorders (10) + browser p1_10d2_preorders 31/31; p1_03, p1_08, p1_10b, p1_10d1 re-run green on the new checkout; suite 1083 |
 
 P1 gate after P1-10C: **TOTAL 240 · COMPLETE 122 · PARTIAL 90 · NOT_STARTED 12 ·
 ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 763 rows (P1 total grew by the
@@ -31,6 +32,9 @@ change, P1-10D1 rows not yet reconciled): **TOTAL 261 · COMPLETE 126 · PARTIAL
 102 · NOT_STARTED 15 · ACTIVATION_REQUIRED 18 · FUTURE 0.** Whole ledger: 793 rows.
 
 P1 gate after P1-10D1: **TOTAL 261 · COMPLETE 131 · PARTIAL 97 · NOT_STARTED 11 ·
+ACTIVATION_REQUIRED 22 · FUTURE 0.**
+
+P1 gate after P1-10D2a: **TOTAL 261 · COMPLETE 136 · PARTIAL 95 · NOT_STARTED 8 ·
 ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 ### Founder refinements (authority 1) — read before touching these modules
@@ -64,6 +68,36 @@ MD §11.2 closes the AI Receptionist's tool list ("Nothing else") and §11.3
 sends restaurant phone orders to a WhatsApp link; the Orders refinement
 authorises AI phone ordering for simple orders where enabled. The founder
 wins; the WhatsApp-link/human path remains for long, custom or risky orders.
+
+### P1-10D2a — dated pre-orders (DONE, browser-verified)
+
+- Migration `20260929120000_p1_dated_preorders.sql`: `offerings.preorder`
+  (JSONB rules; "no rules" is SQL NULL — the model uses `JSONB(none_as_null=True)`),
+  `orders.due_at / preorder / advance_amount / preorder_terms`, index on
+  (business_id, due_at), attention value `refund_due`.
+- `platform_core/orders/preorder.py`: `clean_rules`, `Rules`, `plan()` (the one
+  check — notice, next-day cutoff, ready times, festival window, days ahead,
+  open days from location hours, daily limit under an advisory lock, advance,
+  terms), `bucket()`; `orders/board.py`: board by day wanted + production list.
+  `OrderService._apply_preorder` runs for every channel.
+- Checkout: `POST /v1/public/websites/{slug}/checkout/price` (server-priced
+  basket: lines with choices, tax, delivery, pre-order days, advance; nothing
+  created); placing an order with an advance creates the payment link on it.
+  The website checkout page was rebuilt on it (tenant colours, words, day
+  picker, advance/balance, confirmation with "Pay advance").
+- Text-box choices (`option_groups` entry `{name, text: true, max_length}`):
+  catalogue, pricing (`options.notes`), WhatsApp (typed step), website card,
+  Workspace editor.
+- WhatsApp: "When do you need it?" day/time lists, summary with ready time and
+  advance, advance link after placing; customer self-cancel honours a pre-order's
+  cancel window. Cancelling an order with money taken flags "refund due".
+- Workspace: item editor "Order ahead"; Orders opens "By day wanted" (overdue /
+  prepare now / today / tomorrow / later) when the business has dated items or
+  orders; channel filter on the list; production list page with print; order
+  page shows "Wanted for" and "Advance asked"; action buttons in words.
+- Still open (ledger): photo reference on a custom cake (needs public upload),
+  order edits (FR-OR-18), a Workspace "take a phone order" screen (FR-OR-13),
+  other businesses' adaptive boards (FR-OR-23).
 
 ### P1-10D1 — collect what is due (DONE, browser-verified in the cloud session)
 
@@ -178,9 +212,8 @@ wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 
 ## Remaining work snapshot (P1 first)
 
-P1 NOT_STARTED (11): OK-15 (formula-priced jewellery), OR-04 + FR-OR-16 (dated
-pre-orders), FR-OR-18 (order edits that revalidate), FR-OR-23 (Orders workflow
-adapted per business), CR-04 (segments), CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation),
+P1 NOT_STARTED (8): OK-15 (formula-priced jewellery), FR-OR-18 (order edits that
+revalidate), CR-04 (segments), CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation),
 IS-01 (basic insights), PKT-10 (P1-10 packet).
 P1 PARTIAL groups: FD-02 (portal items with Academics), FD-03 (strategy
 placement of tool sections), OM-09 (portfolio kind), OM-18 (digital delivery),
@@ -188,9 +221,9 @@ GP-22 + PR-10 (English/Tamil/Hindi), payments provider (Cashfree =
 ACTIVATION), playbook rows waiting on P2–P5 modules.
 
 Planned next packets (dependency order):
-1. **P1-10D2** dated pre-orders (OR-04/FR-OR-16, with the Orders refinement:
-   date/cutoff/lead time, advance rule at checkout, today/tomorrow/future/
-   overdue views, a real checkout page) and formula pricing (OK-15).
+1. **P1-10D2b** formula pricing (OK-15): reusable calculated prices from a
+   daily rate board (jewellery: metal rate × weight + making + GST), snapshot at
+   confirmation.
 2. **P1-10E** EN/TA/HI UI strings, basic insights from real data, solo
    navigation, tags/segments, DPDP export/erase; then the P1 gate.
 3. P2 → P5 per MD §26.2 / ledger sections W–AL, then E2E flows (section BG).

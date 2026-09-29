@@ -1920,3 +1920,26 @@
 @media (min-width: 640px) {
   [data-locah-site] .ls-pay__method, [data-locah-site] .ls-pay__wait { justify-items: start; }
 }
+/* The website checkout (P1-10D2; Founder: Orders — a real checkout): the business's own colours only. */
+[data-locah-site] .ls-checkout { max-width: 640px; display: grid; gap: 1.1rem; }
+[data-locah-site] .ls-checkout .ls-title { margin: 0; font-size: clamp(1.5rem, 4vw, 2rem); }
+[data-locah-site] .ls-checkout__form { display: grid; gap: 1rem; }
+[data-locah-site] .ls-checkout__h { margin: 0; font-size: 1.05rem; }
+[data-locah-site] .ls-checkout__fields { display: grid; gap: 0.7rem; }
+[data-locah-site] .ls-checkout__fields label { display: grid; gap: 0.3rem; font-size: 0.88rem; color: var(--site-muted); }
+[data-locah-site] .ls-checkout__fields input, [data-locah-site] .ls-checkout__fields select {
+  font: inherit; color: var(--site-ink); background: var(--site-bg); min-height: 44px; padding: 0.5rem 0.75rem;
+  border: 1px solid var(--site-border); border-radius: var(--site-radius); width: 100%; box-sizing: border-box;
+}
+[data-locah-site] .ls-checkout__line-end { display: grid; justify-items: end; gap: 0.2rem; }
+[data-locah-site] .ls-checkout__remove {
+  font: inherit; font-size: 0.8rem; color: var(--site-muted); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
+}
+[data-locah-site] .ls-checkout__place { width: 100%; justify-content: center; margin-top: 0.4rem; }
+[data-locah-site] .ls-checkout__place:disabled { opacity: 0.6; cursor: progress; }
+[data-locah-site] .ls-offer__ahead { margin: 0.2rem 0 0; font-size: 0.84rem; color: var(--site-muted); }
+[data-locah-site] .ls-chooser__text { display: grid; gap: 0.3rem; font-size: 0.86rem; color: var(--site-muted); }
+[data-locah-site] .ls-chooser__text input {
+  font: inherit; color: var(--site-ink); background: var(--site-bg); min-height: 40px; padding: 0.4rem 0.7rem;
+  border: 1px solid var(--site-border); border-radius: var(--site-radius);
+}

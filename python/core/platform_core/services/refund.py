@@ -89,6 +89,8 @@ class RefundService:
         new_refunded = Decimal(str(payment.refunded_amount))
         if new_refunded >= Decimal(str(payment.amount)):
             payment.status = "refunded"
+            if payment.attention == "refund_due":
+                payment.attention = None  # the cancelled order's money is back with the customer
         else:
             payment.status = "partially_refunded"
         payment.version += 1

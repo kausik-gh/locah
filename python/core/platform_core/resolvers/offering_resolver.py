@@ -138,6 +138,7 @@ class OfferingResolver:
             "sell_units": list(offering.sell_units or []),
             "variant_options": list(offering.variant_options or []),
             "stock_unit": offering.stock_unit,
+            "preorder": offering.preorder,
             "version": offering.version,
             "created_at": offering.created_at.isoformat(),
             "updated_at": offering.updated_at.isoformat(),

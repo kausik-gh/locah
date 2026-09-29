@@ -28,7 +28,7 @@ DESCRIPTION_MAX = 5000
 SLUG_MAX = 120
 
 OFFERING_TYPES = frozenset(KINDS)
-KIND_FIELDS = ("attributes", "option_groups", "sell_units", "variant_options", "hsn_sac", "stock_unit")
+KIND_FIELDS = ("attributes", "option_groups", "sell_units", "variant_options", "hsn_sac", "stock_unit", "preorder")
 OFFERING_STATUSES = frozenset({"draft", "active", "archived"})
 PRICE_TYPES = frozenset({"fixed", "starting_from", "variable", "free", "enquiry"})
 VISIBILITY = frozenset({"public", "private"})
@@ -279,4 +279,8 @@ def clean_kind_fields(offering_type: str, raw: dict[str, Any], current: dict[str
         out["variant_options"] = clean_variant_options(k, raw.get("variant_options"))
     if current is None or "hsn_sac" in raw:
         out["hsn_sac"] = clean_tax_code(raw.get("hsn_sac"), k)
+    if current is None or "preorder" in raw:
+        from platform_core.orders.preorder import clean_rules
+
+        out["preorder"] = clean_rules(k.flow, raw.get("preorder"))
     return out

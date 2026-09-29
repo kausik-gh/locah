@@ -70,5 +70,35 @@ async def public_details(
         }
         if o.offering_type == "cause":
             item["raised_amount"] = float(raised.get(str(o.id), Decimal(0)))
+        if o.preorder:
+            item["preorder"] = await _preorder_public(session, business_id, o)
         out[str(o.id)] = item
     return out
+
+
+async def _preorder_public(session: AsyncSession, business_id: uuid.UUID, o: Offering) -> dict[str, Any]:
+    """What a customer should know before ordering ahead: whether a day is
+    needed, the earliest it can be ready, the advance and the cancel window."""
+    from platform_core.models import BusinessLocation
+    from platform_core.orders import preorder as po
+
+    rules = po.Rules.of(o.preorder)
+    if rules is None:
+        return {}
+    location = (await session.execute(select(BusinessLocation).where(
+        BusinessLocation.business_id == business_id, BusinessLocation.status == "active")
+        .order_by(BusinessLocation.is_primary.desc(), BusinessLocation.created_at).limit(1))).scalars().first()
+    zone = po.zone_of(location)
+    price = Decimal(str(o.price_amount or 0))
+    plan = await po.plan(session, business_id=business_id, location=location,
+                         lines=[po.Line(o, rules, 1, price)], require=False, days=1)
+    adv = rules.advance
+    return {
+        "needed": rules.mode == "required", "lead_hours": rules.lead_hours,
+        "earliest_words": po.when_words(plan.earliest, zone) if plan.earliest else None,
+        "advance": ({"type": adv["type"], "value": float(adv["value"])} if adv else None),
+        "cancel_hours": rules.cancel_hours,
+        "window": {"order_until": rules.order_until.isoformat() if rules.order_until else None,
+                   "ready_from": rules.ready_from.isoformat() if rules.ready_from else None,
+                   "ready_until": rules.ready_until.isoformat() if rules.ready_until else None},
+    }

@@ -7,8 +7,18 @@ import { advanceOrderStatus, cancelOrder } from '../actions'
 import { OrderBill } from './OrderBill'
 import { MoneySection } from '@/components/MoneySection'
 import { money, paymentLabel } from '../labels'
+import { LocalTime } from '@/components/LocalTime'
 
 export const dynamic = 'force-dynamic'
+
+/** What each button does, in words (the stored states never reach the screen). */
+const ACTION_WORDS: Record<string, string> = {
+  accepted: 'Accept',
+  rejected: 'Reject',
+  preparing: 'Start preparing',
+  ready: 'Mark ready',
+  completed: 'Complete',
+}
 
 /** Doc 11 §4.2 order detail — state actions, cancel coordination. */
 export default async function OrderDetailPage({
@@ -32,6 +42,9 @@ export default async function OrderDetailPage({
       discount_amount: number
       round_off: number
       tax_basis: { engine?: string; inclusive?: boolean; intra_state?: boolean; scheme?: string; rates_missing?: string[] }
+      due_at?: string | null
+      advance_amount?: number | null
+      preorder_terms?: { cancel_hours?: number | null }
       currency: string
       items?: Array<{ title: string; quantity: number; line_total: number }>
     }
@@ -66,12 +79,8 @@ export default async function OrderDetailPage({
           {status === 'rejected' ? (
             <input type="hidden" name="reason" value="Rejected by Business" />
           ) : null}
-          <button
-            type="submit"
-            className={status === 'rejected' ? 'btn-danger' : undefined}
-            style={{ textTransform: 'capitalize' }}
-          >
-            {status}
+          <button type="submit" className={status === 'rejected' ? 'btn-danger' : undefined}>
+            {ACTION_WORDS[status] || status}
           </button>
         </form>
       ))}
@@ -96,6 +105,8 @@ export default async function OrderDetailPage({
       meta={[
         ['Payment', paymentLabel(order)],
         ['Total', money(Number(order.total_amount) || 0, order.currency)],
+        ...(order.due_at ? [['Wanted for', <LocalTime key="due" value={order.due_at} />] as [string, React.ReactNode]] : []),
+        ...(order.advance_amount ? [['Advance asked', money(Number(order.advance_amount), order.currency)] as [string, React.ReactNode]] : []),
       ]}
       actions={next.length || cancellable ? actions : undefined}
     >

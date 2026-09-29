@@ -115,7 +115,8 @@ try {
 
   // Buy the chicken
   await visitor.goto(`${WEB}/${biz.slug}/checkout`)
-  await visitor.waitFor('Cart', { text: true })
+  await visitor.waitFor('Basket', { text: true })
+  await wait(1500) // the server prices the basket
   const cart = await visitor.eval('document.body.innerText')
   check(cart.includes('500 g · Boneless'), 'basket keeps the choice', results)
   await visitor.type('input[name="name"], #name', 'Kumar').catch(() => {})

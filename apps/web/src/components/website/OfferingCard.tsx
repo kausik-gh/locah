@@ -35,8 +35,9 @@ export function OfferingCard({
   const [pack, setPack] = useState(o.packs?.[0]?.label ?? '')
   const [variant, setVariant] = useState(o.variants?.[0]?.id ?? '')
   const [picked, setPicked] = useState<Record<string, string[]>>(() =>
-    Object.fromEntries(groups.filter((g) => g.required && g.max === 1).map((g) => [g.name, [g.choices[0].label]])),
+    Object.fromEntries(groups.filter((g) => !g.text && g.required && g.max === 1).map((g) => [g.name, [g.choices[0].label]])),
   )
+  const [notes, setNotes] = useState<Record<string, string>>({})
   const suggested = ((o.attributes?.suggested_amounts as string[] | undefined) ?? []).map(Number).filter(Boolean)
   const minGift = Number(o.attributes?.min_amount ?? 1)
   const [gift, setGift] = useState<string>(String(suggested[0] ?? minGift))
@@ -65,13 +66,17 @@ export function OfferingCard({
 
   const add = () => {
     setError(null)
-    const missing = groups.find((g) => g.required && !(picked[g.name] ?? []).length)
+    const missing = groups.find((g) => !g.text && g.required && !(picked[g.name] ?? []).length)
     if (missing) return setError(`Choose ${missing.name.toLowerCase()}`)
+    const unwritten = groups.find((g) => g.text && g.required && !(notes[g.name] ?? '').trim())
+    if (unwritten) return setError(`Write the ${unwritten.name.toLowerCase()}`)
     const options: Record<string, unknown> = {}
     const words: string[] = []
     if (pack) { options.pack = pack; words.push(pack) }
     const choices = Object.fromEntries(Object.entries(picked).filter(([, v]) => v.length))
     if (Object.keys(choices).length) { options.choices = choices; words.push(Object.values(choices).flat().join(', ')) }
+    const written = Object.fromEntries(Object.entries(notes).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v))
+    if (Object.keys(written).length) { options.notes = written; words.push(...Object.values(written).map((v) => `“${v}”`)) }
     const v = o.variants?.find((x) => x.id === variant)
     if (v) words.unshift(v.name)
     const count = addToBasket(slug, {
@@ -115,6 +120,13 @@ export function OfferingCard({
         <h3 className="ls-item__title">{o.title}</h3>
         {o.description ? <p className="ls-item__desc">{o.description}</p> : null}
         <Specs o={o} />
+        {o.preorder && canOrder ? (
+          <p className="ls-offer__ahead">
+            {o.preorder.needed ? 'Made to order' : 'Order ahead'}
+            {o.preorder.earliest_words ? ` · ready from ${o.preorder.earliest_words}` : ''}
+            {o.preorder.advance ? ` · ${o.preorder.advance.type === 'percent' ? `${o.preorder.advance.value}%` : money(o.preorder.advance.value, o.currency)} advance` : ''}
+          </p>
+        ) : null}
         {flow === 'give' ? (
           <div className="ls-gift">
             {goal > 0 ? (
@@ -161,7 +173,13 @@ export function OfferingCard({
                 </select>
               </label>
             ) : null}
-            {groups.map((g) => (
+            {groups.map((g) => g.text ? (
+              <label key={g.name} className="ls-chooser__text">
+                <span>{g.name}{g.required ? '' : ' (optional)'}</span>
+                <input value={notes[g.name] ?? ''} maxLength={g.max_length ?? 40}
+                  onChange={(e) => setNotes((n) => ({ ...n, [g.name]: e.target.value }))} />
+              </label>
+            ) : (
               <div key={g.name} className="ls-choice" role="group" aria-label={g.name}>
                 <span className="ls-choice__name">{g.name}{g.max > 1 ? ` (up to ${g.max})` : ''}</span>
                 {g.choices.map((c) => {

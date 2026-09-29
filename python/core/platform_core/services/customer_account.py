@@ -240,6 +240,8 @@ class CustomerAccountService:
             out["orders"].append({
                 "id": str(o.id), "number": o.order_number, "status": o.status, "payment_status": o.payment_status,
                 "total": _f(o.total_amount), "placed_at": o.created_at.isoformat(),
+                "due_at": o.due_at.isoformat() if o.due_at else None,
+                "due_words": await _due_words(session, o),
                 "items": [{"title": li.title, "quantity": _f(li.quantity)} for li in lines.get(o.id, [])],
                 "fulfilment": {"mode": job.mode, "status": job.status} if job else None,
                 "track_url": f"/{slug}/track/{o.id}?token={job.tracking_token}" if job else None,
@@ -345,3 +347,14 @@ async def contact_identity(session: AsyncSession, contact_id: uuid.UUID | None) 
         return None
     contact = await session.get(CustomerContact, contact_id)
     return contact.identity_id if contact is not None and contact.deleted_at is None else None
+
+
+async def _due_words(session: AsyncSession, order: Any) -> str | None:
+    """When a dated order is wanted, in the business's own time zone (P1-10D2)."""
+    if order.due_at is None:
+        return None
+    from platform_core.models import BusinessLocation
+    from platform_core.orders.preorder import when_words, zone_of
+
+    words: str = when_words(order.due_at, zone_of(await session.get(BusinessLocation, order.location_id)))
+    return words

@@ -247,9 +247,19 @@ class PaymentCollectService:
             "balance": _f(balance), "state": state, "state_words": words, "collectable": src.collectable,
             "why_not": src.why_not, "customer_contact_id": str(src.customer_contact_id) if src.customer_contact_id
             else None,
+            # the advance its items asked (dated pre-orders)
+            "advance": await PaymentCollectService._advance(session, src),
             "attempts": [PaymentCollectService._intent_row(a, balance, pickup) if a.payment_method in OFFLINE_INTENTS
                          else PaymentCollectService._attempt_row(a) for a in reversed(attempts)],
         }
+
+    @staticmethod
+    async def _advance(session: AsyncSession, src: Source) -> float | None:
+        if src.source_type != "order":
+            return None
+        value = (await session.execute(select(SalesOrder.advance_amount).where(
+            SalesOrder.id == src.source_id))).scalar()
+        return float(value) if value is not None else None
 
     @staticmethod
     def _intent_row(a: PaymentAttempt, balance: Decimal | None, pickup: bool) -> dict[str, Any]:

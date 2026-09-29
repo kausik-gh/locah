@@ -73,6 +73,8 @@ class CreateProductRequest(BaseModel):
     option_groups: list[dict[str, Any]] = Field(default_factory=list)
     sell_units: list[dict[str, Any]] = Field(default_factory=list)
     variant_options: list[dict[str, Any]] = Field(default_factory=list)
+    # Dated pre-orders (P1-10D2): needs a date or may take one, notice, cutoff, window, limit, advance.
+    preorder: dict[str, Any] | None = None
 
 
 class PatchProductRequest(VersionedBody):
@@ -97,6 +99,7 @@ class PatchProductRequest(VersionedBody):
     option_groups: list[dict[str, Any]] | None = None
     sell_units: list[dict[str, Any]] | None = None
     variant_options: list[dict[str, Any]] | None = None
+    preorder: dict[str, Any] | None = None
 
 
 class CreateVariantRequest(BaseModel):

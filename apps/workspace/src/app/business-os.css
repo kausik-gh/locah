@@ -770,3 +770,25 @@ ul.bos-pills { list-style: none; margin: 0; padding: 0; }
 .bos-money__link p { margin: 0; }
 .bos-money__link input { width: 100%; font-size: .85rem; }
 .bos-money__h { font-size: .95rem; margin: .4rem 0 0; }
+
+/* ---- P1-10D2 orders by the day they are wanted (pre-order board, production list) */
+.bos-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .8rem; align-items: start; padding-bottom: .5rem; }
+.bos-board__col { background: var(--color-surface-2, rgba(15, 23, 42, .03)); border: 1px solid var(--color-border); border-radius: var(--radius); padding: .75rem; min-width: 0; }
+.bos-board__col--overdue { border-color: var(--color-danger, #c2410c); }
+.bos-board__h { font-size: .95rem; margin: 0 0 .6rem; display: flex; justify-content: space-between; align-items: center; }
+.bos-board__n { font-size: .8rem; color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.bos-ordercard { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: .65rem .7rem; margin-bottom: .6rem; }
+.bos-ordercard__head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .15rem .5rem; align-items: baseline; }
+.bos-ordercard__when { font-size: .82rem; color: var(--color-foreground); font-weight: 600; }
+.bos-ordercard__who { margin: .2rem 0 .4rem; font-size: .82rem; color: var(--color-muted); }
+.bos-ordercard__items { list-style: none; margin: 0 0 .5rem; padding: 0; font-size: .88rem; display: grid; gap: .3rem; }
+.bos-ordercard__items li { display: grid; gap: .1rem; }
+.bos-ordercard__note { font-size: .82rem; color: var(--color-foreground); font-style: italic; }
+.bos-ordercard__foot { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.bos-ordercard__foot form { margin-left: auto; }
+.bos-prodlist { list-style: none; padding: 0; margin: 0; display: grid; gap: .7rem; max-width: 46rem; }
+.bos-prodlist__row { display: flex; gap: .6rem; align-items: baseline; font-size: 1.05rem; }
+.bos-prodlist__qty { font-variant-numeric: tabular-nums; min-width: 3rem; }
+.bos-prodlist__notes { margin: .5rem 0 .3rem; padding-left: 1.1rem; font-size: .9rem; }
+@media (max-width: 700px) { .bos-board { grid-template-columns: 1fr; } }
+@media print { .bos-production .btn, .bos-production button, nav, aside { display: none !important; } }

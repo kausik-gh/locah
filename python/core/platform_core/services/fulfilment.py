@@ -607,6 +607,16 @@ class FulfilmentService:
         )
 
     @staticmethod
+    async def _due_words(session: AsyncSession, order: SalesOrder) -> str | None:
+        if order.due_at is None:
+            return None
+        from platform_core.models import BusinessLocation
+        from platform_core.orders.preorder import when_words, zone_of
+
+        words: str = when_words(order.due_at, zone_of(await session.get(BusinessLocation, order.location_id)))
+        return words
+
+    @staticmethod
     async def get_tracking(
         session: AsyncSession,
         *,
@@ -673,6 +683,8 @@ class FulfilmentService:
                 "payment_method": order.payment_method,
                 "total_amount": float(order.total_amount),
                 "currency": order.currency,
+                "due_at": order.due_at.isoformat() if order.due_at else None,
+                "due_words": await FulfilmentService._due_words(session, order),
             },
             "fulfilment": FulfilmentService.serialize_job(job, public=True),
             "state": state,

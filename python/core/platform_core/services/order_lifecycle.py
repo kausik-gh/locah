@@ -5,11 +5,12 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.exceptions import ConflictError
 from platform_core.gates import assert_business_mutable
-from platform_core.models import OrderLineItem, OrderStatusHistory, SalesOrder
+from platform_core.models import OrderLineItem, OrderStatusHistory, PaymentAttempt, SalesOrder
 from platform_core.resolvers.order_resolver import OrderResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.business import BusinessService
@@ -237,6 +238,16 @@ class OrderLifecycleService:
 
         order.status = target
         order.version += 1
+        if target in ("cancelled", "rejected"):
+            # Money already taken on it is owed back: Payments shows it as a refund due
+            # (the refund itself stays an owner action — Founder: Payments §9).
+            await session.execute(
+                update(PaymentAttempt)
+                .where(PaymentAttempt.business_id == business_id, PaymentAttempt.source_type == "order",
+                       PaymentAttempt.source_id == order.id, PaymentAttempt.deleted_at.is_(None),
+                       PaymentAttempt.status.in_(("succeeded", "partially_refunded")),
+                       PaymentAttempt.attention.is_(None))
+                .values(attention="refund_due"))
         await session.flush()
         await OrderLifecycleService._record_history(
             session,

@@ -231,7 +231,8 @@ def clean_attributes(k: OfferingKind, raw: dict[str, Any] | None) -> dict[str, A
 
 
 def clean_option_groups(k: OfferingKind, raw: Any) -> list[dict[str, Any]]:
-    """Choice groups: [{name, required, max, choices: [{label, price_delta}]}]."""
+    """Choice groups: [{name, required, max, choices: [{label, price_delta}]}], or a
+    text box the customer fills in: {name, text: true, required, max_length}."""
     if not raw:
         return []
     if not k.options:
@@ -244,6 +245,17 @@ def clean_option_groups(k: OfferingKind, raw: Any) -> list[dict[str, Any]]:
         if not name or name.lower() in seen:
             raise _bad("option_groups", "Each group of choices needs its own name")
         seen.add(name.lower())
+        if g.get("text"):
+            # A few words the customer writes: the message on a cake, a name to engrave.
+            try:
+                max_length = int(g.get("max_length") or 40)
+            except (TypeError, ValueError):
+                raise _bad("option_groups", f"{name}: how many letters must be a number") from None
+            if not 1 <= max_length <= 200:
+                raise _bad("option_groups", f"{name}: between 1 and 200 letters")
+            groups.append({"name": name, "text": True, "required": bool(g.get("required")),
+                           "max_length": max_length})
+            continue
         choices, labels = [], set()
         for c in (g.get("choices") or [])[:30]:
             label = str((c or {}).get("label") or "").strip()[:80]

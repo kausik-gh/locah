@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 type Account = {
   business: { id: string; slug: string; name: string }
   linked: boolean
-  orders: { id: string; number: string; status: string; payment_status: string; total: number; placed_at: string; items: { title: string; quantity: number }[]; fulfilment: { mode: string; status: string } | null; track_url: string | null; bill_url: string | null; can_reorder: boolean }[]
+  orders: { id: string; number: string; status: string; payment_status: string; total: number; placed_at: string; due_at?: string | null; due_words?: string | null; items: { title: string; quantity: number }[]; fulfilment: { mode: string; status: string } | null; track_url: string | null; bill_url: string | null; can_reorder: boolean }[]
   bookings: { id: string; number: string; title: string; status: string; starts_at: string; upcoming: boolean; manage_url: string | null }[]
   bills: { id: string; number: string; kind: string; status: string; issue_date: string | null; total: number; amount_due: number; url: string }[]
   quotes: { id: string; number: string; title: string | null; status: string; total: number; valid_until: string | null; url: string | null }[]
@@ -91,6 +91,7 @@ export default async function AccountPage({ params }: { params: { slug: string }
         {a.orders.map((o) => <div key={o.id} className="ls-account__card">
           <p className="ls-account__row"><strong>Order {o.number}</strong><span>{rupees(o.total)}</span></p>
           <p className="ls-meta">{when(o.placed_at)} · {ORDER_WORDS[o.status] ?? o.status}{o.fulfilment ? ` · ${o.fulfilment.mode === 'delivery' ? 'delivery' : 'pickup'}` : ''}</p>
+          {o.due_words ? <p className="ls-meta">Wanted for {o.due_words}</p> : null}
           <ul className="ls-account__items">{o.items.map((i, n) => <li key={n}>{i.quantity} × {i.title}</li>)}</ul>
           <p className="ls-account__actions">
             {o.track_url && !['completed', 'cancelled', 'rejected'].includes(o.status) ? <a className="ls-btn ls-btn--outline" href={o.track_url}>Track</a> : null}

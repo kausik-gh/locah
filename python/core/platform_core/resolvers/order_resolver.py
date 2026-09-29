@@ -104,6 +104,11 @@ class OrderResolver:
             "tax_basis": order.tax_basis or {},
             "internal_reference": order.internal_reference,
             "cancellation_reason": order.cancellation_reason,
+            # Dated pre-orders (P1-10D2)
+            "due_at": order.due_at.isoformat() if order.due_at else None,
+            "preorder": bool(order.preorder),
+            "advance_amount": float(order.advance_amount) if order.advance_amount is not None else None,
+            "preorder_terms": order.preorder_terms or {},
             "version": order.version,
             "created_at": order.created_at.isoformat(),
             "updated_at": order.updated_at.isoformat(),

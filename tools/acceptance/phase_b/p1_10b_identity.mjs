@@ -81,6 +81,7 @@ try {
   await page.waitFor('Order again', { text: true })
   await page.click('Order again', { byText: true })
   await page.waitFor('at today', { text: true })
+  await page.waitFor('₹340', { text: true }) // the server prices the basket at today's price
   body = await page.eval('document.body.innerText')
   check(body.includes('340') && body.includes('Peaberry filter coffee 500 g'), 'Order again refills the cart at today’s price (₹340)', results)
   await page.shot(`${shots}/03-order-again.png`, { full: true })

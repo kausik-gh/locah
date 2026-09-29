@@ -108,6 +108,42 @@ export async function quoteDelivery(slug: string, delivery_address: Record<strin
   return (await res.json()).data
 }
 
+export type PricedCart = {
+  lines: { offering_id: string; title: string; quantity: number; unit_price: number; line_total: number }[]
+  tax_amount: number
+  tax_included: boolean
+  items_total: number
+  delivery: { serviceable: boolean; charge: number | null } | null
+  total: number
+  problems: { offering_id: string; title: string; available: number; message: string }[]
+  preorder: {
+    needed: boolean
+    offered: boolean
+    earliest: string | null
+    earliest_words: string | null
+    dates: { date: string; label: string; times: string[]; full: boolean }[]
+    advance: number
+    due_at: string | null
+    due_words: string | null
+    cancel_hours: number | null
+  }
+  due_error: string | null
+  cod: { on_delivery: boolean; first_order_cap: number | null }
+}
+
+/** The cart priced by the server — lines, tax, delivery, pre-order days, advance. Nothing is created. */
+export async function priceCart(slug: string, body: Record<string, unknown>): Promise<PricedCart> {
+  const res = await fetch(`${apiUrl}/v1/public/websites/${slug}/checkout/price`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(json?.error?.message || 'We could not price your basket. Try again.')
+  return json.data as PricedCart
+}
+
 /** A signed-in customer's token joins the order to their own LOCAH record (Founder §12). */
 export async function placeCheckoutOrder(slug: string, body: Record<string, unknown>, authToken?: string | null) {
   const res = await fetch(`${apiUrl}/v1/public/websites/${slug}/checkout`, {

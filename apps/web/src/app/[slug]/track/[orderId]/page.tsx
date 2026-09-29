@@ -57,6 +57,7 @@ export default async function TrackOrderPage({
       <h1>Order {data.order.order_number}</h1>
       <p style={{ opacity: 0.8 }}>Order status: {data.order.status}</p>
       <p style={{ opacity: 0.8 }}>Payment: {PAYMENT_WORDS[data.order.payment_status] || 'Being checked'}</p>
+      {data.order.due_words ? <p style={{ opacity: 0.8 }}>Ready: {data.order.due_words}</p> : null}
       {data.fulfilment ? (
         <section style={{ marginTop: '1.25rem' }}>
           <h2>Fulfilment</h2>

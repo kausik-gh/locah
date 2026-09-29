@@ -542,3 +542,36 @@ done("P1-10D1", {
                      test="✓ test_pos + browser p1_05_pos, p1_10a_counter_serials, p1_10d1_payments"),
     "FR-OR-07": dict(status=P, code="pickup, delivery zones with charges, paying on delivery on/off with a first-order cap (now one rule for website and WhatsApp, P1-10D1), GST treatment and readiness-driven channels exist; minimum order, free-delivery threshold, preorder rules, cutoff, lead time, cancellation/return policy, packing charge, auto-accept and dine-in are absent, shipping needs an aggregator (FU-02), and settings are not yet filtered to what the business uses"),
 })
+
+
+# ---------------------------------------------------------------- P1-10D2a dated pre-orders (MD §6.1, §21.1; Founder: Orders)
+_PO_TEST = ("✓ test_preorders (10, platform_api RLS role) + browser p1_10d2_preorders (31/31, Playwright Chromium), "
+            "desktop + 390 px; website flows p1_03/p1_10b/p1_10d1 re-run on the new checkout")
+done("P1-10D2", {
+    "OR-04": dict(status=C, code="dated pre-orders on the one order: per-item rules (needs a day or may take one, notice, next-day cutoff, ready times, festival window, days ahead, daily limit, % or ₹ advance, cancel window) checked in one place for the website, WhatsApp and a phone order; the order keeps the day and a snapshot of the terms; the advance becomes a payment link on the same order; the owner works them by day wanted (overdue · prepare now · today · tomorrow · later) with a production list per day",
+                  db="✓ offerings.preorder, orders.due_at/preorder/advance_amount/preorder_terms", svc="✓ orders/preorder.py, orders/board.py, /checkout/price, /orders/board, /orders/production",
+                  perm="✓ orders.read; same RLS as orders", ws="✓ Item › Order ahead; Orders › By day wanted; Production list", cust="✓ checkout day picker, confirmation, account, tracking",
+                  web="✓", test=_PO_TEST),
+    "FR-OR-16": dict(status=C, code="bakery cakes, festival boxes, home-kitchen batches, meat/fresh orders for a day: required day and time, notice, cutoff, window, daily limit (two orders never both take the last one — advisory lock), advance with the customer's confirmation, cancel window enforced for customer self-cancel on WhatsApp; operational board distinguishes overdue, prepare now, today, tomorrow and later; production list adds up what to make with each written message; website, WhatsApp and phone orders use the same check",
+                     test=_PO_TEST),
+    "FR-PY-02": dict(status=C, code="full, advance, deposit, balance and pay-later: an item's own advance rule (% or ₹ per piece) is asked at checkout and on WhatsApp and becomes a link on the order; booking deposits as before; the owner can ask any part by link or record it; total, paid and balance on every surface",
+                     test=_PO_TEST + "; test_payment_collect"),
+    "OR-09": dict(status=C, code="the website checkout shows only the server's prices (POST /checkout/price: lines with choices, tax, delivery, pre-order days, advance) and places at the catalogue's price; WhatsApp re-prices at the confirm button (MS-24); a sent unit price is never used",
+                  svc="✓", web="✓", test="✓ test_checkout_flow + test_preorders + test_journeys + browser p1_10d2"),
+    "FR-OR-04": dict(status=P, code="a real checkout in the business's colours: basket priced by the server with choices and written messages, pickup or delivery with address and zone charge, the day and time for made-to-order items, paying (COD cap stated), GST and total from the server, the advance and the balance, confirmation with the advance link, tracking and My Activity; dine-in (P2), shipping (aggregator), charges other than delivery (packing) and online payment (Cashfree) are missing",
+                     web="✓ /{slug}/checkout", cust="✓ /track + /account + /activity", test=_PO_TEST),
+    "FR-OR-06": dict(status=P, code="price, option prices, tax, delivery charge, stock (problems shown before placing) and pre-order availability (notice, cutoff, window, daily limit) come from the server and are checked again at placement; there are no customer discount codes yet, and ordinary orders are not checked against opening hours",
+                     svc="✓ /checkout/price", test=_PO_TEST),
+    "FR-OR-07": dict(status=P, code="pickup, delivery zones with charges, paying on delivery with a first-order cap (one rule for website and WhatsApp), GST treatment, readiness-driven channels, and per-item pre-order rules (notice, cutoff, ready times, window, daily limit, advance, cancel window — shown only for items sold through a basket); minimum order, free-delivery threshold, packing charge, auto-accept, a business-wide return policy and dine-in are absent, shipping needs an aggregator (FU-02)"),
+    "FR-OR-17": dict(status=P, code="WhatsApp offers 'Make it N' or remove and asks again (MS-18); the website checkout shows 'only N left — change the quantity or remove it' before placing and a full pre-order day cannot be picked; alternatives and a reconfirmation flow when the business finds a line short after accepting are not built",
+                     test=_PO_TEST + "; test_journeys"),
+    "FR-OR-19": dict(status=P, code="cancel releases the reservation, cancels the delivery job and writes My Activity; customers cancel on WhatsApp while waiting, or a pre-order until its cancel window; money already taken shows as 'refund due' in Payments until refunded; there is no cancellation message to the customer and no rule by preparation stage for ordinary orders",
+                     test="✓ test_orders_kernel + test_fulfilment_kernel + test_preorders"),
+    "FR-OR-22": dict(status=C, code="one Orders list for every channel; channel is a filter (Website, WhatsApp, Counter, Phone, Entered by team, Marketplace) and provenance on each order — never a separate book",
+                     ws="✓ Orders › Any channel", svc="✓ ?channel=", test=_PO_TEST),
+    "FR-OR-23": dict(status=P, code="a business that sells made-to-order items or takes dated orders (bakery, home kitchen, festival boxes) opens Orders on the board by day wanted with its production list, chosen from its own data; others keep the plain list. The kirana picking, meat cut-prep/weight-exception, QSR/restaurant KDS and retail shipping/returns workflows are not built",
+                     ws="◐", test=_PO_TEST),
+    "FR-OR-27": dict(status=P, code="website checkout (p1_03, p1_04, p1_10d2), WhatsApp ordering (p1_08), POS sale (p1_05, p1_10d1 split), meat by weight (p1_03, p1_10a), bakery pre-order (p1_10d2) and reorder (p1_10b) exist as browser flows; human phone order, partial availability on the website, cancel and the combined owner view are not yet flows"),
+    "MS-16": dict(status=P, code="cancel an order while it waits to be accepted, a pre-order until its cancel window (P1-10D2), and a booking outside the owner's window; changes (reschedule, edit an order) go to a person with the reason shown",
+                  test="✓ test_journeys + test_preorders"),
+})

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
@@ -56,6 +57,8 @@ class CreateOrderRequest(BaseModel):
     place_of_supply: str | None = Field(default=None, min_length=2, max_length=2)
     # Taken in the Workspace: over the phone or in person (Capability Universe §6.1 channel).
     channel: Literal["phone", "workspace"] = "workspace"
+    # When it is wanted (dated pre-orders, P1-10D2): ISO time, checked against the items' rules.
+    due_at: str | None = None
     items: list[OrderLineItemInput] = Field(min_length=1)
 
 
@@ -92,6 +95,7 @@ async def list_orders(
     search: str | None = Query(default=None, min_length=1, max_length=120),
     customer_contact_id: UUID | None = Query(default=None),
     location_id: UUID | None = Query(default=None),
+    channel: str | None = Query(default=None, max_length=20),
     actor: BusinessActorContext = Depends(require_business_actor(ORDERS_READ, "orders")),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
@@ -102,11 +106,40 @@ async def list_orders(
         search=search,
         customer_contact_id=customer_contact_id,
         location_id=location_id,
+        channel=channel,
     )
     return {
         "data": [OrderService.serialize_order(o) for o in orders],
         "meta": {"correlation_id": actor.request.correlation_id, "count": len(orders)},
     }
+
+
+@router.get("/{business_id}/orders/board")
+async def preorder_board(
+    business_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(ORDERS_READ, "orders")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Dated orders by when they are wanted: overdue, prepare now, today, tomorrow, later (P1-10D2)."""
+    from platform_core.orders.board import board
+
+    return {"data": await board(session, business_id), "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.get("/{business_id}/orders/production")
+async def production_list(
+    business_id: UUID,
+    day: date | None = Query(default=None, alias="date"),
+    actor: BusinessActorContext = Depends(require_business_actor(ORDERS_READ, "orders")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """What to make for one day, added up, with each written message (P1-10D2)."""
+    from platform_core.orders.board import _zone, production
+
+    if day is None:
+        day = datetime.now(timezone.utc).astimezone(await _zone(session, business_id)).date()
+    return {"data": await production(session, business_id, day),
+            "meta": {"correlation_id": actor.request.correlation_id}}
 
 
 @router.post("/{business_id}/orders")

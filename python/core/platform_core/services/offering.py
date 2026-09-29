@@ -221,7 +221,7 @@ class OfferingService:
         before = OfferingService.serialize(offering)
         validated = validate_product_patch_payload(payload)
         kind_keys = [k for k in ("attributes", "option_groups", "sell_units", "variant_options", "hsn_sac",
-                                 "stock_unit") if k in validated]
+                                 "stock_unit", "preorder") if k in validated]
         if kind_keys:
             from platform_core.validation.offering import clean_kind_fields
 

@@ -45,6 +45,8 @@ export type Due = {
   why_not: string | null
   attempts: Attempt[]
   links: PaymentLink[]
+  /** The advance a pre-order's items asked for. */
+  advance?: number | null
 }
 
 const rupees = (v: number) =>
@@ -77,7 +79,9 @@ export function MoneyPanel({ businessId, path, due }: { businessId: string; path
   const balance = due.balance ?? 0
   const waiting = due.attempts.filter((a) => a.method === 'upi_direct' && a.status === 'pending_offline')
   const canRecord = ['order', 'booking', 'membership'].includes(due.source_type)
-  const defaultPurpose = due.source_type === 'khata' ? 'dues' : (due.paid ?? 0) > 0 ? 'balance' : 'full'
+  const advanceLeft = due.advance ? Math.max(0, due.advance - (due.paid ?? 0) - (due.being_confirmed ?? 0)) : 0
+  const defaultPurpose = due.source_type === 'khata' ? 'dues' : advanceLeft > 0 ? 'advance' : (due.paid ?? 0) > 0 ? 'balance' : 'full'
+  const defaultAmount = advanceLeft > 0 ? Math.min(advanceLeft, balance) : balance
 
   function run(fn: () => Promise<{ ok: boolean; message?: string; data?: unknown }>, after?: (d: unknown) => void) {
     setError(null)
@@ -102,6 +106,12 @@ export function MoneyPanel({ businessId, path, due }: { businessId: string; path
           <div>
             <dt>Paid</dt>
             <dd>{rupees(due.paid ?? 0)}</dd>
+          </div>
+        ) : null}
+        {due.advance ? (
+          <div>
+            <dt>Advance asked</dt>
+            <dd>{rupees(due.advance)}</dd>
           </div>
         ) : null}
         {due.being_confirmed ? (
@@ -176,7 +186,7 @@ export function MoneyPanel({ businessId, path, due }: { businessId: string; path
           <label>
             <span>Amount</span>
             <input name="amount" type="number" inputMode="decimal" min="1" step="0.01" max={balance}
-              defaultValue={balance} required />
+              defaultValue={defaultAmount} required />
           </label>
           <label>
             <span>For</span>
@@ -303,7 +313,7 @@ export function MoneyPanel({ businessId, path, due }: { businessId: string; path
                         : STATUS_WORDS[a.status] || a.status}
                     {a.reference ? ` · ${a.reference}` : ''}
                     {a.created_at ? ` · ${new Date(a.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}
-                    {a.attention === 'paid_twice' ? ' · paid twice — refund due' : ''}
+                    {a.attention === 'paid_twice' ? ' · paid twice — refund due' : a.attention === 'refund_due' ? ' · order cancelled — refund due' : ''}
                   </p>
                 </div>
               </li>

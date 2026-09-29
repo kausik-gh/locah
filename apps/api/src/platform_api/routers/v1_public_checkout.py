@@ -49,6 +49,8 @@ class PlaceOrderRequest(BaseModel):
     guest: GuestPayload
     currency: str = "INR"
     idempotency_key: str | None = None
+    # When it is wanted, for pre-orders: {"date": "2026-10-04", "time": "17:00"}.
+    due: dict[str, str] | None = None
 
 
 class QuoteRequest(BaseModel):
@@ -84,6 +86,26 @@ async def checkout_quote(
     data = await CheckoutService.quote_delivery(
         session, slug=slug, address=body.delivery_address
     )
+    return {"data": data, "meta": {}}
+
+
+class PriceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[CheckoutItem]
+    fulfilment_mode: str | None = None
+    delivery_address: dict[str, Any] | None = None
+    due: dict[str, str] | None = None
+
+
+@router.post("/websites/{slug}/checkout/price")
+async def checkout_price(
+    slug: str,
+    body: PriceRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """The cart priced by the server: lines, tax, delivery, pre-order days, advance."""
+    data = await CheckoutService.price_cart(session, slug=slug, payload=body.model_dump(mode="json"))
     return {"data": data, "meta": {}}
 
 

@@ -2,7 +2,15 @@
    tenant pages such as the enquiry page. No hooks here. */
 
 export type Choice = { label: string; price_delta: string }
-export type OptionGroup = { name: string; required: boolean; max: number; choices: Choice[] }
+export type OptionGroup = { name: string; required: boolean; max: number; choices: Choice[]; text?: boolean; max_length?: number }
+/** Ordering ahead (P1-10D2): whether a day is needed, the earliest, the advance. */
+export type PreorderInfo = {
+  needed: boolean
+  lead_hours: number
+  earliest_words: string | null
+  advance: { type: 'percent' | 'fixed'; value: number } | null
+  cancel_hours: number | null
+}
 export type PublicOffering = {
   id: string
   title: string
@@ -20,6 +28,7 @@ export type PublicOffering = {
   packs?: { label: string; price_amount: number | null }[]
   variants?: { id: string; name: string; price_amount: number | null }[]
   raised_amount?: number
+  preorder?: PreorderInfo
 }
 
 export function money(amount?: number | null, currency?: string) {
