@@ -57,4 +57,11 @@ async def remind(session: AsyncSession, step: DueStep) -> StepOutcome:
         required_permission=COMPLIANCE_READ, severity="warning", resource_type="compliance_item",
         resource_id=item.id, location_id=item.location_id,
     )
-    return StepOutcome("done", f"Reminded your team about {item.title} ({item.due_on.isoformat()})")
+    # The shared Tasks engine owns the follow-up: the first reminder for this
+    # due date opens one task, later steps return that same task, a new date a
+    # new one (occurrence key). Nothing happens when Tasks is switched off.
+    from platform_core.tasks.compliance_hook import create_task_for_compliance_due
+
+    task = await create_task_for_compliance_due(session, business_id=step.business_id, item_id=item.id)
+    also = " and opened a task" if task is not None else ""
+    return StepOutcome("done", f"Reminded your team about {item.title} ({item.due_on.isoformat()}){also}")

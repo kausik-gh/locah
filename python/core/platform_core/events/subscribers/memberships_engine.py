@@ -325,6 +325,23 @@ async def checkin_sessions(session: AsyncSession, event: EventContext) -> None:
         pass  # the desk already refused a pack with nothing left; a race keeps the visit as recorded
 
 
+# ---------------------------------------------------------------- AMC visit ← its job (§9)
+@subscribe(  # type: ignore[untyped-decorator, unused-ignore]
+    "memberships.visit_job", "job.created",
+    description="Remember which job card is doing a covered visit",
+)
+async def visit_job(session: AsyncSession, event: EventContext) -> None:
+    from platform_core.memberships.models import MembershipServiceVisit
+
+    if event.payload.get("source_type") != "service_contract" or not event.payload.get("source_id"):
+        return
+    visit = await session.get(MembershipServiceVisit, event.require_uuid("source_id"))
+    if visit is None or visit.business_id != event.require_business_id() or visit.job_ref is not None:
+        return
+    visit.job_ref = event.require_uuid("job_id")
+    await session.flush()
+
+
 # ---------------------------------------------------------------- receipt when a period is paid
 @subscribe(  # type: ignore[untyped-decorator, unused-ignore]
     "memberships.receipt", "membership.period_paid",

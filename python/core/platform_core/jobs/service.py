@@ -23,7 +23,8 @@ from platform_core.gates import assert_business_mutable
 from platform_core.stock.service import StockService
 from platform_core.stock import ledger as stock_ledger
 
-SOURCE_TYPES = frozenset({"manual", "project", "quote"})
+# service_contract: a covered visit Memberships asked for (source_id is its opaque visit id).
+SOURCE_TYPES = frozenset({"manual", "project", "quote", "service_contract"})
 PRIORITIES = frozenset({"low", "normal", "high", "urgent"})
 TRANSITIONS = {
     "new": frozenset({"assigned", "inspecting", "cancelled"}),
@@ -173,7 +174,9 @@ class JobService:
                       event: str, action: str, before: dict[str, Any] | None = None) -> None:
         await OutboxService.publish(session, event_type=event, business_id=job.business_id,
                                     correlation_id=correlation_id,
-                                    payload={"job_id": str(job.id), "status": job.status, "reference": job.reference})
+                                    payload={"job_id": str(job.id), "status": job.status, "reference": job.reference,
+                                             "source_type": job.source_type,
+                                             "source_id": str(job.source_id) if job.source_id else None})
         await AuditService.record(session, event_type=event, actor_identity_id=actor_id,
                                   actor_context="business", business_id=job.business_id,
                                   resource_type="job_card", resource_id=job.id, action=action,
