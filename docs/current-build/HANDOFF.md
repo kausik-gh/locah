@@ -10,6 +10,13 @@ full), this file, the generated ledger
 Authority: founder instructions → PDF (Cashfree is the payment direction) → MD
 → accepted implementation → repository. FUTURE/P6 stays FUTURE.
 
+## Phase B final integration (in progress)
+
+All eleven parallel packets are merged on `claude/phase-b-final-integration`;
+cross-module wiring and the demo gate continue there. Status, SHAs, tests and
+risks: `docs/current-build/CLAUDE-FINAL-INTEGRATION-HANDOFF.md`. `main` is not
+updated until that gate passes.
+
 ## Where things stand
 
 Branch `main`. Packets done, newest last:
