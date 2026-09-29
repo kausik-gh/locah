@@ -247,14 +247,14 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
     ModuleInfo(
         "marketing", "Campaigns & offers", "P3",
         "Audiences from your own customers, coupons and campaigns you approve, with results traced to sales.",
-        staff_can=("Build audiences", "Create offers", "Approve campaigns"),
-        packs=("growth",),
+        staff_can=("See campaigns and audience counts", "Draft campaigns and offers"),
+        packs=("growth",), built=True,
     ),
     ModuleInfo(
         "loyalty", "Loyalty & referrals", "P3",
         "Points, stamp cards and referral codes customers earn and redeem.",
         customer_can=("Earn and redeem points", "Share a referral code"),
-        packs=("growth",), site=("loyalty",),
+        packs=("growth",), site=("loyalty",), built=True,
     ),
     ModuleInfo(
         "ai-employees", "AI staff", "P3",

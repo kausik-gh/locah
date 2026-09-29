@@ -233,6 +233,16 @@ export const PERMISSIONS = {
   WORKFORCE_MANAGE_AVAILABILITY: 'workforce.manage_availability',
   WORKFORCE_DEACTIVATE: 'workforce.deactivate',
 
+  // Module: loyalty — points, stamps, referrals, gift vouchers (§18.2)
+  LOYALTY_READ: 'loyalty.read',
+  LOYALTY_MANAGE: 'loyalty.manage',
+
+  // Module: marketing — the owner approves every broadcast and every rupee (§18)
+  MARKETING_READ: 'marketing.read',
+  MARKETING_CREATE: 'marketing.create',
+  MARKETING_APPROVE: 'marketing.approve',
+  MARKETING_SEND: 'marketing.send',
+
   // Sensitive / Owner operations
   COMMERCIAL_READ: 'commercial.read',
   COMMERCIAL_MANAGE: 'commercial.manage',
