@@ -20,14 +20,23 @@ async function chromium() {
   try {
     return (await import('playwright')).chromium
   } catch {
-    const globalRoot = path.join(path.dirname(process.execPath), '..', 'lib', 'node_modules', 'playwright', 'package.json')
-    return createRequire(globalRoot)('playwright').chromium
+    try {
+      return (await import('playwright-core')).chromium
+    } catch {
+      const globalRoot = path.join(path.dirname(process.execPath), '..', 'lib', 'node_modules', 'playwright', 'package.json')
+      return createRequire(globalRoot)('playwright').chromium
+    }
   }
 }
 
 let shared
 export async function launch() {
-  if (!shared) shared = await (await chromium()).launch({ headless: true, args: ['--no-sandbox'] })
+  if (!shared) {
+    // CHROME_PATH uses a browser already on the machine. The harness does not download one.
+    const options = { headless: true, args: ['--no-sandbox'] }
+    if (process.env.CHROME_PATH) options.executablePath = process.env.CHROME_PATH
+    shared = await (await chromium()).launch(options)
+  }
   return shared
 }
 export async function closeAll() {

@@ -26,13 +26,13 @@ SCOPE_WORDS = {
 }
 SURFACES = {"workspace": "Workspace", "pos": "Counter billing (POS)", "crew": "Crew app", "kitchen": "Kitchen display"}
 # Surfaces that exist today (POS since P1-05); crew and kitchen join in P2.
-BUILT_SURFACES = frozenset({"workspace", "pos"})
+BUILT_SURFACES = frozenset({"workspace", "pos", "crew"})
 CURRENT_PHASES = frozenset({"P1"})
 # Later-phase roles whose scope, surface and permissions all work today: the
 # provider and the sales executive, since assignment scope is enforced (P2-01).
 # Their later tools (a provider's crew app, a sales executive's site visits)
 # join their permissions as those ship.
-READY_AHEAD = frozenset({"provider", "sales_executive"})
+READY_AHEAD = frozenset({"provider", "sales_executive", "dispatcher", "delivery_partner"})
 
 
 @dataclass(frozen=True)
@@ -130,13 +130,14 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
     RoleTemplate(
         "dispatcher", "Dispatcher", "Dispatch board: assign crew, reassign failed jobs",
         "location", "workspace", "Unassigned and late deliveries",
-        _READ_BASICS | {p.FULFILMENT_READ, p.FULFILMENT_UPDATE_STATUS, p.ORDERS_READ, p.WORKFORCE_READ},
-        ("fulfilment",), "P2",
+        _READ_BASICS | {p.DISPATCH_READ, p.DISPATCH_ASSIGN, p.DISPATCH_UPDATE_STATUS, p.ORDERS_READ, p.WORKFORCE_READ},
+        ("dispatch",), "P2",
     ),
     RoleTemplate(
         "delivery_partner", "Delivery partner", "Their assigned deliveries; the customer's phone only while the job is active",
-        "assignment", "crew", "My next drop", frozenset({p.FULFILMENT_READ, p.FULFILMENT_UPDATE_STATUS}),
-        ("fulfilment",), "P2",
+        "assignment", "crew", "My next drop",
+        _READ_BASICS | {p.DISPATCH_READ, p.DISPATCH_UPDATE_STATUS},
+        ("dispatch",), "P2",
     ),
     RoleTemplate(
         "technician", "Technician", "Assigned job cards, parts used, photos and that asset's service history",

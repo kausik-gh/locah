@@ -211,12 +211,12 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         packs=("storefront",),
     ),
     ModuleInfo(
-        "dispatch", "Live delivery", "P2",
-        "Every delivery or field visit gets a person, a live status, proof of delivery and cash settlement.",
-        customer_can=("Track the delivery live",),
-        staff_can=("Assign drivers and technicians", "Settle cash at shift end"),
+        "dispatch", "Dispatch", "P2",
+        "After the order exists, a person picks it up, carries it, and marks it delivered. Status and times. A live location only when a device is actually sharing one.",
+        customer_can=("See how far the delivery has got",),
+        staff_can=("Assign a delivery", "Mark picked up, out for delivery, delivered or failed"),
         packs=("delivery", "field_service"), depends_on=("fulfilment",), surfaces=("workspace", "crew"),
-        site=("track_order",),
+        site=("track_order",), built=True,
     ),
     ModuleInfo(
         "queue-operations", "Walk-in queue", "P2",

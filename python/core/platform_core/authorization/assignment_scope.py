@@ -44,6 +44,8 @@ ASSIGNMENT_PERMISSIONS = frozenset({
     "leads.read", "leads.create", "leads.update_status",
     "quotes.read", "quotes.create", "quotes.update",
     "customers.read",
+    # Delivery jobs assigned to them. Assigning is the dispatcher's, not theirs.
+    "dispatch.read", "dispatch.update_status",
 })
 
 
@@ -84,6 +86,7 @@ def _filter_reads(state: ORMExecuteState) -> None:
     identity = state.session.info.get(_INFO_KEY)
     if not identity or not state.is_select or state.execution_options.get("skip_assignment_scope"):
         return
+    from platform_core.dispatch.models import DispatchEvent, DispatchJob
     from platform_core.models import Booking, CustomerContact, Lead, ProjectTask, Quote
 
     mine = _member_ids(identity)
@@ -102,6 +105,10 @@ def _filter_reads(state: ORMExecuteState) -> None:
         with_loader_criteria(Quote, lambda cls: or_(cls.created_by == identity, cls.customer_contact_id.in_(
             select(Lead.customer_contact_id).where(Lead.assignee_identity_id == identity))),
             include_aliases=True, track_closure_variables=True),
+        with_loader_criteria(DispatchJob, lambda cls: cls.assigned_member_id.in_(mine), include_aliases=True,
+                             track_closure_variables=True),
+        with_loader_criteria(DispatchEvent, lambda cls: cls.assigned_member_id.in_(mine), include_aliases=True,
+                             track_closure_variables=True),
     )
 
 
@@ -111,16 +118,15 @@ def _guard_writes(session: Session, flush_context: Any, instances: Any) -> None:
     identity = session.info.get(_INFO_KEY)
     if not identity:
         return
-    from platform_core.models import Booking, Lead, ProjectTask, WorkforceMember
-
-    from platform_core.models import Quote
+    from platform_core.dispatch.models import DispatchEvent, DispatchJob
+    from platform_core.models import Booking, Lead, ProjectTask, Quote, WorkforceMember
 
     for quote in [o for o in session.new if isinstance(o, Quote)]:
         if quote.created_by is None or uuid.UUID(str(quote.created_by)) != identity:
             from platform_core.exceptions import OutsideAssignmentScope
 
             raise OutsideAssignmentScope()
-    objects = [o for o in list(session.new) + list(session.dirty) if isinstance(o, (Booking, Lead, ProjectTask))]
+    objects = [o for o in list(session.new) + list(session.dirty) if isinstance(o, (Booking, Lead, ProjectTask, DispatchJob, DispatchEvent))]
     if not objects:
         return
     with session.no_autoflush:
@@ -131,6 +137,8 @@ def _guard_writes(session: Session, flush_context: Any, instances: Any) -> None:
             ok = obj.assignee_identity_id is not None and uuid.UUID(str(obj.assignee_identity_id)) == identity
         elif isinstance(obj, Booking):
             ok = obj.provider_id is not None and uuid.UUID(str(obj.provider_id)) in mine
+        elif isinstance(obj, (DispatchJob, DispatchEvent)):
+            ok = obj.assigned_member_id is not None and uuid.UUID(str(obj.assigned_member_id)) in mine
         else:
             ok = obj.assignee_member_id is not None and uuid.UUID(str(obj.assignee_member_id)) in mine
         if not ok:

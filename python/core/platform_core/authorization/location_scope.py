@@ -23,6 +23,7 @@ _INFO_KEY = "locah_location_scope"
 
 
 def _scoped_models() -> tuple[type[Any], ...]:
+    from platform_core.dispatch.models import DispatchEvent, DispatchJob
     from platform_core.models import (
         Booking,
         FulfilmentJob,
@@ -37,7 +38,7 @@ def _scoped_models() -> tuple[type[Any], ...]:
         SalesOrder,
     )
 
-    return (SalesOrder, Booking, FulfilmentJob, InventoryRecord, InventoryMovement, Quote, Project,
+    return (SalesOrder, Booking, FulfilmentJob, DispatchJob, DispatchEvent, InventoryRecord, InventoryMovement, Quote, Project,
             InvoicingDocument, InvoicingRegister, PosShift, PosCashMovement)
 
 
