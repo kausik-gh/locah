@@ -647,3 +647,36 @@ done("P1-10E", {
                      ws="✓ Order › Change order", test=_OC_TEST),
     "FR-OR-27": dict(status=P, code="website checkout (p1_03, p1_04, p1_10d2), WhatsApp ordering (p1_08), POS sale (p1_05, p1_10d1 split), meat by weight (p1_03, p1_10a), bakery pre-order (p1_10d2), reorder (p1_10b), human phone order and an order changed after the call (p1_10e_phone) exist as browser flows; the AI phone order fixture (P3), restaurant table order and kitchen (P2), partial availability on the website, return/exchange and the combined owner view are not yet flows"),
 })
+
+
+# ---------------------------------------------------------------- P1-10E6 English, Tamil and Hindi (MD §2 r10, §12, §23 #22)
+_LANG_TEST = ("✓ test_customer_language (5), test_site_words (5), test_workspace_words (6) — platform_api RLS role and "
+              "source checks — + browser p1_10e_language (23/23) and p1_10e_workspace_language (15/15), Playwright "
+              "Chromium, desktop + 390 px")
+_LANG_SCOPE = ("WhatsApp: every journey phrase, the person hand-off and STOP answer in the customer's language — "
+               "detected from Tamil/Devanagari script, or chosen from the menu's Language row (then it sticks); "
+               "templates go in the customer's language when that version is approved; links sent carry ?lang=. "
+               "Website: the owner ticks the site's languages (first shown first); visitors switch above the header or "
+               "in the footer; the site's own words — buttons, basket, checkout, booking, headings LOCAH supplies, "
+               "tracking, bills, payment links, khata, reviews, booking management — follow; the owner's words stay as "
+               "written; Tamil and Devanagari faces behind every site font. Workspace: a per-person language saved on "
+               "the account (sidebar picker; a new browser adopts it) for the navigation, Home, Orders, an order, "
+               "phone orders, changes, the production list and the money panel; the rest of the Workspace, the "
+               "counter (POS), the inbox chrome and numbers-with-words the API composes (e.g. '1 order') are still "
+               "English. All Tamil and Hindi wording is LOCAH's first draft and needs a native speaker's review "
+               "(VB-22) before a pilot")
+done("P1-10E6", {
+    "PR-10": dict(status=P, code="INR, GST (invoicing), UPI (POS/collect), WhatsApp-first, DPDP consent records and per-customer export/erasure exist. " + _LANG_SCOPE,
+                  db="✓ contacts.language/language_source, websites.languages, consumer_profiles.preferences.workspace_language",
+                  svc="✓ messaging/words.py; PUT /website/languages; PUT /me/workspace-language",
+                  web="✓ tenant site EN/TA/HI", ws="✓ Website › Languages; sidebar language", test=_LANG_TEST),
+    "PKT-10": dict(status=P, code="basic insights from real data are complete (IS-01). Strings: " + _LANG_SCOPE, test=_LANG_TEST),
+    "GP-22": dict(status=P, code=_LANG_SCOPE, test=_LANG_TEST),
+})
+
+
+# ---------------------------------------------------------------- P1 gate review — stale notes brought up to date (no status raised)
+done("P1-gate", {
+    "FR-OR-01": dict(status=P, code="website checkout, Marketplace (card → the business's own site), WhatsApp journeys, the counter, reorder and a staff phone order in the Workspace (FR-OR-13, P1-10E5) all place the one Order; AI phone ordering (P3), QR/table ordering (P2) and connector orders (P4) are not built"),
+    "OM-09": dict(status=P, code="a portfolio_item kind (client, year, type of work) is sold as an enquiry and renders on the site with its details and 'Enquire' (P1-03); gallery sections and portfolio design families exist. A dedicated 'Our work' section chosen for portfolio-led businesses, and case-study pages, are not built"),
+})

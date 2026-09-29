@@ -1,3 +1,7 @@
+import type { Words } from '@/lib/ws-words'
+
+const english: Words = (text) => text
+
 /** Where the order came from (Capability Universe §12: every channel ends in the same order). */
 export const CHANNEL: Record<string, string> = {
   web: 'Website',
@@ -32,10 +36,10 @@ const PAY_STATUS: Record<string, string> = {
  *  matters (an advance by UPI on a "cash at pickup" order is not cash). */
 const SETTLED = new Set(['paid', 'partially_paid', 'refunded', 'partially_refunded'])
 
-export function paymentLabel(o: { payment_method: string; payment_status: string }): string {
-  const status = PAY_STATUS[o.payment_status] || o.payment_status.replace(/_/g, ' ')
+export function paymentLabel(o: { payment_method: string; payment_status: string }, t: Words = english): string {
+  const status = t(PAY_STATUS[o.payment_status] || o.payment_status.replace(/_/g, ' '))
   if (SETTLED.has(o.payment_status)) return status.charAt(0).toUpperCase() + status.slice(1)
-  const method = PAY_METHOD[o.payment_method] || o.payment_method.replace(/_/g, ' ')
+  const method = t(PAY_METHOD[o.payment_method] || o.payment_method.replace(/_/g, ' '))
   return `${method} · ${status}`
 }
 

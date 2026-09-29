@@ -183,6 +183,17 @@ class IdentityService:
         await session.flush()
         return prefs
 
+    @staticmethod
+    async def set_workspace_language(session: AsyncSession, *, identity_id: uuid.UUID, language: str) -> str:
+        """The language this person's Workspace speaks: 'en', 'ta' or 'hi' (P1-10E6; MD §2980
+        "Dashboard Language"). A person's own choice, the same in every business they work in."""
+        profile = await IdentityService._ensure_consumer_profile(session, identity_id)
+        prefs = dict(profile.preferences or {})
+        prefs["workspace_language"] = language
+        profile.preferences = prefs
+        await session.flush()
+        return language
+
     # Legacy aliases for Stage 1C /me routes
     get_profile_by_auth_user_id = get_by_supabase_id
 

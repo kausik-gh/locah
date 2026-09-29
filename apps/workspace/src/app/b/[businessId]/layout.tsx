@@ -3,6 +3,10 @@ import { ReactNode } from 'react'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry, businessHeaders } from '@/lib/api'
 import { AppSidebar, type NavBusiness } from '@/components/AppSidebar'
+import { AdoptLanguage } from '@/components/WorkspaceLanguage'
+import { WsWordsProvider } from '@/components/WsWords'
+import { wsLang } from '@/lib/ws-lang'
+import { isWsLang } from '@/lib/ws-words'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,6 +14,7 @@ type Context = {
   module_states: Record<string, string>
   permissions: string[]
   solo?: boolean
+  workspace_language?: string
 }
 
 /**
@@ -62,8 +67,13 @@ export default async function WorkspaceBusinessLayout({
   const permissions = contextRes.ok ? contextRes.data.data.permissions ?? [] : null
   const unreadCount = unreadRes.ok ? unreadRes.data.data.unread_count : 0
   const solo = contextRes.ok ? Boolean(contextRes.data.data.solo) : false
+  // The account's language wins; this browser's cookie is how server pages know it (P1-10E6).
+  const saved = contextRes.ok ? contextRes.data.data.workspace_language : undefined
+  const lang = isWsLang(saved) ? saved : wsLang()
 
   return (
+    <WsWordsProvider lang={lang}>
+    {lang !== wsLang() ? <AdoptLanguage lang={lang} /> : null}
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--color-background)' }}>
       <AppSidebar
         businessId={params.businessId}
@@ -72,10 +82,12 @@ export default async function WorkspaceBusinessLayout({
         permissions={permissions}
         unreadCount={unreadCount}
         solo={solo}
+        lang={lang}
       />
       <main className="ws-page" style={{ flex: 1, minWidth: 0 }}>
         {children}
       </main>
     </div>
+    </WsWordsProvider>
   )
 }

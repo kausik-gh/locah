@@ -4,6 +4,8 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ui'
 import { PrintButton } from './PrintButton'
+import { pageWords, wsLang } from '@/lib/ws-lang'
+import { WS_LOCALE } from '@/lib/ws-words'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,29 +32,33 @@ export default async function ProductionPage({
 }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
+  const t = pageWords()
   const base = `/b/${params.businessId}`
   const q = searchParams?.date ? `?date=${encodeURIComponent(searchParams.date)}` : ''
   const res = await apiTry<{ data: Production }>(`/v1/platform/businesses/${params.businessId}/orders/production${q}`, token)
   if (!res.ok) {
     return (
       <div>
-        <PageHeader title="Production list" breadcrumb={<Link href={`${base}/orders`}>← Orders</Link>} />
-        <GateNotice error={res.error} businessId={params.businessId} moduleLabel="Orders" />
+        <PageHeader title={t('Production list')} breadcrumb={<Link href={`${base}/orders`}>← {t('Orders')}</Link>} />
+        <GateNotice error={res.error} businessId={params.businessId} moduleLabel={t('Orders')} />
       </div>
     )
   }
   const p = res.data.data
+  const lang = wsLang()
+  const day = lang === 'en' ? p.label
+    : new Date(`${p.date}T00:00:00`).toLocaleDateString(WS_LOCALE[lang], { weekday: 'short', day: 'numeric', month: 'short' })
   return (
     <div className="bos-production">
       <PageHeader
-        title={`Production · ${p.label}`}
-        subtitle={p.orders ? `${p.orders} order${p.orders === 1 ? '' : 's'} wanted this day.` : 'Nothing is wanted this day yet.'}
-        breadcrumb={<Link href={`${base}/orders`}>← Orders</Link>}
+        title={`${t('Production')} · ${day}`}
+        subtitle={p.orders ? (p.orders === 1 ? t('1 order wanted this day.') : t('{n} orders wanted this day.', { n: p.orders })) : t('Nothing is wanted this day yet.')}
+        breadcrumb={<Link href={`${base}/orders`}>← {t('Orders')}</Link>}
         actions={
           <span className="bos-inv-buttons">
-            <Link className="btn btn-ghost" href={`${base}/orders/production?date=${shift(p.date, -1)}`}>← Day before</Link>
-            <Link className="btn btn-ghost" href={`${base}/orders/production?date=${shift(p.date, 1)}`}>Next day →</Link>
-            <PrintButton />
+            <Link className="btn btn-ghost" href={`${base}/orders/production?date=${shift(p.date, -1)}`}>← {t('Day before')}</Link>
+            <Link className="btn btn-ghost" href={`${base}/orders/production?date=${shift(p.date, 1)}`}>{t('Next day')} →</Link>
+            <PrintButton label={t('Print')} />
           </span>
         }
       />
@@ -73,12 +79,12 @@ export default async function ProductionPage({
                   ))}
                 </ul>
               ) : null}
-              <p className="bos-hint">Orders: {it.orders.join(', ')}</p>
+              <p className="bos-hint">{t('Orders: {list}', { list: it.orders.join(', ') })}</p>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="bos-hint">When customers order for this day, what to make shows here, added up.</p>
+        <p className="bos-hint">{t('When customers order for this day, what to make shows here, added up.')}</p>
       )}
     </div>
   )

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { Card, PageHeader } from '@/components/ui'
+import { pageWords } from '@/lib/ws-lang'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,7 @@ type Home = {
 export default async function WorkspaceHomePage({ params }: { params: { businessId: string } }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
+  const t = pageWords()
   const base = `/b/${params.businessId}`
   const [homeRes, businessRes] = await Promise.all([
     apiTry<{ data: Home }>(`/v1/platform/businesses/${params.businessId}/home`, token),
@@ -40,14 +42,14 @@ export default async function WorkspaceHomePage({ params }: { params: { business
         <PageHeader title={business.display_name} />
         <Card tone="danger" style={{ maxWidth: '46rem' }}>
           <h2 style={{ marginBottom: '0.4rem' }}>
-            {suspended ? 'This business is suspended' : 'This business is under review'}
+            {suspended ? t('This business is suspended') : t('This business is under review')}
           </h2>
           <p style={{ color: 'var(--status-bad-fg)' }}>
             {suspended
-              ? 'New orders, bookings and payments are not being accepted right now. Your data is safe and nothing has been deleted.'
-              : 'Your account is being reviewed. Everything keeps working normally while that happens.'}
+              ? t('New orders, bookings and payments are not being accepted right now. Your data is safe and nothing has been deleted.')
+              : t('Your account is being reviewed. Everything keeps working normally while that happens.')}
           </p>
-          <p style={{ color: 'var(--color-muted)' }}>Contact support to resolve this. They can tell you exactly what is needed.</p>
+          <p style={{ color: 'var(--color-muted)' }}>{t('Contact support to resolve this. They can tell you exactly what is needed.')}</p>
         </Card>
       </div>
     )
@@ -56,9 +58,9 @@ export default async function WorkspaceHomePage({ params }: { params: { business
   if (!homeRes.ok) {
     return (
       <div>
-        <PageHeader title={business?.display_name ?? 'Workspace'} />
+        <PageHeader title={business?.display_name ?? t('Workspace')} />
         <Card style={{ maxWidth: '40rem' }}>
-          <p>Your home could not load just now. Refresh the page to try again.</p>
+          <p>{t('Your home could not load just now. Refresh the page to try again.')}</p>
         </Card>
       </div>
     )
@@ -70,32 +72,32 @@ export default async function WorkspaceHomePage({ params }: { params: { business
   const waiting = attention?.items?.reduce((n, i) => n + (i.count || 0), 0) ?? 0
   const subtitle = isOwner
     ? waiting > 0
-      ? `${waiting} thing${waiting === 1 ? '' : 's'} need you.`
-      : 'Nothing needs you right now.'
-    : `${home.role.label} · ${home.role.question}`
+      ? waiting === 1 ? t('1 thing needs you.') : t('{n} things need you.', { n: waiting })
+      : t('Nothing needs you right now.')
+    : `${t(home.role.label)} · ${t(home.role.question)}`
 
   return (
     <div className="bos-home">
-      <PageHeader title={business?.display_name ?? 'Workspace'} subtitle={subtitle} />
+      <PageHeader title={business?.display_name ?? t('Workspace')} subtitle={subtitle} />
       {home.location_scoped ? (
-        <p className="bos-hint">Showing your locations only.</p>
+        <p className="bos-hint">{t('Showing your locations only.')}</p>
       ) : null}
       {home.bands.map((band) => (
         <section key={band.key} className={`bos-band bos-band--${band.key}`} aria-labelledby={`band-${band.key}`}>
-          <h2 className="bos-section__title" id={`band-${band.key}`}>{band.title}</h2>
+          <h2 className="bos-section__title" id={`band-${band.key}`}>{t(band.title)}</h2>
           {band.stats ? (
             <div className="ws-stats">
               {band.stats.map((s) => (
                 <Link key={s.label} href={s.href.startsWith('~') ? `${s.href.slice(1)}/${params.businessId}` : `${base}${s.href}`} className="ws-stat bos-stat-link">
-                  <p className="ws-stat__label">{s.label}</p>
-                  <p className="ws-stat__value">{s.value}</p>
-                  {s.note ? <p className="ws-stat__note">{s.note}</p> : null}
+                  <p className="ws-stat__label">{t(s.label)}</p>
+                  <p className="ws-stat__value">{t(s.value)}</p>
+                  {s.note ? <p className="ws-stat__note">{t(s.note)}</p> : null}
                 </Link>
               ))}
             </div>
           ) : null}
           {band.key === 'today' ? (
-            <p className="bos-band__more"><Link href={`${base}/insights?period=7d`}>Your numbers for the week and month →</Link></p>
+            <p className="bos-band__more"><Link href={`${base}/insights?period=7d`}>{t('Your numbers for the week and month')} →</Link></p>
           ) : null}
           {band.stats ? null : band.items && band.items.length > 0 ? (
             <ul className="bos-attention">
@@ -108,8 +110,8 @@ export default async function WorkspaceHomePage({ params }: { params: { business
                       <span className="bos-attention__count">{i.count}</span>
                     )}
                     <span className="bos-attention__text">
-                      <strong>{i.label}</strong>
-                      {i.detail ? <span>{i.detail}</span> : null}
+                      <strong>{t(i.label)}</strong>
+                      {i.detail ? <span>{t(i.detail)}</span> : null}
                     </span>
                     <span className="bos-attention__go" aria-hidden>→</span>
                   </Link>
@@ -117,7 +119,7 @@ export default async function WorkspaceHomePage({ params }: { params: { business
               ))}
             </ul>
           ) : (
-            <div className="bos-empty">{band.empty}</div>
+            <div className="bos-empty">{t(band.empty)}</div>
           )}
         </section>
       ))}

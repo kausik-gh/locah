@@ -39,6 +39,8 @@ class ContextResponse(BaseModel):
     # OM-21 (MD §22 "Solo professionals: simplified navigation (no team menus),
     # one calendar"): the business's organisation shape is solo and one person runs it.
     solo: bool = False
+    # P1-10E6: this person's Workspace language ('en' | 'ta' | 'hi').
+    workspace_language: str = "en"
 
 
 @router.get("")
@@ -84,6 +86,8 @@ async def get_context(
             last_business_id=prefs.get("last_business_id"),
             primary_business_id=prefs.get("primary_business_id"),
             solo=solo,
+            workspace_language=prefs.get("workspace_language") if prefs.get("workspace_language") in ("en", "ta", "hi")
+            else "en",
         ).model_dump(),
         "meta": {"correlation_id": ctx.correlation_id},
     }
@@ -280,3 +284,22 @@ async def ask_to_erase_my_data(
                 resource_id=contact_id)
     await session.commit()
     return {"data": {"requested": True, "already": already}, "meta": {"correlation_id": ctx.correlation_id}}
+
+
+class WorkspaceLanguageBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    language: str = Field(pattern="^(en|ta|hi)$")
+
+
+@router.put("/workspace-language")
+async def set_workspace_language(
+    body: WorkspaceLanguageBody,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """The language my Workspace speaks — English, Tamil or Hindi (P1-10E6)."""
+    language = await IdentityService.set_workspace_language(session, identity_id=ctx.identity_id,
+                                                            language=body.language)
+    await session.commit()
+    return {"data": {"workspace_language": language}, "meta": {"correlation_id": ctx.correlation_id}}

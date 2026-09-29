@@ -41,7 +41,9 @@
   --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
   --shadow-pop: 0 8px 28px rgba(15, 23, 42, 0.12);
 
-  --font-sans: var(--font-general-sans, 'General Sans'), ui-sans-serif,
+  /* Tamil and Devanagari behind General Sans (P1-10E6): Latin is unchanged. */
+  --font-sans: var(--font-general-sans, 'General Sans'), var(--font-ws-tamil, 'Noto Sans Tamil'),
+    var(--font-ws-devanagari, 'Noto Sans Devanagari'), ui-sans-serif,
     system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -1089,4 +1091,26 @@ a .ws-card {
   .tpl-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Tamil and Devanagari letters join into clusters: no tracking, no capitals (P1-10E6). */
+:lang(ta) *,
+:lang(hi) * {
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
+
+/* The Workspace language picker at the foot of the sidebar. */
+.ws-lang {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 0.5rem 0;
+}
+.ws-lang__label {
+  font-size: 0.68rem;
+  color: var(--color-muted);
+}
+.ws-lang select {
+  width: 100%;
+  min-height: 34px;
 }

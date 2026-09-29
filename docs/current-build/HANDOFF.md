@@ -28,6 +28,9 @@ Branch `main`. Packets done, newest last:
 | P1-10E2 tags + segments | see git log ("feat(p1-10e2)") | test_customer_segments (5) + browser p1_10e_segments 13/13 (desktop + 390 px) |
 | P1-10E1 basic insights | see git log ("feat(p1-10e1)") | test_basic_insights (5) + browser p1_10e_insights 14/14 (desktop + 390 px); payments-collect, role-home tests re-run |
 | P1-10D2b formula pricing | see git log ("feat(p1-10d2b)") | test_formula_pricing (7) + browser p1_10d2_formula 28/28 (Playwright Chromium, desktop + 390 px); suite 1090 |
+| P1-10E6a WhatsApp in the customer's language | 8dc8622 | test_customer_language (5); test_journeys + test_messaging re-run green |
+| P1-10E6b website in EN/TA/HI | bcc660b | test_site_words (5) + browser p1_10e_language 23/23 (desktop + 390 px) |
+| P1-10E6c Workspace language | see git log ("feat(p1-10e6c)") | test_workspace_words (6) + browser p1_10e_workspace_language 15/15; p1_10e_phone 17/17 and p1_10d1_payments 83/83 re-run; suite 1110 + worker 16 |
 
 P1 gate after P1-10C: **TOTAL 240 · COMPLETE 122 · PARTIAL 90 · NOT_STARTED 12 ·
 ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 763 rows (P1 total grew by the
@@ -61,6 +64,81 @@ ACTIVATION_REQUIRED 22 · FUTURE 0.**
 P1 gate after P1-10E4: **TOTAL 261 · COMPLETE 141 · PARTIAL 96 · NOT_STARTED 2 ·
 ACTIVATION_REQUIRED 22 · FUTURE 0.** Full suite before E4: 1102 passed + the
 permission-registry parity test fixed (TS `CUSTOMERS_ERASE` added).
+
+P1 gate after P1-10E6 (the P1 gate review): **TOTAL 261 · COMPLETE 143 · PARTIAL 96 ·
+NOT_STARTED 0 · ACTIVATION_REQUIRED 22 · FUTURE 0.** Full API suite 1110 passed
+(`-n 4`), worker 16 passed, ruff + mypy clean, web + workspace typecheck/lint clean.
+
+### P1 gate review (after P1-10E6)
+
+Every P1 row is now built, partly built with the rest named, or waiting on
+activation — none is NOT_STARTED. What keeps the 96 PARTIAL rows from COMPLETE,
+grouped (the ledger has each row's exact words):
+
+- **Waits on a later module (by design, not skippable in P1):** Kitchen/table
+  (P2: OK-03, FR-OR-01 QR), Memberships sign-up/sessions/attendance (P2: OK-07,
+  OK-08, RV-01, AU-06), Tasks (P2: CP-02, AU-08, GP-15), dispatch/transfers
+  (P2: OM-02, RL-07, PB-102/404), loyalty/marketing/AI (P3: PB-102/201,
+  FR-OR-01 AI phone, TX-03), Buying/procurement/connectors/GSP (P4: FR-IN-10/11,
+  IN-10, IV-09 Tally, CO-03), job cards/academics/donations (P5: PB-202/206,
+  OK-05, OK-13, FD-02 portal), and the playbook rows that list those modules.
+- **Waits on activation or real-world input:** Cashfree/payment provider
+  (FD-11, FD-12), Meta WhatsApp (CO-02, MS-02 approval), SMS/email providers
+  (CN-18, IV-08 email), hardware tests (PS-07, CN-20), usage data for the
+  category grid (TX-02), legal verification (CO-06, CO-11), native-speaker
+  review of all Tamil/Hindi wording (VB-22 → PKT-10, PR-10, GP-22, MS-02).
+- **Still P1-shaped work that was not done (candidates if P1 is reopened):**
+  the rest of the Workspace and the counter in Tamil/Hindi (PKT-10/GP-22),
+  Tamil/Hindi shaping in PDFs (PM-07), a category picker on stock counts
+  (FR-IN-08), cost-per-kg entry (FR-IN-06), timeline entries for counter bills
+  and messages (CR-02), a dedicated "Our work" section for portfolio-led
+  businesses (OM-09), digital download links (OK-12/OM-18 — needs private file
+  storage), automatic DPDP purging (CO-01), camera scanning (PS-12), Money as
+  integer paise on First Launch tables (PM-06), Workspace UX polish (FD-15).
+
+### P1-10E6 — English, Tamil and Hindi (DONE, browser-verified; PKT-10 / PR-10 / GP-22 PARTIAL)
+
+- **WhatsApp** (`platform_core/messaging/words.py`, `journeys.py`,
+  `services/messaging.py`): one phrase table (English key → ta/hi) with `tr`,
+  `detect` (Tamil U+0B80–0BFF / Devanagari U+0900–097F), `day_words`, `clock`.
+  `Ctx.lang` from `language_for` (contact.language → messaging_settings.language
+  → en); a Tamil/Hindi-script message sets `language_source='detected'`; the
+  menu's "Language · மொழி · भाषा" row sets `'chosen'` (sticks). STOP and the
+  person hand-off follow. Templates prefer the contact's language when that
+  version is approved. `Ctx.link()` adds `?lang=` to tracking/bill/khata/pay
+  links. Migration `20260929160000_p1_customer_language.sql` (local DBs only).
+- **Website** (`apps/web/src/lib/site-words.{ts,json}`, `site-lang.ts`,
+  `components/website/{SiteWords,LanguageSwitch,SiteFrame}.tsx`): the owner
+  sets `websites.languages` (Workspace › Website › "Languages on your website";
+  `PUT /v1/b/{id}/website/languages`; migration `20260929170000_p1_website_languages.sql`).
+  Visitors switch (cookie `ls_lang`); `?lang=` wins on pages reached from
+  WhatsApp (tracking, bill, pay, khata, review, booking management) even on an
+  English-only site. Server components use `siteWords(lang)`, client ones
+  `useWords()`; `SiteFrame` gives every non-home tenant page the business's
+  theme + fonts + language. API labels shown on the site are translated by
+  lookup (primary action, WhatsApp label, auto sections, review badges,
+  payment states, bill/khata kinds, offering kinds/CTAs/field labels/units).
+  Fixed in passing: tracking and booking-management pages used fixed colours
+  (now the business's theme), footer showed "Your visit" twice, the phone
+  header overflowed with long words, `pw.mjs fits()` now measures against
+  `screen.width` (Chrome's mobile emulation zooms out to fit overflow).
+- **Workspace** (`apps/workspace/src/lib/ws-words.{ts,json}`, `ws-lang.ts`,
+  `language-actions.ts`, `components/{WsWords,WorkspaceLanguage}.tsx`): per
+  person, saved as `consumer_profiles.preferences.workspace_language`
+  (`PUT /v1/me/workspace-language`; `/me/context.workspace_language`); cookie
+  `ws_lang` lets server pages read it (`pageWords()`); a new browser adopts the
+  account's choice once (`AdoptLanguage`). Translated: navigation, Home (incl.
+  role_home labels), Orders list/board, order page, phone order, change order,
+  item picker, production list, money panel. Noto Sans Tamil/Devanagari sit
+  behind General Sans; Indic text is never letter-spaced or upper-cased.
+- Tests read the source text of `apps/web` / `apps/workspace` (not imports) and
+  check every `t('…')` literal plus the API labels those pages show have ta+hi
+  with the same `{blanks}`, in their own script. New Workspace/site words must
+  go through `t()` and into the JSON, or those tests fail.
+- Open: the rest of the Workspace, POS and inbox chrome in Tamil/Hindi; numbers
+  composed by the API in words ("1 order", "8 on, all set up"); server error
+  messages (e.g. validation text) stay English; PDFs cannot shape Tamil/Hindi
+  (PM-07); all wording needs native review (VB-22).
 
 ### Founder refinements (authority 1) — read before touching these modules
 
@@ -360,16 +438,12 @@ wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 
 ## Remaining work snapshot (P1 first)
 
-P1 NOT_STARTED (1): PKT-10 (P1-10 packet — English/Tamil/Hindi strings remain).
-P1 PARTIAL groups: FD-02 (portal items with Academics), FD-03 (strategy
-placement of tool sections), OM-09 (portfolio kind), OM-18 (digital delivery),
-GP-22 + PR-10 (English/Tamil/Hindi), payments provider (Cashfree =
-ACTIVATION), playbook rows waiting on P2–P5 modules.
+P1 NOT_STARTED: none. P1 PARTIAL: 96, grouped in "P1 gate review" above.
 
 Planned next packets (dependency order):
-1. **P1-10E** (E1–E5 done) → E6 English/Tamil/Hindi strings (PKT-10, PR-10,
-   GP-22 P1 part); then the P1 gate.
-2. P2 → P5 per MD §26.2 / ledger sections W–AL, then E2E flows (section BG).
+1. **P2** per MD §26.2 / ledger sections W–AL (next: read the P2 packet list in
+   `tools/ledger/rows_governance.py` PKT-2x and MD §26.3 P2 before starting).
+2. P3 → P5, then E2E flows (section BG).
 
 ## How to run things locally (Linux / Claude Code cloud) — used since P1-10D1
 

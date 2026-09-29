@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { variantsFor } from './phone-actions'
+import { useWsWords } from '@/components/WsWords'
 
 export type CatalogueItem = {
   id: string
@@ -25,6 +26,7 @@ export type PickedLine = {
  * written message — the same selections the website sends. The server prices it.
  */
 export function ItemPicker({ businessId, items, onAdd }: { businessId: string; items: CatalogueItem[]; onAdd: (l: PickedLine) => void }) {
+  const t = useWsWords()
   const [id, setId] = useState(items[0]?.id ?? '')
   const [qty, setQty] = useState('1')
   const [choices, setChoices] = useState<Record<string, string>>({})
@@ -55,11 +57,11 @@ export function ItemPicker({ businessId, items, onAdd }: { businessId: string; i
   const add = () => {
     if (!item) return
     const n = Number(qty)
-    if (!Number.isInteger(n) || n < 1) return setError('Enter how many.')
+    if (!Number.isInteger(n) || n < 1) return setError(t('Enter how many.'))
     const missing = item.option_groups.find((g) => g.required && !g.text && !choices[g.name])
-    if (missing) return setError(`Choose ${missing.name.toLowerCase()}.`)
-    if (item.sell_units?.length && !pack) return setError('Choose the pack.')
-    if (variants.length && !variant) return setError('Choose the option.')
+    if (missing) return setError(t('Choose {name}.', { name: missing.name.toLowerCase() }))
+    if (item.sell_units?.length && !pack) return setError(t('Choose the pack.'))
+    if (variants.length && !variant) return setError(t('Choose the option.'))
     const options: Record<string, unknown> = {}
     const picked = Object.fromEntries(Object.entries(choices).filter(([, v]) => v).map(([k, v]) => [k, [v]]))
     if (Object.keys(picked).length) options.choices = picked
@@ -76,54 +78,54 @@ export function ItemPicker({ businessId, items, onAdd }: { businessId: string; i
     setError(null)
   }
 
-  if (!items.length) return <p className="bos-hint">No items to sell yet — add them in Products & services.</p>
+  if (!items.length) return <p className="bos-hint">{t('No items to sell yet — add them in Products & services.')}</p>
   return (
     <div className="bos-picker">
       <div className="bos-form-grid">
         <label>
-          <span className="bos-label">Item</span>
+          <span className="bos-label">{t('Item')}</span>
           <select name="pick-item" value={id} onChange={(e) => choose(e.target.value)}>
             {items.map((i) => <option key={i.id} value={i.id}>{i.title}</option>)}
           </select>
         </label>
         {item?.sell_units?.length ? (
           <label>
-            <span className="bos-label">Pack</span>
+            <span className="bos-label">{t('Pack')}</span>
             <select name="pick-pack" value={pack} onChange={(e) => setPack(e.target.value)}>
-              <option value="">Choose…</option>
+              <option value="">{t('Choose…')}</option>
               {item.sell_units.map((p) => <option key={p.label} value={p.label}>{p.label}</option>)}
             </select>
           </label>
         ) : null}
         {variants.length ? (
           <label>
-            <span className="bos-label">{item?.variant_options.map((a) => a.name).join(' / ') || 'Option'}</span>
+            <span className="bos-label">{item?.variant_options.map((a) => a.name).join(' / ') || t('Option')}</span>
             <select name="pick-variant" value={variant} onChange={(e) => setVariant(e.target.value)}>
-              <option value="">Choose…</option>
+              <option value="">{t('Choose…')}</option>
               {variants.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select>
           </label>
         ) : null}
         {(item?.option_groups ?? []).map((g) => g.text ? (
           <label key={g.name}>
-            <span className="bos-label">{g.name}{g.required ? '' : ' — optional'}</span>
+            <span className="bos-label">{g.name}{g.required ? '' : ` — ${t('optional')}`}</span>
             <input name={`pick-note-${g.name}`} value={notes[g.name] ?? ''} maxLength={g.max_length ?? 60}
               onChange={(e) => setNotes((n) => ({ ...n, [g.name]: e.target.value }))} />
           </label>
         ) : (
           <label key={g.name}>
-            <span className="bos-label">{g.name}{g.required ? '' : ' — optional'}</span>
+            <span className="bos-label">{g.name}{g.required ? '' : ` — ${t('optional')}`}</span>
             <select name={`pick-choice-${g.name}`} value={choices[g.name] ?? ''} onChange={(e) => setChoices((c) => ({ ...c, [g.name]: e.target.value }))}>
-              <option value="">{g.required ? 'Choose…' : 'None'}</option>
+              <option value="">{g.required ? t('Choose…') : t('None')}</option>
               {g.choices.map((c) => <option key={c.label} value={c.label}>{c.label}{Number(c.price_delta) ? ` (+₹${Number(c.price_delta)})` : ''}</option>)}
             </select>
           </label>
         ))}
         <label>
-          <span className="bos-label">How many</span>
+          <span className="bos-label">{t('How many')}</span>
           <input name="pick-qty" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} />
         </label>
-        <div className="bos-picker__add"><button type="button" className="btn-ghost" onClick={add} disabled={pending}>Add to order</button></div>
+        <div className="bos-picker__add"><button type="button" className="btn-ghost" onClick={add} disabled={pending}>{t('Add to order')}</button></div>
       </div>
       {error ? <p className="bos-error" role="status">{error}</p> : null}
     </div>

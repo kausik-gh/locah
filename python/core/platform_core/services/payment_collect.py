@@ -74,6 +74,9 @@ STATE_WORDS = {
     "refunded": "Refunded",
     "partially_refunded": "Part refunded",
 }
+# How a payment came or is meant to come, as the Workspace shows it.
+ATTEMPT_METHOD_WORDS = {"upi_direct": "UPI to your UPI ID", "online": "Online", "cod": "Cash on delivery",
+                        "pay_at_business": "Pay at the business", "pay_later": "Pay later", **RECORDED_METHODS}
 # A payment link's state as its page says it (the tenant page translates these — P1-10E6).
 LINK_STATE_WORDS: dict[str, str | None] = {
     "open": None, "being_confirmed": STATE_WORDS["pending"], "failed": STATE_WORDS["failed"],
@@ -280,10 +283,8 @@ class PaymentCollectService:
 
     @staticmethod
     def _attempt_row(a: PaymentAttempt) -> dict[str, Any]:
-        method = {"upi_direct": "UPI to your UPI ID", "online": "Online", "cod": "Cash on delivery",
-                  "pay_at_business": "Pay at the business", "pay_later": "Pay later", **RECORDED_METHODS}
         return {"id": str(a.id), "amount": float(a.amount), "method": a.payment_method,
-                "method_label": method.get(a.payment_method, a.payment_method), "status": a.status,
+                "method_label": ATTEMPT_METHOD_WORDS.get(a.payment_method, a.payment_method), "status": a.status,
                 "purpose": a.purpose, "reference": a.reference, "attention": a.attention,
                 "request_id": str(a.request_id) if a.request_id else None,
                 "created_at": a.created_at.isoformat() if a.created_at else None,

@@ -5,6 +5,8 @@ import { apiTry } from '@/lib/api'
 import { DataTable, EmptyState, FilterTabs, GateNotice, PageHeader, StatusPill } from '@/components/ui'
 import { advanceOrderStatus } from './actions'
 import { CHANNEL, money, paymentLabel } from './labels'
+import { pageWords } from '@/lib/ws-lang'
+import type { Words } from '@/lib/ws-words'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,25 +46,28 @@ type Board = {
 }
 
 /** The next step for an order on the board, in the words the counter uses. */
-const NEXT: Record<string, [string, string]> = {
-  pending: ['accepted', 'Accept'],
-  accepted: ['preparing', 'Start preparing'],
-  preparing: ['ready', 'Mark ready'],
-  ready: ['completed', 'Hand over'],
-}
-const STATUS_WORDS: Record<string, string> = {
-  pending: 'New',
-  accepted: 'Accepted',
-  preparing: 'Preparing',
-  ready: 'Ready',
-}
-const EMPTY: Record<string, string> = {
-  overdue: 'Nothing late.',
-  now: 'Nothing due in the next few hours.',
-  today: 'Nothing else wanted today.',
-  tomorrow: 'Nothing wanted tomorrow yet.',
-  later: 'No orders for later days yet.',
-}
+const next = (t: Words): Record<string, [string, string]> => ({
+  pending: ['accepted', t('Accept')],
+  accepted: ['preparing', t('Start preparing')],
+  preparing: ['ready', t('Mark ready')],
+  ready: ['completed', t('Hand over')],
+})
+const statusWords = (t: Words): Record<string, string> => ({
+  pending: t('New'),
+  accepted: t('Accepted'),
+  preparing: t('Preparing'),
+  ready: t('Ready'),
+  completed: t('Completed'),
+  cancelled: t('Cancelled'),
+  rejected: t('Declined'),
+})
+const emptyWords = (t: Words): Record<string, string> => ({
+  overdue: t('Nothing late.'),
+  now: t('Nothing due in the next few hours.'),
+  today: t('Nothing else wanted today.'),
+  tomorrow: t('Nothing wanted tomorrow yet.'),
+  later: t('No orders for later days yet.'),
+})
 
 /**
  * Orders (Founder refinement — Orders & Customer Transactions): one list for
@@ -80,6 +85,10 @@ export default async function OrdersPage({
 }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
+  const t = pageWords()
+  const NEXT = next(t)
+  const STATUS_WORDS = statusWords(t)
+  const channel = (c: string) => t(CHANNEL[c] || c)
   const base = `/b/${params.businessId}`
   const boardRes = await apiTry<{ data: Board }>(`/v1/platform/businesses/${params.businessId}/orders/board`, token)
   const board = boardRes.ok ? boardRes.data.data : null
@@ -91,8 +100,8 @@ export default async function OrdersPage({
       current={view}
       hrefFor={(v) => `${base}/orders?view=${v}`}
       options={[
-        { value: 'board', label: 'By day wanted', count: board?.count },
-        { value: 'list', label: 'All orders' },
+        { value: 'board', label: t('By day wanted'), count: board?.count },
+        { value: 'list', label: t('All orders') },
       ]}
     />
   ) : null
@@ -101,13 +110,13 @@ export default async function OrdersPage({
     return (
       <div>
         <PageHeader
-          title="Orders"
-          subtitle="Orders for a day, by when they are wanted. Tap the next step as you go."
+          title={t('Orders')}
+          subtitle={t('Orders for a day, by when they are wanted. Tap the next step as you go.')}
           actions={
             <span className="bos-inv-buttons">
-              <Link className="btn" href={`${base}/orders/new`}>Take a phone order</Link>
-              <Link className="btn btn-ghost" href={`${base}/orders/production?date=${board.today}`}>Today’s production</Link>
-              <Link className="btn btn-ghost" href={`${base}/orders/production?date=${board.tomorrow}`}>Tomorrow’s production</Link>
+              <Link className="btn" href={`${base}/orders/new`}>{t('Take a phone order')}</Link>
+              <Link className="btn btn-ghost" href={`${base}/orders/production?date=${board.today}`}>{t('Today’s production')}</Link>
+              <Link className="btn btn-ghost" href={`${base}/orders/production?date=${board.tomorrow}`}>{t('Tomorrow’s production')}</Link>
             </span>
           }
         />
@@ -116,9 +125,9 @@ export default async function OrdersPage({
           {board.buckets.map((b) => (
             <section key={b.key} className={`bos-board__col bos-board__col--${b.key}`} aria-labelledby={`col-${b.key}`}>
               <h2 id={`col-${b.key}`} className="bos-board__h">
-                {b.label} <span className="bos-board__n">{b.orders.length}</span>
+                {t(b.label)} <span className="bos-board__n">{b.orders.length}</span>
               </h2>
-              {b.orders.length === 0 ? <p className="bos-hint">{EMPTY[b.key]}</p> : null}
+              {b.orders.length === 0 ? <p className="bos-hint">{emptyWords(t)[b.key]}</p> : null}
               {b.orders.map((o) => (
                 <article key={o.id} className="bos-ordercard">
                   <header className="bos-ordercard__head">
@@ -126,9 +135,9 @@ export default async function OrdersPage({
                     <span className="bos-ordercard__when">{o.due_words}</span>
                   </header>
                   <p className="bos-ordercard__who">
-                    {o.customer || 'Customer'}
-                    {o.mode ? ` · ${o.mode === 'delivery' ? 'Delivery' : 'Pickup'}` : ''}
-                    {o.channel ? ` · ${CHANNEL[o.channel] || o.channel}` : ''}
+                    {o.customer || t('Customer')}
+                    {o.mode ? ` · ${o.mode === 'delivery' ? t('Delivery') : t('Pickup')}` : ''}
+                    {o.channel ? ` · ${channel(o.channel)}` : ''}
                   </p>
                   <ul className="bos-ordercard__items">
                     {o.items.map((it, i) => (
@@ -141,10 +150,10 @@ export default async function OrdersPage({
                     ))}
                   </ul>
                   <footer className="bos-ordercard__foot">
-                    <StatusPill value={STATUS_WORDS[o.status] || o.status} />
+                    <StatusPill value={o.status} label={STATUS_WORDS[o.status] || o.status} />
                     {o.advance !== null ? (
                       <span className={`bos-state ${o.advance_state === 'paid' ? 'is-ready' : ''}`}>
-                        {o.advance_state === 'paid' ? 'Advance paid' : `Advance ${money(o.advance, 'INR')} awaited`}
+                        {o.advance_state === 'paid' ? t('Advance paid') : t('Advance {amount} awaited', { amount: money(o.advance, 'INR') })}
                       </span>
                     ) : null}
                     {NEXT[o.status] ? (
@@ -175,8 +184,8 @@ export default async function OrdersPage({
   if (!res.ok) {
     return (
       <div>
-        <PageHeader title="Orders" />
-        <GateNotice error={res.error} businessId={params.businessId} moduleLabel="Orders" />
+        <PageHeader title={t('Orders')} />
+        <GateNotice error={res.error} businessId={params.businessId} moduleLabel={t('Orders')} />
       </div>
     )
   }
@@ -191,26 +200,26 @@ export default async function OrdersPage({
 
   return (
     <div>
-      <PageHeader title="Orders" subtitle="Every order, from every channel, in one list. Open one to accept, prepare and complete it."
-        actions={<Link className="btn" href={`${base}/orders/new`}>Take a phone order</Link>} />
+      <PageHeader title={t('Orders')} subtitle={t('Every order, from every channel, in one list. Open one to accept, prepare and complete it.')}
+        actions={<Link className="btn" href={`${base}/orders/new`}>{t('Take a phone order')}</Link>} />
       {viewTabs}
       <FilterTabs
         current={searchParams?.status}
         hrefFor={(v) => keep({ status: v || undefined })}
         options={[
-          { value: '', label: 'All' },
-          { value: 'pending', label: 'New' },
-          { value: 'accepted', label: 'Accepted' },
-          { value: 'preparing', label: 'Preparing' },
-          { value: 'ready', label: 'Ready' },
-          { value: 'completed', label: 'Completed' },
-          { value: 'cancelled', label: 'Cancelled' },
+          { value: '', label: t('All') },
+          { value: 'pending', label: t('New') },
+          { value: 'accepted', label: t('Accepted') },
+          { value: 'preparing', label: t('Preparing') },
+          { value: 'ready', label: t('Ready') },
+          { value: 'completed', label: t('Completed') },
+          { value: 'cancelled', label: t('Cancelled') },
         ]}
       />
       <FilterTabs
         current={searchParams?.channel}
         hrefFor={(v) => keep({ channel: v || undefined })}
-        options={[{ value: '', label: 'Any channel' }, ...Object.entries(CHANNEL).map(([value, label]) => ({ value, label }))]}
+        options={[{ value: '', label: t('Any channel') }, ...Object.keys(CHANNEL).map((value) => ({ value, label: channel(value) }))]}
       />
       <DataTable
         rows={orders}
@@ -218,32 +227,32 @@ export default async function OrdersPage({
         columns={[
           {
             key: 'order_number',
-            header: 'Order',
+            header: t('Order'),
             render: (o) => <Link href={`${base}/orders/${o.id}`}>{o.order_number}</Link>,
           },
-          { key: 'status', header: 'Status', render: (o) => <StatusPill value={o.status} /> },
+          { key: 'status', header: t('Status'), render: (o) => <StatusPill value={o.status} label={STATUS_WORDS[o.status]} /> },
           {
             key: 'channel',
-            header: 'From',
-            render: (o) => (o.channel ? <span className="bos-tag">{CHANNEL[o.channel] || o.channel}</span> : '—'),
+            header: t('From'),
+            render: (o) => (o.channel ? <span className="bos-tag">{channel(o.channel)}</span> : '—'),
           },
           {
             key: 'payment',
-            header: 'Payment',
-            render: (o) => <span style={{ color: 'var(--color-muted)' }}>{paymentLabel(o)}</span>,
+            header: t('Payment'),
+            render: (o) => <span style={{ color: 'var(--color-muted)' }}>{paymentLabel(o, t)}</span>,
           },
           {
             key: 'total',
-            header: 'Total',
+            header: t('Total'),
             align: 'num',
             render: (o) => money(Number(o.total_amount) || 0, o.currency),
           },
         ]}
         empty={
-          <EmptyState title="No orders here">
+          <EmptyState title={t('No orders here')}>
             {searchParams?.status || searchParams?.channel
-              ? 'Nothing matches these filters right now.'
-              : 'Orders placed on your website, WhatsApp, the counter or by phone land here.'}
+              ? t('Nothing matches these filters right now.')
+              : t('Orders placed on your website, WhatsApp, the counter or by phone land here.')}
           </EmptyState>
         }
       />
