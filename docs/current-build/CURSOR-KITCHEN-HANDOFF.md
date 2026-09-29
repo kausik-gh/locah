@@ -6,7 +6,9 @@
 
 ## HEAD SHA
 
-`76c0a6ad954052d95f9fb57dc69e0940ffa8f4c1`
+Branch tip at push: `0b148c008485504fbfa2394832c107d41f188f0a` (`git rev-parse HEAD` on `parallel/cursor-kitchen`).
+
+Functional close-out (tests + handoff body): `09aebc53903eb2fc2aa598614732e98b5ac10b3e`.
 
 ## MAIN BASE SHA
 
@@ -17,6 +19,7 @@
 1. `feat(kitchen): keep preparation on its own ticket` — domain, migration, API module, KDS UI, stations setup, intake subscriber module, tests, browser script, product handoff body.
 2. `chore(integration): wire kitchen` — router import, nav links, permissions, catalogue events, module `built`, role templates, subscriber registration.
 3. `09aebc5` — `chore(kitchen): close-out verification and handoff` (idempotency test, Served browser step, TSC Board export, handoff block).
+4. `76c0a6a` — `docs(kitchen): fix handoff HEAD SHA`.
 
 ## MIGRATIONS
 
