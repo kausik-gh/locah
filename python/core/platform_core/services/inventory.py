@@ -216,6 +216,7 @@ class InventoryService:
             .where(
                 InventoryRecord.business_id == business_id,
                 Offering.deleted_at.is_(None),
+                InventoryRecord.owner_customer_id.is_(None),
             )
         )
         if location_id:

@@ -13,6 +13,7 @@ LOCATION_NAME_MAX = 120
 INTERNAL_CODE_MAX = 64
 NOTES_MAX = 2000
 VALID_STATUSES = frozenset({"active", "archived"})
+STOCK_ROLES = frozenset({"store", "warehouse", "van"})
 
 
 def _field_error(field: str, message: str) -> dict[str, str]:
@@ -196,6 +197,7 @@ def validate_location_create_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "latitude": latitude,
         "longitude": longitude,
         "is_primary": bool(raw.get("is_primary", False)),
+        "stock_role": _stock_role(raw.get("stock_role"), default="store"),
     }
 
 
@@ -238,4 +240,18 @@ def validate_location_patch_payload(raw: dict[str, Any]) -> dict[str, Any]:
                 },
             )
         patch["status"] = status
+    if "stock_role" in raw:
+        patch["stock_role"] = _stock_role(raw.get("stock_role"), default="store")
     return patch
+
+
+def _stock_role(raw: Any, *, default: str) -> str:
+    if raw is None or str(raw).strip() == "":
+        return default
+    role = str(raw).strip().lower()
+    if role not in STOCK_ROLES:
+        raise ValidationError(
+            "Location stock role must be store, warehouse, or van",
+            details={"errors": [_field_error("stock_role", "Use store, warehouse, or van")]},
+        )
+    return role

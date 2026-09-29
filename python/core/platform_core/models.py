@@ -434,6 +434,8 @@ class BusinessLocation(Base):
     timezone: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'UTC'"))
     hours: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # store | warehouse | van. A van is a stock location, not a second inventory.
+    stock_role: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'store'"))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
     internal_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -700,6 +702,11 @@ class InventoryRecord(Base):
     location_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("business_locations.id")
     )
+    # Null means the business owns the stock. Set means a client's goods, which
+    # must never be counted in the business's available quantity.
+    owner_customer_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("customer_relationships_contacts.id"), nullable=True
+    )
     quantity_on_hand: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     quantity_reserved: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     low_stock_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -743,6 +750,100 @@ class InventoryMovement(Base):
     source_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InventoryTransfer(Base):
+    __tablename__ = "inventory_transfers"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    source_location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    destination_location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'requested'"))
+    requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class InventoryTransferLine(Base):
+    __tablename__ = "inventory_transfer_lines"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    transfer_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("inventory_transfers.id"))
+    offering_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("offerings_catalog_offerings.id"))
+    variant_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    value_paise: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    allocations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+
+
+class InventoryFieldKey(Base):
+    """Replay guard for transfer moves, job consumption, and client stock."""
+
+    __tablename__ = "inventory_field_keys"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    subject_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InventoryJobUse(Base):
+    """How much of an item a job took from one location, and how much came back unused."""
+
+    __tablename__ = "inventory_job_uses"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    job_ref: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    offering_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("offerings_catalog_offerings.id"))
+    variant_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    quantity_out: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    quantity_back: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    value_out_paise: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    value_back_paise: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    allocations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CustomerAsset(Base):
+    """One asset a customer owns: vehicle, device, AC unit, machine, pet, or policy."""
+
+    __tablename__ = "customer_assets"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    customer_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("customer_relationships_contacts.id")
+    )
+    asset_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    identifier: Mapped[str | None] = mapped_column(Text, nullable=True)
+    traits: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 
 class SalesOrder(Base):

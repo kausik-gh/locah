@@ -43,6 +43,7 @@ class CreateLocationRequest(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     is_primary: bool = False
+    stock_role: str | None = None
 
 
 class PatchLocationRequest(VersionedBody):
@@ -57,6 +58,7 @@ class PatchLocationRequest(VersionedBody):
     latitude: float | None = None
     longitude: float | None = None
     status: str | None = None
+    stock_role: str | None = None
 
 
 def _patch_payload(body: BaseModel) -> dict[str, Any]:

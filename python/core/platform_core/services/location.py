@@ -36,6 +36,7 @@ class LocationService:
             "notes": location.notes,
             "latitude": location.latitude,
             "longitude": location.longitude,
+            "stock_role": location.stock_role,
             "version": location.version,
             "created_at": location.created_at.isoformat(),
             "updated_at": location.updated_at.isoformat(),
@@ -161,6 +162,7 @@ class LocationService:
             notes=validated["notes"],
             latitude=validated["latitude"],
             longitude=validated["longitude"],
+            stock_role=validated["stock_role"],
         )
         session.add(location)
         await session.flush()

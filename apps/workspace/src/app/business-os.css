@@ -923,3 +923,38 @@ a.bos-pill { color: var(--color-foreground); text-decoration: none; }
 .bos-checkin--green { background: var(--status-good-bg); border-color: var(--status-good-bd); color: var(--status-good-fg); }
 .bos-checkin--amber { background: var(--status-warn-bg); border-color: var(--status-warn-bd); color: var(--status-warn-fg); }
 .bos-checkin--red { background: var(--status-bad-bg); border-color: var(--status-bad-bd); color: var(--status-bad-fg); }
+/* Transfers and van stock — three working columns, not a data table. */
+.bos-field { display: grid; gap: 1rem; margin-top: 1rem; }
+.bos-field__request {
+  display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: end;
+  padding: 1rem 1.1rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius);
+}
+.bos-field__request h2, .bos-field__request h3 { flex: 1 0 100%; margin: 0; font-size: 1rem; }
+.bos-field__request label { display: grid; gap: .25rem; font-size: .82rem; color: var(--color-muted); min-width: 8rem; }
+.bos-field__request input, .bos-field__request select { min-height: 44px; color: var(--color-foreground); background: var(--color-background); border: 1px solid var(--color-border-strong); border-radius: var(--radius); padding: 0 .6rem; }
+.bos-field__check { align-content: center; }
+.bos-field__msg { margin: 0; }
+.bos-field__msg.is-bad { color: var(--status-bad-fg); }
+.bos-field__actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
+.bos-field__actions button, .bos-van-board button {
+  min-height: 44px; padding: 0 .9rem; border-radius: var(--radius);
+  border: 1px solid var(--color-border-strong); background: var(--color-surface); color: var(--color-foreground);
+}
+.bos-transfer-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; align-items: start; }
+.bos-transfer-board section, .bos-van-board article {
+  display: grid; gap: .6rem; padding: .9rem; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+}
+.bos-transfer-board header, .bos-van-board header { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
+.bos-transfer-board h2, .bos-van-board h2 { margin: 0; font-size: 1rem; }
+.bos-transfer-board header span, .bos-van-board header span { color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.bos-transfer-board section > p, .bos-van-board p { margin: 0; color: var(--color-muted); font-size: .84rem; }
+.bos-transfer-board ul, .bos-van-board ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
+.bos-transfer-board li, .bos-van-board__stock li {
+  display: grid; gap: .2rem; padding: .7rem .75rem; border: 1px solid var(--color-border); border-radius: var(--radius);
+}
+.bos-transfer-board li em { font-style: normal; font-size: .78rem; color: var(--color-muted); }
+.bos-van-board { display: grid; gap: .9rem; }
+.bos-van-board__stock li { display: flex; flex-wrap: wrap; gap: .35rem .8rem; align-items: baseline; }
+.bos-van-board h3 { margin: 0; font-size: .92rem; }
+@media (max-width: 800px) { .bos-transfer-board { grid-template-columns: 1fr; } }

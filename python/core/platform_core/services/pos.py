@@ -312,6 +312,7 @@ class PosService:
         stock = {(r.offering_id, r.variant_id): r.quantity_on_hand - r.quantity_reserved
                  for r in (await session.execute(select(InventoryRecord).where(
                      InventoryRecord.business_id == business_id, InventoryRecord.location_id == location_id,
+                     InventoryRecord.owner_customer_id.is_(None),
                      InventoryRecord.offering_id.in_(ids)))).scalars()}
         # §15.1: units in stock here by serial, so scanning the IMEI on the box
         # adds that phone — offline too (up to 300 per item on the counter).

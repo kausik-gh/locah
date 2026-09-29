@@ -61,6 +61,8 @@ export const AREAS: NavArea[] = [
       { href: '/offerings', label: 'Products & services', perm: 'offerings.read', module: 'offerings-catalog' },
       { href: '/inventory', label: 'Stock', perm: 'inventory.read', module: 'inventory' },
       { href: '/buying', label: 'Buying', perm: 'procurement.read', module: 'procurement' },
+      { href: '/inventory/transfers', label: 'Transfers', perm: 'inventory.read', module: 'inventory' },
+      { href: '/inventory/vans', label: 'Van stock', perm: 'inventory.read', module: 'inventory' },
     ],
   },
   {

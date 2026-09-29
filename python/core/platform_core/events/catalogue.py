@@ -103,6 +103,7 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "customer.restored",
             "customer.tagged",
             "customer.note.created",
+            "customer_asset.recorded",
         }
     ),
     "catalogue": frozenset(
@@ -134,6 +135,13 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "inventory.count.variance",
             "inventory.count.approved",
             "inventory.count.rejected",
+            "inventory.transfer.requested",
+            "inventory.transfer.approved",
+            "inventory.transfer.in_transit",
+            "inventory.transfer.received",
+            "inventory.job.consumed",
+            "inventory.job.returned",
+            "inventory.client_stock.moved",
         }
     ),
     "order": frozenset(

@@ -566,7 +566,7 @@ async def _price_cart(ctx: Ctx, cart: list[dict[str, Any]]) -> dict[str, Any]:
             key = (str(o.id), str(v.id) if v else None)
             record = (await ctx.session.execute(select(InventoryRecord).where(
                 InventoryRecord.business_id == ctx.business.id, InventoryRecord.offering_id == o.id,
-                InventoryRecord.location_id == location_id,
+                InventoryRecord.location_id == location_id, InventoryRecord.owner_customer_id.is_(None),
                 InventoryRecord.variant_id == v.id if v else InventoryRecord.variant_id.is_(None))
                 .execution_options(populate_existing=True))).scalars().first()
             available = max(record.quantity_on_hand - record.quantity_reserved, 0) if record else 0
