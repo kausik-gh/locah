@@ -92,6 +92,14 @@ async def _execute_job(session: AsyncSession, job: dict[str, Any]) -> None:
             await MarketplaceIndexingService.schedule_next_reconcile(
                 session, minutes=int(os.getenv("MARKETPLACE_RECONCILE_MINUTES") or 30)
             )
+    elif job_type == "memberships.sweep":
+        # P2-02: the daily lifecycle check, deliveries at cutoff, AMC visits,
+        # month-end postpaid bills. Books its own next run.
+        from platform_core.memberships.sweep import ensure_scheduled, sweep_all
+
+        await sweep_all(session)
+        if payload.get("recurring"):
+            await ensure_scheduled(session, minutes=int(os.getenv("MEMBERSHIPS_SWEEP_MINUTES") or 60))
     elif job_type == "marketplace.reindex":
         from uuid import UUID
 

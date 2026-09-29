@@ -1,4 +1,6 @@
-from typing import Any
+import uuid
+from datetime import date
+from typing import Any, Literal
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -217,6 +219,94 @@ async def reorder_lines(
     business = await _public_business(session, slug)
     data = await CustomerAccountService.reorder(session, business, ctx.identity_id, order_id)
     return {"data": data, "meta": {"correlation_id": ctx.correlation_id}}
+
+
+# ---------------------------------------------------------------- my memberships and subscriptions (P2-02)
+class MyDeliveryDay(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    on_date: date
+    kind: Literal["skip", "quantity", "restore"]
+    quantity: int | None = Field(default=None, ge=1, le=100)
+
+
+async def _my_membership(session: AsyncSession, slug: str, identity_id: UUID, enrolment_id: UUID) -> Any:
+    """Only a relationship where the caller is the member or the payer."""
+    from platform_core.exceptions import ResourceNotFound
+    from platform_core.memberships.service import MembershipCore
+
+    business, mine = await _my_contacts(session, slug, identity_id)
+    enrolment = await MembershipCore.get(session, business.id, enrolment_id, lock=True)
+    if enrolment.customer_contact_id not in mine and enrolment.payer_contact_id not in mine:
+        raise ResourceNotFound("Membership")
+    return business, enrolment
+
+
+async def _pay_link(session: AsyncSession, business: Any, enrolment: Any, purpose: str, note: str) -> str:
+    from decimal import Decimal
+
+    from platform_core.exceptions import ConflictError
+    from platform_core.services.payment_collect import PaymentCollectService
+
+    due = await PaymentCollectService.money(session, business.id, "membership", enrolment.id)
+    balance = Decimal(str(due["balance"] or 0))
+    if balance <= 0:
+        raise ConflictError("Nothing is due right now")
+    _req, token = await PaymentCollectService.create_request(
+        session, business.id, business.primary_owner_identity_id, source_type="membership",
+        source_id=enrolment.id, amount=balance, purpose=purpose, note=note, correlation_id=str(uuid.uuid4()))
+    return f"/{business.slug}/pay/{token}"
+
+
+@router.post("/businesses/{slug}/memberships/{enrolment_id}/renew")
+async def renew_my_membership(
+    slug: str, enrolment_id: UUID,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Renew from My account: the next period after the current one (no day
+    lost), and a payment page for it. Paying is what renews it."""
+    from platform_core.memberships.service import MembershipCore
+
+    business, enrolment = await _my_membership(session, slug, ctx.identity_id, enrolment_id)
+    plan = await MembershipCore.plan_of(session, enrolment)
+    await MembershipCore.renew(session, enrolment, actor_id=None)
+    path = await _pay_link(session, business, enrolment, "full", f"Renewal — {plan.name}")
+    await session.commit()
+    return {"data": {"pay_path": path}, "meta": {"correlation_id": ctx.correlation_id}}
+
+
+@router.post("/businesses/{slug}/memberships/{enrolment_id}/pay")
+async def pay_my_membership(
+    slug: str, enrolment_id: UUID,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Pay what is due now (a fee instalment, dues, an unpaid period)."""
+    from platform_core.memberships.service import MembershipCore
+
+    business, enrolment = await _my_membership(session, slug, ctx.identity_id, enrolment_id)
+    plan = await MembershipCore.plan_of(session, enrolment)
+    path = await _pay_link(session, business, enrolment, "balance", plan.name)
+    await session.commit()
+    return {"data": {"pay_path": path}, "meta": {"correlation_id": ctx.correlation_id}}
+
+
+@router.post("/businesses/{slug}/memberships/{enrolment_id}/delivery-day")
+async def change_my_delivery(
+    slug: str, enrolment_id: UUID, body: MyDeliveryDay,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Skip tomorrow, a different quantity for one day, or back to usual —
+    until the cutoff; after it, the business's policy is shown (§11)."""
+    from platform_core.memberships.subscriptions import SubscriptionService
+
+    business, enrolment = await _my_membership(session, slug, ctx.identity_id, enrolment_id)
+    await SubscriptionService.change_day(session, enrolment, on_date=body.on_date, kind=body.kind,
+                                         quantity=body.quantity, actor_id=None, channel="website")
+    await session.commit()
+    return {"data": {"ok": True}, "meta": {"correlation_id": ctx.correlation_id}}
 
 
 # ---------------------------------------------------------------- my data with one business (DPDP access / erasure, MD §25.1)

@@ -91,7 +91,7 @@ def _shop(monkeypatch: Any) -> tuple[dict[str, str], str]:
 # ---------------------------------------------------------------- every phrase has its wording
 def _said(path: Path) -> list[tuple[int, str]]:
     """Every literal passed to tr(lang, "…") or ctx.tr("…") in a module."""
-    tree = ast.parse(path.read_text())
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     # tr's own definition passes its argument on, and _status passes STATUS_WORDS (checked below);
     # everything else must pass a literal.
     wrapper = {n.lineno for d in ast.walk(tree) if isinstance(d, ast.FunctionDef) and d.name in ("tr", "_status")

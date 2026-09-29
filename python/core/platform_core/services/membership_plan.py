@@ -26,6 +26,16 @@ from platform_core.validation.membership import (
 )
 
 
+def _delivery(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A subscription plan's default schedule, cleaned the same way a subscriber's is."""
+    if not raw:
+        return None
+    from platform_core.memberships.service import MembershipCore
+
+    cleaned: dict[str, Any] | None = MembershipCore._clean_delivery(raw)
+    return cleaned
+
+
 class MembershipPlanService:
     @staticmethod
     def _check_version(plan: MembershipPlan, expected_version: int | None) -> None:
@@ -122,6 +132,19 @@ class MembershipPlanService:
             duration_days=validated["duration_days"],
             status=validated["status"],
             visibility=validated["visibility"],
+            plan_kind=validated["plan_kind"],
+            billing_timing=validated["billing_timing"],
+            grace_days=validated["grace_days"],
+            grace_allows_entry=validated["grace_allows_entry"],
+            freeze_allowed=validated["freeze_allowed"],
+            max_freeze_days=validated["max_freeze_days"],
+            sessions_included=validated["sessions_included"],
+            consume_on=validated["consume_on"],
+            no_show_consumes=validated["no_show_consumes"],
+            delivery=_delivery(validated.get("delivery")),
+            instalment_template=validated["instalment_template"],
+            visits_included=validated["visits_included"],
+            visit_every_days=validated["visit_every_days"],
             created_by=actor_id,
         )
         session.add(plan)
@@ -180,6 +203,8 @@ class MembershipPlanService:
         expected_version: int | None = None,
     ) -> MembershipPlan:
         business = await BusinessService.get_by_id(session, business_id)
+        if business is None:
+            raise ResourceNotFound("Business")
         assert_business_mutable(business.state, action="update membership plan")
         plan = await MembershipResolver.resolve_plan(
             session, business_id=business_id, plan_id=plan_id
@@ -197,6 +222,8 @@ class MembershipPlanService:
         before = MembershipResolver.serialize_plan(plan, offering_access=access_before)
 
         offering_access = validated.pop("offering_access", None)
+        if "delivery" in validated:
+            validated["delivery"] = _delivery(validated["delivery"])
         for field, value in validated.items():
             setattr(plan, field, value)
         plan.version += 1
@@ -239,6 +266,8 @@ class MembershipPlanService:
         correlation_id: str,
     ) -> MembershipPlan:
         business = await BusinessService.get_by_id(session, business_id)
+        if business is None:
+            raise ResourceNotFound("Business")
         assert_business_mutable(business.state, action="archive membership plan")
         plan = await MembershipResolver.resolve_plan(
             session, business_id=business_id, plan_id=plan_id

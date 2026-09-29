@@ -2019,3 +2019,6 @@
   font: inherit; color: var(--site-ink); background: var(--site-bg); min-height: 40px; padding: 0.4rem 0.7rem;
   border: 1px solid var(--site-border); border-radius: var(--site-radius);
 }
+/* My account › memberships and subscriptions (P2-02): the business's own colours only. */
+[data-locah-site] .ls-account__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.3rem; }
+[data-locah-site] .ls-account__actions form { margin: 0; }

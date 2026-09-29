@@ -167,9 +167,18 @@ class PaymentCollectService:
             if row is None:
                 raise ResourceNotFound("Membership")
             enrolment, plan = row
+            from platform_core.memberships.service import MembershipCore
+            from platform_core.memberships.words import words
+
             dead = enrolment.status == "cancelled"
-            return Source("membership", enrolment.id, f"Membership · {plan.name}", _d(plan.price_amount),
-                          enrolment.customer_contact_id, not dead, "This membership was cancelled" if dead else None)
+            postpaid = plan.plan_kind == "recurring_delivery" and plan.billing_timing == "postpaid"
+            why = ("This membership was cancelled" if dead else
+                   "Billed on the customer's khata at month end — collect there" if postpaid else None)
+            # What the relationship has charged (its periods and instalments),
+            # not the plan's price: renewals and fee instalments add up.
+            return Source("membership", enrolment.id, f"{words(plan.plan_kind)['kind_label']} · {plan.name}",
+                          await MembershipCore.charged(session, enrolment),
+                          enrolment.payer_contact_id or enrolment.customer_contact_id, why is None, why)
         if source_type == "invoice":
             from platform_core.services.invoicing import InvoiceService
 

@@ -50,6 +50,16 @@ LADDERS: dict[str, Ladder] = {lad.key: lad for lad in (
         "the member renews, pauses, or you switch it off",
     ),
     Ladder(
+        "membership.instalment", "memberships", "Fee reminders", "each instalment's due date",
+        "membership_instalment",
+        (
+            LadderStep("minus_3", -3 * D, "3 days before", "Reminder to whoever pays, with a payment link"),
+            LadderStep("due_day", timedelta(0), "On the due date", "“Due today” with the same link"),
+            LadderStep("plus_3", 3 * D, "3 days late", "Late reminder; it shows in Needs you now"),
+        ),
+        "the instalment is paid or waived, or the enrolment ends",
+    ),
+    Ladder(
         "booking.reminder", "bookings", "Booking reminders", "the booking's start time", "booking",
         (
             LadderStep("day_before", -1 * D, "The day before", "Confirmation and reminder"),

@@ -145,6 +145,21 @@ class MembershipResolver:
             "status": plan.status,
             "visibility": plan.visibility,
             "offering_access": [str(o) for o in (offering_access or [])],
+            # P2-02: the kind and its rules.
+            "plan_kind": plan.plan_kind,
+            "kind_label": _kind_label(plan.plan_kind),
+            "grace_days": plan.grace_days,
+            "grace_allows_entry": plan.grace_allows_entry,
+            "freeze_allowed": plan.freeze_allowed,
+            "max_freeze_days": plan.max_freeze_days,
+            "sessions_included": plan.sessions_included,
+            "consume_on": plan.consume_on,
+            "no_show_consumes": plan.no_show_consumes,
+            "delivery": plan.delivery,
+            "billing_timing": plan.billing_timing,
+            "instalment_template": plan.instalment_template,
+            "visits_included": plan.visits_included,
+            "visit_every_days": plan.visit_every_days,
             "version": plan.version,
             "created_at": plan.created_at.isoformat(),
             "updated_at": plan.updated_at.isoformat(),
@@ -167,6 +182,16 @@ class MembershipResolver:
             "payment_status": enrolment.payment_status,
             "auto_renew": enrolment.auto_renew,
             "cancellation_reason": enrolment.cancellation_reason,
+            "valid_until": enrolment.valid_until.isoformat() if enrolment.valid_until else None,
+            "grace_until": enrolment.grace_until.isoformat() if enrolment.grace_until else None,
+            "next_due_on": enrolment.next_due_on.isoformat() if enrolment.next_due_on else None,
+            "checkin_code": enrolment.checkin_code,
+            "location_id": str(enrolment.location_id) if enrolment.location_id else None,
+            "payer_contact_id": str(enrolment.payer_contact_id) if enrolment.payer_contact_id else None,
+            "source_ref_type": enrolment.source_ref_type,
+            "source_ref_id": str(enrolment.source_ref_id) if enrolment.source_ref_id else None,
+            "delivery": enrolment.delivery,
+            "channel": enrolment.channel,
             "version": enrolment.version,
             "created_at": enrolment.created_at.isoformat(),
             "updated_at": enrolment.updated_at.isoformat(),
@@ -184,3 +209,9 @@ class MembershipResolver:
             "reason": event.reason,
             "created_at": event.created_at.isoformat(),
         }
+
+
+def _kind_label(kind: str) -> str:
+    from platform_core.memberships.words import words
+
+    return str(words(kind)["kind_label"])

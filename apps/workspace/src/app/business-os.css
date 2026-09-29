@@ -903,3 +903,23 @@ ul.bos-pills { list-style: none; margin: 0; padding: 0; }
 .bos-stagetrack__history ol { margin: .4rem 0 0; padding-left: 1.1rem; display: grid; gap: .25rem; font-size: .9rem; }
 .bos-stagetrack p { margin: 0; }
 @media (max-width: 700px) { .bos-stages__steps { margin-left: .3rem; } .bos-stages__add { margin-left: .3rem; } }
+
+/* ---------------------------------------------------------------- memberships & subscriptions (P2-02) */
+a.bos-pill { color: var(--color-foreground); text-decoration: none; }
+.bos-pill.is-on { border-color: var(--color-primary); color: var(--color-primary); font-weight: 600; }
+.bos-mem__grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; margin-top: 1.2rem; align-items: start; }
+@media (max-width: 760px) { .bos-mem__grid { grid-template-columns: 1fr; } }
+.bos-mem__qr { display: grid; justify-items: center; gap: .4rem; text-align: center; }
+.bos-mem__qr svg { width: 180px; height: 180px; background: var(--color-surface); }
+.bos-mem__code { margin: 0; font-size: 1.4rem; font-weight: 700; letter-spacing: .12em; font-variant-numeric: tabular-nums; }
+.bos-mem__delivery { display: grid; gap: .7rem; padding-top: .6rem; border-top: 1px solid var(--color-border); }
+.bos-checkin {
+  display: grid; gap: .35rem; padding: 1.2rem 1.3rem; border-radius: var(--radius); border: 2px solid;
+  max-width: 560px;
+}
+.bos-checkin p { margin: 0; }
+.bos-checkin__word { font-size: 1.6rem; font-weight: 800; }
+.bos-checkin__who { font-weight: 600; }
+.bos-checkin--green { background: var(--status-good-bg); border-color: var(--status-good-bd); color: var(--status-good-fg); }
+.bos-checkin--amber { background: var(--status-warn-bg); border-color: var(--status-warn-bd); color: var(--status-warn-fg); }
+.bos-checkin--red { background: var(--status-bad-bg); border-color: var(--status-bad-bd); color: var(--status-bad-fg); }

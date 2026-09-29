@@ -288,8 +288,9 @@ def test_low_stock_ladder_runs_once_and_is_visible(monkeypatch: Any) -> None:
 
 @DB
 def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
-    """Memberships are built but their renewal ladder has no step code yet (P2)
-    — the owner is never shown a switch that does nothing. Booking reminders,
+    """A ladder is shown only once every step has code behind it — the owner is
+    never shown a switch that does nothing. Membership renewal and fee
+    reminders are wired since P2-02. Booking reminders,
     order tracking, bill and khata reminders and waiting chats have steps since
     WhatsApp (P1-07); reviews have a wired request step in P1-09, but their
     unfinished module is not shown to owners yet. Compliance reminders are
@@ -302,12 +303,14 @@ def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
                                                    "bookings", "fulfilment"))
     shown = [a["key"] for a in client.get(f"/v1/platform/businesses/{bid}/automations",
                                           headers=owner).json()["data"]["automations"]]
-    assert shown == ["booking.reminder", "stock.low", "order.tracking", "review.request",
-                     "lead.followup", "chat.waiting", "compliance.due", "inventory.expiry"]
-    assert "membership.renewal" not in shown
+    # P2-02 wired the membership renewal and fee-instalment ladders.
+    assert shown == ["membership.renewal", "membership.instalment", "booking.reminder", "stock.low",
+                     "order.tracking", "review.request", "lead.followup", "chat.waiting", "compliance.due",
+                     "inventory.expiry"]
     assert {k for k in LADDERS if is_wired(k)} == {"stock.low", "lead.followup", "booking.reminder", "order.tracking",
                                                    "invoice.overdue", "ledger.statement", "chat.waiting",
-                                                   "review.request", "compliance.due", "inventory.expiry"}
+                                                   "review.request", "compliance.due", "inventory.expiry",
+                                                   "membership.renewal", "membership.instalment"}
 
 
 @DB

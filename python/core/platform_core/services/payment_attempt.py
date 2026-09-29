@@ -130,12 +130,12 @@ class PaymentAttemptService:
                 session, business_id=payment.business_id, enrolment_id=payment.source_id
             )
             if payment.status == "succeeded":
-                from platform_core.models import MembershipPlan
+                # Memberships decides what the money means: which period or
+                # instalment it pays, once (a replay applies nothing).
+                from platform_core.memberships.service import MembershipCore
                 from platform_core.services.payment_collect import PaymentCollectService
 
-                plan = await session.get(MembershipPlan, enrolment.plan_id)
-                price = Decimal(str(plan.price_amount)) if plan is not None and plan.price_amount else None
-                enrolment.payment_status = await PaymentCollectService.paid_status(session, payment, price) or "paid"
+                await MembershipCore.apply_payment(session, payment)
                 if enrolment.payment_status == "paid":
                     await PaymentCollectService.close_intents(session, payment)
             elif payment.status == "pending_offline" and enrolment.payment_status not in {"paid", "partially_paid"}:
@@ -144,11 +144,11 @@ class PaymentAttemptService:
                 enrolment.payment_status = await PaymentAttemptService._after_refund(session, payment,
                                                                                      enrolment.payment_status)
             elif payment.status in {"failed", "cancelled"}:
-                from platform_core.models import MembershipPlan
+                from platform_core.memberships.service import MembershipCore
 
-                plan = await session.get(MembershipPlan, enrolment.plan_id)
-                price = Decimal(str(plan.price_amount)) if plan is not None and plan.price_amount else None
-                enrolment.payment_status = await PaymentAttemptService._after_failure(session, payment, price)
+                charged = await MembershipCore.charged(session, enrolment)
+                enrolment.payment_status = await PaymentAttemptService._after_failure(
+                    session, payment, charged if charged > 0 else None)
             enrolment.version += 1
 
     @staticmethod

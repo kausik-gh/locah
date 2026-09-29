@@ -32,6 +32,7 @@ Branch `main`. Packets done, newest last:
 | P1-10E6b website in EN/TA/HI | bcc660b | test_site_words (5) + browser p1_10e_language 23/23 (desktop + 390 px) |
 | P1-10E6c Workspace language | see git log ("feat(p1-10e6c)") | test_workspace_words (6) + browser p1_10e_workspace_language 15/15; p1_10e_phone 17/17 and p1_10d1_payments 83/83 re-run; suite 1110 + worker 16 |
 | P2-01 assignment scope + stage engine | see git log ("feat(p2-01)") | test_assignment_scope (5), test_stage_engine (7), test_actor_matrix assignment rows (2 × 8) + browser p2_01_stages_and_assignment 20/20 (desktop + 390 px); suite 1124 + worker 16 |
+| P2-02 Memberships engine (six kinds) | see git log ("feat(p2-02)") | test_p2_memberships (15, local Postgres) + browser p2_02_memberships 24/24 (desktop + 390 px); suite 1153 passed before the last two test fixes (customer-language UTF-8 read, pre-order day choice), both re-run green |
 
 P1 gate after P1-10C: **TOTAL 240 · COMPLETE 122 · PARTIAL 90 · NOT_STARTED 12 ·
 ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 763 rows (P1 total grew by the
@@ -74,6 +75,53 @@ P2 gate after P2-01: **TOTAL 207 · COMPLETE 3 · PARTIAL 79 · NOT_STARTED 117 
 ACTIVATION_REQUIRED 8 · FUTURE 0.** P1 gate unchanged (261 · 143 · 96 · 0 · 22).
 Full API suite 1124 passed (`-n 4`), worker 16, ruff + mypy clean, workspace
 typecheck + lint clean.
+
+### P2-02 — Memberships: one engine for six kinds (DONE on `claude/p2-02-memberships-wip`, browser-verified; integration items below)
+
+Founder refinement — Memberships (authority 1). **Provenance, honestly:** the
+earlier P2-02 WIP was not found in any worktree, stash or branch when this
+session resumed; the packet was rebuilt from the refinement, not recovered.
+
+- **Schema** `20260930120000_p2_memberships.sql`: periods (immutable history —
+  trigger `memberships_period_is_history`), freezes (`base_ends_at` kept),
+  session uses (idempotency key), instalments, payment applications (unique —
+  a replayed payment never extends twice), delivery overrides, generated
+  deliveries, covered service visits; RLS on every table; orders channel
+  `subscription`.
+- **Engine** `python/core/platform_core/memberships/`: `lifecycle.compute` is
+  pure (PENDING/ACTIVE/PAUSED/GRACE/EXPIRED/CANCELLED/COMPLETED; "ending soon"
+  derived, 7 days). `service.MembershipCore` owns what a payment means
+  (`apply_payment`), renewals (early renewal queues after the last period —
+  `next_period_window`), freezes (exactly +N days), sessions (consume once,
+  reverse once), check-in decisions (green / amber / red + words), booking
+  entitlement. `subscriptions.py`: skip / quantity / pause per day with cutoff,
+  real orders on channel `subscription` (zero-priced lines; money is the
+  prepaid period or the postpaid khata), postpaid month bill once
+  (`subbill:{enrolment}:{YYYY-MM}`). `sweep.py`: hourly self-scheduling job
+  `memberships.sweep`. `board.py`: owner home per kind.
+- **Automation + messaging (real engine, real Messaging contract):** renewal
+  ladder T-7 / T-2 / T0 / T+1 grace / end of grace / T+15 win-back (marketing
+  consent enforced by `send_template`), quiet hours in the business timezone,
+  obsolete steps cancelled when a renewal is paid; instalment ladder; receipt
+  on payment once (`membership_paid:{period}`). Bookings consume / give back
+  sessions via `booking.*` events (key `booking:{id}`).
+- **Workspace:** Memberships home per kind, member page (money, periods,
+  freezes, instalments, visits, sessions, history, QR front-desk code),
+  check-in desk. **Website account:** renew / pay / skip-a-day for the customer
+  (EN/TA/HI words).
+- **Not done / integration items (honest):**
+  - Attendance adapter (`MembershipCheckinEligibility`) — to be wired to
+    `MembershipCore.checkin_decision` when `parallel/codex-attendance` merges.
+  - Fee plan ↔ Academics: link is an opaque `source_ref` until Academics
+    (`parallel/codex-projects-jobs-academics`) is integrated by stable ids.
+  - AMC → Jobs: `membership.service_visit_due` is published once per visit; the
+    Jobs consumer that opens the job is an integration item.
+  - Recurring delivery → Kitchen / Dispatch: rides on real orders; verify the
+    Kitchen KOT and Dispatch consumers pick up `subscription` orders at
+    integration.
+  - WhatsApp skip / renew conversations not built (website account and
+    Workspace only). Autopay: ACTIVATION_REQUIRED (Cashfree mandates).
+  - Ledger rows for P2-02 are reconciled in the integration ledger pass.
 
 ### P2-01 — assignment scope + stage engine (DONE, browser-verified; RL-04 / RL-12 / RL-17 / RL-18 / PM-10 / PM-11 PARTIAL)
 
