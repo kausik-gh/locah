@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,14 +13,21 @@ from platform_core.authorization.assignment_scope import current as assigned_ide
 from platform_core.authorization.location_scope import current as allowed_locations
 from platform_core.exceptions import ConflictError, OutsideAssignmentScope, OutsideLocationScope, ResourceNotFound, ValidationError
 from platform_core.jobs.models import JobCard, JobPart
-from platform_core.models import BusinessLocation, CustomerContact, InventoryMovement, Quote, WorkforceMember
+from platform_core.models import (
+    BusinessLocation,
+    CustomerContact,
+    InventoryMovement,
+    Quote,
+    WorkforceLocationAssignment,
+    WorkforceMember,
+)
 from platform_core.resolvers.customer_resolver import CustomerResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.business import BusinessService
+from platform_core.services.inventory_field import InventoryFieldService
 from platform_core.services.outbox import OutboxService
 from platform_core.services.project import ProjectService
 from platform_core.gates import assert_business_mutable
-from platform_core.stock.service import StockService
 from platform_core.stock import ledger as stock_ledger
 
 # service_contract: a covered visit Memberships asked for (source_id is its opaque visit id).
@@ -133,6 +140,13 @@ class JobService:
         parts = list((await session.execute(select(JobPart).where(
             JobPart.business_id == business_id, JobPart.job_id == job.id).order_by(JobPart.created_at))).scalars())
         data = JobService.serialize(job, parts)
+        # Where each part came from, so a return goes back to the same place.
+        places = dict((await session.execute(select(InventoryMovement.id, InventoryMovement.location_id).where(
+            InventoryMovement.business_id == business_id,
+            InventoryMovement.id.in_([part.inventory_movement_id for part in parts])))).tuples().all()) if parts else {}
+        for row, part in zip(data["parts"], parts):
+            place = places.get(part.inventory_movement_id)
+            row["location_id"] = str(place) if place else None
         # This single contact is authorized by the already-scoped job card.
         # P2-01's broad customer book remains closed to assignment-scoped staff.
         customer = (await session.execute(select(CustomerContact.display_name, CustomerContact.phone).where(
@@ -142,6 +156,7 @@ class JobService:
         ).execution_options(skip_assignment_scope=True))).first()
         data["customer_name"] = customer[0] if customer else None
         data["customer_phone"] = customer[1] if customer else None
+        data["parts_out"] = await InventoryFieldService.job_uses(session, business_id, job.id)
         return data
 
     @staticmethod
@@ -332,12 +347,10 @@ class JobService:
                     or existing.quantity != quantity or existing.serials != cleaned_serials):
                 raise ConflictError("That part request key was already used for a different item or quantity")
             return existing
-        permitted = allowed_locations(session)
-        movement = await StockService.consume_for_job(
-            session, business_id=business_id, job_id=job_id,
-            record_id=record_id, quantity=quantity, serials=cleaned_serials,
-            customer_contact_id=job.customer_contact_id, actor_id=actor_id,
-            allowed=list(permitted) if permitted is not None else None)
+        movement = await InventoryFieldService.consume_record_for_job(
+            session, business_id=business_id, job_ref=job_id, record_id=record_id, quantity=quantity,
+            serials=cleaned_serials, customer_contact_id=job.customer_contact_id, actor_id=actor_id,
+            allowed=await JobService._part_scope(session, job))
         part = JobPart(business_id=business_id, job_id=job_id,
                        inventory_movement_id=movement.id, offering_id=movement.offering_id,
                        quantity=quantity, serials=cleaned_serials, idempotency_key=idempotency_key)
@@ -345,3 +358,62 @@ class JobService:
         await session.flush()
         await JobService._record(session, job, actor_id, correlation_id, "job.part.consumed", "consume_part")
         return part
+
+    @staticmethod
+    async def _part_scope(session: AsyncSession, job: JobCard) -> list[uuid.UUID] | None:
+        """Where parts for this job may come from, for the person asking.
+
+        Someone limited to their own assignments (a technician) uses the job's
+        own location and the vans they are assigned to — never the whole stock
+        book. Everyone else keeps their location scope (None: every location).
+        """
+        if assigned_identity(session) is None:
+            permitted = allowed_locations(session)
+            return list(permitted) if permitted is not None else None
+        places = [job.location_id] if job.location_id else []
+        if job.assigned_member_id:
+            vans = (await session.execute(select(WorkforceLocationAssignment.location_id).join(
+                BusinessLocation, BusinessLocation.id == WorkforceLocationAssignment.location_id,
+            ).where(
+                WorkforceLocationAssignment.business_id == job.business_id,
+                WorkforceLocationAssignment.member_id == job.assigned_member_id,
+                BusinessLocation.stock_role == "van", BusinessLocation.status == "active",
+                BusinessLocation.deleted_at.is_(None),
+            ))).scalars().all()
+            places += [v for v in vans if v not in places]
+        return places
+
+    @staticmethod
+    async def part_stock(session: AsyncSession, business_id: uuid.UUID, job_id: uuid.UUID) -> list[dict[str, Any]]:
+        """The parts this person may use on this job, and how many are free."""
+        job = await JobService.resolve(session, business_id, job_id)
+        return cast(list[dict[str, Any]], await InventoryFieldService.free_stock(
+            session, business_id, await JobService._part_scope(session, job)))
+
+    @staticmethod
+    async def return_part(session: AsyncSession, business_id: uuid.UUID, job_id: uuid.UUID, part_id: uuid.UUID,
+                          quantity: int, idempotency_key: str, actor_id: uuid.UUID,
+                          correlation_id: str) -> dict[str, Any]:
+        """Unused parts go back where they came from, never more than this job still has out."""
+        job = await JobService.resolve(session, business_id, job_id, lock=True)
+        if not idempotency_key or len(idempotency_key) > 40:
+            raise ValidationError("A short idempotency key is required")
+        key = f"jr:{job.id.hex}:{idempotency_key}"
+        done = await InventoryFieldService.replayed(session, business_id, key)
+        if done is not None:
+            return cast(dict[str, Any], done)
+        part = (await session.execute(select(JobPart).where(
+            JobPart.business_id == business_id, JobPart.job_id == job.id, JobPart.id == part_id))).scalar_one_or_none()
+        if part is None:
+            raise ResourceNotFound("Part used on this job")
+        movement = (await session.execute(select(InventoryMovement).where(
+            InventoryMovement.id == part.inventory_movement_id,
+            InventoryMovement.business_id == business_id))).scalar_one()
+        back = await InventoryFieldService.return_unused(session, business_id, actor_id, {
+            "idempotency_key": key, "location_id": str(movement.location_id), "job_ref": str(job.id),
+            "lines": [{"offering_id": str(movement.offering_id),
+                       "variant_id": str(movement.variant_id) if movement.variant_id else None,
+                       "quantity": quantity}],
+        }, await JobService._part_scope(session, job))
+        await JobService._record(session, job, actor_id, correlation_id, "job.part.returned", "return_part")
+        return cast(dict[str, Any], back)

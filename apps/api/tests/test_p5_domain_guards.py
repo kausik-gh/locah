@@ -16,7 +16,7 @@ from platform_api.routers.v1_jobs import CreateJob, MoveJob
 from platform_api.main import app
 from platform_core.exceptions import ConflictError, ValidationError
 from platform_core.jobs.service import JobService, TRANSITIONS
-from platform_core.stock.service import StockService
+from platform_core.services.inventory_field import InventoryFieldService
 from platform_core.services.academics import _safe_url, _word
 
 
@@ -100,7 +100,7 @@ async def test_retrying_a_job_part_does_not_consume_stock_twice(monkeypatch: pyt
     movement = SimpleNamespace(id=uuid.uuid4(), business_id=business_id,
                                inventory_record_id=record_id, offering_id=offering_id)
     stock = AsyncMock(return_value=movement)
-    monkeypatch.setattr(StockService, "consume_for_job", stock)
+    monkeypatch.setattr(InventoryFieldService, "consume_record_for_job", stock)
 
     class Result:
         def __init__(self, value: Any) -> None:

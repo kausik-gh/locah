@@ -166,7 +166,9 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
     RoleTemplate(
         "technician", "Technician", "Assigned job cards, parts used and that asset's service history",
         "assignment", "workspace", "My next job",
-        _READ_BASICS | {p.JOBS_READ, p.JOBS_COMPLETE, p.JOBS_USE_PARTS, p.INVENTORY_READ},
+        # Parts come from the job's location and their own vans (Jobs' part picker),
+        # never the whole stock book: no inventory.read on an assignment-scoped role.
+        _READ_BASICS | {p.JOBS_READ, p.JOBS_COMPLETE, p.JOBS_USE_PARTS},
         ("jobs",), "P5",
     ),
     RoleTemplate(

@@ -2,8 +2,10 @@
 
 Founder refinement — Inventory §§2, 17, 19. One ledger. A van is a location.
 Stock in transit is not available at the source or the destination. Receipt
-is what completes the move. Jobs are not imported: consume_for_job and
-return_unused take an opaque job_ref the jobs lane will pass later.
+is what completes the move. Jobs are not imported: this module is the one
+job-parts contract. Jobs calls consume_record_for_job and return_unused with its
+job id as job_ref; consume_for_job is Inventory's own door (lines from a van).
+Both write the same movement and the same "what this job has out" record.
 
 Client-owned quantity lives on its own inventory_records row (owner_customer_id).
 Sale, reservation, POS and the stock home read only rows whose owner is null.
@@ -12,7 +14,7 @@ Sale, reservation, POS and the stock home read only rows whose owner is null.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -25,6 +27,7 @@ from platform_core.models import (
     InventoryBatch,
     InventoryFieldKey,
     InventoryJobUse,
+    InventoryMovement,
     InventoryRecord,
     InventoryTransfer,
     InventoryTransferLine,
@@ -64,6 +67,11 @@ class InventoryFieldService:
         if row is None:
             return None
         return dict(row.snapshot)
+
+    @staticmethod
+    async def replayed(session: AsyncSession, business_id: uuid.UUID, key: str) -> dict[str, Any] | None:
+        """The answer already given for this idempotency key, if it was used."""
+        return await InventoryFieldService._saved(session, business_id, key)
 
     @staticmethod
     async def _remember(
@@ -421,11 +429,114 @@ class InventoryFieldService:
         return row
 
     @staticmethod
+    async def _consume(
+        session: AsyncSession, record: InventoryRecord, offering: Offering, *, job_ref: uuid.UUID,
+        quantity: int, serials: list[str], customer_contact_id: uuid.UUID | None, actor_id: uuid.UUID,
+    ) -> InventoryMovement:
+        """The one stock movement for a part used on a job, whichever door it came through.
+
+        Takes the quantity (batches first-expiry, serials sold to the job's
+        customer), writes one `job_consumption` movement, and adds it to what
+        this job has out at this location — the bound every return is held to.
+        """
+        if record.owner_customer_id is not None:
+            raise ValidationError("That is the customer's own stock, not a part to use")
+        if quantity < 1:
+            raise ValidationError("Part quantity must be positive")
+        free = record.quantity_on_hand - record.quantity_reserved
+        if quantity > free:
+            raise ValidationError(
+                f"Only {display_quantity(max(free, 0), offering.stock_unit)} of {offering.title} is free here",
+                details={"available": max(free, 0)},
+            )
+        cleaned = ledger.clean_serials(serials)
+        if offering.serial_tracked:
+            await ledger.sell_serials(session, record, offering, cleaned, quantity=quantity, strict=True,
+                                      sold_at=datetime.now(timezone.utc), customer_id=customer_contact_id)
+        elif cleaned:
+            raise ValidationError("This part does not track serial numbers")
+        taken = await ledger.take(session, record, offering, quantity, today=today_ist())
+        value = sum(a.value_paise for a in taken)
+        movement = await StockService._write(
+            session, record, offering, delta=-quantity, movement_type="job_consumption",
+            reason=f"Used on job {job_ref}", actor_id=actor_id, value_delta=-value,
+            event="inventory.job.consumed", source=("job", job_ref),
+            batch_id=taken[0].batch_id if len(taken) == 1 else None,
+            extra={"job_ref": str(job_ref), "allocations": [a.as_json() for a in taken]},
+        )
+        use = await InventoryFieldService._job_use(
+            session, record.business_id, record.location_id, job_ref, offering.id, record.variant_id)
+        use.quantity_out += quantity
+        use.value_out_paise += value
+        use.allocations = list(use.allocations or []) + await InventoryFieldService._capture(session, taken)
+        return movement
+
+    @staticmethod
+    async def consume_record_for_job(
+        session: AsyncSession, *, business_id: uuid.UUID, job_ref: uuid.UUID, record_id: uuid.UUID,
+        quantity: int, serials: list[str], customer_contact_id: uuid.UUID | None, actor_id: uuid.UUID,
+        allowed: list[uuid.UUID] | None,
+    ) -> InventoryMovement:
+        """Jobs' door: one chosen stock line. The caller holds the locked job and its idempotency."""
+        record, offering = await StockService._record_by_id(session, business_id, record_id, allowed)
+        return await InventoryFieldService._consume(
+            session, record, offering, job_ref=job_ref, quantity=quantity, serials=serials,
+            customer_contact_id=customer_contact_id, actor_id=actor_id)
+
+    @staticmethod
+    async def job_uses(session: AsyncSession, business_id: uuid.UUID, job_ref: uuid.UUID) -> list[dict[str, Any]]:
+        """What a job has taken, given back and still has out, per location and item."""
+        from platform_core.models import BusinessLocation
+
+        rows = (await session.execute(select(InventoryJobUse, Offering, BusinessLocation.name).join(
+            Offering, Offering.id == InventoryJobUse.offering_id,
+        ).join(BusinessLocation, BusinessLocation.id == InventoryJobUse.location_id).where(
+            InventoryJobUse.business_id == business_id, InventoryJobUse.job_ref == job_ref,
+        ).order_by(Offering.title))).all()
+        return [{
+            "location_id": str(use.location_id), "location_name": place, "offering_id": str(use.offering_id),
+            "variant_id": str(use.variant_id) if use.variant_id else None, "title": offering.title,
+            "quantity_out": use.quantity_out, "quantity_back": use.quantity_back,
+            "open": max(use.quantity_out - use.quantity_back, 0),
+            "open_text": display_quantity(max(use.quantity_out - use.quantity_back, 0), offering.stock_unit),
+            "serial_tracked": bool(offering.serial_tracked),
+        } for use, offering, place in rows]
+
+    @staticmethod
+    async def free_stock(
+        session: AsyncSession, business_id: uuid.UUID, location_ids: list[uuid.UUID] | None,
+    ) -> list[dict[str, Any]]:
+        """Business-owned stock free to use at these locations (None: every location)."""
+        from platform_core.models import BusinessLocation
+
+        q = select(InventoryRecord, Offering, BusinessLocation).join(
+            Offering, Offering.id == InventoryRecord.offering_id,
+        ).join(BusinessLocation, BusinessLocation.id == InventoryRecord.location_id).where(
+            InventoryRecord.business_id == business_id, InventoryRecord.owner_customer_id.is_(None),
+            InventoryRecord.quantity_on_hand > InventoryRecord.quantity_reserved,
+            Offering.deleted_at.is_(None), BusinessLocation.deleted_at.is_(None),
+        )
+        if location_ids is not None:
+            if not location_ids:
+                return []
+            q = q.where(InventoryRecord.location_id.in_(location_ids))
+        rows = (await session.execute(q.order_by(Offering.title, BusinessLocation.name))).all()
+        return [{
+            "inventory_record_id": str(record.id), "offering_id": str(offering.id),
+            "variant_id": str(record.variant_id) if record.variant_id else None, "title": offering.title,
+            "location_id": str(location.id), "location_name": location.name,
+            "is_van": location.stock_role == "van", "serial_tracked": bool(offering.serial_tracked),
+            "available": record.quantity_on_hand - record.quantity_reserved,
+            "available_text": display_quantity(record.quantity_on_hand - record.quantity_reserved, offering.stock_unit),
+        } for record, offering, location in rows]
+
+    @staticmethod
     async def consume_for_job(
         session: AsyncSession, business_id: uuid.UUID, actor_id: uuid.UUID, payload: dict[str, Any],
         allowed: list[uuid.UUID] | None,
     ) -> dict[str, Any]:
-        """Deduct parts from a stock location (usually a van) against an opaque job reference."""
+        """Inventory's door: lines taken from one stock location (usually a van) against a job
+        reference. Same movement as Jobs' door; its own idempotency key."""
         key = _key(payload.get("idempotency_key"))
         saved = await InventoryFieldService._saved(session, business_id, key)
         if saved:
@@ -436,29 +547,12 @@ class InventoryFieldService:
         used = []
         for raw in list(payload.get("lines") or []):
             offering = await StockService._offering(session, business_id, (raw or {}).get("offering_id"))
-            if offering.serial_tracked:
-                raise ValidationError(f"{offering.title} is tracked by serial. Quantity consumption does not cover it.")
             variant_id = await StockService._variant(session, offering, (raw or {}).get("variant_id"))
             quantity = _qty((raw or {}).get("quantity"))
             record = await StockService._record(session, business_id, offering, location_id, variant_id)
-            free = record.quantity_on_hand - record.quantity_reserved
-            if quantity > free:
-                raise ValidationError(
-                    f"Only {display_quantity(max(free, 0), offering.stock_unit)} of {offering.title} is on this van",
-                    details={"available": max(free, 0)},
-                )
-            taken = await ledger.take(session, record, offering, quantity, today=today_ist())
-            value = sum(a.value_paise for a in taken)
-            await StockService._write(
-                session, record, offering, delta=-quantity, movement_type="job_consumption",
-                reason=f"Used on job {job_ref}", actor_id=actor_id, value_delta=-value,
-                event="inventory.job.consumed", source=("job", job_ref),
-                extra={"job_ref": str(job_ref)},
-            )
-            use = await InventoryFieldService._job_use(session, business_id, location_id, job_ref, offering.id, variant_id)
-            use.quantity_out += quantity
-            use.value_out_paise += value
-            use.allocations = list(use.allocations or []) + await InventoryFieldService._capture(session, taken)
+            await InventoryFieldService._consume(
+                session, record, offering, job_ref=job_ref, quantity=quantity,
+                serials=list((raw or {}).get("serials") or []), customer_contact_id=None, actor_id=actor_id)
             used.append({
                 "offering_id": str(offering.id), "title": offering.title, "quantity": quantity,
                 "on_hand": record.quantity_on_hand,
@@ -485,6 +579,9 @@ class InventoryFieldService:
         returned = []
         for raw in list(payload.get("lines") or []):
             offering = await StockService._offering(session, business_id, (raw or {}).get("offering_id"))
+            if offering.serial_tracked:
+                raise ValidationError(f"{offering.title} is tracked by serial number; bring it back through a "
+                                      "stock adjustment so each serial is put back by hand")
             variant_id = await StockService._variant(session, offering, (raw or {}).get("variant_id"))
             quantity = _qty((raw or {}).get("quantity"))
             use = await InventoryFieldService._job_use(session, business_id, location_id, job_ref, offering.id, variant_id)

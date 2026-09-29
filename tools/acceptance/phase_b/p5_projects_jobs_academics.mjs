@@ -202,6 +202,17 @@ try {
   const line = stock.data.items.find((item) => item.id === recordId)
   check(Number(line.quantity_available) === 17, `stock moved 20 to 17 after one consumption (now ${line.quantity_available})`)
 
+  // One bolt was not needed: it goes back where it came from, bounded by what the job has out.
+  const used = page.locator('li', { hasText: 'Shutter bolt' }).filter({ has: page.getByRole('button', { name: 'Give back' }) })
+  await used.getByLabel('Unused').fill('1')
+  await used.getByRole('button', { name: 'Give back' }).click()
+  await page.getByText(/1 given back/).first().waitFor()
+  const row = (await page.locator('li', { hasText: 'Shutter bolt' }).first().innerText()).replace(/\s+/g, ' ')
+  const backStock = await api(owner.token, `/v1/platform/businesses/${bid}/stock`)
+  const backLine = backStock.data.items.find((item) => item.id === recordId)
+  check(Number(backLine.quantity_available) === 18 && row.includes('3 used') && row.includes('2') && row.includes('still out'),
+    `one unused bolt given back: stock 18, the job shows 3 used, 1 back, 2 still out (${row})`)
+
   await page.getByLabel('Move to').selectOption('quality_check')
   await page.getByLabel('Work performed').fill('Removed the old lock and fitted the bolt')
   await page.getByRole('button', { name: 'Update job' }).click()
@@ -213,7 +224,7 @@ try {
   await page.getByText('This job is closed').waitFor()
   const after = await api(owner.token, `/v1/platform/businesses/${bid}/stock`)
   const afterLine = after.data.items.find((item) => item.id === recordId)
-  check(Number(afterLine.quantity_available) === 17, `completing the job did not consume stock again (still ${afterLine.quantity_available})`)
+  check(Number(afterLine.quantity_available) === 18, `completing the job did not consume stock again (still ${afterLine.quantity_available})`)
 
   const projectId = (await api(owner.token, `/v1/b/${bid}/jobs`)).data.find((row) => row.title === 'Fit the shutter').project_id
   await page.goto(`${WS}/b/${bid}/projects/${projectId}`, { waitUntil: 'domcontentloaded' })

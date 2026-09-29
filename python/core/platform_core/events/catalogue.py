@@ -130,7 +130,6 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             # P1-10A stock depth (§15.1)
             "inventory.received",
             "inventory.wastage.recorded",
-            "inventory.job_part.consumed",
             "inventory.converted",
             "inventory.count.submitted",
             "inventory.count.variance",
@@ -290,7 +289,7 @@ _CATALOGUE: dict[str, frozenset[str]] = {
         }
     ),
     "job": frozenset({
-        "job.created", "job.assigned", "job.status.changed", "job.part.consumed", "job.completed",
+        "job.created", "job.assigned", "job.status.changed", "job.part.consumed", "job.part.returned", "job.completed",
     }),
     "academics": frozenset({
         "academics.course.created", "academics.batch.created", "academics.session.scheduled",

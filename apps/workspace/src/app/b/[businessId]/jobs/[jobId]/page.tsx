@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { apiTry } from '@/lib/api'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { Card, GateNotice, PageHeader, StatusPill } from '@/components/ui'
-import { assignJob, consumePart, moveJob } from '../actions'
+import { assignJob, consumePart, moveJob, returnPart } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,10 +16,12 @@ type Job = {
   asset_description: string | null; asset_serial: string | null; priority: string
   approval_note: string | null; approval_recorded_at: string | null
   scheduled_at: string | null; completed_at: string | null; completion_note: string | null
-  parts: { id: string; offering_id: string; quantity: number; inventory_movement_id: string }[]
+  parts: { id: string; offering_id: string; quantity: number; inventory_movement_id: string; location_id: string | null }[]
+  parts_out: { location_id: string; location_name: string; offering_id: string; title: string; quantity_out: number; quantity_back: number; open: number; open_text: string; serial_tracked: boolean }[]
 }
 type Named = { id: string; display_name: string; status?: string }
-type Stock = { id: string; offering_id: string; title: string; available_text: string; quantity_available: number; location_id: string; serial_tracked: boolean }
+// Only what this person may use on this job: its location and, for a technician, their vans.
+type Stock = { inventory_record_id: string; offering_id: string; title: string; available_text: string; available: number; location_id: string; location_name: string; is_van: boolean; serial_tracked: boolean }
 
 const next: Record<string, string[]> = {
   new: ['assigned', 'cancelled'], assigned: ['inspecting', 'in_progress', 'cancelled'],
@@ -41,13 +43,13 @@ export default async function JobPage({ params }: { params: { businessId: string
   const [jobRes, membersRes, stockRes] = await Promise.all([
     apiTry<{ data: Job }>(`/v1/b/${b}/jobs/${params.jobId}`, token),
     apiTry<{ data: Named[] }>(`/v1/platform/businesses/${b}/workforce/members`, token),
-    apiTry<{ data: { items: Stock[] } }>(`/v1/platform/businesses/${b}/stock`, token),
+    apiTry<{ data: Stock[] }>(`/v1/b/${b}/jobs/${params.jobId}/parts/stock`, token),
   ])
   if (!jobRes.ok) return <div><PageHeader title="Job card" breadcrumb={<Link href={`/b/${b}/jobs`}>← Job cards</Link>} /><GateNotice error={jobRes.error} businessId={b} moduleLabel="Jobs" /></div>
   const job = jobRes.data.data
   const members = membersRes.ok ? membersRes.data.data || [] : []
   const technician = members.find((m) => m.id === job.assigned_member_id)
-  const stock = stockRes.ok ? stockRes.data.data.items.filter((s) => s.quantity_available > 0) : []
+  const stock = stockRes.ok ? stockRes.data.data : []
   const open = !['completed', 'cancelled'].includes(job.status)
   return <div className="bos-page">
     <PageHeader title={`${job.reference} · ${job.title}`} breadcrumb={<Link href={`/b/${b}/jobs`}>← Job cards</Link>}
@@ -89,17 +91,33 @@ export default async function JobPage({ params }: { params: { businessId: string
     </div>
     <Card style={{ marginTop: '1rem' }}>
       <h2 style={{ marginTop: 0 }}>Parts used</h2>
-      {job.parts.length ? <ul>{job.parts.map((part) => <li key={part.id}>{stock.find((s) => s.offering_id === part.offering_id)?.title || 'Stock item'} · {part.quantity} · movement {part.inventory_movement_id.slice(0, 8)}…</li>)}</ul>
+      {job.parts_out.length ? <ul className="bos-mini-list">{job.parts_out.map((row) => {
+        // A return goes back to where the part came from; any part row of that item there will do.
+        const part = [...job.parts].reverse().find((p) => p.offering_id === row.offering_id && p.location_id === row.location_id)
+        return <li key={`${row.location_id}-${row.offering_id}`}>
+          <div>
+            <strong>{row.title}</strong>
+            <p>{row.location_name} · {row.quantity_out} used{row.quantity_back ? ` · ${row.quantity_back} given back` : ''} · {row.open_text} still out</p>
+          </div>
+          {part && row.open > 0 && !row.serial_tracked ? <form action={returnPart} style={{ display: 'flex', gap: '0.4rem', alignItems: 'end' }}>
+            <input type="hidden" name="businessId" value={b} /><input type="hidden" name="jobId" value={job.id} />
+            <input type="hidden" name="partId" value={part.id} /><input type="hidden" name="idempotency_key" value={randomUUID()} />
+            <label>Unused<input name="quantity" type="number" min="1" max={row.open} step="1" required style={{ width: '5rem' }} /></label>
+            <button type="submit" className="btn-ghost">Give back</button>
+          </form> : null}
+        </li>
+      })}</ul>
         : <p>No business stock consumed on this job.</p>}
       {open && ['in_progress', 'waiting_parts', 'quality_check'].includes(job.status) && stock.length ? <form action={consumePart} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))', gap: '0.6rem' }}>
         <input type="hidden" name="businessId" value={b} /><input type="hidden" name="jobId" value={job.id} />
         <input type="hidden" name="idempotency_key" value={randomUUID()} />
-        <label>Stock item<select name="inventory_record_id" required defaultValue=""><option value="">Choose available stock</option>{stock.map((s) => <option key={s.id} value={s.id}>{s.title} · {s.available_text}</option>)}</select></label>
+        <label>Stock item<select name="inventory_record_id" required defaultValue=""><option value="">Choose available stock</option>{stock.map((s) => <option key={s.inventory_record_id} value={s.inventory_record_id}>{s.title} · {s.location_name}{s.is_van ? ' (van)' : ''} · {s.available_text}</option>)}</select></label>
         <label>Quantity in stock units<input name="quantity" type="number" min="1" step="1" required /></label>
         <label>Serials, if tracked<textarea name="serials" rows={2} placeholder="One per line" /></label>
         <button type="submit" className="btn">Record part used</button>
       </form> : null}
       {open && !stockRes.ok ? <p style={{ color: 'var(--color-muted)' }}>Enable and configure Inventory to record business-owned parts; customer-owned parts are not stock.</p> : null}
+      {open && stockRes.ok && !stock.length && ['in_progress', 'waiting_parts', 'quality_check'].includes(job.status) ? <p style={{ color: 'var(--color-muted)' }}>No free stock at this job&apos;s location or the technician&apos;s van.</p> : null}
     </Card>
   </div>
 }

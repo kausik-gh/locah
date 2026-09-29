@@ -56,6 +56,12 @@ class ConsumePart(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=100)
 
 
+class ReturnPart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    quantity: int = Field(gt=0)
+    idempotency_key: str = Field(min_length=1, max_length=40)
+
+
 @router.get("")
 async def list_jobs(business_id: UUID, status: str | None = None,
                     customer_contact_id: UUID | None = None, project_id: UUID | None = None,
@@ -114,3 +120,23 @@ async def consume_job_part(business_id: UUID, job_id: UUID, body: ConsumePart,
                                          actor.request.identity_id, actor.request.correlation_id)
     await session.commit()
     return {"data": {"id": str(part.id), "inventory_movement_id": str(part.inventory_movement_id)}}
+
+
+@router.get("/{job_id}/parts/stock")
+async def job_part_stock(business_id: UUID, job_id: UUID,
+                         actor: BusinessActorContext = Depends(require_business_actor(JOBS_USE_PARTS, "jobs")),
+                         session: AsyncSession = Depends(get_db_session)) -> dict[str, Any]:
+    """The parts this person may use on this job: a technician sees the job's own
+    location and their vans, not the whole stock book."""
+    return {"data": await JobService.part_stock(session, business_id, job_id)}
+
+
+@router.post("/{job_id}/parts/{part_id}/return")
+async def return_job_part(business_id: UUID, job_id: UUID, part_id: UUID, body: ReturnPart,
+                          actor: BusinessActorContext = Depends(require_business_actor(JOBS_USE_PARTS, "jobs")),
+                          session: AsyncSession = Depends(get_db_session)) -> dict[str, Any]:
+    back = await JobService.return_part(session, business_id, job_id, part_id, body.quantity,
+                                        body.idempotency_key, actor.request.identity_id,
+                                        actor.request.correlation_id)
+    await session.commit()
+    return {"data": back}

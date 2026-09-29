@@ -73,3 +73,13 @@ export async function consumePart(form: FormData): Promise<void> {
   })
   revalidatePath(`/b/${businessId}/jobs/${jobId}`)
 }
+
+export async function returnPart(form: FormData): Promise<void> {
+  const businessId = String(form.get('businessId'))
+  const jobId = String(form.get('jobId'))
+  await send(businessId, `/${jobId}/parts/${String(form.get('partId'))}/return`, {
+    quantity: Number(form.get('quantity')),
+    idempotency_key: String(form.get('idempotency_key')),
+  })
+  revalidatePath(`/b/${businessId}/jobs/${jobId}`)
+}
