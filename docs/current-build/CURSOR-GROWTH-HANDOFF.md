@@ -1,6 +1,29 @@
 # Cursor growth handoff
 
-Loyalty and marketing were hardened on top of Antigravity's implementation. The services were not rewritten.
+Loyalty and marketing were hardened on top of Antigravity's implementation. The services were not rewritten. No further loyalty or marketing features belong on this branch.
+
+READY_TO_INTEGRATE = YES
+
+## Freeze
+
+| | |
+| --- | --- |
+| BRANCH | `parallel/cursor-growth-hardening` |
+| BASE SHA | `e48fd6001820ac716bff4ffbd0fda61edf9b178e` |
+| HEAD SHA | the commit that adds this freeze section; parent `fcf7d14a534b344a34b46b59b3bc0e97c2d61a8b` |
+| pushed checkpoint | `fcf7d14a534b344a34b46b59b3bc0e97c2d61a8b` (pushed, not force-pushed) |
+| MIGRATION REPLAY RESULT | exit 0. 74 of 74 files in `infra/supabase/migrations` applied on a new local database `locah_growth_replay` at `localhost:54329`. `20260930160000_p3_growth_loyalty_marketing.sql` and `20260930161000_p3_growth_stamp_award_idempotency.sql` both applied. `loyalty_programs` and `stamp_awards` exist, `referral_codes_unique_code` exists, and `stamp_awards` has row security forced. Notices on older migrations are pre-existing `IF EXISTS` skips, not growth failures. Zero hosted Supabase writes. |
+| DATABASE TEST RESULT | 34 passed, 0 skipped, on local `locah_growth_scratch` (`localhost:54329`). `test_growth_db.py`, `test_growth_rls.py`, `test_loyalty_lane.py`, `test_marketing_lane.py`, `test_permissions.py`. |
+| PLAYWRIGHT RESULT | 14/14 passed. Desktop Chrome, `tools/acceptance/phase_b/p3_growth_workspace_ui.mjs`. Loyalty: programme, earn 200, redeem to 190, stamp card, voucher. Marketing: offer `DIWALI10`, campaign, audience, `1 with marketing consent`, Approve, fixture `Sent 1`, `Approximate · last touch`. No external calls. |
+| RUFF | exit 0. All checks passed on the Python files changed since `e48fd60`. |
+| TSC | exit 0. `tsc --noEmit -p apps/workspace`. No errors. |
+| LINT | exit 0. `next lint` in `apps/workspace`. No ESLint warnings or errors. No unrelated failures to separate. |
+| RLS | Forced on every loyalty and marketing table, including `stamp_awards`. `platform_api` policies. Proven in `test_growth_rls.py`, not skipped. |
+| PERMISSIONS | `loyalty.read`, `loyalty.manage`, `marketing.read`, `marketing.create`, `marketing.approve`, `marketing.send`. Marketer may read and draft. Approve and send stay with the owner. |
+| CLAUDE HOOKS | `python/core/platform_core/growth/contracts.py`. Orders, Payments, and Messaging were not modified. |
+| PARTIAL | Public website loyalty card is not built. Checkout does not call `evaluate_offer`. Orders does not call earn or referral qualify. Payments does not fund a voucher. Messaging does not deliver the broadcast. |
+| ACTIVATION_REQUIRED | Meta ads, Conversions API, Google Business Profile, and live WhatsApp delivery. Spend cap and broadcast dispatch stay local. |
+| KNOWN MERGE RISKS | `20260930160000_p3_growth_loyalty_marketing.sql` was edited in place so the unique codes are indexes. A branch that still has the original `UNIQUE (lower(code))` table constraints will conflict. Shared files other lanes may also touch: `role_templates.py`, `permissions.py`, `packages/permissions/src/identifiers.ts`, `catalog/modules.py`, `plan_registry.py`, `workspace-nav.ts`, `ws-words.json`. Loyalty was added to the growth plan only. |
 
 ## Branch
 
@@ -9,8 +32,8 @@ Loyalty and marketing were hardened on top of Antigravity's implementation. The 
 | branch | `parallel/cursor-growth-hardening` |
 | base | `e48fd6001820ac716bff4ffbd0fda61edf9b178e` (`origin/parallel/antigravity-growth`) |
 | hardening | `c098deb6906b99d8bb423053080050fde75d4b6c` |
-| head | the commit that adds this file (parent `c098deb`) |
-| not done | not merged, not pushed, not committed to `main` |
+| pushed checkpoint | `fcf7d14a534b344a34b46b59b3bc0e97c2d61a8b` |
+| head | the freeze commit, parent of which is `fcf7d14` |
 
 Worktree used for the edit: `C:\Users\KausikGH\Documents\locah-cursor-growth`. The shared checkout was left alone.
 
