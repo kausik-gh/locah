@@ -264,6 +264,9 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "project.phase.completed",
         }
     ),
+    "attendance": frozenset({
+        "attendance.checked_in", "attendance.checked_out", "attendance.session_recorded",
+    }),
     "membership_plan": frozenset(
         {
             "membership.plan.created",
