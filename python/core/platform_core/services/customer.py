@@ -130,6 +130,7 @@ class CustomerService:
         status: str | None = None,
         search: str | None = None,
         location_id: uuid.UUID | None = None,
+        tag: str | None = None,
     ) -> list[CustomerContact]:
         query = select(CustomerContact).where(
             CustomerContact.business_id == business_id,
@@ -139,6 +140,8 @@ class CustomerService:
             query = query.where(CustomerContact.status == status)
         if location_id is not None:
             query = query.where(CustomerContact.preferred_location_id == location_id)
+        if tag:
+            query = query.where(CustomerContact.tags.any(" ".join(tag.split()).lower()))
         if search:
             term = f"%{search.strip()}%"
             query = query.where(
@@ -189,8 +192,9 @@ class CustomerService:
             (CustomerContact.phone, phone),
         ):
             if value:
+                # Matching looks at the whole book, even for a member limited to their assignments.
                 found = (
-                    await session.execute(base.where(column == value))
+                    await session.execute(base.where(column == value).execution_options(skip_assignment_scope=True))
                 ).scalars().first()
                 if found is not None:
                     return found

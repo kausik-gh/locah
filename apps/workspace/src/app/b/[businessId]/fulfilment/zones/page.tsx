@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
-import { createZone, updateFulfilmentSettings } from '../actions'
+import { createZone, updateFulfilmentSettings, updatePaymentRules } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +19,7 @@ export default async function FulfilmentZonesPage({
       `/v1/b/${params.businessId}/fulfilment/zones`,
       token
     ),
-    apiTry<{ data: { pickup_enabled: boolean; delivery_enabled: boolean } }>(
+    apiTry<{ data: { pickup_enabled: boolean; delivery_enabled: boolean; cod_allowed: boolean; first_order_cod_cap: number | null } }>(
       `/v1/b/${params.businessId}/fulfilment/settings`,
       token
     ),
@@ -36,7 +36,7 @@ export default async function FulfilmentZonesPage({
   const zones = zonesRes.data.data || []
   const settings = settingsRes.ok
     ? settingsRes.data.data
-    : { pickup_enabled: false, delivery_enabled: false }
+    : { pickup_enabled: false, delivery_enabled: false, cod_allowed: true, first_order_cod_cap: null }
 
   return (
     <div>
@@ -61,6 +61,22 @@ export default async function FulfilmentZonesPage({
           Delivery enabled
         </label>
         <button type="submit">Save modes</button>
+      </form>
+
+      <form action={updatePaymentRules} className="bos-card" style={{ marginTop: '1.25rem', display: 'grid', gap: '0.6rem', maxWidth: '32rem' }}
+        aria-labelledby="cod-h">
+        <h2 id="cod-h" style={{ margin: 0 }}>Paying on delivery or at pickup</h2>
+        <p className="bos-hint" style={{ margin: 0 }}>The same rule for orders from your website and WhatsApp.</p>
+        <input type="hidden" name="businessId" value={params.businessId} />
+        <label>
+          <input type="checkbox" name="cod_allowed" defaultChecked={settings.cod_allowed} /> Customers can pay on delivery or at pickup
+        </label>
+        <label style={{ display: 'grid', gap: '0.25rem' }}>
+          <span>First order: pay on delivery up to (₹, leave empty for no limit)</span>
+          <input name="first_order_cod_cap" inputMode="decimal" placeholder="No limit"
+            defaultValue={settings.first_order_cod_cap === null ? '' : String(settings.first_order_cod_cap)} />
+        </label>
+        <button type="submit" style={{ justifySelf: 'start' }}>Save payment rules</button>
       </form>
 
       <ul style={{ marginTop: '1.5rem', lineHeight: 1.7 }}>

@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import { addToBasket, fetchPublicOfferings, fetchPublicPlans } from '@/lib/checkout-api'
 import { OfferingCard } from './OfferingCard'
 import type { PublicOffering } from './offering-view'
+import { useWords } from './SiteWords'
+import type { Words } from '@/lib/site-words'
 
 /**
  * The live-record renderer behind every "list" section type.
@@ -21,7 +23,7 @@ import type { PublicOffering } from './offering-view'
 
 export type ItemKind = 'offerings' | 'menu' | 'plans' | 'rooms' | 'classes'
 
-type Offering = PublicOffering & { category?: string | null; plan?: boolean; period?: string | null }
+type Offering = PublicOffering & { category?: string | null; plan?: boolean; period_days?: number | null }
 
 /** An item that needs choosing (pack, cut, add-ons, size) or is not a cart item. */
 function needsCard(o: Offering) {
@@ -95,6 +97,7 @@ export function LiveItemsSection({
   capabilities?: Record<string, boolean | string | null>
   anchor?: string
 }) {
+  const t = useWords()
   const [items, setItems] = useState<Offering[]>([])
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
 
@@ -116,7 +119,7 @@ export function LiveItemsSection({
                       price_amount: Number(p.price_amount),
                       currency: p.currency,
                       plan: true,
-                      period: planPeriod(p.duration_days),
+                      period_days: p.duration_days,
                     }) as Offering
                 )
               : (((await fetchPublicOfferings(businessSlug)).offerings || []) as Offering[]).filter(
@@ -207,7 +210,7 @@ export function LiveItemsSection({
         {action === 'cart' && filtered.length > 0 ? (
           <div style={{ marginTop: '2rem', textAlign: 'center' }}>
             <Link className="ls-btn ls-btn--outline" href={`/${businessSlug}/checkout`}>
-              View basket
+              {t('View basket')}
             </Link>
           </div>
         ) : null}
@@ -229,22 +232,23 @@ function ItemAction({
   slug: string
   onAdd: (o: Offering) => void
 }) {
+  const t = useWords()
   if (action === 'cart')
     return (
       <button type="button" className="ls-btn ls-btn--outline" onClick={() => onAdd(item)}>
-        Add
+        {t('Add')}
       </button>
     )
   if (action === 'book')
     return (
       <Link className="ls-btn" href={`/${slug}/book?offering_id=${item.id}`}>
-        Book
+        {t('Book')}
       </Link>
     )
   if (action === 'enquire')
     return (
       <Link className="ls-btn" href={`/${slug}/enquire?offering_id=${item.id}`}>
-        Enquire
+        {t('Enquire')}
       </Link>
     )
   return null
@@ -311,16 +315,17 @@ function ItemGrid({
 const PROJECT_ORDER = ['Upcoming', 'Launching', 'Live', 'Sold out', 'Completed', 'On hold']
 
 function ProjectTabs({ items, render }: { items: Offering[]; render: (o: Offering) => JSX.Element }) {
+  const t = useWords()
   const statusOf = (o: Offering) => String(o.attributes?.project_status ?? 'Live')
   const tabs = PROJECT_ORDER.filter((s) => items.some((o) => statusOf(o) === s))
   const [tab, setTab] = useState(tabs.includes('Live') ? 'Live' : tabs[0])
   return (
     <div>
       {tabs.length > 1 ? (
-        <div className="ls-tabs" role="tablist" aria-label="Projects by status">
-          {tabs.map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} className={`ls-tab${tab === t ? ' is-on' : ''}`} onClick={() => setTab(t)}>
-              {t}
+        <div className="ls-tabs" role="tablist" aria-label={t('Projects by status')}>
+          {tabs.map((s) => (
+            <button key={s} type="button" role="tab" aria-selected={tab === s} className={`ls-tab${tab === s ? ' is-on' : ''}`} onClick={() => setTab(s)}>
+              {t(s)}
             </button>
           ))}
         </div>
@@ -347,11 +352,12 @@ function MenuCategorized({
   slug: string
   capabilities?: Record<string, boolean | string | null>
 }) {
+  const t = useWords()
   // Group by category; anything uncategorised collects under a neutral heading
   // rather than being dropped.
   const groups = new Map<string, Offering[]>()
   for (const item of items) {
-    const key = (item.category || '').trim() || 'More'
+    const key = (item.category || '').trim() || t('More')
     const bucket = groups.get(key)
     if (bucket) bucket.push(item)
     else groups.set(key, [item])
@@ -397,13 +403,13 @@ function MenuCategorized({
 }
 
 /** "for 30 days", "a month", "a year" — how long one payment lasts. */
-function planPeriod(days: number | null | undefined) {
+function planPeriod(days: number | null | undefined, t: Words) {
   if (!days) return null
-  if (days === 30 || days === 31) return '/ month'
-  if (days === 90) return '/ 3 months'
-  if (days === 180) return '/ 6 months'
-  if (days === 365 || days === 366) return '/ year'
-  return `for ${days} days`
+  if (days === 30 || days === 31) return t('/ month')
+  if (days === 90) return t('/ 3 months')
+  if (days === 180) return t('/ 6 months')
+  if (days === 365 || days === 366) return t('/ year')
+  return t('for {days} days', { days })
 }
 
 function planHref(slug: string, p: Offering) {
@@ -423,15 +429,16 @@ function Plans({
   slug: string
   action: 'cart' | 'book' | 'enquire' | 'none'
 }) {
+  const t = useWords()
   if (variant === 'comparison') {
     return (
       <div className="ls-plans--comparison">
         <table>
           <thead>
             <tr>
-              <th>Plan</th>
-              <th>What&rsquo;s included</th>
-              <th data-num="">Price</th>
+              <th>{t('Plan')}</th>
+              <th>{t('What’s included')}</th>
+              <th data-num="">{t('Price')}</th>
               <th />
             </tr>
           </thead>
@@ -444,12 +451,12 @@ function Plans({
                 <td className="ls-meta">{p.description || '—'}</td>
                 <td data-num="">
                   {money(p.price_amount, p.currency) || '—'}
-                  {p.period ? <span className="ls-meta"> {p.period}</span> : null}
+                  {p.period_days ? <span className="ls-meta"> {planPeriod(p.period_days, t)}</span> : null}
                 </td>
                 <td>
                   {action === 'enquire' ? (
                     <Link className="ls-btn ls-btn--outline" href={planHref(slug, p)}>
-                      {p.plan ? 'Ask to join' : 'Choose'}
+                      {p.plan ? t('Ask to join') : t('Choose')}
                     </Link>
                   ) : null}
                 </td>
@@ -467,17 +474,17 @@ function Plans({
     <div className="ls-plans">
       {items.map((p, i) => (
         <div key={p.id} className={`ls-plan ${i === featured ? 'ls-plan--featured' : ''}`}>
-          {i === featured ? <span className="ls-plan__flag">Most popular</span> : null}
+          {i === featured ? <span className="ls-plan__flag">{t('Most popular')}</span> : null}
           <h3 className="ls-plan__name">{p.title}</h3>
           <div className="ls-plan__price">
             <span className="ls-plan__amount">{money(p.price_amount, p.currency) || '—'}</span>
-            {p.period ? <span className="ls-plan__period">{p.period}</span> : null}
+            {p.period_days ? <span className="ls-plan__period">{planPeriod(p.period_days, t)}</span> : null}
           </div>
           {p.description ? <p className="ls-plan__desc">{p.description}</p> : null}
           <div className="ls-plan__cta">
             {action === 'enquire' ? (
               <Link className="ls-btn" href={planHref(slug, p)}>
-                {p.plan ? 'Ask to join' : 'Get started'}
+                {p.plan ? t('Ask to join') : t('Get started')}
               </Link>
             ) : null}
           </div>
@@ -496,6 +503,7 @@ function RoomRows({
   slug: string
   action: 'cart' | 'book' | 'enquire' | 'none'
 }) {
+  const t = useWords()
   return (
     <div>
       {items.map((r) => (
@@ -513,11 +521,11 @@ function RoomRows({
             {r.description ? <p className="ls-item__desc">{r.description}</p> : null}
             <div className="ls-room__foot">
               <span className="ls-price" style={{ fontSize: '1.15rem' }}>
-                {money(r.price_amount, r.currency) || 'On request'}
+                {money(r.price_amount, r.currency) || t('On request')}
               </span>
               {action === 'book' ? (
                 <Link className="ls-btn" href={`/${slug}/book?offering_id=${r.id}`}>
-                  Check availability
+                  {t('Check availability')}
                 </Link>
               ) : null}
             </div>
@@ -537,11 +545,12 @@ function ClassSchedule({
   slug: string
   action: 'cart' | 'book' | 'enquire' | 'none'
 }) {
+  const t = useWords()
   // Without per-session scheduling exposed publicly, a class list is grouped
   // by its category (e.g. "Strength", "Yoga") rather than inventing days.
   const groups = new Map<string, Offering[]>()
   for (const c of items) {
-    const key = (c.category || '').trim() || 'All classes'
+    const key = (c.category || '').trim() || t('All classes')
     const bucket = groups.get(key)
     if (bucket) bucket.push(c)
     else groups.set(key, [c])
@@ -561,7 +570,7 @@ function ClassSchedule({
               </span>
               {action === 'book' ? (
                 <Link className="ls-btn ls-btn--outline" href={`/${slug}/book?offering_id=${c.id}`}>
-                  Book
+                  {t('Book')}
                 </Link>
               ) : null}
             </div>

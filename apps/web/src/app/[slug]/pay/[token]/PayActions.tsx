@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { platformUrl } from '@platform/config'
+import { useWords } from '@/components/website/SiteWords'
 
 export type PayMethod = { method: string; label: string; upi_link?: string; upi_id?: string; how?: string }
 export type PayView = {
@@ -23,7 +24,7 @@ export type PayView = {
 }
 
 const rupees = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(v)
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: Number.isInteger(v) ? 0 : 2 }).format(v)
 
 /** The customer's side of a payment link: pay, say so, check again, or take it back. */
 export function PayActions({
@@ -37,6 +38,7 @@ export function PayActions({
   initial: PayView
   qrUrl: string
 }) {
+  const t = useWords()
   const [view, setView] = useState<PayView>(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -55,10 +57,10 @@ export function PayActions({
         cache: 'no-store',
       })
       const json = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(json?.error?.message || 'That did not go through. Try again.')
+      if (!res.ok) throw new Error(json?.error?.message || t('That did not go through. Try again.'))
       setView(json.data as PayView)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'That did not go through. Try again.')
+      setError(e instanceof Error ? e.message : t('That did not go through. Try again.'))
     } finally {
       setBusy(false)
     }
@@ -68,14 +70,14 @@ export function PayActions({
   return (
     <>
       <header className="ls-bill__head">
-        <p className="ls-meta">Payment to {view.business.name}</p>
+        <p className="ls-meta">{t('Payment to {business}', { business: view.business.name })}</p>
         <h1 className="ls-title">{view.for}</h1>
         {view.note ? <p className="ls-meta">{view.note}</p> : null}
       </header>
 
       {view.state_words ? (
         <p className={`ls-pay__state ls-pay__state--${view.state}`} role="status">
-          {view.state_words}
+          {t(view.state_words)}
         </p>
       ) : null}
 
@@ -83,31 +85,31 @@ export function PayActions({
         <dl className="ls-bill__totals ls-pay__totals">
           {view.amount_due !== null ? (
             <>
-              <dt>Amount due</dt>
+              <dt>{t('Amount due')}</dt>
               <dd>{rupees(view.amount_due)}</dd>
             </>
           ) : null}
           {view.already_paid ? (
             <>
-              <dt>Already paid</dt>
+              <dt>{t('Already paid')}</dt>
               <dd>{rupees(view.already_paid)}</dd>
             </>
           ) : null}
           {!closed ? (
             <>
-              <dt className="is-total">{view.purpose_label} — paying now</dt>
+              <dt className="is-total">{t('{purpose} — paying now', { purpose: t(view.purpose_label) })}</dt>
               <dd className="is-total">{rupees(view.paying_now)}</dd>
             </>
           ) : null}
           {view.balance_after !== null && !closed && view.balance_after > 0 ? (
             <>
-              <dt>Balance after this</dt>
+              <dt>{t('Balance after this')}</dt>
               <dd>{rupees(view.balance_after)}</dd>
             </>
           ) : null}
           {closed && view.balance_now !== null && view.balance_now > 0 ? (
             <>
-              <dt className="is-total">Balance remaining</dt>
+              <dt className="is-total">{t('Balance remaining')}</dt>
               <dd className="is-total">{rupees(view.balance_now)}</dd>
             </>
           ) : null}
@@ -117,11 +119,11 @@ export function PayActions({
       {view.state === 'being_confirmed' ? (
         <div className="ls-pay__wait">
           <p className="ls-meta">
-            {view.business.name} checks their UPI app and confirms it. You don&apos;t need to pay again.
+            {t('{business} checks their UPI app and confirms it. You don’t need to pay again.', { business: view.business.name })}
           </p>
           <div className="ls-bill__actions">
             <button type="button" className="ls-btn" disabled={busy} onClick={() => call('', undefined, 'GET')}>
-              Check again
+              {t('Check again')}
             </button>
             <button
               type="button"
@@ -129,7 +131,7 @@ export function PayActions({
               disabled={busy}
               onClick={() => call('/not-paid')}
             >
-              I haven&apos;t paid yet
+              {t('I haven’t paid yet')}
             </button>
           </div>
         </div>
@@ -138,17 +140,19 @@ export function PayActions({
       {(view.state === 'open' || view.state === 'failed') && upi ? (
         <div className="ls-pay__method">
           <a className="ls-btn ls-pay__upi" href={upi.upi_link}>
-            {view.state === 'failed' ? 'Try again — pay by UPI' : `Pay ${rupees(view.paying_now)} by UPI`}
+            {view.state === 'failed' ? t('Try again — pay by UPI') : t('Pay {amount} by UPI', { amount: rupees(view.paying_now) })}
           </a>
-          <p className="ls-meta">{upi.how}</p>
+          <p className="ls-meta">
+            {t('Pay {amount} to {business} in any UPI app, then tap “I have paid”. They confirm it arrived.', { amount: rupees(view.paying_now), business: view.business.name })}
+          </p>
           <details className="ls-pay__qr">
-            <summary>On a computer? Scan to pay</summary>
+            <summary>{t('On a computer? Scan to pay')}</summary>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrUrl} alt={`UPI QR code to pay ${view.business.name}`} width={180} height={180} />
-            <p className="ls-meta">UPI ID {upi.upi_id}</p>
+            <img src={qrUrl} alt={t('UPI QR code to pay {business}', { business: view.business.name })} width={180} height={180} />
+            <p className="ls-meta">{t('UPI ID {id}', { id: upi.upi_id ?? '' })}</p>
           </details>
           <label className="ls-pay__utr">
-            <span>UPI reference (optional)</span>
+            <span>{t('UPI reference (optional)')}</span>
             <input value={utr} onChange={(e) => setUtr(e.target.value)} maxLength={120} inputMode="text" />
           </label>
           <button
@@ -157,15 +161,15 @@ export function PayActions({
             disabled={busy}
             onClick={() => call('/paid', { reference: utr || undefined })}
           >
-            I have paid {rupees(view.paying_now)}
+            {t('I have paid {amount}', { amount: rupees(view.paying_now) })}
           </button>
         </div>
       ) : null}
 
       {(view.state === 'open' || view.state === 'failed') && !upi ? (
         <p className="ls-meta">
-          {view.business.name} has not set up online payment for this link yet.
-          {view.business.contact?.phone ? ` Call ${view.business.contact.phone} to pay another way.` : ''}
+          {t('{business} has not set up online payment for this link yet.', { business: view.business.name })}
+          {view.business.contact?.phone ? ` ${t('Call {phone} to pay another way.', { phone: view.business.contact.phone })}` : ''}
         </p>
       ) : null}
 

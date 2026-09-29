@@ -1166,6 +1166,77 @@
   font-size: 0.8rem;
   color: var(--site-muted);
 }
+/* The visitor's language (P1-10E6): a slim row above the header, and again in
+   the footer. The business's own colours only. */
+.ls-langs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+.ls-langs--nav {
+  justify-content: flex-end;
+  padding: 0.3rem clamp(1rem, 0.5rem + 3vw, 3rem);
+  background: var(--site-bg-alt, var(--site-bg));
+  border-bottom: 1px solid var(--site-border);
+}
+.ls-langs__option {
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  padding: 0.3rem 0.65rem;
+  min-height: 2rem;
+  border-radius: var(--site-radius);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--site-muted);
+  cursor: pointer;
+}
+.ls-langs__option:hover {
+  color: var(--site-ink);
+}
+.ls-langs__option[aria-pressed='true'] {
+  color: var(--site-ink);
+  border-color: var(--site-border);
+  font-weight: 600;
+  cursor: default;
+}
+.ls-langs__option:focus-visible {
+  outline: 2px solid var(--site-primary);
+  outline-offset: 1px;
+}
+
+/* Tamil and Devanagari letters join into clusters; tracking pulls them apart. */
+[data-locah-site]:lang(ta) *,
+[data-locah-site]:lang(hi) * {
+  letter-spacing: normal !important;
+}
+/* A phone's header holds the name, the basket and one button — in every
+   language. The account link is in the footer too. */
+@media (max-width: 640px) {
+  [data-locah-site] .ls-nav__inner {
+    gap: 0.6rem;
+  }
+  [data-locah-site] .ls-nav__brand {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+  [data-locah-site] .ls-nav__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  [data-locah-site] .ls-nav__account {
+    display: none;
+  }
+  [data-locah-site] .ls-nav__actions {
+    gap: 0.4rem;
+  }
+  [data-locah-site] .ls-nav__cart {
+    padding: 0.4rem 0.6rem;
+  }
+}
+
 /* The one place LOCAH may appear on a tenant site: a quiet attribution. */
 .ls-foot__by {
   color: var(--site-muted);
@@ -1245,7 +1316,9 @@
    ========================================================================== */
 
 [data-locah-site] {
-  --site-tamil: var(--font-site-tamil, 'Noto Sans Tamil');
+  /* Tamil and Devanagari behind every face, so Tamil and Hindi words — the owner's
+     or the site's own (P1-10E6) — render in a real face. */
+  --site-tamil: var(--font-site-tamil, 'Noto Sans Tamil'), var(--font-site-devanagari, 'Noto Sans Devanagari');
   --site-serif: var(--font-site-warm, Georgia), var(--site-tamil), Georgia, serif;
   --site-sans: var(--font-site-clean, system-ui), var(--site-tamil), system-ui, sans-serif;
   --site-heading-weight: 600;
@@ -1889,6 +1962,8 @@
 [data-locah-site] .ls-account__row { display: flex; justify-content: space-between; gap: 1rem; font-variant-numeric: tabular-nums; }
 [data-locah-site] .ls-account__items { margin: 0; padding-left: 1.1rem; color: var(--site-muted); font-size: 0.9rem; }
 [data-locah-site] .ls-account__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+[data-locah-site] .ls-account__erase { display: grid; gap: 0.4rem; margin-top: 0.8rem; max-width: 28rem; }
+[data-locah-site] .ls-account__erase input { font: inherit; padding: 0.55rem 0.7rem; border: 1px solid var(--site-border); border-radius: var(--site-radius); background: var(--site-bg); color: var(--site-ink); }
 [data-locah-site] .ls-account__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.1rem; border-top: 1px solid var(--site-border); }
 [data-locah-site] .ls-account__list li {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.1rem 1rem; padding: 0.6rem 0; border-bottom: 1px solid var(--site-border);
@@ -1919,4 +1994,28 @@
 }
 @media (min-width: 640px) {
   [data-locah-site] .ls-pay__method, [data-locah-site] .ls-pay__wait { justify-items: start; }
+}
+/* The website checkout (P1-10D2; Founder: Orders — a real checkout): the business's own colours only. */
+[data-locah-site] .ls-checkout { max-width: 640px; display: grid; gap: 1.1rem; }
+[data-locah-site] .ls-checkout .ls-title { margin: 0; font-size: clamp(1.5rem, 4vw, 2rem); }
+[data-locah-site] .ls-checkout__form { display: grid; gap: 1rem; }
+[data-locah-site] .ls-checkout__h { margin: 0; font-size: 1.05rem; }
+[data-locah-site] .ls-checkout__fields { display: grid; gap: 0.7rem; }
+[data-locah-site] .ls-checkout__fields label { display: grid; gap: 0.3rem; font-size: 0.88rem; color: var(--site-muted); }
+[data-locah-site] .ls-checkout__fields input, [data-locah-site] .ls-checkout__fields select {
+  font: inherit; color: var(--site-ink); background: var(--site-bg); min-height: 44px; padding: 0.5rem 0.75rem;
+  border: 1px solid var(--site-border); border-radius: var(--site-radius); width: 100%; box-sizing: border-box;
+}
+[data-locah-site] .ls-checkout__line-end { display: grid; justify-items: end; gap: 0.2rem; }
+[data-locah-site] .ls-checkout__remove {
+  font: inherit; font-size: 0.8rem; color: var(--site-muted); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
+}
+[data-locah-site] .ls-checkout__place { width: 100%; justify-content: center; margin-top: 0.4rem; }
+[data-locah-site] .ls-checkout__place:disabled { opacity: 0.6; cursor: progress; }
+[data-locah-site] .ls-offer__ahead { margin: 0.2rem 0 0; font-size: 0.84rem; color: var(--site-muted); }
+[data-locah-site] .ls-offer__basis { margin: 0.2rem 0 0; font-size: 0.84rem; color: var(--site-muted); font-variant-numeric: tabular-nums; }
+[data-locah-site] .ls-chooser__text { display: grid; gap: 0.3rem; font-size: 0.86rem; color: var(--site-muted); }
+[data-locah-site] .ls-chooser__text input {
+  font: inherit; color: var(--site-ink); background: var(--site-bg); min-height: 40px; padding: 0.4rem 0.7rem;
+  border: 1px solid var(--site-border); border-radius: var(--site-radius);
 }

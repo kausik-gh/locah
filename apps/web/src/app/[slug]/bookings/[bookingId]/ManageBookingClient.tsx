@@ -6,6 +6,8 @@ import {
   fetchManagedBooking,
   rescheduleManagedBooking,
 } from '@/lib/booking-api'
+import { LANG_LOCALE, type Words } from '@/lib/site-words'
+import { useSiteLang, useWords } from '@/components/website/SiteWords'
 
 /**
  * The appointment as the customer reads it.
@@ -15,11 +17,11 @@ import {
  * browser so it lands in their own zone; the raw value is kept as a fallback
  * rather than showing nothing if it cannot be parsed.
  */
-function when(value: unknown): string {
+function when(value: unknown, locale?: string): string {
   const raw = typeof value === 'string' ? value : String(value ?? '')
   const d = new Date(raw)
   if (!raw || Number.isNaN(d.getTime())) return raw || '—'
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString(locale, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -28,15 +30,26 @@ function when(value: unknown): string {
   })
 }
 
+const statusWords = (t: Words): Record<string, string> => ({
+  confirmed: t('Confirmed'), pending: t('Waiting to be confirmed'), cancelled: t('Cancelled'), completed: t('Completed'),
+  no_show: t('Missed'),
+})
+
 export default function ManageBookingClient({
   slug,
+  name,
   bookingId,
   token,
 }: {
   slug: string
+  name: string | null
   bookingId: string
   token: string
 }) {
+  const t = useWords()
+  const lang = useSiteLang()
+  // The visitor's own zone; in Tamil or Hindi, their script's weekday and month.
+  const locale = lang === 'en' ? undefined : LANG_LOCALE[lang]
   const [state, setState] = useState<
     | { kind: 'loading' }
     | { kind: 'missing' }
@@ -67,11 +80,11 @@ export default function ManageBookingClient({
     try {
       const data = await cancelManagedBooking(bookingId, token, 'Customer cancelled')
       setState({ kind: 'ready', booking: data })
-      setMessage('Booking cancelled.')
+      setMessage(t('Booking cancelled.'))
     } catch (err) {
       const e = err as Error & { code?: string }
       if (e.code === 'cancellation_window_closed') {
-        setMessage('The cancellation window has closed for this booking.')
+        setMessage(t('The cancellation window has closed for this booking.'))
       } else if (e.code === 'expired_link') {
         setState({ kind: 'expired' })
       } else {
@@ -91,11 +104,11 @@ export default function ManageBookingClient({
         new Date(newEnd).toISOString()
       )
       setState({ kind: 'ready', booking: data })
-      setMessage('Booking rescheduled.')
+      setMessage(t('Booking rescheduled.'))
     } catch (err) {
       const e2 = err as Error & { code?: string }
       if (e2.code === 'cancellation_window_closed') {
-        setMessage('The reschedule window has closed for this booking.')
+        setMessage(t('The reschedule window has closed for this booking.'))
       } else {
         setMessage(e2.message)
       }
@@ -103,28 +116,28 @@ export default function ManageBookingClient({
   }
 
   if (state.kind === 'loading') {
-    return <main style={{ padding: '3rem 1.25rem' }}>Loading…</main>
+    return <main style={{ padding: '3rem 1.25rem' }}>{t('Loading…')}</main>
   }
   if (state.kind === 'missing') {
     return (
       <main style={{ maxWidth: 560, margin: '0 auto', padding: '3rem 1.25rem' }}>
-        <h1>Booking not found</h1>
-        <p>This management link is invalid.</p>
+        <h1>{t('Booking not found')}</h1>
+        <p>{t('This management link is invalid.')}</p>
       </main>
     )
   }
   if (state.kind === 'expired') {
     return (
       <main style={{ maxWidth: 560, margin: '0 auto', padding: '3rem 1.25rem' }}>
-        <h1>Link expired</h1>
-        <p>This management link has expired. Contact the business for help.</p>
+        <h1>{t('Link expired')}</h1>
+        <p>{t('This management link has expired. Contact the business for help.')}</p>
       </main>
     )
   }
   if (state.kind === 'error') {
     return (
       <main style={{ maxWidth: 560, margin: '0 auto', padding: '3rem 1.25rem' }}>
-        <h1>Unavailable</h1>
+        <h1>{t('Unavailable')}</h1>
         <p>{state.message}</p>
       </main>
     )
@@ -134,33 +147,23 @@ export default function ManageBookingClient({
   return (
     <main style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1.25rem' }}>
       <p style={{ opacity: 0.65, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-        {slug}
+        {name ?? slug}
       </p>
       <h1 style={{ fontSize: '2.2rem', margin: '0.35rem 0' }}>
         {String(b.booking_number)}
       </h1>
       <p>
-        {String(b.title)} · {String(b.status)} · {when(b.starts_at)} → {when(b.ends_at)}
+        {String(b.title)} · {statusWords(t)[String(b.status)] ?? String(b.status)} · {when(b.starts_at, locale)} → {when(b.ends_at, locale)}
       </p>
       {message ? <p role="status">{message}</p> : null}
 
       {b.status !== 'cancelled' && b.status !== 'completed' ? (
         <>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              marginTop: '1rem',
-              padding: '0.65rem 1rem',
-              border: '1px solid #1c2a24',
-              background: 'transparent',
-              cursor: 'pointer',
-            }}
-          >
-            Cancel booking
+          <button type="button" className="ls-btn ls-btn--outline" onClick={onCancel} style={{ marginTop: '1rem' }}>
+            {t('Cancel booking')}
           </button>
           <form onSubmit={onReschedule} style={{ marginTop: '1.5rem', display: 'grid', gap: 8 }}>
-            <h2 style={{ fontSize: '1.2rem', margin: 0 }}>Reschedule</h2>
+            <h2 style={{ fontSize: '1.2rem', margin: 0 }}>{t('Reschedule')}</h2>
             <input
               type="datetime-local"
               value={newStart}
@@ -173,14 +176,14 @@ export default function ManageBookingClient({
               onChange={(e) => setNewEnd(e.target.value)}
               required
             />
-            <button type="submit" style={{ padding: '0.65rem 1rem', cursor: 'pointer' }}>
-              Save new time
+            <button type="submit" className="ls-btn">
+              {t('Save new time')}
             </button>
           </form>
         </>
       ) : null}
       <p style={{ marginTop: '2rem', opacity: 0.75 }}>
-        Need help? Contact the business directly with your booking number.
+        {t('Need help? Contact the business directly with your booking number.')}
       </p>
     </main>
   )

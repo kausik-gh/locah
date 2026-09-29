@@ -74,13 +74,26 @@ def price_selection(
 
     groups = list(offering.option_groups or [])
     picked = sel.get("choices") or {}
-    if not isinstance(picked, dict):
+    written = sel.get("notes") or {}
+    if not isinstance(picked, dict) or not isinstance(written, dict):
         raise _bad("Choices must be listed by group")
-    unknown = set(picked) - {g["name"] for g in groups}
+    unknown = set(picked) - {g["name"] for g in groups if not g.get("text")}
+    unknown |= set(written) - {g["name"] for g in groups if g.get("text")}
     if unknown:
         raise _bad(f"{sorted(unknown)[0]} is not one of this item's choices")
     record_choices: dict[str, list[str]] = {}
+    record_notes: dict[str, str] = {}
     for g in groups:
+        if g.get("text"):
+            value = " ".join(str(written.get(g["name"]) or "").split())
+            if g["required"] and not value:
+                raise _bad(f"Write the {g['name'].lower()}")
+            if len(value) > int(g["max_length"]):
+                raise _bad(f"{g['name']}: up to {g['max_length']} letters")
+            if value:
+                record_notes[g["name"]] = value
+                parts.append(f"“{value}”")
+            continue
         labels = picked.get(g["name"]) or []
         labels = [labels] if isinstance(labels, str) else list(labels)
         if g["required"] and not labels:
@@ -97,4 +110,6 @@ def price_selection(
             parts.append(", ".join(labels))
     if record_choices:
         record["choices"] = record_choices
+    if record_notes:
+        record["notes"] = record_notes
     return PricedLine(price.quantize(PAISE), stock, " · ".join(parts), record)

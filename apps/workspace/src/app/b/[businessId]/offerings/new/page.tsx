@@ -4,7 +4,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry, businessHeaders } from '@/lib/api'
 import { PageHeader } from '@/components/ui'
 import { OfferingEditor } from '../OfferingEditor'
-import type { Kind } from '../types'
+import type { Kind, RateLite } from '../types'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,9 +26,10 @@ export default async function NewOfferingPage({
 }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
-  const [kindsRes, ctxRes] = await Promise.all([
+  const [kindsRes, ctxRes, ratesRes] = await Promise.all([
     apiTry<{ data: Kind[] }>('/v1/public/offering-kinds', token),
     apiTry<{ data: { module_states: Record<string, string> } }>('/v1/me/context', token, businessHeaders(params.businessId)),
+    apiTry<{ data: RateLite[] }>(`/v1/platform/businesses/${params.businessId}/pricing/rates`, token),
   ])
   const kinds = kindsRes.ok ? kindsRes.data.data : []
   const states = ctxRes.ok ? ctxRes.data.data.module_states : {}
@@ -44,7 +45,8 @@ export default async function NewOfferingPage({
           subtitle={chosen.help}
           breadcrumb={<Link href={`${base}/new`}>Choose another kind</Link>}
         />
-        <OfferingEditor businessId={params.businessId} kind={chosen} offering={null} variants={[]} />
+        <OfferingEditor businessId={params.businessId} kind={chosen} offering={null} variants={[]}
+          rates={ratesRes.ok ? ratesRes.data.data : []} />
       </div>
     )
   }

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { cartStorageKey, fetchPublicOfferings, type CartItem } from '@/lib/checkout-api'
+import { useWords } from './SiteWords'
 
 /**
  * The basket in the header — only when there is something to buy.
@@ -20,6 +21,7 @@ export function CommerceCart({
   /** footer: its own "Your visit" column; footer-link: one link inside another. */
   variant?: 'nav' | 'footer' | 'footer-link'
 }) {
+  const t = useWords()
   const [ready, setReady] = useState(false)
   const [count, setCount] = useState(0)
 
@@ -50,21 +52,21 @@ export function CommerceCart({
   }, [slug])
 
   if (!ready) return null
-  if (variant === 'footer-link') return <Link href={`/${slug}/checkout`}>Basket</Link>
+  if (variant === 'footer-link') return <Link href={`/${slug}/checkout`}>{t('Basket')}</Link>
   if (variant === 'footer') {
     // Orders placed here, and a basket to place them — only once there is
     // something to buy; a business that takes orders on WhatsApp has neither.
     return (
       <div className="ls-foot__col">
-        <p className="ls-foot__heading">Your visit</p>
-        <Link href={`/${slug}/checkout`}>Basket</Link>
-        <Link href="/activity">Your orders</Link>
+        <p className="ls-foot__heading">{t('Your visit')}</p>
+        <Link href={`/${slug}/checkout`}>{t('Basket')}</Link>
+        <Link href="/activity">{t('Your orders')}</Link>
       </div>
     )
   }
   return (
     <Link className="ls-nav__cart" href={`/${slug}/checkout`}>
-      Basket{count ? <span className="ls-nav__count">{count}</span> : null}
+      {t('Basket')}{count ? <span className="ls-nav__count">{count}</span> : null}
     </Link>
   )
 }

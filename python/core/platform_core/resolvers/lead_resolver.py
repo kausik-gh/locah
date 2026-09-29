@@ -76,6 +76,7 @@ class LeadResolver:
             "origin_context": lead.origin_context or {},
             "offering_id": str(lead.offering_id) if lead.offering_id else None,
             "status": lead.status,
+            "stage": lead.stage,
             "lost_reason": lead.lost_reason,
             "assignee_identity_id": (
                 str(lead.assignee_identity_id) if lead.assignee_identity_id else None

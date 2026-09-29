@@ -60,6 +60,8 @@ RECORDED_METHODS = {"cash": "Cash", "upi": "UPI", "card": "Card (own terminal)",
 _INVOICE_METHOD = {"upi_direct": "upi", "online": "other", "cash": "cash", "upi": "upi", "card": "card",
                    "bank_transfer": "bank_transfer"}
 LINK_DAYS = 7
+# Chosen at checkout; settled by collecting the money, closed if it came another way.
+OFFLINE_INTENTS = ("cod", "pay_at_business", "pay_later")
 ONLINE_LINKS_ACTIVE = False
 
 # What a customer reads (§13) — never provider words.
@@ -71,6 +73,15 @@ STATE_WORDS = {
     "unpaid": "Not paid yet",
     "refunded": "Refunded",
     "partially_refunded": "Part refunded",
+}
+# How a payment came or is meant to come, as the Workspace shows it.
+ATTEMPT_METHOD_WORDS = {"upi_direct": "UPI to your UPI ID", "online": "Online", "cod": "Cash on delivery",
+                        "pay_at_business": "Pay at the business", "pay_later": "Pay later", **RECORDED_METHODS}
+# A payment link's state as its page says it (the tenant page translates these — P1-10E6).
+LINK_STATE_WORDS: dict[str, str | None] = {
+    "open": None, "being_confirmed": STATE_WORDS["pending"], "failed": STATE_WORDS["failed"],
+    "paid": STATE_WORDS["paid"], "cancelled": "This payment link was cancelled",
+    "expired": "This payment link has expired — ask for a new one",
 }
 
 
@@ -223,9 +234,17 @@ class PaymentCollectService:
         elif src.own_balance is not None:
             balance = src.own_balance
         else:
-            balance = max(src.total - paid + refunded, ZERO) if src.total is not None else None
+            # A refund is money the business chose to give back (a return, a
+            # goodwill gesture); it never reopens a balance to chase (§9).
+            balance = max(src.total - paid, ZERO) if src.total is not None else None
         state = payment_state(src.total, paid, refunded, pending=awaiting > 0,
                               last_failed=bool(last and last.status == "failed"))
+        pickup = False
+        if src.source_type == "order":
+            from platform_core.models import FulfilmentJob
+
+            pickup = (await session.execute(select(FulfilmentJob.mode).where(
+                FulfilmentJob.business_id == business_id, FulfilmentJob.order_id == src.source_id))).scalar() == "pickup"
         if src.source_type == "khata":
             state = "pending" if awaiting > 0 else ("unpaid" if (balance or 0) > 0 else "paid")
         words = STATE_WORDS[state]
@@ -237,15 +256,35 @@ class PaymentCollectService:
             "balance": _f(balance), "state": state, "state_words": words, "collectable": src.collectable,
             "why_not": src.why_not, "customer_contact_id": str(src.customer_contact_id) if src.customer_contact_id
             else None,
-            "attempts": [PaymentCollectService._attempt_row(a) for a in reversed(attempts)],
+            # the advance its items asked (dated pre-orders)
+            "advance": await PaymentCollectService._advance(session, src),
+            "attempts": [PaymentCollectService._intent_row(a, balance, pickup) if a.payment_method in OFFLINE_INTENTS
+                         else PaymentCollectService._attempt_row(a) for a in reversed(attempts)],
         }
 
     @staticmethod
+    async def _advance(session: AsyncSession, src: Source) -> float | None:
+        if src.source_type != "order":
+            return None
+        value = (await session.execute(select(SalesOrder.advance_amount).where(
+            SalesOrder.id == src.source_id))).scalar()
+        return float(value) if value is not None else None
+
+    @staticmethod
+    def _intent_row(a: PaymentAttempt, balance: Decimal | None, pickup: bool) -> dict[str, Any]:
+        """What the customer chose at checkout — pay on delivery, at pickup or
+        later. Not money: while open it stands for what is still to collect."""
+        row = PaymentCollectService._attempt_row(a)
+        if a.payment_method == "cod":
+            row["method_label"] = "Pay at pickup" if pickup else "Cash on delivery"
+        if a.status == "pending_offline" and balance is not None:
+            row["amount"] = float(min(_d(a.amount), balance))
+        return row
+
+    @staticmethod
     def _attempt_row(a: PaymentAttempt) -> dict[str, Any]:
-        method = {"upi_direct": "UPI to your UPI ID", "online": "Online", "cod": "Cash on delivery",
-                  "pay_at_business": "Pay at the business", "pay_later": "Pay later", **RECORDED_METHODS}
         return {"id": str(a.id), "amount": float(a.amount), "method": a.payment_method,
-                "method_label": method.get(a.payment_method, a.payment_method), "status": a.status,
+                "method_label": ATTEMPT_METHOD_WORDS.get(a.payment_method, a.payment_method), "status": a.status,
                 "purpose": a.purpose, "reference": a.reference, "attention": a.attention,
                 "request_id": str(a.request_id) if a.request_id else None,
                 "created_at": a.created_at.isoformat() if a.created_at else None,
@@ -301,6 +340,39 @@ class PaymentCollectService:
                                   actor_context="business", action="cancel", business_id=business_id,
                                   resource_type="payment_request", resource_id=req.id)
         return req
+
+    @staticmethod
+    async def send_on_whatsapp(session: AsyncSession, business_id: uuid.UUID, actor_id: uuid.UUID,
+                               request_id: uuid.UUID, token: str) -> Any:
+        """Send an open link from the business's own WhatsApp number. The caller
+        proves it holds the link (its token matches the stored hash); LOCAH
+        never keeps the token itself."""
+        from platform_core.models import Business, CustomerContact
+        from platform_core.services.messaging import MessagingService, NotSent
+        from platform_core.site_urls import business_site_url
+
+        req = await PaymentCollectService._request(session, business_id, request_id)
+        if not secrets.compare_digest(req.token_hash, token_hash(token)):
+            raise ResourceNotFound("Payment link")
+        if req.status != "open" or req.expires_at <= datetime.now(timezone.utc):
+            raise ConflictError("Only an open payment link can be sent")
+        contact = await session.get(CustomerContact, req.customer_contact_id) if req.customer_contact_id else None
+        if contact is None or not contact.phone:
+            raise ValidationError("This customer has no phone number", details={"field": "phone"})
+        business = await session.get(Business, business_id)
+        assert business is not None
+        src = await PaymentCollectService.source(session, business_id, req.source_type, req.source_id)
+        what = f"{_inr(_d(req.amount))} ({PURPOSES[req.purpose].lower()} for {src.label})"
+        try:
+            msg = await MessagingService.send_template(
+                session, business_id, to=contact.phone, key="payment_due", contact_id=contact.id,
+                params=[business.display_name, what, business_site_url(business.slug, f"/pay/{token}")],
+                sent_via="workspace", sent_by=actor_id, idempotency_key=f"payreq:{req.id}:{uuid.uuid4()}")
+        except NotSent as exc:
+            raise ConflictError(str(exc)) from exc
+        if msg.status != "sent":
+            raise ConflictError(f"Not sent: {msg.error or msg.status}")
+        return msg
 
     @staticmethod
     async def _request(session: AsyncSession, business_id: uuid.UUID, request_id: uuid.UUID) -> PaymentRequest:
@@ -401,10 +473,7 @@ class PaymentCollectService:
                          "contact": await _public_contact(session, business.id)},
             "for": money["label"], "purpose": req.purpose, "purpose_label": PURPOSES[req.purpose],
             "note": req.note, "state": link_state,
-            "state_words": {"open": None, "being_confirmed": STATE_WORDS["pending"],
-                            "failed": STATE_WORDS["failed"], "paid": STATE_WORDS["paid"],
-                            "cancelled": "This payment link was cancelled",
-                            "expired": "This payment link has expired — ask for a new one"}[link_state],
+            "state_words": LINK_STATE_WORDS[link_state],
             "amount_due": _f(_d(money["total"])) if money["total"] is not None else money["balance"],
             "already_paid": money["paid"], "paying_now": _f(paying_now),
             "balance_after": _f(max(balance - paying_now, ZERO)) if balance is not None else None,
@@ -569,6 +638,21 @@ class PaymentCollectService:
                                         idempotency_key=f"pay:{attempt.id}")
 
     @staticmethod
+    async def close_intents(session: AsyncSession, attempt: PaymentAttempt) -> None:
+        """Once a transaction is paid in full, the customer's "pay on delivery /
+        at pickup" choice has nothing left to collect: close it, so nobody
+        collects the money a second time."""
+        others = (await session.execute(select(PaymentAttempt).where(
+            PaymentAttempt.business_id == attempt.business_id, PaymentAttempt.source_type == attempt.source_type,
+            PaymentAttempt.source_id == attempt.source_id, PaymentAttempt.id != attempt.id,
+            PaymentAttempt.deleted_at.is_(None), PaymentAttempt.status == "pending_offline",
+            PaymentAttempt.payment_method.in_(OFFLINE_INTENTS)).with_for_update())).scalars().all()
+        for other in others:
+            other.status = "cancelled"
+            other.failure_reason = "Paid another way"
+            other.version += 1
+
+    @staticmethod
     async def _flag_twice(session: AsyncSession, attempt: PaymentAttempt, request_id: uuid.UUID | None) -> None:
         attempt.attention = "paid_twice"
         await OutboxService.publish(
@@ -598,14 +682,26 @@ class PaymentCollectService:
             return "paid"
         return "partially_paid"
 
-    # ------------------------------------------------------------------ the owner's overview (§14)
     @staticmethod
-    async def overview(session: AsyncSession, business_id: uuid.UUID, *, today: date) -> dict[str, Any]:
-        """Paid today, waiting for you, failed, what is owed, refunds — verified
-        money only, each rupee counted once."""
-        start = datetime.combine(today, datetime.min.time(), tzinfo=timezone(timedelta(hours=5, minutes=30)))
-        end = start + timedelta(days=1)
-        b = {"b": str(business_id), "start": start, "end": end, "today": today}
+    async def net_paid(session: AsyncSession, business_id: uuid.UUID, source_type: str,
+                       source_id: uuid.UUID) -> Decimal:
+        """Verified money kept on a transaction: paid minus refunded."""
+        return _d((await session.execute(select(func.coalesce(func.sum(
+            PaymentAttempt.amount - func.coalesce(PaymentAttempt.refunded_amount, 0)), 0)).where(
+            PaymentAttempt.business_id == business_id, PaymentAttempt.source_type == source_type,
+            PaymentAttempt.source_id == source_id, PaymentAttempt.deleted_at.is_(None),
+            PaymentAttempt.status.in_(PAID_STATUSES)))).scalar())
+
+    # ------------------------------------------------------------------ money received, counted once
+    @staticmethod
+    async def received(session: AsyncSession, business_id: uuid.UUID, first: date, until: date) -> dict[str, float]:
+        """Verified money received on days ``first`` ≤ day < ``until`` (India time),
+        each rupee counted once: links and recorded payments on orders, bookings
+        and plans; bill and counter payments; khata payments not already a bill
+        payment. The Payments page (today) and Insights (a period) read this."""
+        ist = timezone(timedelta(hours=5, minutes=30))
+        b = {"b": str(business_id), "start": datetime.combine(first, datetime.min.time(), tzinfo=ist),
+             "end": datetime.combine(until, datetime.min.time(), tzinfo=ist), "first": first, "until": until}
         link_money = _d((await session.execute(text(
             "SELECT coalesce(sum(amount), 0) FROM payments_payment_attempts WHERE business_id = CAST(:b AS uuid) "
             "AND deleted_at IS NULL AND status IN ('succeeded', 'partially_refunded', 'refunded') "
@@ -614,12 +710,22 @@ class PaymentCollectService:
             b)).scalar())
         bill_money = _d((await session.execute(text(
             "SELECT coalesce(sum(amount), 0) FROM invoicing_payments WHERE business_id = CAST(:b AS uuid) "
-            "AND received_on = :today AND verification = 'verified' AND via IS DISTINCT FROM 'khata'"),
-            b)).scalar())
+            "AND received_on >= :first AND received_on < :until AND verification = 'verified' "
+            "AND via IS DISTINCT FROM 'khata'"), b)).scalar())
         khata_money = _d((await session.execute(text(
             "SELECT coalesce(sum(-amount), 0) FROM ledger_entries WHERE business_id = CAST(:b AS uuid) "
-            "AND kind = 'payment_received' AND entry_date = :today "
+            "AND kind = 'payment_received' AND entry_date >= :first AND entry_date < :until "
             "AND (idempotency_key IS NULL OR idempotency_key NOT LIKE 'billpay:%')"), b)).scalar())
+        return {"total": float(link_money + bill_money + khata_money), "links_and_recorded": float(link_money),
+                "bills_and_counter": float(bill_money), "khata": float(khata_money)}
+
+    # ------------------------------------------------------------------ the owner's overview (§14)
+    @staticmethod
+    async def overview(session: AsyncSession, business_id: uuid.UUID, *, today: date) -> dict[str, Any]:
+        """Paid today, waiting for you, failed, what is owed, refunds — verified
+        money only, each rupee counted once."""
+        paid = await PaymentCollectService.received(session, business_id, today, today + timedelta(days=1))
+        b = {"b": str(business_id)}
         waiting = (await session.execute(select(PaymentAttempt).where(
             PaymentAttempt.business_id == business_id, PaymentAttempt.deleted_at.is_(None),
             PaymentAttempt.payment_method == "upi_direct", PaymentAttempt.status == "pending_offline")
@@ -657,8 +763,7 @@ class PaymentCollectService:
             b)).all()}
         needs = [a for a in attention if a.attention or a.request_id not in fixed]
         return {
-            "paid_today": {"total": _f(link_money + bill_money + khata_money), "links_and_recorded": _f(link_money),
-                           "bills_and_counter": _f(bill_money), "khata": _f(khata_money)},
+            "paid_today": paid,
             "to_confirm": [PaymentCollectService._attempt_row(a) | {"for": await label(a)} for a in waiting],
             "counter_upi_to_verify": counter_to_verify,
             "needs_attention": [PaymentCollectService._attempt_row(a) | {"for": await label(a)} for a in needs],

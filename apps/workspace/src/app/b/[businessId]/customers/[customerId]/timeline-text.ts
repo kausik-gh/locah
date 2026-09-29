@@ -24,6 +24,11 @@ export function timelineText(type: string, summary: TimelineSummary): string {
     return `Booking ${n} ${human(x.status || verb)}`
   }
   if (area === 'membership') return `Membership ${human(x.status || verb)}`
+  if (area === 'payment') {
+    const what = s(x.for)
+    if (verb === 'received') return `Paid ${rupees(x.amount)}${x.purpose_label ? ` (${s(x.purpose_label).toLowerCase()})` : ''} by ${s(x.method_label)}${what ? ` · ${what}` : ''}`
+    if (verb === 'refunded') return `Refunded ${rupees(x.amount)}${what ? ` · ${what}` : ''}`
+  }
   if (area === 'lead') return `Enquiry ${human(x.status || verb)}`
   if (typeof summary === 'string' && summary) return summary
   return human(type.replace('.', ' '))

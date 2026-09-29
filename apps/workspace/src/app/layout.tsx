@@ -3,6 +3,9 @@ import './globals.css'
 import './platform-overhaul.css'
 import './business-os.css'
 import { generalSans } from './fonts/general-sans'
+import { notoDevanagari, notoTamil } from './fonts/indic'
+import { WS_LOCALE } from '@/lib/ws-words'
+import { wsLang } from '@/lib/ws-lang'
 
 export const metadata = {
   title: 'LOCAH Workspace',
@@ -11,7 +14,7 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={generalSans.variable}>
+    <html lang={WS_LOCALE[wsLang()]} className={`${generalSans.variable} ${notoTamil.variable} ${notoDevanagari.variable}`}>
       <body>{children}</body>
     </html>
   )

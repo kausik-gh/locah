@@ -93,6 +93,7 @@ class OrderResolver:
             "order_number": order.order_number,
             "channel": order.channel,
             "status": order.status,
+            "stage": order.stage,
             "payment_method": order.payment_method,
             "payment_status": order.payment_status,
             "currency": order.currency,
@@ -104,6 +105,11 @@ class OrderResolver:
             "tax_basis": order.tax_basis or {},
             "internal_reference": order.internal_reference,
             "cancellation_reason": order.cancellation_reason,
+            # Dated pre-orders (P1-10D2)
+            "due_at": order.due_at.isoformat() if order.due_at else None,
+            "preorder": bool(order.preorder),
+            "advance_amount": float(order.advance_amount) if order.advance_amount is not None else None,
+            "preorder_terms": order.preorder_terms or {},
             "version": order.version,
             "created_at": order.created_at.isoformat(),
             "updated_at": order.updated_at.isoformat(),
@@ -127,6 +133,8 @@ class OrderResolver:
             "track_inventory": item.track_inventory,
             "quantity_reserved": item.quantity_reserved,
             "options": dict(item.options or {}),
+            # OK-15: the rate working this line was sold at (kept from confirmation).
+            "basis_words": _basis_words((item.options or {}).get("formula")),
             "stock_quantity": item.stock_quantity,
             "quantity_deducted": item.quantity_deducted,
             "sort_order": item.sort_order,
@@ -167,3 +175,12 @@ class OrderResolver:
         data = OrderResolver.serialize_order(order)
         data["items"] = [OrderResolver.serialize_line_item(i) for i in line_items]
         return data
+
+
+def _basis_words(basis: dict[str, Any] | None) -> str | None:
+    if not basis:
+        return None
+    from platform_core.pricing.formula import basis_words
+
+    words: str | None = basis_words(basis)
+    return words

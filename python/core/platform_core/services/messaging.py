@@ -22,7 +22,6 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -133,8 +132,7 @@ class MessagingService:
     async def settings(session: AsyncSession, business_id: uuid.UUID) -> MessagingSettings:
         row = await session.get(MessagingSettings, business_id)
         if row is None:
-            row = MessagingSettings(business_id=business_id, language="en", customer_updates={}, human_pause_hours=12,
-                                    cod_allowed=True, first_order_cod_cap=None)
+            row = MessagingSettings(business_id=business_id, language="en", customer_updates={}, human_pause_hours=12)
             session.add(row)
             await session.flush()
         return row
@@ -148,8 +146,11 @@ class MessagingService:
                     permissions: frozenset[str]) -> dict[str, Any]:
         from platform_core.services.usage_meter import UsageMeterService
 
+        from platform_core.services.fulfilment import FulfilmentService
+
         channel = await MessagingService.channel(session, business_id)
         s = await MessagingService.settings(session, business_id)
+        cod = await FulfilmentService.payment_rules(session, business_id)
         states = {(t.template_key, t.language): t for t in (await session.execute(select(MessagingTemplate).where(
             MessagingTemplate.business_id == business_id))).scalars()}
         templates = []
@@ -164,9 +165,7 @@ class MessagingService:
             "meta": meta_public_config(), "meta_ready": meta_configured(), "sandbox_available": sandbox_enabled(),
             "settings": {"language": s.language, "human_pause_hours": s.human_pause_hours,
                          "customer_updates": {k: MessagingService.update_on(s, k) for k in CUSTOMER_UPDATES},
-                         "cod_allowed": s.cod_allowed,
-                         "first_order_cod_cap": float(s.first_order_cod_cap)
-                         if s.first_order_cod_cap is not None else None},
+                         "cod_allowed": cod["on_delivery"], "first_order_cod_cap": cod["first_order_cap"]},
             "entry": await MessagingService.entry(session, business_id),
             "customer_updates": CUSTOMER_UPDATES, "ladder_updates": LADDER_UPDATES, "languages": LANGUAGES,
             "templates": templates,
@@ -297,18 +296,14 @@ class MessagingService:
             if not 1 <= hours <= 72:
                 raise _err("human_pause_hours", "Between 1 and 72 hours")
             s.human_pause_hours = hours
-        if "cod_allowed" in payload:
-            s.cod_allowed = bool(payload["cod_allowed"])
-        if "first_order_cod_cap" in payload:
-            cap = payload["first_order_cod_cap"]
-            if cap is not None:
-                try:
-                    cap = Decimal(str(cap)).quantize(Decimal("0.01"))
-                except (InvalidOperation, ValueError):
-                    raise _err("first_order_cod_cap", "Enter an amount in rupees") from None
-                if cap <= 0 or cap > Decimal("10000000"):
-                    raise _err("first_order_cod_cap", "Enter an amount above ₹0, or leave it empty for no cap")
-            s.first_order_cod_cap = cap
+        rules = {k: payload[k] for k in ("cod_allowed", "first_order_cod_cap") if k in payload}
+        if rules:
+            # Paying on delivery is an order rule for every channel; it lives with
+            # pickup and delivery (fulfilment), this page only edits it there.
+            from platform_core.services.fulfilment import FulfilmentService
+
+            await FulfilmentService.set_payment_rules(session, business_id=business_id, actor_id=actor_id,
+                                                      payload=rules)
         s.updated_by, s.updated_at, s.version = actor_id, _now(), s.version + 1
         await session.flush()
         return s
@@ -442,14 +437,16 @@ class MessagingService:
         approved = {r.language: r.category for r in (await session.execute(select(MessagingTemplate).where(
             MessagingTemplate.business_id == business_id, MessagingTemplate.template_key == key,
             MessagingTemplate.status == "approved"))).scalars()}
-        language = s.language if s.language in approved else "en" if "en" in approved else None
+        contact = await session.get(CustomerContact, contact_id) if contact_id else None
+        if contact is None and audience == "customer":
+            contact = await MessagingService.find_contact(session, business_id, wa_id)
+        # The customer's own language when that version is approved (P1-10E6), else the business's, else English.
+        wanted = contact.language if contact is not None and audience == "customer" else None
+        language = next((x for x in (wanted, s.language, "en") if x and x in approved), None)
         if language is None:
             raise NotSent(f"The “{template.label}” message is not approved by WhatsApp yet")
         # What Meta decided at approval wins over what LOCAH asked for.
         category = approved.get(language) or template.category
-        contact = await session.get(CustomerContact, contact_id) if contact_id else None
-        if contact is None and audience == "customer":
-            contact = await MessagingService.find_contact(session, business_id, wa_id)
         conv = await MessagingService.conversation_for(session, channel, wa_id, contact=contact,
                                                        kind="staff" if audience == "staff" else "customer")
         msg = MessagingMessage(
@@ -653,14 +650,25 @@ class MessagingService:
         """§12.1 router, cheapest branch first: STOP → opt-out; 'talk to a person' →
         the inbox; a button or menu word → the structured journey (P1-08); free
         text → the AI WhatsApp Manager (P3, not built) — so, for now, a person."""
+        from platform_core.messaging.journeys import language_for
+        from platform_core.messaging.words import detect, tr
         from platform_core.services.consent import ConsentService
+
+        async def lang() -> str:
+            """The language they wrote in, else the one they chose or the business's (P1-10E6)."""
+            contact = await session.get(CustomerContact, conv.contact_id) if conv.contact_id else None
+            if contact is not None and contact.language_source == "chosen":
+                return str(contact.language)
+            found: str = detect(body) or await language_for(session, conv.business_id, contact)
+            return found
 
         said = body.strip().lower()
         if said in STOP_WORDS and conv.contact_id:
             await ConsentService.withdraw(session, conv.business_id, conv.contact_id, purpose="marketing",
                                           channel="whatsapp", source="whatsapp_stop")
-            await MessagingService.bot_text(session, conv, "You will not get offers from us on WhatsApp any more. "
-                                                           "Order and booking updates still come here.", via="journey")
+            await MessagingService.bot_text(session, conv, tr(await lang(), "You will not get offers from us on "
+                                                              "WhatsApp any more. Order and booking updates still "
+                                                              "come here."), via="journey")
             return "opted_out"
         wants_person = extra.get("id") == "talk_to_person" or any(w in said for w in PERSON_WORDS)
         if not wants_person:
@@ -676,11 +684,12 @@ class MessagingService:
             from platform_core.messaging.entry import whatsapp_entry
 
             business = await session.get(Business, conv.business_id)
-            menu = " Or send menu to see what you can do here." if not wants_person and await whatsapp_entry(
-                session, conv.business_id) else ""
+            words = await lang()
+            menu = " " + tr(words, "Or send menu to see what you can do here.") if not wants_person and \
+                await whatsapp_entry(session, conv.business_id) else ""
             await MessagingService.bot_text(
-                session, conv, f"Thanks — someone from {business.display_name if business else 'us'} will reply "
-                               f"here soon.{menu}", via="journey")
+                session, conv, tr(words, "Thanks — someone from {business} will reply here soon.",
+                                  business=business.display_name if business else "us") + menu, via="journey")
             await MessagingService._schedule_waiting(session, conv)
         return "person"
 

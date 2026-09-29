@@ -218,7 +218,7 @@ class CustomerAccountService:
         slug = business.slug
         out: dict[str, Any] = {"business": {"id": str(business.id), "slug": slug, "name": business.display_name},
                                "linked": bool(mine), "orders": [], "bookings": [], "bills": [], "quotes": [],
-                               "memberships": [], "khata": None}
+                               "memberships": [], "khata": None, "erasure_request": None}
         if not mine:
             return out
         now = datetime.now(timezone.utc)
@@ -240,6 +240,8 @@ class CustomerAccountService:
             out["orders"].append({
                 "id": str(o.id), "number": o.order_number, "status": o.status, "payment_status": o.payment_status,
                 "total": _f(o.total_amount), "placed_at": o.created_at.isoformat(),
+                "due_at": o.due_at.isoformat() if o.due_at else None,
+                "due_words": await _due_words(session, o),
                 "items": [{"title": li.title, "quantity": _f(li.quantity)} for li in lines.get(o.id, [])],
                 "fulfilment": {"mode": job.mode, "status": job.status} if job else None,
                 "track_url": f"/{slug}/track/{o.id}?token={job.tracking_token}" if job else None,
@@ -294,6 +296,12 @@ class CustomerAccountService:
                 acct.public_token_hash = _hash(token)
                 await session.flush()
             out["khata"] = {"balance": _f(acct.balance), "url": f"/{slug}/khata/{token}"}
+        # DPDP (MD §25.1): their latest request to delete their details, and how it stands.
+        ask = (await session.execute(text(
+            "SELECT status, created_at, resolution_note FROM customer_relationships_privacy_requests "
+            "WHERE business_id = CAST(:b AS uuid) AND contact_id = ANY(CAST(:ids AS uuid[])) AND kind = 'erasure' "
+            "ORDER BY created_at DESC LIMIT 1"), {"b": str(business.id), "ids": [str(c) for c in mine]})).first()
+        out["erasure_request"] = {"status": ask[0], "asked_at": ask[1].isoformat(), "reason": ask[2]} if ask else None
         return out
 
     # ------------------------------------------------------------ order again
@@ -345,3 +353,14 @@ async def contact_identity(session: AsyncSession, contact_id: uuid.UUID | None) 
         return None
     contact = await session.get(CustomerContact, contact_id)
     return contact.identity_id if contact is not None and contact.deleted_at is None else None
+
+
+async def _due_words(session: AsyncSession, order: Any) -> str | None:
+    """When a dated order is wanted, in the business's own time zone (P1-10D2)."""
+    if order.due_at is None:
+        return None
+    from platform_core.models import BusinessLocation
+    from platform_core.orders.preorder import when_words, zone_of
+
+    words: str = when_words(order.due_at, zone_of(await session.get(BusinessLocation, order.location_id)))
+    return words

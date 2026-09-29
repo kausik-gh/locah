@@ -116,6 +116,8 @@ DECISIONS = [
     Decision("OD-10", "P4", "GST Suvidha Provider for e-invoice and e-way bill", "OPEN_DECISION", "Blocks IV-12, CN-14"),
     Decision("OD-11", "P4", "Owner of the LOCAH ↔ ChitBridge API contract", "OPEN_DECISION", "Blocks TN-02..04"),
     Decision("OD-12", "P1", "Founder: existing Razorpay code — remove, or keep frozen once Cashfree ships", "OPEN_DECISION", "Kept, frozen, not extended (founder 2026-09-27)"),
+    Decision("SC-01", "P3", "SOURCE_CONFLICT: MD §11.2 gives the AI Receptionist a closed tool list ('Nothing else', no order creation) and §11.3 sends restaurant phone orders to a WhatsApp link; FR-Orders authorises AI phone ordering for simple orders where the business enables it", "RESOLVED",
+             "Founder refinement (authority 1) wins: when enabled, the receptionist gets read-catalogue / build-cart / create-order tools on the same Orders service (actor_type=ai_employee, payment link only, never card details by voice); long, custom, negotiated, high-risk or low-confidence orders keep the MD's WhatsApp-link / human path (FR-OR-14)"),
 ]
 
 VERIFY = [

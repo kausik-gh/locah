@@ -72,7 +72,8 @@ class RoleHomeService:
                 text("SELECT based_on FROM business_custom_roles WHERE id = CAST(:id AS uuid)"), {"id": key[7:]},
             )).first()
             key = (row[0] if row else None) or ""
-        return key if key in ("manager", "store_keeper", "accountant", "cashier") else "member"
+        return key if key in ("manager", "store_keeper", "accountant", "cashier", "provider",
+                              "sales_executive") else "member"
 
     @staticmethod
     async def compose(
@@ -95,6 +96,10 @@ class RoleHomeService:
             bands = [await ctx.unpaid(), await ctx.due()]
         elif key == "cashier":
             bands = [await ctx.counter(membership.identity_id)]
+        elif key == "provider":
+            bands = [await ctx.my_day()]
+        elif key == "sales_executive":
+            bands = [await ctx.follow_ups()]
         else:
             bands = [await ctx.needs_you_now(), await ctx.today()]
             if key == "owner":
@@ -182,6 +187,22 @@ class _Ctx:
             if low:
                 items.append(_item("items low or out of stock", len(low), "/inventory?stock_status=low_stock",
                                    ", ".join(r["title"] for r in low[:3])))
+        if self.can("customers.erase", "customer-relationships"):
+            # DPDP (MD §25.1): a customer asked for their details to be deleted.
+            from platform_core.customers.privacy import PrivacyRequests
+
+            asks = [r for r in await PrivacyRequests.open_for(self.s, self.b) if r["kind"] == "erasure"]
+            if asks:
+                items.append(_item("customers asked you to delete their details", len(asks),
+                                   f"/customers/{asks[0]['contact_id']}" if len(asks) == 1 else "/customers",
+                                   ", ".join(str(r["display_name"]) for r in asks[:3]), tone="bad"))
+        if self.can("offerings.update", "offerings-catalog"):
+            # OK-15: items priced from a daily rate keep yesterday's price until today's is entered.
+            from platform_core.pricing.formula import RateService
+
+            stale = await RateService.not_entered_since(self.s, self.b, self.day_start)
+            if stale:
+                items.append(_item("rates to enter for today", len(stale), "/offerings/rates", ", ".join(stale[:3])))
         if self.can("leads.read", "leads"):
             n = await self._count(Lead, Lead.business_id == self.b, Lead.deleted_at.is_(None), Lead.status == "new")
             if n:
@@ -221,7 +242,7 @@ class _Ctx:
                 ComplianceItem.due_on <= today + timedelta(days=7),
             ).order_by(ComplianceItem.due_on).limit(100))).scalars())
             if due_items:
-                items.append(_item("licences or filings needing attention", len(due_items), "/licences",
+                items.append(_item("licences or filings needing attention", len(due_items), "/compliance",
                                    ", ".join(row.title for row in due_items[:3]), tone="bad"))
         late = [b for b in await self._open_bills() if b["overdue"]]
         if late:
@@ -230,6 +251,53 @@ class _Ctx:
         items += self._khata_items(await self._khata())
         items = await self._chats_waiting() + items
         return {"key": "now", "title": "Needs you now", "items": items, "empty": "Nothing needs you right now."}
+
+    # ------------------------------------------------------------------ provider / sales executive (P2-01)
+    async def _names(self, contact_ids: set[Any]) -> dict[Any, str]:
+        ids = {c for c in contact_ids if c}
+        if not ids:
+            return {}
+        return {row[0]: row[1] for row in (await self.s.execute(select(CustomerContact.id, CustomerContact.display_name)
+                .where(CustomerContact.business_id == self.b, CustomerContact.id.in_(ids)))).all()}
+
+    async def my_day(self) -> dict[str, Any] | None:
+        """A provider's day (§7.2 "My next appointment and my day"): today's appointments in order. The
+        assignment scope limits the query to bookings where they are the provider."""
+        if not self.can("bookings.read", "bookings"):
+            return None
+        rows = list((await self.s.execute(select(Booking).where(
+            Booking.business_id == self.b, Booking.deleted_at.is_(None), Booking.status.notin_(ENDED),
+            Booking.starts_at >= self.day_start, Booking.starts_at < self.day_end,
+        ).order_by(Booking.starts_at).limit(40))).scalars())
+        names = await self._names({r.customer_contact_id for r in rows})
+        upcoming = next((r.id for r in rows if r.ends_at >= self.now), None)
+        items = []
+        for r in rows:
+            when = r.starts_at.astimezone(IST).strftime("%I:%M %p").lstrip("0").lower()
+            who = names.get(r.customer_contact_id, "")
+            items.append(_item(r.title, 0, f"/bookings/{r.id}", " · ".join(x for x in (when, who) if x),
+                               tone="bad" if r.id == upcoming else "info" if r.ends_at >= self.now else "good"))
+        return {"key": "myday", "title": "My day", "items": items, "empty": "No appointments today."}
+
+    async def follow_ups(self) -> dict[str, Any] | None:
+        """A sales executive's follow-ups (§7.2 "Follow-ups due today"): their open enquiries due by the end of
+        today, oldest first, then new ones — the assignment scope limits them to enquiries assigned to them."""
+        if not self.can("leads.read", "leads"):
+            return None
+        due = list((await self.s.execute(select(Lead).where(
+            Lead.business_id == self.b, Lead.deleted_at.is_(None), Lead.status.notin_(("won", "lost")),
+            or_(Lead.next_follow_up_at < self.day_end, Lead.status == "new"),
+        ).order_by(Lead.next_follow_up_at.asc().nulls_last(), Lead.created_at).limit(40))).scalars())
+        items = []
+        for lead in due:
+            at = lead.next_follow_up_at
+            when = (at.astimezone(IST).strftime("%I:%M %p").lstrip("0").lower() if at and at >= self.day_start
+                    else at.astimezone(IST).strftime("%d %b") if at else "")
+            late = at is not None and at < self.now
+            items.append(_item(lead.display_name, 0, f"/leads/{lead.id}",
+                               " · ".join(x for x in (when, lead.status) if x), tone="bad" if late else "info"))
+        return {"key": "followups", "title": "Follow-ups due today", "items": items,
+                "empty": "No follow-ups due today."}
 
     # ------------------------------------------------------------------ today
     async def today(self) -> dict[str, Any] | None:

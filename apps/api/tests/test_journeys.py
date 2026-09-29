@@ -115,7 +115,7 @@ def test_order_on_whatsapp_prices_come_only_from_the_catalogue(monkeypatch: Any)
 
     phone.say("Hi")
     menu = phone.options()
-    assert list(menu) == ["m:order", "talk_to_person"], "only what works now, and a person is always there"
+    assert list(menu) == ["m:order", "talk_to_person", "m:lang"], "only what works now, a person, and the language"
     phone.tap("m:order")
     assert set(phone.options()) == {f"o:item:{ghee['id']}", f"o:item:{sql('select id from offerings_catalog_offerings where business_id = :b and title = :t', b=bid, t='Filter coffee powder')[0][0]}"}
     assert "₹320.00" in str(sql("select payload from messaging_messages where business_id = :b and kind = 'interactive' "

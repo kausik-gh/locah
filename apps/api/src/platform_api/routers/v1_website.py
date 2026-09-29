@@ -437,6 +437,12 @@ class AutoSectionBody(BaseModel):
     hidden: bool
 
 
+class LanguagesBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    languages: list[str] = Field(min_length=1, max_length=3)
+
+
 @router.get("/{business_id}/website/capabilities")
 async def website_capabilities(
     business_id: UUID,
@@ -517,3 +523,33 @@ async def set_auto_section(
                                 business_id=business_id, correlation_id=actor.request.correlation_id)
     await session.commit()
     return {"data": {"hidden": sorted(hidden)}, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.put("/{business_id}/website/languages")
+async def set_languages(
+    business_id: UUID, body: LanguagesBody,
+    actor: BusinessActorContext = Depends(require_business_actor(WEBSITE_EDIT)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """The languages the site's own words come in; the first is shown first (P1-10E6)."""
+    from platform_core.exceptions import ValidationError
+    from platform_core.services.audit import AuditService
+    from platform_core.services.outbox import OutboxService
+
+    chosen = list(dict.fromkeys(body.languages))
+    if any(x not in ("en", "ta", "hi") for x in chosen):
+        raise ValidationError("Choose from English, Tamil and Hindi",
+                              details={"field": "languages", "errors": [
+                                  {"field": "languages", "message": "Choose from English, Tamil and Hindi"}]})
+    website = await WebsiteResolver.resolve_website(session, business_id=business_id)
+    before = list(website.languages or ["en"])
+    website.languages = chosen
+    await AuditService.record(session, event_type="website.languages.changed",
+                              actor_identity_id=actor.request.identity_id, actor_context="business",
+                              business_id=business_id, resource_type="website", resource_id=website.id,
+                              action="update", before_state={"languages": before}, after_state={"languages": chosen})
+    await OutboxService.publish(session, event_type="website.languages.changed",
+                                payload={"business_id": str(business_id), "languages": chosen},
+                                business_id=business_id, correlation_id=actor.request.correlation_id)
+    await session.commit()
+    return {"data": {"languages": chosen}, "meta": {"correlation_id": actor.request.correlation_id}}

@@ -50,3 +50,36 @@ Proof: `apps/api/tests/test_stock_depth.py` (per-subcategory lens fixtures, meat
 | Property / vehicles | "Book a site visit" / test drive (leads + a live project or vehicle) | Enquiry form | test_module_aware_site |
 | Digital-only | — | no address, map or location list anywhere | test_module_aware_site |
 | Offline-first / nothing ready | Call or WhatsApp | none — an information site | test_module_aware_site |
+
+## orders — dated pre-orders (P1-10D2)
+
+| | |
+|---|---|
+| Sources | MD §6.1 (`orders` "pre-orders with a date"), §21.1 bakeries ("custom cake pre-orders (flavour, weight, message, photo, date), festival pre-order windows, daily production list", advance) and home kitchens ("catalogue with pre-order dates, batch cooking list"); PDF p.22; Founder refinement — Orders & Customer Transactions ("Pre-orders / scheduled orders", "Orders Workspace … Bakery: today / tomorrow / custom preorders") |
+| Decided by | the business's own data: an item with pre-order rules (`offerings.preorder`) or any dated open order makes Orders open on the board by day wanted; otherwise the plain list — `apps/workspace/.../orders/page.tsx`, `orders/board.py` (`preorder_items`, `count`). No business-name branches |
+| Offering kinds | items sold through a basket (`flow == cart`): menu items, products, weighed goods, packages; a text box choice for the message on a cake / a name to engrave |
+| Roles | owner, manager (orders.read / update_status); the board and production list follow order location scope and RLS |
+| Shared, never changes | one `orders_orders` row per order whatever the channel; the day wanted, advance and terms snapshot on it; the advance is a payment link on the same order; the check (notice, cutoff, window, ready times, daily limit with an advisory lock) lives only in `orders/preorder.py` |
+
+| Lens | Who | Terminology | Hierarchy / primary action | Workflow | Data shown | Empty state |
+|---|---|---|---|---|---|---|
+| By day wanted | bakery, sweet shop, home kitchen, festival boxes, custom work — any business with made-to-order items or dated orders | "Wanted for", "Made to order", "Advance paid / awaited", "Production" | Overdue first, then Prepare now, Today, Tomorrow, Later; next step on each card (Accept → Start preparing → Mark ready → Hand over) | customer picks day and time → advance link → owner confirms money → prepares from the production list | due time, customer, pickup/delivery, channel, items with choices, the written message, advance state | "Nothing wanted tomorrow yet." per column |
+| Plain list | everyone else (kirana, retail) until their own workflow is built (FR-OR-23) | Status and channel filters | newest first | open an order to accept, prepare, complete | status, channel, payment in words, total | "Orders placed on your website, WhatsApp, the counter or by phone land here." |
+
+Proof: `apps/api/tests/test_preorders.py` (rules, notice, cutoff, window, ready times, advance, snapshot, daily limit across website and phone orders, board buckets, production list, WhatsApp day step, cancel window, refund due) and browser `tools/acceptance/phase_b/p1_10d2_preorders.mjs` (owner sets rules in the Workspace; customer orders on the site; full day unpickable; advance paid and confirmed; board, production list, bill, account; 390 px; a business without dated items keeps the plain list). Not yet specialised: kirana picking, meat cut-prep/weight exceptions, QSR/restaurant KDS, retail shipping/returns (FR-OR-23).
+
+## offerings — formula pricing from a daily rate (P1-10D2b)
+
+| | |
+|---|---|
+| Sources | MD §21.2 jewellery ("Price = today's metal rate × weight + making charge + GST from a daily rate board; custom orders with advance; hallmark (HUID) per piece"); PDF p.22; ledger OK-15 |
+| Decided by | the business's own data: the rate board appears in Products & services once a rate exists, and the item editor offers "From a rate" for basket/counter items only when there is a rate to price from; goods items (HSN) with no rates get a one-line pointer to add one; Home asks for today's rate only while a rate prices a live item. No business-name branches — any shop selling by a rate it enters daily (gold, silver, other metals or commodities) uses the same rule |
+| Offering kinds | items sold through a basket or at the counter (`flow == cart`, not weighed packs) |
+| Roles | owner / manager with offerings.update enter rates and price items; offerings.read sees the board |
+| Shared, never changes | one catalogue price (`offerings.price_amount`) read by website, WhatsApp, checkout and counter; the working is copied onto the order line at confirmation and the bill line at sale; rate history is append-only; GST comes from the item's HSN/rate like any other item |
+
+| Lens | Who | Terminology | Hierarchy / primary action | Workflow | Data shown | Empty state |
+|---|---|---|---|---|---|---|
+| Today's rates | jeweller, silver shop, anyone pricing by a daily rate | "Today's rate", "Entered today / Not entered today", "Priced from this rate", "Rates entered" | the day's rate input and Save first, then the items it prices | morning: enter rate → items re-priced → sell at the counter / online; earlier orders and bills keep their rate | rate per unit, when entered, items with today's price and working, last ten rates with notes | "No rates yet. Add the rate you price by — for example 22K gold per gram …" |
+
+Proof: `apps/api/tests/test_formula_pricing.py` (arithmetic, validation, re-price on a new rate, order and bill snapshots unchanged, counter bill at today's rate, a haggled price keeps no working, unknown rate refused, unpriced until the rate is entered, another business refused, RLS isolation of both tables, append-only history) and browser `tools/acceptance/phase_b/p1_10d2_formula.mjs` (owner adds the rate and prices a chain in the Workspace; site card shows the working in the tenant theme; phone order and bill; Home asks for today's rate; new rate re-prices the chain while the order and bill keep ₹72,240 at ₹6,450; counter sale; 390 px). Not yet: HUID named and checked per piece (PB-203).

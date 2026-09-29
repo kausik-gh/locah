@@ -9,11 +9,27 @@
 
 /** `href` is relative to the business (`/orders` → /b/{id}/orders); a leading `~`
  *  names another full-screen surface (`~/pos` → /pos/{id}). */
-export type NavChild = { href: string; label: string; perm?: string; anyPerm?: string[]; module?: string }
+export type NavChild = {
+  href: string
+  label: string
+  perm?: string
+  anyPerm?: string[]
+  module?: string
+  /** 'solo': only when one person runs the business; 'team': never then (OM-21). */
+  shape?: 'solo' | 'team'
+}
 export type NavArea = { key: string; label: string; children: NavChild[] }
 
 export const AREAS: NavArea[] = [
-  { key: 'home', label: 'Home', children: [{ href: '', label: 'Home' }] },
+  {
+    key: 'home',
+    label: 'Home',
+    children: [
+      { href: '', label: 'Home' },
+      // One person, one calendar (MD §22 "Solo professionals … one calendar").
+      { href: '/calendar', label: 'Calendar', shape: 'solo' },
+    ],
+  },
   {
     key: 'presence',
     label: 'Business presence',
@@ -74,13 +90,13 @@ export const AREAS: NavArea[] = [
     key: 'team',
     label: 'Team',
     children: [
-      { href: '/team', label: 'People', perm: 'team.read' },
-      { href: '/team/roles', label: 'Roles', perm: 'team.read' },
-      { href: '/workforce', label: 'Staff & rota', perm: 'workforce.read', module: 'workforce' },
+      { href: '/team', label: 'People', perm: 'team.read', shape: 'team' },
+      { href: '/team/roles', label: 'Roles', perm: 'team.read', shape: 'team' },
+      { href: '/workforce', label: 'Staff & rota', perm: 'workforce.read', module: 'workforce', shape: 'team' },
     ],
   },
-  // Insights and AI Employees join as their tools ship (analytics, AI staff);
-  // campaigns join Reach in P3. Until then they have nothing to show.
+  // AI Employees join as their tools ship (P3); campaigns join Reach in P3.
+  // Until then they have nothing to show.
   {
     key: 'reach',
     label: 'Reach',
@@ -89,7 +105,12 @@ export const AREAS: NavArea[] = [
       { href: '/whatsapp', label: 'WhatsApp', perm: 'messaging.read', module: 'messaging' },
     ],
   },
-  { key: 'insights', label: 'Insights', children: [] },
+  {
+    key: 'insights',
+    label: 'Insights',
+    // Basic insights from real data (IS-01) are part of the Workspace; the deeper Analytics tool comes later.
+    children: [{ href: '/insights', label: 'Your numbers', anyPerm: ['orders.read', 'bookings.read', 'invoices.read', 'payments.read'] }],
+  },
   { key: 'ai', label: 'AI employees', children: [] },
   {
     key: 'modules',
@@ -107,6 +128,8 @@ export const AREAS: NavArea[] = [
       { href: '/settings/automations', label: 'Automations', perm: 'settings.read' },
       { href: '/compliance', label: 'Licences & due dates', perm: 'compliance.read', module: 'compliance' },
       { href: '/settings/usage', label: 'Usage & limits', perm: 'settings.read' },
+      // A solo business has no team menus; this is how a second person joins.
+      { href: '/team', label: 'Invite someone', perm: 'team.read', shape: 'solo' },
     ],
   },
 ]
@@ -126,11 +149,13 @@ function operateLabel(on: (m: string) => boolean): string {
 export function visibleAreas(
   moduleStates: Record<string, string>,
   permissions: string[] | null,
+  solo = false,
 ): { key: string; label: string; children: { href: string; label: string }[] }[] {
   const on = (m: string) => OPERATIONAL.has(moduleStates[m] ?? '')
   // Before the context loads (or if it fails) show only Home, never a guess.
   const perms = permissions ? new Set(permissions) : null
   const may = (c: NavChild) =>
+    (!c.shape || (c.shape === 'solo') === solo) &&
     (!c.module || on(c.module)) &&
     (!c.perm || (perms !== null && perms.has(c.perm))) &&
     (!c.anyPerm || (perms !== null && c.anyPerm.some((p) => perms.has(p))))

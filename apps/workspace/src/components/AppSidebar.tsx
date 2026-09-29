@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { visibleAreas } from '@/lib/workspace-nav'
+import { wsWords, type WsLang } from '@/lib/ws-words'
+import { WorkspaceLanguage } from './WorkspaceLanguage'
 
 /* ========================================================================
    Workspace layout shell. Persistent left sidebar: business switcher, then the
@@ -104,13 +106,20 @@ export function AppSidebar({
   moduleStates,
   permissions,
   unreadCount,
+  solo = false,
+  lang = 'en',
 }: {
   businessId: string
   businesses: NavBusiness[]
   moduleStates: Record<string, string>
   permissions: string[] | null
   unreadCount: number
+  /** One person runs this business: no team menus, one calendar (OM-21). */
+  solo?: boolean
+  /** This person's Workspace language (P1-10E6). */
+  lang?: WsLang
 }) {
+  const t = useMemo(() => wsWords(lang), [lang])
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
@@ -154,7 +163,12 @@ export function AppSidebar({
   }
 
   const base = `/b/${businessId}`
-  const areas = useMemo(() => visibleAreas(moduleStates, permissions), [moduleStates, permissions])
+  const areas = useMemo(
+    () => visibleAreas(moduleStates, permissions, solo).map((a) => ({
+      ...a, label: t(a.label), children: a.children.map((c) => ({ ...c, label: t(c.label) })),
+    })),
+    [moduleStates, permissions, solo, t],
+  )
   // The most specific link that matches the page is the active one, so
   // Settings › Automations does not also light up Business settings.
   const activeHref = useMemo(() => {
@@ -174,16 +188,16 @@ export function AppSidebar({
   return (
     <>
     <div className="ws-mobile-bar">
-      <button type="button" className="ws-mobile-bar__toggle" aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={mobileOpen} aria-controls="ws-primary-navigation" onClick={() => setMobileOpen(v => !v)}>
+      <button type="button" className="ws-mobile-bar__toggle" aria-label={mobileOpen ? t('Close navigation') : t('Open navigation')} aria-expanded={mobileOpen} aria-controls="ws-primary-navigation" onClick={() => setMobileOpen(v => !v)}>
         <span aria-hidden="true">{mobileOpen ? '×' : '☰'}</span>
       </button>
-      <span className="ws-mobile-bar__name">{current?.display_name ?? 'Workspace'}</span>
-      <Link href={`${base}/notifications`} className="ws-mobile-bar__alerts" aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}>Alerts{unreadCount > 0 ? <span>{unreadCount > 99 ? '99+' : unreadCount}</span> : null}</Link>
+      <span className="ws-mobile-bar__name">{current?.display_name ?? t('Workspace')}</span>
+      <Link href={`${base}/notifications`} className="ws-mobile-bar__alerts" aria-label={unreadCount > 0 ? t('{n} unread notifications', { n: unreadCount }) : t('Notifications')}>{t('Alerts')}{unreadCount > 0 ? <span>{unreadCount > 99 ? '99+' : unreadCount}</span> : null}</Link>
     </div>
-    {narrow && mobileOpen ? <button type="button" className="ws-mobile-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} /> : null}
+    {narrow && mobileOpen ? <button type="button" className="ws-mobile-scrim" aria-label={t('Close navigation')} onClick={() => setMobileOpen(false)} /> : null}
     <aside
       id="ws-primary-navigation"
-      aria-label="Workspace navigation"
+      aria-label={t('Workspace navigation')}
       className="ws-sidebar"
       data-collapsed={railed || undefined}
       data-mobile-open={mobileOpen || undefined}
@@ -197,7 +211,7 @@ export function AppSidebar({
         height: '100vh',
       }}
     >
-      <button type="button" className="ws-sidebar__close" aria-label="Close navigation" onClick={() => setMobileOpen(false)}>×</button>
+      <button type="button" className="ws-sidebar__close" aria-label={t('Close navigation')} onClick={() => setMobileOpen(false)}>×</button>
       {/* Business switcher */}
       <div className="ws-sidebar__business" style={{ padding: railed ? '0.75rem 0.5rem' : '0.85rem 0.75rem', borderBottom: '1px solid var(--color-border)' }}>
         {railed ? (
@@ -220,7 +234,7 @@ export function AppSidebar({
         ) : (
           <label style={{ display: 'grid', gap: '0.25rem' }}>
             <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-muted)' }}>
-              Business
+              {t('Business')}
             </span>
             {businesses.length > 1 ? (
               <select
@@ -236,7 +250,7 @@ export function AppSidebar({
               </select>
             ) : (
               <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>
-                {current?.display_name ?? 'Workspace'}
+                {current?.display_name ?? t('Workspace')}
               </span>
             )}
           </label>
@@ -248,14 +262,18 @@ export function AppSidebar({
         {areas.map((area) =>
           area.key === 'home' ? (
             <div key="home" style={{ display: 'grid', gap: '0.1rem', marginTop: '0.3rem' }}>
-              <NavLink href={base} label="Home" active={isActive('')} collapsed={railed} />
+              <NavLink href={base} label={t('Home')} active={isActive('')} collapsed={railed} />
               <NavLink
                 href={`${base}/notifications`}
-                label="Notifications"
+                label={t('Notifications')}
                 active={isActive('/notifications')}
                 collapsed={railed}
                 badge={unreadCount}
               />
+              {area.children.filter((c) => c.href !== '').map((item) => (
+                <NavLink key={item.href} href={`${base}${item.href}`} label={item.label}
+                  active={isActive(item.href)} collapsed={railed} />
+              ))}
             </div>
           ) : (
             <div key={area.key} role="group" aria-label={area.label}>
@@ -274,11 +292,13 @@ export function AppSidebar({
         )}
       </nav>
 
+      {!railed ? <WorkspaceLanguage current={lang} /> : null}
+
       {/* Collapse toggle */}
       {!narrow ? <button
         type="button"
         onClick={toggle}
-        aria-label={railed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-label={railed ? t('Expand sidebar') : t('Collapse sidebar')}
         className="btn-ghost"
         style={{
           margin: '0.5rem',
@@ -287,7 +307,7 @@ export function AppSidebar({
           fontSize: '0.8rem',
         }}
       >
-        {railed ? '»' : '« Collapse'}
+        {railed ? '»' : `« ${t('Collapse')}`}
       </button> : null}
     </aside>
     </>

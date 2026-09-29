@@ -59,8 +59,10 @@ from platform_core.models import (
     Offering,
     OfferingVariant,
     OrderLineItem,
+    PaymentAttempt,
     SalesOrder,
 )
+from platform_core.pricing.formula import basis_words
 from platform_core.secrets import resolve_signing_secret
 from platform_core.services.audit import AuditService
 from platform_core.services.invoicing_setup import InvoicingSetupService, TaxRateService, local_today
@@ -142,6 +144,8 @@ class _Line:
     stock_quantity: int
     # §15.1: the serial numbers sold (or returned) on this line.
     serials: list[str] = field(default_factory=list)
+    # OK-15: the rate working behind a formula-priced line, as it stood when sold.
+    basis: dict[str, Any] | None = None
 
 
 def _rate_key(line: _Line) -> tuple[uuid.UUID | None, str | None, Any]:
@@ -307,6 +311,9 @@ class InvoiceService:
             if price is None:
                 raise _err(f"lines.{i}.unit_price", f"Enter a price for {title}")
             unit_price = money(dec(price))
+            # A rate-priced item sold at today's price keeps the working behind it (OK-15).
+            last = (offering.price_formula or {}).get("last") if offering is not None else None
+            basis = last if last and money(dec(last["price"])) == unit_price else None
             discount = money(dec(raw.get("discount") or 0))
             if unit_price < 0 or discount < 0:
                 raise _err(f"lines.{i}.unit_price", "Prices and discounts cannot be negative")
@@ -333,7 +340,7 @@ class InvoiceService:
             if serials and (offering is None or not offering.serial_tracked):
                 raise _err(f"lines.{i}.serials", f"{title} does not keep serial numbers")
             out.append(_Line(offering, variant.id if variant else None, None, None, title[:300], hsn, unit_label,
-                             quantity, unit_price, discount, rate, stock, serials))
+                             quantity, unit_price, discount, rate, stock, serials, basis))
         # Rates for catalogue lines (and free lines with only an HSN/SAC) come from data.
         need = [i for i, x in enumerate(out) if x.offering is not None or x.rate is None]
         resolved = await TaxRateService.resolve(session, business_id, [_rate_key(out[i]) for i in need], on)
@@ -357,7 +364,7 @@ class InvoiceService:
                 offering, item.variant_id, item.id, None, item.title, offering.hsn_sac if offering else None,
                 _unit_label(offering), Decimal(item.quantity), money(dec(item.unit_price)), ZERO,
                 dec(item.tax_rate) if item.tax_rate is not None else None, int(item.stock_quantity or 0),
-                list(item.serials or []),
+                list(item.serials or []), (item.options or {}).get("formula"),
             ))
         missing = [i for i, x in enumerate(out) if x.rate is None]
         if missing:
@@ -388,7 +395,7 @@ class InvoiceService:
                 hsn_sac=x.hsn_sac, unit_label=x.unit_label, quantity=x.quantity, unit_price=x.unit_price,
                 discount=out.discount, taxable_value=out.taxable, tax_rate=out.rate,
                 cgst=out.cgst, sgst=out.sgst, igst=out.igst, line_total=out.total,
-                stock_quantity=x.stock_quantity, serials=list(x.serials), sort_order=i,
+                stock_quantity=x.stock_quantity, serials=list(x.serials), sort_order=i, price_basis=x.basis,
             ))
         return rows
 
@@ -397,7 +404,7 @@ class InvoiceService:
         return [_Line(offerings.get(r.offering_id) if r.offering_id else None, r.variant_id, r.order_line_id,
                       r.original_line_id, r.title, r.hsn_sac, r.unit_label, dec(r.quantity), dec(r.unit_price),
                       dec(r.discount), dec(r.tax_rate) if r.tax_rate is not None else None, r.stock_quantity,
-                      list(r.serials or []))
+                      list(r.serials or []), r.price_basis)
                 for r in rows]
 
     # ------------------------------------------------------------------ stock
@@ -937,6 +944,10 @@ class InvoiceService:
         doc = await InvoiceService.get(session, business_id, document_id, lock=True)
         if doc.status != "issued" or doc.doc_kind == "credit_note":
             raise ConflictError("Money is recorded against an issued bill or debit note")
+        if doc.order_id and not payload.get("_via"):
+            # One money book per sale: a bill issued from an order is paid on the
+            # order (its Money panel), so the two can never disagree.
+            raise ConflictError("This bill belongs to an order — record the money on the order")
         summary = await InvoiceService._money_view(session, doc)
         amount = money(dec(payload.get("amount") or 0))
         if amount <= 0:
@@ -997,23 +1008,45 @@ class InvoiceService:
                 InvoicingDocument.original_document_id == doc.id, InvoicingDocument.doc_kind == "credit_note",
                 InvoicingDocument.status == "issued"))).scalar())
         order_paid = False
+        on_order = ZERO
         if doc.order_id:
             status = (await session.execute(select(SalesOrder.payment_status).where(
                 SalesOrder.id == doc.order_id))).scalar()
             order_paid = status == "paid"
-        return InvoiceService._payment_state(doc, credits, order_paid)
+            on_order = (await InvoiceService._paid_on_orders(session, doc.business_id, [doc.order_id])).get(
+                doc.order_id, ZERO)
+        return InvoiceService._payment_state(doc, credits, order_paid, on_order)
 
     @staticmethod
-    def _payment_state(doc: InvoicingDocument, credits: Decimal, order_paid: bool) -> dict[str, Any]:
+    async def _paid_on_orders(session: AsyncSession, business_id: uuid.UUID,
+                              order_ids: list[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
+        """Verified money taken on each order (an advance by link, cash at
+        pickup), net of refunds — what a bill issued from the order has
+        already received through the order (Founder refinement — Payments §12)."""
+        if not order_ids:
+            return {}
+        rows = (await session.execute(select(
+            PaymentAttempt.source_id,
+            func.coalesce(func.sum(PaymentAttempt.amount - func.coalesce(PaymentAttempt.refunded_amount, 0)), 0),
+        ).where(PaymentAttempt.business_id == business_id, PaymentAttempt.source_type == "order",
+                PaymentAttempt.source_id.in_(order_ids), PaymentAttempt.deleted_at.is_(None),
+                PaymentAttempt.status.in_(("succeeded", "partially_refunded", "refunded")))
+            .group_by(PaymentAttempt.source_id))).all()
+        return {row[0]: max(dec(row[1]), ZERO) for row in rows}
+
+    @staticmethod
+    def _payment_state(doc: InvoicingDocument, credits: Decimal, order_paid: bool,
+                       on_order: Decimal = ZERO) -> dict[str, Any]:
         due = dec(doc.amount_due)
         if doc.doc_kind == "credit_note" or doc.status != "issued":
             return {"payment_status": "not_applicable", "outstanding": 0.0, "credited": _f(credits),
-                    "paid_via_order": False}
-        outstanding = ZERO if order_paid else max(ZERO, due - dec(doc.amount_paid) - credits)
+                    "paid_via_order": False, "paid_on_order": 0.0}
+        outstanding = ZERO if order_paid else max(ZERO, due - dec(doc.amount_paid) - credits - on_order)
         paid = order_paid or outstanding <= 0
-        state = "paid" if paid else ("part_paid" if dec(doc.amount_paid) > 0 or credits > 0 else "unpaid")
+        part = dec(doc.amount_paid) > 0 or credits > 0 or on_order > 0
+        state = "paid" if paid else ("part_paid" if part else "unpaid")
         return {"payment_status": state, "outstanding": _f(outstanding), "credited": _f(credits),
-                "paid_via_order": order_paid}
+                "paid_via_order": order_paid, "paid_on_order": _f(min(on_order, due))}
 
     @staticmethod
     def serialize(doc: InvoicingDocument, money_view: dict[str, Any], *, order_number: str | None = None,
@@ -1096,8 +1129,12 @@ class InvoiceService:
                                InvoicingDocument.created_at.desc()).limit(limit).offset(offset)
         today = local_today()
         out = []
-        for doc, order_number, order_payment, credited in (await session.execute(query)).all():
-            view = InvoiceService._payment_state(doc, dec(credited), order_payment == "paid")
+        found = (await session.execute(query)).all()
+        on_orders = await InvoiceService._paid_on_orders(
+            session, business_id, [doc.order_id for doc, *_ in found if doc.order_id])
+        for doc, order_number, order_payment, credited in found:
+            view = InvoiceService._payment_state(doc, dec(credited), order_payment == "paid",
+                                                 on_orders.get(doc.order_id, ZERO) if doc.order_id else ZERO)
             out.append(InvoiceService.serialize(doc, view, order_number=order_number, today=today))
         return out
 
@@ -1138,6 +1175,7 @@ class InvoiceService:
             "igst": _f(r.igst), "line_total": _f(r.line_total), "stock_quantity": r.stock_quantity,
             "returnable_quantity": _f(dec(r.quantity) - returned.get(r.id, ZERO)),
             "creditable_amount": _f(dec(r.line_total) - credited.get(r.id, ZERO)),
+            "basis_words": basis_words(r.price_basis),
         } for r in rows]
         data["payments"] = [{
             "id": str(p.id), "amount": _f(p.amount), "method": p.method, "method_label": PAYMENT_METHODS[p.method],
@@ -1294,6 +1332,9 @@ def build_spec(d: dict[str, Any], *, thermal: bool = False) -> DocSpec:
         for g in d["tax_by_rate"]:
             tax = g["cgst"] + g["sgst"] + g["igst"]
             notes.append(f"GST {g['rate']:g}%: taxable {_inr(g['taxable'])}, tax {_inr(tax)}")
+    for ln in d["lines"]:  # OK-15: how a rate-priced line was worked out, as sold
+        if ln.get("basis_words"):
+            notes.append(f"{ln['title']}: {ln['basis_words']}")
     if d.get("notes"):
         notes.append(d["notes"])
     if d.get("terms") and kind in INVOICE_KINDS:
@@ -1342,7 +1383,8 @@ async def public_bill(session: AsyncSession, slug: str, token: str) -> dict[str,
             original = {"id": str(o.id), "kind_label": KIND_LABEL[o.doc_kind], "number": o.number,
                         "status": o.status, "amount_due": _f(o.amount_due),
                         "issue_date": o.issue_date.isoformat() if o.issue_date else None}
-    view = {"payment_status": "not_applicable", "outstanding": 0.0, "credited": 0.0, "paid_via_order": False}
+    view = {"payment_status": "not_applicable", "outstanding": 0.0, "credited": 0.0, "paid_via_order": False,
+            "paid_on_order": 0.0}
     data = InvoiceService.serialize(doc, view)
     for private in ("customer_contact_id", "register_id", "location_id", "order_id", "version", "created_at"):
         data.pop(private, None)
@@ -1351,6 +1393,7 @@ async def public_bill(session: AsyncSession, slug: str, token: str) -> dict[str,
         "quantity": _f(r.quantity), "unit_price": _f(r.unit_price), "discount": _f(r.discount),
         "taxable_value": _f(r.taxable_value), "tax_rate": _f(r.tax_rate) if r.tax_rate is not None else None,
         "cgst": _f(r.cgst), "sgst": _f(r.sgst), "igst": _f(r.igst), "line_total": _f(r.line_total),
+        "basis_words": basis_words(r.price_basis),
     } for r in rows]
     data["related"] = [original] if original else []
     data["tax_by_rate"] = InvoiceService._tax_by_rate(rows)

@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic'
 
 function priceText(o: Offering): string {
   if (o.offering_type === 'cause') return 'People choose what to give'
+  if (o.price_formula) return o.price_amount !== null ? `${inr(o.price_amount)} at today's rate` : 'No price until the rate is entered'
   if (o.sell_units?.length && o.price_amount !== null) {
     const per = String(o.attributes?.price_per ?? 'kg')
     return `${inr(o.price_amount)} per ${per}`
@@ -29,13 +30,21 @@ function priceText(o: Offering): string {
 export default async function OfferingsPage({ params }: { params: { businessId: string } }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
-  const res = await apiTry<{ data: Offering[] }>(`/v1/platform/businesses/${params.businessId}/products`, token)
+  const [res, rates] = await Promise.all([
+    apiTry<{ data: Offering[] }>(`/v1/platform/businesses/${params.businessId}/products`, token),
+    apiTry<{ data: unknown[] }>(`/v1/platform/businesses/${params.businessId}/pricing/rates`, token),
+  ])
   const base = `/b/${params.businessId}/offerings`
   const header = (
     <PageHeader
       title="Products & services"
       subtitle="Everything people can buy, book, join, give to or ask about — kept in one place."
-      actions={<Link className="btn" href={`${base}/new`}>Add</Link>}
+      actions={
+        <>
+          {rates.ok && rates.data.data.length ? <Link className="btn-ghost" href={`${base}/rates`}>Today&apos;s rates</Link> : null}
+          <Link className="btn" href={`${base}/new`}>Add</Link>
+        </>
+      }
     />
   )
   if (!res.ok) {

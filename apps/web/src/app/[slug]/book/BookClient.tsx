@@ -6,6 +6,7 @@ import {
   checkBookingAvailability,
   createPublicBooking,
 } from '@/lib/booking-api'
+import { useWords } from '@/components/website/SiteWords'
 
 type Options = {
   business: { display_name: string; slug: string }
@@ -37,6 +38,7 @@ export default function BookClient({
   customer?: { name: string; email: string } | null
   authToken?: string | null
 }) {
+  const t = useWords()
   const [locationId, setLocationId] = useState(options.locations[0]?.id || '')
   const [serviceId, setServiceId] = useState(options.services[0]?.id || '')
   const [providerId, setProviderId] = useState('')
@@ -71,7 +73,7 @@ export default function BookClient({
     setError(null)
     setErrorCode(null)
     if (!locationId || !startsAt || !endsAt || !name || !email) {
-      setError('Location, slot, and guest details are required.')
+      setError(t('Location, slot, and guest details are required.'))
       setErrorCode('policy_restriction')
       return
     }
@@ -87,7 +89,7 @@ export default function BookClient({
         party_size: 1,
       })
       if (!avail.available) {
-        setError(avail.reason || 'Selected slot is unavailable')
+        setError(avail.reason || t('Selected slot is unavailable'))
         setErrorCode(avail.code || 'slot_conflict')
         setSubmitting(false)
         return
@@ -125,18 +127,18 @@ export default function BookClient({
         <p style={{ letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.65 }}>
           {options.business.display_name}
         </p>
-        <h1 style={{ fontSize: '2.4rem', margin: '0.4rem 0 0.75rem' }}>Confirmed</h1>
+        <h1 style={{ fontSize: '2.4rem', margin: '0.4rem 0 0.75rem' }}>{t('Confirmed')}</h1>
         <p>
-          Booking <strong>{confirmation.booking_number}</strong> is reserved.
+          {t('Booking {number} is reserved.', { number: confirmation.booking_number })}
           {confirmation.deposit_required
-            ? ` Deposit ${confirmation.deposit_amount} · ${confirmation.payment_status}.`
+            ? ` ${t('Deposit {amount}', { amount: confirmation.deposit_amount })} · ${confirmation.payment_status}.`
             : null}
         </p>
         <p style={{ marginTop: '1.25rem' }}>
           <Link
             href={`/${slug}/bookings/${confirmation.id}?token=${encodeURIComponent(confirmation.management_token)}`}
           >
-            Manage this booking
+            {t('Manage this booking')}
           </Link>
         </p>
       </main>
@@ -148,16 +150,16 @@ export default function BookClient({
       <p style={{ letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.65 }}>
         {options.business.display_name}
       </p>
-      <h1 style={{ fontSize: '2.6rem', margin: '0.35rem 0 0.5rem' }}>Book</h1>
+      <h1 style={{ fontSize: '2.6rem', margin: '0.35rem 0 0.5rem' }}>{t('Book')}</h1>
       <p style={{ opacity: 0.8, marginBottom: '1.75rem' }}>
-        Choose a location, service, provider, and time.
+        {t('Choose a location, service, provider, and time.')}
       </p>
 
       {errorCode === 'location_closed' ? (
-        <p role="alert">This location is closed. Pick another location.</p>
+        <p role="alert">{t('This location is closed. Pick another location.')}</p>
       ) : null}
       {errorCode === 'slot_conflict' ? (
-        <p role="alert">That slot is no longer available. Choose another time.</p>
+        <p role="alert">{t('That slot is no longer available. Choose another time.')}</p>
       ) : null}
       {error && errorCode !== 'location_closed' && errorCode !== 'slot_conflict' ? (
         <p role="alert">{error}</p>
@@ -165,7 +167,7 @@ export default function BookClient({
 
       <form onSubmit={onSubmit} style={{ display: 'grid', gap: '0.9rem' }}>
         <label>
-          Location
+          {t('Location')}
           <select
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
@@ -179,13 +181,13 @@ export default function BookClient({
           </select>
         </label>
         <label>
-          Service
+          {t('Service')}
           <select
             value={serviceId}
             onChange={(e) => setServiceId(e.target.value)}
             style={{ display: 'block', width: '100%', marginTop: 4, padding: '0.55rem' }}
           >
-            <option value="">Any / none</option>
+            <option value="">{t('Any / none')}</option>
             {options.services.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.title}
@@ -194,13 +196,13 @@ export default function BookClient({
           </select>
         </label>
         <label>
-          Provider
+          {t('Provider')}
           <select
             value={providerId}
             onChange={(e) => setProviderId(e.target.value)}
             style={{ display: 'block', width: '100%', marginTop: 4, padding: '0.55rem' }}
           >
-            <option value="">No preference</option>
+            <option value="">{t('No preference')}</option>
             {providers.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.display_name}
@@ -209,7 +211,7 @@ export default function BookClient({
           </select>
         </label>
         <label>
-          Starts
+          {t('Starts')}
           <input
             type="datetime-local"
             value={startsAt}
@@ -219,7 +221,7 @@ export default function BookClient({
           />
         </label>
         <label>
-          Ends
+          {t('Ends')}
           <input
             type="datetime-local"
             value={endsAt}
@@ -229,7 +231,7 @@ export default function BookClient({
           />
         </label>
         <label>
-          Name
+          {t('Name')}
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -238,7 +240,7 @@ export default function BookClient({
           />
         </label>
         <label>
-          Email
+          {t('Email')}
           <input
             type="email"
             value={email}
@@ -249,7 +251,7 @@ export default function BookClient({
           />
         </label>
         <label>
-          Phone
+          {t('Phone')}
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
@@ -258,23 +260,11 @@ export default function BookClient({
         </label>
         {options.policy.require_deposit ? (
           <p style={{ opacity: 0.85 }}>
-            A deposit of {options.policy.deposit_amount ?? 'configured amount'} is required.
+            {t('A deposit of {amount} is required.', { amount: options.policy.deposit_amount ?? '' })}
           </p>
         ) : null}
-        <button
-          type="submit"
-          disabled={submitting}
-          style={{
-            marginTop: '0.5rem',
-            padding: '0.75rem 1rem',
-            border: 'none',
-            background: '#1c2a24',
-            color: '#f7f3eb',
-            fontSize: '1rem',
-            cursor: 'pointer',
-          }}
-        >
-          {submitting ? 'Booking…' : 'Confirm booking'}
+        <button type="submit" className="ls-btn" disabled={submitting} style={{ marginTop: '0.5rem' }}>
+          {submitting ? t('Booking…') : t('Confirm booking')}
         </button>
       </form>
     </main>

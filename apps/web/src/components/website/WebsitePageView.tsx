@@ -4,7 +4,10 @@ import { PublicLicences } from './PublicLicences'
 import { SectionRenderer, resolvePath, type SiteContact } from './SectionRenderer'
 import { siteFontVariables } from './site-fonts'
 import { withPreviewToken } from './preview-links'
+import { LanguageSwitch } from './LanguageSwitch'
+import { SiteWordsProvider } from './SiteWords'
 import type { PublicWebsitePayload } from '@/lib/public-website'
+import { LANG_LOCALE, offered, siteWords, type SiteLang } from '@/lib/site-words'
 
 /**
  * The shell of a published tenant website.
@@ -109,10 +112,15 @@ export function siteThemeVars(data: PublicWebsitePayload): { styleVars: ThemeVar
 export function WebsitePageView({
   data,
   previewToken,
+  lang = 'en',
 }: {
   data: PublicWebsitePayload
   previewToken?: string
+  /** The visitor's language (see lib/site-lang) — the site's own words only. */
+  lang?: SiteLang
 }) {
+  const t = siteWords(lang)
+  const languages = offered(data.website.languages)
   const theme = data.theme || {}
   const slug = data.business.slug
   const name = data.business.display_name
@@ -251,7 +259,7 @@ export function WebsitePageView({
         : null
   // The basket link is added in the footer only once something can be bought.
   const visitLinks = [
-    canBook ? { label: 'Book', href: `/${slug}/book` } : null,
+    canBook ? { label: t('Book'), href: `/${slug}/book` } : null,
   ].filter((item): item is { label: string; href: string } => item !== null)
 
   // How loudly each section should speak. The design strategy decides this per
@@ -275,7 +283,7 @@ export function WebsitePageView({
       return data.page.slug === 'home' ? path.slice(1) : `/${slug}${path.slice(1)}`
     return `/${slug}${path.startsWith('/') ? path : `/${path}`}`
   }
-  const ctaLabel = navCta ? String(navCta.label || '') : ''
+  const ctaLabel = navCta ? t(String(navCta.label || '')) : ''
   const ctaHref = navCta ? resolvePath(String(navCta.href || ''), contact, name) : ''
   const ctaTarget = ctaHref.startsWith('#')
     ? data.page.slug === 'home'
@@ -285,12 +293,13 @@ export function WebsitePageView({
       ? withPreviewToken(navHref(ctaHref), previewToken)
       : ctaHref
   const callLabel =
-    profile === 'bold_food_commerce' || profile === 'editorial_home_food' ? 'Call to order' : 'Call'
+    profile === 'bold_food_commerce' || profile === 'editorial_home_food' ? t('Call to order') : t('Call')
 
   return (
     <div
       className={siteFontVariables}
       data-locah-site=""
+      lang={LANG_LOCALE[lang]}
       data-personality={personality}
       data-typography={typography}
       data-density={density}
@@ -312,6 +321,7 @@ export function WebsitePageView({
       data-footer={family ? footerStyle : undefined}
       style={styleVars}
     >
+      <SiteWordsProvider lang={lang}>
       {data.is_preview ? (
         <aside
           aria-label="Preview status"
@@ -324,7 +334,7 @@ export function WebsitePageView({
             letterSpacing: '0.02em',
           }}
         >
-          Preview — this is a draft. Visitors still see your published site.
+          {t('Preview — this is a draft. Visitors still see your published site.')}
         </aside>
       ) : null}
 
@@ -337,6 +347,8 @@ export function WebsitePageView({
           </div>
         </div>
       ) : null}
+      {/* Above the header, so the choice is the first thing a visitor finds on any screen. */}
+      <LanguageSwitch languages={languages} current={lang} place="nav" />
       <header className={`ls-nav ls-nav--${navStyle}`}>
         <div className="ls-nav__inner">
           <Link className="ls-nav__brand" href={withPreviewToken(`/${slug}`, previewToken)}>
@@ -365,14 +377,14 @@ export function WebsitePageView({
                       : undefined
                   }
                 >
-                  {item.label}
+                  {t(item.label)}
                 </Link>
               )
             })}
           </nav>
           <div className="ls-nav__actions">
             {hasAccount && !previewToken ? (
-              <a className="ls-nav__link ls-nav__account" href={`/${slug}/account`}>My account</a>
+              <a className="ls-nav__link ls-nav__account" href={`/${slug}/account`}>{t('My account')}</a>
             ) : null}
             {canOrder ? <CommerceCart slug={slug} /> : null}
             {ctaLabel && ctaTarget ? (
@@ -401,6 +413,7 @@ export function WebsitePageView({
           >
             <SectionRenderer
               section={section}
+              lang={lang}
               businessSlug={slug}
               index={i}
               capabilities={data.capabilities}
@@ -418,8 +431,8 @@ export function WebsitePageView({
           href={waHref}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={journey ? `${journey.label}, ${name}` : `WhatsApp ${name}`}
-          title={journey ? journey.label : undefined}
+          aria-label={journey ? `${t(journey.label)}, ${name}` : `WhatsApp ${name}`}
+          title={journey ? t(journey.label) : undefined}
         >
           <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
             <path
@@ -432,11 +445,11 @@ export function WebsitePageView({
 
       {reachable ? (
         // On a phone the two things a visitor most wants are always one tap away.
-        <nav className="ls-mobile-bar" aria-label="Contact">
+        <nav className="ls-mobile-bar" aria-label={t('Contact')}>
           {contact.phone ? <a href={`tel:${contact.phone}`}>{callLabel}</a> : null}
           {waHref ? (
             <a href={waHref} target="_blank" rel="noopener noreferrer">
-              {journey ? journey.label : 'WhatsApp'}
+              {journey ? t(journey.label) : 'WhatsApp'}
             </a>
           ) : null}
         </nav>
@@ -459,25 +472,25 @@ export function WebsitePageView({
           </div>
           {nav.length > 0 ? (
             <div className="ls-foot__col">
-              <p className="ls-foot__heading">Explore</p>
+              <p className="ls-foot__heading">{t('Explore')}</p>
               {nav.map((item) => (
                 <Link
                   key={`f-${item.label}`}
                   href={withPreviewToken(navHref(item.path), previewToken)}
                 >
-                  {item.label}
+                  {t(item.label)}
                 </Link>
               ))}
             </div>
           ) : null}
-          {canOrder && !canBook ? <CommerceCart slug={slug} variant="footer" /> : null}
-          <PublicLicences slug={slug} />
+          {canOrder && !canBook && !(visitLinks.length > 0 || journey) ? <CommerceCart slug={slug} variant="footer" /> : null}
+          <PublicLicences slug={slug} lang={lang} />
           {visitLinks.length > 0 || journey ? (
             <div className="ls-foot__col">
-              <p className="ls-foot__heading">Your visit</p>
+              <p className="ls-foot__heading">{t('Your visit')}</p>
               {canOrder ? <CommerceCart slug={slug} variant="footer-link" /> : null}
               {hasAccount && !previewToken ? (
-                <a href={`/${slug}/account`}>{canOrder || canBook ? 'My orders and bookings' : 'My account'}</a>
+                <a href={`/${slug}/account`}>{canOrder || canBook ? t('My orders and bookings') : t('My account')}</a>
               ) : null}
               {visitLinks.map((item) => (
                 <Link key={item.href} href={item.href}>
@@ -486,7 +499,7 @@ export function WebsitePageView({
               ))}
               {journey ? (
                 <a href={journey.href} target="_blank" rel="noopener noreferrer">
-                  {journey.label}
+                  {t(journey.label)}
                 </a>
               ) : null}
             </div>
@@ -496,11 +509,13 @@ export function WebsitePageView({
           <span>
             &copy; {new Date().getFullYear()} {name}
           </span>
+          <LanguageSwitch languages={languages} current={lang} place="foot" />
           <Link className="ls-foot__by" href="/">
-            Powered by LOCAH
+            {t('Powered by LOCAH')}
           </Link>
         </div>
       </footer>
+      </SiteWordsProvider>
     </div>
   )
 }

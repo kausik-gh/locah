@@ -68,7 +68,7 @@ def test_role_catalogue_offers_only_what_this_business_can_use(monkeypatch: Any)
     data = client.get(f"/v1/platform/businesses/{consultant}/roles", headers=owner).json()["data"]
     assert [t["key"] for t in data["templates"]] == ["manager", "accountant"]  # Storefront compliance is on
     assert data["owner"]["home"] == "Needs you now · Today · Your business"
-    assert set(data["scopes"]) == {"business", "location"}  # assignment scope is not enforceable yet
+    assert set(data["scopes"]) == {"business", "location", "assignment"}  # enforced since P2-01
 
 
 def test_store_keeper_at_one_location_sees_and_changes_only_that_location(monkeypatch: Any) -> None:
@@ -135,7 +135,8 @@ def test_custom_role_is_cloned_and_never_exceeds_the_giver(monkeypatch: Any) -> 
     assert dup.status_code == 409
     later = client.post(f"{base}/roles/custom", json={"name": "Runner", "permissions": ["inventory.read"],
                                                       "scope": "assignment"}, headers=owner)
-    assert later.status_code == 422  # assignment scope is not enforced yet, so it cannot be chosen
+    # Stock is nobody's assignment: a role limited to its assignments cannot hold it.
+    assert later.status_code == 422 and later.json()["error"]["details"]["not_assignable"] == ["inventory.read"]
 
     mid, checker = _join(owner, bid, monkeypatch)
     assert client.put(f"{base}/members/{mid}/role", json={"role": role["key"]}, headers=owner).status_code == 200

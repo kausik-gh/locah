@@ -20,6 +20,9 @@ from platform_core.models import BusinessModuleState, MessagingChannel
 
 LIVE = ("enabled", "ready", "active")
 
+# What the site's WhatsApp button says (the tenant site translates these — P1-10E6).
+JOURNEY_LABELS = {"order": "Order on WhatsApp", "book": "Book on WhatsApp", "enquire": "Ask us on WhatsApp"}
+
 
 def wa_link(number: str, text: str = "menu") -> str:
     digits = "".join(ch for ch in number if ch.isdigit())
@@ -40,7 +43,7 @@ async def whatsapp_entry(session: AsyncSession, business_id: uuid.UUID) -> dict[
             if states.get(module) in LIVE]
     if not does:
         return None
-    label = {"order": "Order on WhatsApp", "book": "Book on WhatsApp"}.get(does[0], "Ask us on WhatsApp")
+    label = JOURNEY_LABELS.get(does[0], JOURNEY_LABELS["enquire"])
     if states.get("ledger") in LIVE or states.get("invoicing") in LIVE:
         does.append("dues")
     return {"number": channel.display_phone, "href": wa_link(channel.display_phone), "label": label,

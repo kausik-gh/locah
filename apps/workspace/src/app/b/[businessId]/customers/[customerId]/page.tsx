@@ -8,6 +8,8 @@ import { ConsentPanel, type ConsentRow } from './ConsentPanel'
 import { owes, rupees, type Account } from '../../khata/types'
 import { timelineText, type TimelineSummary } from './timeline-text'
 import { LocalTime } from '@/components/LocalTime'
+import { TagsEditor } from './TagsEditor'
+import { PrivacyPanel, type Privacy } from './PrivacyPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +20,7 @@ type CustomerDetail = {
   phone: string | null
   status: string
   tags?: string[]
+  version: number
 }
 
 type TimelineEntry = {
@@ -50,7 +53,7 @@ export default async function CustomerDetailPage({
   }
   const customer = res.data.data
 
-  const [timelineRes, notesRes, consentRes, contextRes, khataRes] = await Promise.all([
+  const [timelineRes, notesRes, consentRes, contextRes, khataRes, tagsRes, privacyRes] = await Promise.all([
     apiTry<{ data: TimelineEntry[] }>(`${base}/timeline`, token),
     apiTry<{ data: Note[] }>(`${base}/notes`, token),
     apiTry<{ data: { history: ConsentRow[] } }>(`${base}/consents`, token),
@@ -58,11 +61,14 @@ export default async function CustomerDetailPage({
     // Their khata, when the credit book is on and the viewer may see it (§14.5).
     apiTry<{ data: { account: Account | null } }>(
       `/v1/platform/businesses/${params.businessId}/ledger/lookup?contact_id=${params.customerId}`, token),
+    apiTry<{ data: { tag: string }[] }>(`/v1/platform/businesses/${params.businessId}/customers/tags`, token),
+    apiTry<{ data: Privacy }>(`${base}/privacy`, token),
   ])
   const khata = khataRes.ok ? khataRes.data.data.account : undefined
   const timeline = timelineRes.ok ? timelineRes.data.data || [] : []
   const notes = notesRes.ok ? notesRes.data.data || [] : []
-  const canUpdate = contextRes.ok && (contextRes.data.data.permissions ?? []).includes('customers.update')
+  const perms = contextRes.ok ? contextRes.data.data.permissions ?? [] : []
+  const canUpdate = perms.includes('customers.update')
 
   const stateActions =
     customer.status === 'active'
@@ -97,6 +103,9 @@ export default async function CustomerDetailPage({
         ))}
       </section>
 
+      <TagsEditor businessId={params.businessId} customerId={params.customerId} tags={customer.tags ?? []}
+        version={customer.version} known={tagsRes.ok ? tagsRes.data.data.map((t) => t.tag) : []} canChange={canUpdate} />
+
       {consentRes.ok ? (
         <ConsentPanel
           businessId={params.businessId}
@@ -104,6 +113,11 @@ export default async function CustomerDetailPage({
           history={consentRes.data.data.history}
           canChange={canUpdate}
         />
+      ) : null}
+
+      {privacyRes.ok ? (
+        <PrivacyPanel businessId={params.businessId} customerId={params.customerId} name={customer.display_name}
+          privacy={privacyRes.data.data} canExport={perms.includes('customers.export')} canErase={perms.includes('customers.erase')} />
       ) : null}
 
       {khata !== undefined ? (

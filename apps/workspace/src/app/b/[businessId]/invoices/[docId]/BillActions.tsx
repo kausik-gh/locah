@@ -105,7 +105,7 @@ export function BillActions({
           </div>
           {link ? <input className="bos-inv-link" readOnly value={link} aria-label="Customer link" onFocus={(e) => e.currentTarget.select()} /> : null}
           <div className="bos-inv-buttons">
-            {!isNote && bill.outstanding > 0 ? (
+            {!isNote && bill.outstanding > 0 && !bill.order_id ? (
               <button type="button" className="btn-ghost" onClick={() => setPanel(panel === 'pay' ? null : 'pay')} aria-expanded={panel === 'pay'}>
                 Record money received
               </button>

@@ -1,5 +1,6 @@
 import { apiTry } from '@/lib/api'
 import { MoneyPanel, type Due } from './MoneyPanel'
+import { pageWords } from '@/lib/ws-lang'
 
 /** Server side of the money panel: what is due on one transaction, for anyone who may see payments. */
 export async function MoneySection({
@@ -8,7 +9,7 @@ export async function MoneySection({
   sourceType,
   sourceId,
   path,
-  title = 'Money',
+  title,
 }: {
   businessId: string
   token: string
@@ -22,10 +23,11 @@ export async function MoneySection({
     token
   )
   if (!res.ok) return null
+  const t = pageWords()
   return (
     <section style={{ marginTop: '1.75rem' }} aria-labelledby={`money-${sourceId}`}>
       <h2 id={`money-${sourceId}`} className="ws-section-title">
-        {title}
+        {title ?? t('Money')}
       </h2>
       <MoneyPanel businessId={businessId} path={path} due={res.data.data} />
     </section>

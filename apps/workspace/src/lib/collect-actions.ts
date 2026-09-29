@@ -10,6 +10,8 @@ export type LinkResult = {
   url: string
   message: string
   whatsapp: string | null
+  /** The business's own WhatsApp number can send it. */
+  from_number?: boolean
   amount: number
   purpose_label: string
 }
@@ -19,6 +21,12 @@ export async function askForPayment(businessId: string, path: string, body: Reco
   const r = await sendJson<LinkResult>(`${base(businessId)}/requests`, 'POST', body)
   if (r.ok) revalidatePath(path)
   return r
+}
+
+/** Send the link from the business's own WhatsApp number (proves it holds the link's token). */
+export async function sendPaymentLink(businessId: string, requestId: string, url: string) {
+  const token = url.split('/pay/')[1] || ''
+  return sendJson<{ status: string; body: string }>(`${base(businessId)}/requests/${requestId}/whatsapp`, 'POST', { token })
 }
 
 export async function cancelPaymentLink(businessId: string, path: string, requestId: string) {

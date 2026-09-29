@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_api.db import get_db_session
@@ -36,6 +36,11 @@ class ContextResponse(BaseModel):
     default_business_id: str | None = None
     last_business_id: str | None = None
     primary_business_id: str | None = None
+    # OM-21 (MD §22 "Solo professionals: simplified navigation (no team menus),
+    # one calendar"): the business's organisation shape is solo and one person runs it.
+    solo: bool = False
+    # P1-10E6: this person's Workspace language ('en' | 'ta' | 'hi').
+    workspace_language: str = "en"
 
 
 @router.get("")
@@ -62,6 +67,11 @@ async def get_context(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     prefs = await IdentityService.get_consumer_preferences(session, ctx.identity_id)
+    solo = False
+    if ctx.business_id is not None:
+        from platform_core.services.business_classification import run_solo
+
+        solo = await run_solo(session, ctx.business_id)
     return {
         "data": ContextResponse(
             identity_id=str(ctx.identity_id),
@@ -75,6 +85,9 @@ async def get_context(
             default_business_id=prefs.get("default_business_id"),
             last_business_id=prefs.get("last_business_id"),
             primary_business_id=prefs.get("primary_business_id"),
+            solo=solo,
+            workspace_language=prefs.get("workspace_language") if prefs.get("workspace_language") in ("en", "ta", "hi")
+            else "en",
         ).model_dump(),
         "meta": {"correlation_id": ctx.correlation_id},
     }
@@ -204,3 +217,89 @@ async def reorder_lines(
     business = await _public_business(session, slug)
     data = await CustomerAccountService.reorder(session, business, ctx.identity_id, order_id)
     return {"data": data, "meta": {"correlation_id": ctx.correlation_id}}
+
+
+# ---------------------------------------------------------------- my data with one business (DPDP access / erasure, MD §25.1)
+class ErasureRequestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: str | None = Field(default=None, max_length=500)
+
+
+async def _my_contacts(session: AsyncSession, slug: str, identity_id: UUID) -> tuple[Any, list[UUID]]:
+    from platform_core.exceptions import ResourceNotFound
+    from platform_core.services.customer_account import CustomerAccountService, bind_customer_context
+
+    business = await _public_business(session, slug)
+    await bind_customer_context(session, business.id, identity_id)
+    mine = await CustomerAccountService.contacts(session, business.id)
+    if not mine:
+        raise ResourceNotFound("Your records with this business")
+    return business, mine
+
+
+@router.get("/businesses/{slug}/my-data")
+async def my_data_with_business(
+    slug: str,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Download everything this business keeps about me (DPDP right of access)."""
+    from platform_core.customers.privacy import PrivacyRequests, export
+
+    business, mine = await _my_contacts(session, slug, ctx.identity_id)
+    data = await export(session, business.id, mine, business_name=business.display_name)
+    for contact_id in mine:
+        await PrivacyRequests.record(session, business.id, contact_id, kind="access", source="customer",
+                                     identity_id=ctx.identity_id, note="Downloaded by the customer", status="done")
+    await session.commit()
+    return {"data": data, "meta": {"correlation_id": ctx.correlation_id}}
+
+
+@router.post("/businesses/{slug}/erasure-request")
+async def ask_to_erase_my_data(
+    slug: str,
+    body: ErasureRequestBody,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Ask this business to delete my details (DPDP right of erasure). The business
+    acts on it — bills the law makes them keep stay — and the request shows here."""
+    from platform_core.customers.privacy import PrivacyRequests
+    from platform_core.permissions import CUSTOMERS_ERASE
+    from platform_core.services.notification import NotificationService
+
+    business, mine = await _my_contacts(session, slug, ctx.identity_id)
+    already = True
+    for contact_id in mine:
+        row = await PrivacyRequests.record(session, business.id, contact_id, kind="erasure", source="customer",
+                                           identity_id=ctx.identity_id, note=body.note)
+        if not row["already"]:
+            already = False
+            await NotificationService.fan_out(
+                session, business_id=business.id, notification_type="customer.erasure_requested",
+                title="A customer asked you to delete their details",
+                body="Open the customer to erase their details, or decline with a reason (for example money still owed).",
+                required_permission=CUSTOMERS_ERASE, severity="warning", resource_type="customer",
+                resource_id=contact_id)
+    await session.commit()
+    return {"data": {"requested": True, "already": already}, "meta": {"correlation_id": ctx.correlation_id}}
+
+
+class WorkspaceLanguageBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    language: str = Field(pattern="^(en|ta|hi)$")
+
+
+@router.put("/workspace-language")
+async def set_workspace_language(
+    body: WorkspaceLanguageBody,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """The language my Workspace speaks — English, Tamil or Hindi (P1-10E6)."""
+    language = await IdentityService.set_workspace_language(session, identity_id=ctx.identity_id,
+                                                            language=body.language)
+    await session.commit()
+    return {"data": {"workspace_language": language}, "meta": {"correlation_id": ctx.correlation_id}}

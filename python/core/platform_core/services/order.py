@@ -109,7 +109,7 @@ class OrderService:
             line_tax=float(totals["line_tax"]),
             line_total=float(totals["line_total"]),
             track_inventory=offering.track_inventory,
-            options=priced.options if priced is not None else {},
+            options=_with_formula(priced.options if priced is not None else {}, offering, raw),
             stock_quantity=raw["quantity"] * (priced.stock_per_unit if priced is not None else 1),
             sort_order=sort_order,
         )
@@ -210,6 +210,7 @@ class OrderService:
         search: str | None = None,
         customer_contact_id: uuid.UUID | None = None,
         location_id: uuid.UUID | None = None,
+        channel: str | None = None,
     ) -> list[SalesOrder]:
         query = select(SalesOrder).where(
             SalesOrder.business_id == business_id,
@@ -217,6 +218,9 @@ class OrderService:
         )
         if status:
             query = query.where(SalesOrder.status == status)
+        if channel:
+            # Channel is a filter on the one list, never a separate order book (Founder: Orders).
+            query = query.where(SalesOrder.channel == channel)
         if customer_contact_id:
             query = query.where(SalesOrder.customer_contact_id == customer_contact_id)
         if location_id:
@@ -319,6 +323,9 @@ class OrderService:
             order.discount_amount = float(totals["discount_amount"])
             order.total_amount = float(totals["total_amount"])
 
+        await OrderService._apply_preorder(session, business_id=business_id, order=order, line_items=line_items,
+                                           requested=payload.get("due") or payload.get("due_at"))
+
         await OrderService._reserve_line_items(
             session,
             business_id=business_id,
@@ -350,6 +357,29 @@ class OrderService:
             actor_context=actor_context,
         )
         return order
+
+    @staticmethod
+    async def _apply_preorder(session: AsyncSession, *, business_id: uuid.UUID, order: SalesOrder,
+                              line_items: list[OrderLineItem], requested: Any) -> None:
+        """Dated pre-orders (P1-10D2): the one check every channel goes through —
+        the day it is wanted, the notice, cutoff, window and daily limit, the
+        advance its items ask, and a snapshot of the terms the customer saw."""
+        from platform_core.models import BusinessLocation
+        from platform_core.orders import preorder as po
+
+        location = await session.get(BusinessLocation, order.location_id)
+        zone = po.zone_of(location)
+        wanted = po.parse_requested(requested, zone)
+        lines = await po.lines_for(session, business_id, [
+            (i.offering_id, i.quantity, Decimal(str(i.line_total))) for i in line_items])
+        if wanted is None and not any(ln.rules for ln in lines):
+            return
+        plan = await po.plan(session, business_id=business_id, location=location, lines=lines, requested=wanted,
+                             exclude_order=order.id)
+        order.due_at = plan.due_at
+        order.preorder = plan.due_at is not None
+        order.advance_amount = float(plan.advance) if plan.advance > 0 else None
+        order.preorder_terms = plan.terms if plan.due_at is not None else {}
 
     @staticmethod
     async def patch_order(
@@ -421,3 +451,12 @@ class OrderService:
             "list[OrderStatusHistory]",
             await OrderResolver.load_status_history(session, order_id=order_id),
         )
+
+
+def _with_formula(options: dict[str, Any], offering: Any, raw: dict[str, Any]) -> dict[str, Any]:
+    """A rate-priced item keeps the working behind its price at confirmation
+    (OK-15): a later rate never rewrites this order or its bill."""
+    last = (offering.price_formula or {}).get("last")
+    if not last or raw.get("unit_price") is not None:
+        return options
+    return {**options, "formula": last}

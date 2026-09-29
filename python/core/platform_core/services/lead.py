@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from platform_core.authorization import assignment_scope
 from platform_core.exceptions import ConflictError, ResourceNotFound
 from platform_core.gates import assert_business_mutable
 from platform_core.models import Lead, LeadStatusHistory
@@ -108,7 +109,8 @@ class LeadService:
             source=validated["source"],
             origin_context=validated["origin_context"],
             offering_id=validated["offering_id"],
-            assignee_identity_id=validated["assignee_identity_id"],
+            # A member limited to their own assignments makes enquiries for themselves.
+            assignee_identity_id=validated["assignee_identity_id"] or assignment_scope.current(session),
             next_follow_up_at=validated["next_follow_up_at"],
             status="new",
             created_by=actor_id,

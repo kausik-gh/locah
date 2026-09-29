@@ -217,7 +217,7 @@ export function WhatsAppSetup({ businessId, setup, canConfigure }: { businessId:
                 </div>
               </div>
               <fieldset className="bos-inv-q" disabled={!canConfigure}>
-                <legend>Paying for WhatsApp orders</legend>
+                <legend>Paying on delivery — website and WhatsApp orders</legend>
                 <label className="bos-toggle">
                   <input type="checkbox" checked={cod} onChange={(e) => setCod(e.target.checked)} />
                   <span className="bos-toggle__track" aria-hidden />

@@ -108,6 +108,7 @@ class ProjectService:
             "title": project.title,
             "summary": project.summary,
             "status": project.status,
+            "stage": project.stage,
             "priority": project.priority,
             "customer_contact_id": (
                 str(project.customer_contact_id) if project.customer_contact_id else None

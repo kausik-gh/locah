@@ -229,6 +229,8 @@ class Website(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
     # P1-10C: module sections the owner chose not to show (see website.capabilities).
     auto_sections_hidden: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
+    # P1-10E6: 'en' | 'ta' | 'hi'; the first is what a visitor sees first.
+    languages: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{en}'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -511,6 +513,9 @@ class CustomerContact(Base):
     preferred_location_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("business_locations.id"), nullable=True
     )
+    # P1-10E6: 'en' | 'ta' | 'hi' — set from what they write ('detected') or pick ('chosen').
+    language: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language_source: Mapped[str | None] = mapped_column(Text, nullable=True)
     customer_since: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -520,6 +525,24 @@ class CustomerContact(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class CustomerSegment(Base):
+    """A rule-built segment (P1-10E2): the rules only; members are worked out each time."""
+
+    __tablename__ = "customer_relationships_segments"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    rules: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 
@@ -618,6 +641,12 @@ class Offering(Base):
     hsn_sac: Mapped[str | None] = mapped_column(Text, nullable=True)
     attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     option_groups: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # Pre-order rules (P1-10D2): needs a date or may take one, notice, cutoff,
+    # ready times, festival window, daily limit, advance, cancel window.
+    preorder: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    # Formula pricing (P1-10D2b): a rate on the board × quantity + making + extras;
+    # "last" holds the inputs today's price was worked out from.
+    price_formula: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     sell_units: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     variant_options: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     stock_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'piece'"))
@@ -731,6 +760,7 @@ class SalesOrder(Base):
     )
     order_number: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
+    stage: Mapped[str | None] = mapped_column(Text, nullable=True)  # P2-01 stage engine: a step within status
     payment_method: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'cod'"))
     payment_status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
     currency: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'INR'"))
@@ -750,6 +780,12 @@ class SalesOrder(Base):
     # priced by the billing engine — its round-off line and what it decided.
     # Where it came from (Capability Universe §6.1): web, whatsapp, pos, phone, workspace, marketplace, chitbridge.
     channel: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Dated pre-orders (P1-10D2): when it is wanted, the advance its items ask
+    # for, and the terms the customer confirmed (never rewritten later).
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    preorder: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    advance_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    preorder_terms: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     round_off: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, server_default=text("0"))
     tax_basis: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
@@ -851,6 +887,9 @@ class FulfilmentSettings(Base):
     delivery_fee_offering_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("offerings_catalog_offerings.id"), nullable=True
     )
+    # Paying on delivery / at pickup, for every channel (20260929110000).
+    cod_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    first_order_cod_cap: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
@@ -1752,6 +1791,7 @@ class Lead(Base):
     )
     offering_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'new'"))
+    stage: Mapped[str | None] = mapped_column(Text, nullable=True)  # P2-01 stage engine: a step within status
     lost_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     assignee_identity_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
@@ -1991,6 +2031,7 @@ class Project(Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     internal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
+    stage: Mapped[str | None] = mapped_column(Text, nullable=True)  # P2-01 stage engine: a step within status
     priority: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'normal'"))
     starts_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
     due_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
@@ -2237,6 +2278,8 @@ class InvoicingDocumentLine(Base):
     stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     serials: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
     batch_allocations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # What a formula-priced line was sold at: rate, quantity, making (P1-10D2b).
+    price_basis: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -2770,3 +2813,73 @@ class InventoryCountLine(Base):
     counted_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     counted_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     counted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PricingRate(Base):
+    """A rate on the business's rate board (22K gold per gram, silver per gram)."""
+
+    __tablename__ = "pricing_rates"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    key: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    unit: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'g'"))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class PricingRateValue(Base):
+    """One value an owner entered for a rate (append-only history)."""
+
+    __tablename__ = "pricing_rate_values"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    rate_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("pricing_rates.id"))
+    value: Mapped[Any] = mapped_column(Numeric(14, 4), nullable=False)
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entered_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------- stage engine (P2-01, MD §24 #10)
+class StageSet(Base):
+    """A business's own steps inside a module's statuses (orders, leads, projects)."""
+
+    __tablename__ = "platform_stage_sets"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    entity: Mapped[str] = mapped_column(Text, nullable=False)
+    stages: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StageEvent(Base):
+    """One move of a record from one stage to another (history; never changed)."""
+
+    __tablename__ = "platform_stage_events"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    entity: Mapped[str] = mapped_column(Text, nullable=False)
+    record_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    from_stage: Mapped[str | None] = mapped_column(Text, nullable=True)
+    to_stage: Mapped[str] = mapped_column(Text, nullable=False)
+    from_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    to_status: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_identity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

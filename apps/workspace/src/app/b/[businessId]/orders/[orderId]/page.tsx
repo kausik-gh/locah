@@ -6,8 +6,28 @@ import { DetailShell, GateNotice, PageHeader, Section, StatusPill } from '@/comp
 import { advanceOrderStatus, cancelOrder } from '../actions'
 import { OrderBill } from './OrderBill'
 import { MoneySection } from '@/components/MoneySection'
+import { money, paymentLabel } from '../labels'
+import { LocalTime } from '@/components/LocalTime'
+import { ChangeOrder } from './ChangeOrder'
+import type { CatalogueItem } from '../ItemPicker'
+import { pageWords } from '@/lib/ws-lang'
+import type { Words } from '@/lib/ws-words'
+import { StageTrack, type StageWhere } from '@/components/StageTrack'
 
 export const dynamic = 'force-dynamic'
+
+/** What each button does, in words (the stored states never reach the screen). */
+const actionWords = (t: Words): Record<string, string> => ({
+  accepted: t('Accept'),
+  rejected: t('Reject'),
+  preparing: t('Start preparing'),
+  ready: t('Mark ready'),
+  completed: t('Complete'),
+})
+const statusWords = (t: Words): Record<string, string> => ({
+  pending: t('New'), accepted: t('Accepted'), preparing: t('Preparing'), ready: t('Ready'),
+  completed: t('Completed'), cancelled: t('Cancelled'), rejected: t('Declined'),
+})
 
 /** Doc 11 §4.2 order detail — state actions, cancel coordination. */
 export default async function OrderDetailPage({
@@ -17,6 +37,8 @@ export default async function OrderDetailPage({
 }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
+  const t = pageWords()
+  const ACTION_WORDS = actionWords(t)
   const base = `/b/${params.businessId}`
   const res = await apiTry<{
     data: {
@@ -31,17 +53,22 @@ export default async function OrderDetailPage({
       discount_amount: number
       round_off: number
       tax_basis: { engine?: string; inclusive?: boolean; intra_state?: boolean; scheme?: string; rates_missing?: string[] }
+      due_at?: string | null
+      advance_amount?: number | null
+      preorder_terms?: { cancel_hours?: number | null }
       currency: string
-      items?: Array<{ title: string; quantity: number; line_total: number }>
+      version: number
+      items?: Array<{ id: string; title: string; quantity: number; line_total: number; basis_words?: string | null }>
     }
   }>(`/v1/platform/businesses/${params.businessId}/orders/${params.orderId}`, token)
+  const stage = await apiTry<{ data: StageWhere }>(`/v1/b/${params.businessId}/stages/orders/${params.orderId}`, token)
   const bills = await apiTry<{ data: Array<{ id: string; number: string | null; kind_label: string; status: string; doc_kind: string }> }>(
     `/v1/platform/businesses/${params.businessId}/invoices?order_id=${params.orderId}&kind=invoices`, token)
   if (!res.ok) {
     return (
       <div>
-        <PageHeader title="Order" breadcrumb={<Link href={`${base}/orders`}>← Orders</Link>} />
-        <GateNotice error={res.error} businessId={params.businessId} moduleLabel="Orders" />
+        <PageHeader title={t('Order')} breadcrumb={<Link href={`${base}/orders`}>← {t('Orders')}</Link>} />
+        <GateNotice error={res.error} businessId={params.businessId} moduleLabel={t('Orders')} />
       </div>
     )
   }
@@ -53,6 +80,11 @@ export default async function OrderDetailPage({
     ready: ['completed'],
   }
   const next = nextByStatus[order.status] || []
+  const billed = bills.ok && bills.data.data.some((x) => x.status === 'issued')
+  const changeable = ['pending', 'accepted', 'preparing'].includes(order.status) && !billed
+  const catalogue = changeable
+    ? await apiTry<{ data: (CatalogueItem & { status: string })[] }>(`/v1/platform/businesses/${params.businessId}/products?status=active`, token)
+    : null
   const cancellable = ['pending', 'accepted', 'preparing', 'ready'].includes(order.status)
 
   const actions = (
@@ -65,12 +97,8 @@ export default async function OrderDetailPage({
           {status === 'rejected' ? (
             <input type="hidden" name="reason" value="Rejected by Business" />
           ) : null}
-          <button
-            type="submit"
-            className={status === 'rejected' ? 'btn-danger' : undefined}
-            style={{ textTransform: 'capitalize' }}
-          >
-            {status}
+          <button type="submit" className={status === 'rejected' ? 'btn-danger' : undefined}>
+            {ACTION_WORDS[status] || status}
           </button>
         </form>
       ))}
@@ -80,7 +108,7 @@ export default async function OrderDetailPage({
           <input type="hidden" name="orderId" value={params.orderId} />
           <input type="hidden" name="reason" value="Cancelled from Workspace" />
           <button type="submit" className="btn-ghost">
-            Cancel order
+            {t('Cancel order')}
           </button>
         </form>
       ) : null}
@@ -89,16 +117,23 @@ export default async function OrderDetailPage({
 
   return (
     <DetailShell
-      breadcrumb={<Link href={`${base}/orders`}>← Orders</Link>}
+      breadcrumb={<Link href={`${base}/orders`}>← {t('Orders')}</Link>}
       title={order.order_number}
-      status={<StatusPill value={order.status} />}
+      status={<StatusPill value={order.status} label={statusWords(t)[order.status]} />}
       meta={[
-        ['Payment', `${order.payment_method} · ${order.payment_status}`],
-        ['Total', `${order.currency} ${order.total_amount}`],
+        [t('Payment'), paymentLabel(order, t)],
+        [t('Total'), money(Number(order.total_amount) || 0, order.currency)],
+        ...(order.due_at ? [[t('Wanted for'), <LocalTime key="due" value={order.due_at} />] as [string, React.ReactNode]] : []),
+        ...(order.advance_amount ? [[t('Advance asked'), money(Number(order.advance_amount), order.currency)] as [string, React.ReactNode]] : []),
       ]}
       actions={next.length || cancellable ? actions : undefined}
     >
-      <Section title="Items">
+      {stage.ok && stage.data.data.has_steps ? (
+        <Section title={t('Steps')}>
+          <StageTrack businessId={params.businessId} entity="orders" recordId={params.orderId} where={stage.data.data} />
+        </Section>
+      ) : null}
+      <Section title={t('Items')}>
         <div
           style={{
             border: '1px solid var(--color-border)',
@@ -111,19 +146,20 @@ export default async function OrderDetailPage({
             <table>
               <thead>
                 <tr>
-                  <th>Item</th>
-                  <th data-num>Qty</th>
-                  <th data-num>Line total</th>
+                  <th>{t('Item')}</th>
+                  <th data-num>{t('Qty')}</th>
+                  <th data-num>{t('Line total')}</th>
                 </tr>
               </thead>
               <tbody>
                 {(order.items || []).map((item, idx) => (
                   <tr key={idx}>
-                    <td>{item.title}</td>
-                    <td data-num>{item.quantity}</td>
-                    <td data-num>
-                      {order.currency} {item.line_total}
+                    <td>
+                      {item.title}
+                      {item.basis_words ? <small className="bos-line-basis">{item.basis_words}</small> : null}
                     </td>
+                    <td data-num>{item.quantity}</td>
+                    <td data-num>{money(Number(item.line_total) || 0, order.currency)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -131,28 +167,34 @@ export default async function OrderDetailPage({
           </div>
           {(order.items || []).length === 0 ? (
             <p style={{ padding: '1rem', color: 'var(--color-muted)', margin: 0 }}>
-              No line items on this order.
+              {t('No line items on this order.')}
             </p>
           ) : null}
         </div>
       </Section>
 
+      {changeable ? (
+        <ChangeOrder businessId={params.businessId} orderId={params.orderId} version={order.version}
+          lines={(order.items || []).filter((i) => i.title !== 'Delivery fee').map((i) => ({ id: i.id, title: i.title, quantity: i.quantity }))}
+          items={catalogue && catalogue.ok ? catalogue.data.data.filter((o) => o.status === 'active' && o.title !== 'Delivery fee') : []} />
+      ) : null}
+
       {order.tax_basis?.engine ? (
         <dl className="bos-inv-ordertax">
-          <dt>Before tax</dt><dd>{order.currency} {order.subtotal}</dd>
-          {order.discount_amount ? (<><dt>Discount</dt><dd>− {order.currency} {order.discount_amount}</dd></>) : null}
-          <dt>{order.tax_basis.scheme !== 'regular' ? 'Tax' : order.tax_basis.intra_state ? 'CGST + SGST' : 'IGST'}</dt>
-          <dd>{order.currency} {order.tax_amount}{order.tax_basis.inclusive ? ' (included in prices)' : ''}</dd>
-          {order.round_off ? (<><dt>Round-off</dt><dd>{order.currency} {order.round_off}</dd></>) : null}
-          <dt>Total</dt><dd>{order.currency} {order.total_amount}</dd>
+          <dt>{t('Before tax')}</dt><dd>{money(Number(order.subtotal) || 0, order.currency)}</dd>
+          {order.discount_amount ? (<><dt>{t('Discount')}</dt><dd>− {money(Number(order.discount_amount) || 0, order.currency)}</dd></>) : null}
+          <dt>{order.tax_basis.scheme !== 'regular' ? t('Tax') : order.tax_basis.intra_state ? 'CGST + SGST' : 'IGST'}</dt>
+          <dd>{money(Number(order.tax_amount) || 0, order.currency)}{order.tax_basis.inclusive ? ` ${t('(included in prices)')}` : ''}</dd>
+          {order.round_off ? (<><dt>{t('Round-off')}</dt><dd>{money(Number(order.round_off) || 0, order.currency)}</dd></>) : null}
+          <dt>{t('Total')}</dt><dd>{money(Number(order.total_amount) || 0, order.currency)}</dd>
         </dl>
       ) : null}
       {order.tax_basis?.rates_missing?.length ? (
-        <p className="bos-inv-warn">No GST rate yet for: {order.tax_basis.rates_missing.join(', ')}. Add it in Tax rates before billing.</p>
+        <p className="bos-inv-warn">{t('No GST rate yet for: {items}. Add it in Tax rates before billing.', { items: order.tax_basis.rates_missing.join(', ') })}</p>
       ) : null}
 
       {bills.ok ? (
-        <Section title="Bill">
+        <Section title={t('Bill')}>
           <OrderBill
             businessId={params.businessId}
             orderId={params.orderId}

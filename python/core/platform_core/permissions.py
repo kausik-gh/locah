@@ -130,6 +130,9 @@ CUSTOMERS_READ = "customers.read"
 CUSTOMERS_UPDATE = "customers.update"
 CUSTOMERS_MANAGE_NOTES = "customers.manage_notes"
 CUSTOMERS_EXPORT = "customers.export"
+# DPDP erasure (CR-08): removes a customer's personal details for good. Owner by
+# default (no template grants it); grantable to a trusted manager.
+CUSTOMERS_ERASE = "customers.erase"
 
 LEADS_READ = "leads.read"
 LEADS_CREATE = "leads.create"

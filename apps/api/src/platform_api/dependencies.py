@@ -71,6 +71,7 @@ async def resolve_business_actor(
     optional-module Entitlement/activation path.
     """
     from platform_core.authorization.resolver import AuthorizationService
+    from platform_core.authorization.assignment_scope import assigned_identity
     from platform_core.authorization.location_scope import scoped_locations
     from platform_core.context_resolver import bind_session_context
 
@@ -111,7 +112,8 @@ async def resolve_business_actor(
     # bind `app.current_business_id` from the verified path value so the
     # handler's tenant-scoped queries resolve. Binding earlier, from the
     # unverified path param, would let a non-member read the row.
-    await bind_session_context(session, ctx.identity_id, business_id, scoped_locations(membership))
+    await bind_session_context(session, ctx.identity_id, business_id, scoped_locations(membership),
+                               assigned_identity(membership))
 
     # Gate [3]: now that membership is confirmed and the tenant scope is
     # bound, `businesses_api_select`'s active-membership arm makes this row
@@ -170,6 +172,7 @@ async def resolve_business_member(
     (NotificationService.resolve_recipients), so this does not widen access to
     Business data. Anything reading another identity's data keeps gate [8].
     """
+    from platform_core.authorization.assignment_scope import assigned_identity
     from platform_core.authorization.location_scope import scoped_locations
     from platform_core.context_resolver import bind_session_context
 
@@ -189,7 +192,8 @@ async def resolve_business_member(
     if membership is None:
         raise MembershipRequired()
     # RLS: bind the verified business scope from the path (see resolve_business_actor).
-    await bind_session_context(session, ctx.identity_id, business_id, scoped_locations(membership))
+    await bind_session_context(session, ctx.identity_id, business_id, scoped_locations(membership),
+                               assigned_identity(membership))
     business = await BusinessService.get_by_id(session, business_id)
     if not business:
         raise ResourceNotFound("Business")

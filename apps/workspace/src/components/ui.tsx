@@ -40,10 +40,11 @@ const TONE_VARS: Record<Tone, CSSProperties> = {
   info: { color: 'var(--status-info-fg)', background: 'var(--status-info-bg)', borderColor: 'var(--status-info-bd)' },
 }
 
-export function StatusPill({ value, tone }: { value: string; tone?: Tone }) {
+export function StatusPill({ value, tone, label: shown }: { value: string; tone?: Tone; label?: string }) {
   const key = String(value || '').toLowerCase().replace(/[\s-]+/g, '_')
   const resolved = tone ?? STATUS_TONE[key] ?? 'neutral'
-  const label = String(value || '—').replace(/_/g, ' ')
+  // `label`: the words to show (e.g. in the person's language); the tone still follows the stored value.
+  const label = shown ?? String(value || '—').replace(/_/g, ' ')
   return (
     <span
       style={{

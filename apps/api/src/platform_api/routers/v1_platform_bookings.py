@@ -372,7 +372,10 @@ async def get_bookings_policy(
 async def patch_bookings_policy(
     business_id: UUID,
     body: BookingsPolicyRequest,
-    actor: BusinessActorContext = Depends(require_business_actor(BOOKINGS_UPDATE, "bookings")),
+    # The business-wide deposit and cancellation rules are the manager's, not
+    # every person who moves a booking along (a provider holds bookings.update
+    # for their own appointments only — P2-01).
+    actor: BusinessActorContext = Depends(require_business_actor(BOOKINGS_MANAGE_AVAILABILITY, "bookings")),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     policy = await BookingService.update_policy(

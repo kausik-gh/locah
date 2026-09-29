@@ -2,20 +2,24 @@
 
 import { useState } from 'react'
 import { submitEnquiry, type EnquiryBody } from '@/lib/checkout-api'
+import type { Words } from '@/lib/site-words'
+import { useWords } from './SiteWords'
 
-const TITLES: Record<string, string> = {
-  enquiry: 'Send an enquiry',
-  site_visit: 'Book a site visit',
-  test_drive: 'Book a test drive',
-  callback: 'Ask for a call back',
-  quote_request: 'Get a quote',
-  membership: 'Ask to join',
-}
+const PURPOSES = ['enquiry', 'site_visit', 'test_drive', 'callback', 'quote_request', 'membership']
 
-const MESSAGE_HINT: Record<string, string> = {
-  quote_request: 'What do you need? Quantities, sizes, dates — whatever helps them price it',
-  membership: 'Anything they should know before you start',
-}
+const titles = (t: Words): Record<string, string> => ({
+  enquiry: t('Send an enquiry'),
+  site_visit: t('Book a site visit'),
+  test_drive: t('Book a test drive'),
+  callback: t('Ask for a call back'),
+  quote_request: t('Get a quote'),
+  membership: t('Ask to join'),
+})
+
+const messageHint = (t: Words): Record<string, string> => ({
+  quote_request: t('What do you need? Quantities, sizes, dates — whatever helps them price it'),
+  membership: t('Anything they should know before you start'),
+})
 
 /**
  * An enquiry to the business (Capability Universe §6.3, §19.2): it lands in
@@ -39,7 +43,8 @@ export function EnquiryForm({
   planTitle?: string
   purpose?: string
 }) {
-  const p = (purpose in TITLES ? purpose : 'enquiry') as NonNullable<EnquiryBody['purpose']>
+  const t = useWords()
+  const p = (PURPOSES.includes(purpose) ? purpose : 'enquiry') as NonNullable<EnquiryBody['purpose']>
   const wantsDate = p === 'site_visit' || p === 'test_drive'
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -49,8 +54,13 @@ export function EnquiryForm({
   if (state === 'sent') {
     return (
       <div className="ls-enquiry ls-enquiry--sent" role="status">
-        <h2 className="ls-title">Sent</h2>
-        <p>{businessName} has your {p === 'enquiry' ? 'enquiry' : 'request'} and will get back to you.{ref ? ` Reference ${ref}.` : ''}</p>
+        <h2 className="ls-title">{t('Sent')}</h2>
+        <p>
+          {p === 'enquiry'
+            ? t('{business} has your enquiry and will get back to you.', { business: businessName })
+            : t('{business} has your request and will get back to you.', { business: businessName })}
+          {ref ? ` ${t('Reference {ref}.', { ref })}` : ''}
+        </p>
       </div>
     )
   }
@@ -77,44 +87,44 @@ export function EnquiryForm({
           setRef(r.reference ?? null)
           setState('sent')
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'That did not send. Try again.')
+          setError(err instanceof Error ? err.message : t('That did not send. Try again.'))
           setState('idle')
         }
       }}
     >
-      <h2 className="ls-title">{TITLES[p]}</h2>
-      {offeringTitle ? <p className="ls-sub">About: {offeringTitle}</p> : null}
-      {planTitle ? <p className="ls-sub">Plan: {planTitle}</p> : null}
+      <h2 className="ls-title">{titles(t)[p]}</h2>
+      {offeringTitle ? <p className="ls-sub">{t('About: {item}', { item: offeringTitle })}</p> : null}
+      {planTitle ? <p className="ls-sub">{t('Plan: {plan}', { plan: planTitle })}</p> : null}
       <label>
-        <span>Your name</span>
+        <span>{t('Your name')}</span>
         <input name="name" required maxLength={80} autoComplete="name" />
       </label>
       <label>
-        <span>Phone</span>
+        <span>{t('Phone')}</span>
         <input name="phone" type="tel" inputMode="tel" maxLength={20} autoComplete="tel" />
       </label>
       <label>
-        <span>Email (optional if you gave a phone)</span>
+        <span>{t('Email (optional if you gave a phone)')}</span>
         <input name="email" type="email" maxLength={254} autoComplete="email" />
       </label>
       {wantsDate ? (
         <label>
-          <span>Preferred date</span>
+          <span>{t('Preferred date')}</span>
           <input name="preferred_date" type="date" min={today} />
         </label>
       ) : null}
       <label>
-        <span>{MESSAGE_HINT[p] ?? 'Message'}</span>
+        <span>{messageHint(t)[p] ?? t('Message')}</span>
         <textarea name="message" rows={4} maxLength={1000} required={p === 'quote_request'} />
       </label>
       <label className="ls-hp" aria-hidden="true">
         <span>Leave this empty</span>
         <input name="website" tabIndex={-1} autoComplete="off" />
       </label>
-      <p className="ls-meta">We share your details with {businessName} only, so they can reply.</p>
+      <p className="ls-meta">{t('We share your details with {business} only, so they can reply.', { business: businessName })}</p>
       {error ? <p className="ls-offer__error" role="alert">{error}</p> : null}
       <button type="submit" className="ls-btn" disabled={state === 'sending'}>
-        {state === 'sending' ? 'Sending…' : 'Send'}
+        {state === 'sending' ? t('Sending…') : t('Send')}
       </button>
     </form>
   )

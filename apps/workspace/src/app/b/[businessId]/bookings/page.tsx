@@ -20,7 +20,7 @@ export default async function BookingsPage({
   if (!token) redirect('/login')
   const base = `/b/${params.businessId}`
   const qs = searchParams?.status ? `?status=${encodeURIComponent(searchParams.status)}` : ''
-  const [listRes, policyRes] = await Promise.all([
+  const [listRes, policyRes, meRes] = await Promise.all([
     apiTry<{ data: Array<Record<string, unknown>> }>(
       `/v1/platform/businesses/${params.businessId}/bookings${qs}`,
       token
@@ -28,7 +28,11 @@ export default async function BookingsPage({
     apiTry<{
       data: { require_deposit: boolean; deposit_amount: number | null; cancel_window_hours: number }
     }>(`/v1/platform/businesses/${params.businessId}/bookings-policy`, token),
+    apiTry<{ data: { permissions: string[] } }>(`/v1/me/context`, token,
+      { 'X-Operating-Context': 'business', 'X-Business-Id': params.businessId }),
   ])
+  // Only people who set the business's booking rules see the policy form (a provider does not).
+  const canSetPolicy = meRes.ok && (meRes.data.data.permissions ?? []).includes('bookings.manage_availability')
   if (!listRes.ok) {
     return (
       <div>
@@ -53,7 +57,9 @@ export default async function BookingsPage({
 
   return (
     <div>
-      <PageHeader title="Bookings" subtitle="Confirm or cancel reservations, and set the deposit and cancellation policy." />
+      <PageHeader title="Bookings" subtitle={canSetPolicy
+        ? 'Confirm or cancel reservations, and set the deposit and cancellation policy.'
+        : 'Your appointments: confirm them, and mark them done.'} />
       <FilterTabs
         current={searchParams?.status}
         hrefFor={(v) => `${base}/bookings${v ? `?status=${v}` : ''}`}
@@ -106,23 +112,25 @@ export default async function BookingsPage({
         }
       />
 
-      <Section title="Booking policy">
-        <form action={savePolicy} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', color: 'var(--color-foreground)' }}>
-            <input type="checkbox" name="require_deposit" defaultChecked={policy.require_deposit} style={{ minHeight: 'auto' }} />
-            Require a deposit
-          </label>
-          <label style={{ display: 'grid', gap: '0.2rem' }}>
-            Deposit amount
-            <input name="deposit_amount" type="number" step="0.01" defaultValue={policy.deposit_amount ?? ''} />
-          </label>
-          <label style={{ display: 'grid', gap: '0.2rem' }}>
-            Cancellation window (hours)
-            <input name="cancel_window_hours" type="number" defaultValue={policy.cancel_window_hours} />
-          </label>
-          <button type="submit">Save policy</button>
-        </form>
-      </Section>
+      {canSetPolicy ? (
+        <Section title="Booking policy">
+          <form action={savePolicy} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', color: 'var(--color-foreground)' }}>
+              <input type="checkbox" name="require_deposit" defaultChecked={policy.require_deposit} style={{ minHeight: 'auto' }} />
+              Require a deposit
+            </label>
+            <label style={{ display: 'grid', gap: '0.2rem' }}>
+              Deposit amount
+              <input name="deposit_amount" type="number" step="0.01" defaultValue={policy.deposit_amount ?? ''} />
+            </label>
+            <label style={{ display: 'grid', gap: '0.2rem' }}>
+              Cancellation window (hours)
+              <input name="cancel_window_hours" type="number" defaultValue={policy.cancel_window_hours} />
+            </label>
+            <button type="submit">Save policy</button>
+          </form>
+        </Section>
+      ) : null}
     </div>
   )
 }

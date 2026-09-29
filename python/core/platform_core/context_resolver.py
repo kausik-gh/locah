@@ -19,7 +19,7 @@ from platform_core.exceptions import (
     ResourceNotFound,
     ValidationError,
 )
-from platform_core.authorization import location_scope
+from platform_core.authorization import assignment_scope, location_scope
 from platform_core.logging import bind_request_context
 from platform_core.models import PlatformIdentity
 from platform_core.services.business import BusinessService
@@ -82,6 +82,7 @@ async def bind_session_context(
     identity_id: uuid.UUID,
     business_id: uuid.UUID | None,
     locations: Sequence[uuid.UUID] | None = None,
+    assignee: uuid.UUID | None = None,
 ) -> None:
     """Bind the RLS session GUCs for the request.
 
@@ -100,9 +101,14 @@ async def bind_session_context(
     (Capability Universe §7.2): the ORM filter in authorization.location_scope
     always applies; the `app.current_location_scope` GUC backs it in RLS.
 
+    `assignee` limits the request to the records assigned to that identity (a
+    member whose scope is `assignment`, §7.3): authorization.assignment_scope
+    filters the ORM; the `app.current_assignee` GUC backs it in RLS.
+
     The GUCs are a no-op when RLS is not being enforced (API_DATABASE_URL unset).
     """
     location_scope.bind(session, locations if business_id else None)
+    assignment_scope.bind(session, assignee if business_id else None)
     if not _RLS_ENFORCING:
         return
     await session.execute(
@@ -116,6 +122,10 @@ async def bind_session_context(
     await session.execute(
         text("SELECT set_config('app.current_location_scope', :loc, false)"),
         {"loc": ",".join(str(x) for x in locations) if business_id and locations else ""},
+    )
+    await session.execute(
+        text("SELECT set_config('app.current_assignee', :who, false)"),
+        {"who": str(assignee) if business_id and assignee else ""},
     )
 
 
@@ -294,7 +304,8 @@ async def resolve_request_context(
         # GUC. `businesses_api_select`'s active-membership EXISTS arm does not
         # itself require this bind, but the reads below do.
         await bind_session_context(session, identity.id, business_id,
-                                   location_scope.scoped_locations(membership))
+                                   location_scope.scoped_locations(membership),
+                                   assignment_scope.assigned_identity(membership))
         bind_request_context(business_id=str(business_id))
 
         # Gate [3]: now that membership is confirmed and the tenant scope is

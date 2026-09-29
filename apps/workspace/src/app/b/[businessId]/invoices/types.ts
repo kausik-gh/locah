@@ -17,6 +17,8 @@ export type BillLine = {
   line_total: number
   returnable_quantity: number
   creditable_amount: number
+  /** OK-15: how a rate-priced line was worked out when sold. */
+  basis_words?: string | null
 }
 
 export type Party = {
@@ -72,6 +74,8 @@ export type Bill = {
   outstanding: number
   credited: number
   paid_via_order: boolean
+  /** Verified money taken on the order this bill came from (advance, cash at pickup). */
+  paid_on_order?: number
   notes: string | null
   cancel_reason: string | null
   register_id: string

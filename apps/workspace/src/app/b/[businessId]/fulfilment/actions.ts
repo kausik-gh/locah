@@ -63,3 +63,23 @@ export async function updateFulfilmentSettings(formData: FormData) {
   revalidatePath(`/b/${businessId}/fulfilment`)
   revalidatePath(`/b/${businessId}/fulfilment/zones`)
 }
+
+/** Paying on delivery / at pickup — one rule for the website and WhatsApp (Founder: Orders; Payments §5). */
+export async function updatePaymentRules(formData: FormData) {
+  const token = await getAccessToken()
+  if (!token) throw new Error('Unauthorized')
+  const businessId = String(formData.get('businessId'))
+  const cap = String(formData.get('first_order_cod_cap') || '').trim()
+  await fetch(`${apiUrl}/v1/b/${businessId}/fulfilment/settings`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      cod_allowed: formData.get('cod_allowed') === 'on',
+      first_order_cod_cap: cap ? Number(cap) : null,
+    }),
+  })
+  revalidatePath(`/b/${businessId}/fulfilment/zones`)
+}

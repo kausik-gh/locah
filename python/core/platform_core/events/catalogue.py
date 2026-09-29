@@ -115,6 +115,7 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "offering.archived",
             "offering.restored",
             "offering.variant.created",
+            "pricing.rate.updated",
         }
     ),
     "inventory": frozenset(
@@ -197,6 +198,9 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "website.published",
             "website.generation_failed",
             "website.auto_sections.changed",
+            "website.languages.changed",
+            "stage.changed",
+            "stage_set.changed",
         }
     ),
     "marketplace": frozenset(

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { makeVariants, saveOffering } from './offering-actions'
-import type { Axis, Kind, KindField, Offering, OptionGroup, Pack, Variant } from './types'
+import type { Axis, Kind, KindField, Offering, OptionGroup, Pack, Preorder, PriceFormula, RateLite, Variant } from './types'
 import { inr } from './types'
 
 type Attr = Record<string, string | boolean>
@@ -25,11 +25,14 @@ export function OfferingEditor({
   kind,
   offering,
   variants,
+  rates = [],
 }: {
   businessId: string
   kind: Kind
   offering: Offering | null
   variants: Variant[]
+  /** The owner's rate board, for items priced from a daily rate (OK-15). */
+  rates?: RateLite[]
 }) {
   const router = useRouter()
   const isNew = offering === null
@@ -37,7 +40,9 @@ export function OfferingEditor({
   const [description, setDescription] = useState(offering?.description ?? '')
   const [status, setStatus] = useState(offering?.status === 'active' ? 'active' : 'draft')
   const defaultPriceType = kind.flow === 'enquiry' ? 'starting_from' : 'fixed'
-  const [priceType, setPriceType] = useState(offering?.price_type ?? defaultPriceType)
+  const [priceType, setPriceType] = useState(offering?.price_formula ? 'rate' : offering?.price_type ?? defaultPriceType)
+  const [formula, setFormula] = useState<FormulaForm>(() => toFormula(offering?.price_formula ?? null, rates))
+  const canRate = kind.flow === 'cart' && !kind.packs
   const [price, setPrice] = useState(offering?.price_amount != null ? String(offering.price_amount) : '')
   const [taxCode, setTaxCode] = useState(offering?.hsn_sac ?? '')
   const [taxRate, setTaxRate] = useState(offering?.tax_rate != null ? String(offering.tax_rate) : '')
@@ -49,6 +54,7 @@ export function OfferingEditor({
   const [packs, setPacks] = useState<Pack[]>(offering?.sell_units ?? (kind.packs ? [{ label: '500 g', qty: 500 }, { label: '1 kg', qty: 1000 }] : []))
   const [groups, setGroups] = useState<OptionGroup[]>(offering?.option_groups ?? [])
   const [axes, setAxes] = useState<Axis[]>(offering?.variant_options ?? [])
+  const [ahead, setAhead] = useState<AheadForm>(() => toAhead(offering?.preorder ?? null))
   const [track, setTrack] = useState(offering?.track_inventory ?? kind.packs)
   const gramStock = kind.packs || offering?.stock_unit === 'g' || offering?.stock_unit === 'ml'
   const [reorder, setReorder] = useState(
@@ -76,9 +82,12 @@ export function OfferingEditor({
       hsn_sac: taxCode.trim() || null,
       tax_rate: taxRate === '' ? null : Number(taxRate),
     }
-    if (kind.flow !== 'give') {
+    if (priceType === 'rate') {
+      payload.price_formula = fromFormula(formula)
+    } else if (kind.flow !== 'give') {
       payload.price_type = kind.packs ? 'fixed' : priceType
       payload.price_amount = price === '' || priceType === 'free' || priceType === 'enquiry' ? null : Number(price)
+      if (offering?.price_formula) payload.price_formula = null
     }
     if (kind.tax_code === 'HSN') {
       payload.sku = sku.trim() || null
@@ -86,6 +95,7 @@ export function OfferingEditor({
     }
     if (kind.packs) payload.sell_units = packs
     if (kind.options) payload.option_groups = groups
+    if (kind.flow === 'cart') payload.preorder = fromAhead(ahead)
     if (kind.variants) payload.variant_options = axes.filter((a) => a.name.trim() && a.values.length)
     if (kind.stockable) {
       payload.track_inventory = track
@@ -100,6 +110,7 @@ export function OfferingEditor({
     setError(null)
     setSaved(null)
     if (!title.trim()) return setError('Give it a name.')
+    if (priceType === 'rate' && !(Number(formula.quantity) > 0)) return setError('Enter how much of the rate one piece uses, for example its weight.')
     start(async () => {
       const r = await saveOffering(businessId, offering?.id ?? null, body())
       if (!r.ok) return setError(r.message)
@@ -159,6 +170,7 @@ export function OfferingEditor({
               <legend className="sr-only">How it is priced</legend>
               {[
                 ['fixed', 'Fixed price'],
+                ...(canRate && (rates.length || priceType === 'rate') ? [['rate', 'From a rate']] : []),
                 ['starting_from', 'Starts from'],
                 ['free', 'Free'],
                 ['enquiry', 'Ask for price'],
@@ -170,8 +182,16 @@ export function OfferingEditor({
               ))}
             </fieldset>
           ) : null}
+          {priceType === 'rate' ? (
+            <FormulaEditor form={formula} setForm={setFormula} rates={rates} current={offering?.price_formula ?? null} />
+          ) : canRate && kind.tax_code === 'HSN' && !rates.length ? (
+            <p className="bos-hint">
+              Priced by weight from a rate you enter each day, like gold or silver?{' '}
+              <a href={`/b/${businessId}/offerings/rates`}>Add your rates</a> first.
+            </p>
+          ) : null}
           <div className="bos-form-grid">
-            {priceType !== 'free' && priceType !== 'enquiry' ? (
+            {priceType !== 'free' && priceType !== 'enquiry' && priceType !== 'rate' ? (
               <label>
                 <span className="bos-label">{kind.packs ? `Price per ${per} (₹)` : 'Price (₹)'}</span>
                 <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
@@ -194,6 +214,7 @@ export function OfferingEditor({
         <PacksEditor packs={packs} setPacks={setPacks} unit={per === 'litre' ? 'ml' : 'g'} price={price === '' ? null : Number(price)} />
       ) : null}
       {kind.options ? <GroupsEditor groups={groups} setGroups={setGroups} what={kind.key === 'menu_item' ? 'choices and add-ons' : 'choices such as the cut'} /> : null}
+      {kind.flow === 'cart' ? <AheadEditor form={ahead} setForm={setAhead} /> : null}
       {kind.variants ? (
         <section className="bos-card" aria-labelledby="var-h">
           <h2 id="var-h">Sizes, colours and other options</h2>
@@ -316,7 +337,26 @@ function GroupsEditor({ groups, setGroups, what }: { groups: OptionGroup[]; setG
     <section className="bos-card" aria-labelledby="groups-h">
       <h2 id="groups-h">Choices</h2>
       <p className="bos-hint">Add {what}. A choice can add to the price.</p>
-      {groups.map((g, i) => (
+      {groups.map((g, i) => g.text ? (
+        <fieldset key={i} className="bos-group">
+          <legend className="sr-only">Text box {i + 1}</legend>
+          <div className="bos-rowedit">
+            <input aria-label="What the customer writes" placeholder="Message on the cake" value={g.name} onChange={(e) => update(i, { name: e.target.value })} />
+            <label className="bos-toggle">
+              <input type="checkbox" checked={g.required} onChange={(e) => update(i, { required: e.target.checked })} />
+              <span className="bos-toggle__track" aria-hidden />
+              <span>Must fill in</span>
+            </label>
+            <label className="bos-rowedit__unit">
+              <span>Up to</span>
+              <input aria-label="Most letters" inputMode="numeric" value={String(g.max_length ?? 40)}
+                onChange={(e) => update(i, { max_length: Math.max(1, Math.min(200, Number(e.target.value.replace(/\D/g, '')) || 1)) })} />
+              <span>letters</span>
+            </label>
+            <button type="button" className="btn-quiet" onClick={() => setGroups(groups.filter((_, j) => j !== i))}>Remove</button>
+          </div>
+        </fieldset>
+      ) : (
         <fieldset key={i} className="bos-group">
           <legend className="sr-only">Choice group {i + 1}</legend>
           <div className="bos-rowedit">
@@ -348,9 +388,14 @@ function GroupsEditor({ groups, setGroups, what }: { groups: OptionGroup[]; setG
           <button type="button" className="btn-quiet" onClick={() => update(i, { choices: [...g.choices, { label: '', price_delta: 0 }] })}>+ Add a choice</button>
         </fieldset>
       ))}
-      <button type="button" className="btn-ghost" onClick={() => setGroups([...groups, { name: '', required: false, max: 1, choices: [{ label: '', price_delta: 0 }] }])}>
-        Add a group of choices
-      </button>
+      <div className="bos-choices">
+        <button type="button" className="btn-ghost" onClick={() => setGroups([...groups, { name: '', required: false, max: 1, choices: [{ label: '', price_delta: 0 }] }])}>
+          Add a group of choices
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => setGroups([...groups, { name: '', required: false, max: 1, choices: [], text: true, max_length: 40 }])}>
+          Add a box the customer writes in
+        </button>
+      </div>
     </section>
   )
 }
@@ -376,6 +421,233 @@ function VariantsPanel({ businessId, offeringId, variants, combos }: { businessI
         </button>
       ) : null}
       {msg ? <p className="bos-status" role="status">{msg}</p> : null}
+    </div>
+  )
+}
+
+type AheadForm = {
+  mode: '' | 'required' | 'optional'
+  lead: string
+  leadUnit: 'hours' | 'days'
+  cutoff: string
+  times: string
+  maxDays: string
+  limit: string
+  advanceType: '' | 'percent' | 'fixed'
+  advance: string
+  cancel: string
+  orderUntil: string
+  readyFrom: string
+  readyUntil: string
+}
+
+function toAhead(p: Preorder | null): AheadForm {
+  const days = p && p.lead_hours >= 24 && p.lead_hours % 24 === 0
+  return {
+    mode: p?.mode ?? '',
+    lead: p ? String(days ? p.lead_hours / 24 : p.lead_hours) : '1',
+    leadUnit: !p || days ? 'days' : 'hours',
+    cutoff: p?.cutoff ?? '',
+    times: (p?.ready_times ?? ['17:00']).join(', '),
+    maxDays: String(p?.max_days ?? 30),
+    limit: p?.daily_limit ? String(p.daily_limit) : '',
+    advanceType: p?.advance?.type ?? '',
+    advance: p?.advance ? String(Number(p.advance.value)) : '',
+    cancel: p?.cancel_hours != null ? String(p.cancel_hours) : '',
+    orderUntil: p?.window?.order_until ?? '',
+    readyFrom: p?.window?.ready_from ?? '',
+    readyUntil: p?.window?.ready_until ?? '',
+  }
+}
+
+function fromAhead(f: AheadForm): Record<string, unknown> | null {
+  if (!f.mode) return null
+  const lead = Number(f.lead || 0)
+  return {
+    mode: f.mode,
+    lead_hours: Math.round(f.leadUnit === 'days' ? lead * 24 : lead),
+    cutoff: f.cutoff || null,
+    ready_times: f.times.split(',').map((t) => t.trim()).filter(Boolean),
+    max_days: Number(f.maxDays || 30),
+    daily_limit: f.limit ? Number(f.limit) : null,
+    advance: f.advanceType && f.advance ? { type: f.advanceType, value: Number(f.advance) } : null,
+    cancel_hours: f.cancel === '' ? null : Number(f.cancel),
+    window: { order_until: f.orderUntil || null, ready_from: f.readyFrom || null, ready_until: f.readyUntil || null },
+  }
+}
+
+/** Ordering ahead (MD §21.1 bakeries and home kitchens; Founder: Orders — pre-orders). */
+function AheadEditor({ form, setForm }: { form: AheadForm; setForm: (f: AheadForm) => void }) {
+  const set = (k: keyof AheadForm, v: string) => setForm({ ...form, [k]: v })
+  return (
+    <section className="bos-card" aria-labelledby="ahead-h">
+      <h2 id="ahead-h">Order ahead</h2>
+      <p className="bos-hint">For cakes, festival boxes and anything made for a day. Customers pick the day on your website and WhatsApp; LOCAH checks the notice and your limits.</p>
+      <fieldset className="bos-choices" style={{ border: 0, padding: 0, margin: '0 0 .8rem' }}>
+        <legend className="sr-only">Does it need a day?</legend>
+        {([['', 'Ready now — no day needed'], ['required', 'Made to order — needs a day'], ['optional', 'Customers may choose a day']] as const).map(([k, label]) => (
+          <label key={k} className="bos-choice">
+            <input type="radio" name="ahead_mode" checked={form.mode === k} onChange={() => set('mode', k)} />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      {form.mode ? (
+        <div className="bos-form-grid">
+          <label>
+            <span className="bos-label">Notice needed</span>
+            <span className="bos-rowedit__unit">
+              <input aria-label="Notice needed" inputMode="numeric" value={form.lead} onChange={(e) => set('lead', e.target.value.replace(/[^\d]/g, ''))} />
+              <select aria-label="Notice unit" value={form.leadUnit} onChange={(e) => set('leadUnit', e.target.value)}>
+                <option value="hours">hours</option>
+                <option value="days">days</option>
+              </select>
+            </span>
+          </label>
+          <label>
+            <span className="bos-label">Order by (for the next day)</span>
+            <input type="time" aria-label="Order by" value={form.cutoff} onChange={(e) => set('cutoff', e.target.value)} />
+          </label>
+          <label>
+            <span className="bos-label">Ready at (times customers can pick)</span>
+            <input aria-label="Ready at" value={form.times} onChange={(e) => set('times', e.target.value)} placeholder="11:00, 17:00" />
+          </label>
+          <label>
+            <span className="bos-label">How many you can make a day</span>
+            <input aria-label="How many a day" inputMode="numeric" value={form.limit} onChange={(e) => set('limit', e.target.value.replace(/[^\d]/g, ''))} placeholder="No limit" />
+          </label>
+          <label>
+            <span className="bos-label">Advance</span>
+            <span className="bos-rowedit__unit">
+              <select aria-label="Advance type" value={form.advanceType} onChange={(e) => set('advanceType', e.target.value)}>
+                <option value="">No advance</option>
+                <option value="percent">% of the price</option>
+                <option value="fixed">₹ per piece</option>
+              </select>
+              {form.advanceType ? (
+                <input aria-label="Advance amount" inputMode="decimal" value={form.advance} onChange={(e) => set('advance', e.target.value.replace(/[^\d.]/g, ''))} />
+              ) : null}
+            </span>
+          </label>
+          <label>
+            <span className="bos-label">Customers can cancel until (hours before)</span>
+            <input aria-label="Cancel until" inputMode="numeric" value={form.cancel} onChange={(e) => set('cancel', e.target.value.replace(/[^\d]/g, ''))} placeholder="Ask you" />
+          </label>
+          <label>
+            <span className="bos-label">Take orders up to (days ahead)</span>
+            <input aria-label="Days ahead" inputMode="numeric" value={form.maxDays} onChange={(e) => set('maxDays', e.target.value.replace(/[^\d]/g, ''))} />
+          </label>
+          <details className="bos-offering__window">
+            <summary>Festival or season window</summary>
+            <div className="bos-form-grid">
+              <label><span className="bos-label">Orders close on</span><input type="date" aria-label="Orders close on" value={form.orderUntil} onChange={(e) => set('orderUntil', e.target.value)} /></label>
+              <label><span className="bos-label">Ready from</span><input type="date" aria-label="Ready from" value={form.readyFrom} onChange={(e) => set('readyFrom', e.target.value)} /></label>
+              <label><span className="bos-label">Ready until</span><input type="date" aria-label="Ready until" value={form.readyUntil} onChange={(e) => set('readyUntil', e.target.value)} /></label>
+            </div>
+          </details>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+type FormulaForm = {
+  rate_key: string
+  quantity: string
+  making: 'none' | 'percent' | 'per_unit' | 'flat'
+  making_value: string
+  extra: string
+  extra_label: string
+}
+
+function toFormula(f: PriceFormula | null, rates: RateLite[]): FormulaForm {
+  return {
+    rate_key: f?.rate_key ?? rates[0]?.key ?? '',
+    quantity: f ? String(Number(f.quantity)) : '',
+    making: f?.making?.type ?? 'none',
+    making_value: f?.making ? String(Number(f.making.value)) : '',
+    extra: f && Number(f.extra) ? String(Number(f.extra)) : '',
+    extra_label: f?.extra_label ?? '',
+  }
+}
+
+function fromFormula(f: FormulaForm): Record<string, unknown> {
+  return {
+    rate_key: f.rate_key,
+    quantity: f.quantity,
+    making: f.making === 'none' ? null : { type: f.making, value: f.making_value || '0' },
+    extra: f.extra || '0',
+    extra_label: f.extra_label.trim() || null,
+  }
+}
+
+/** A preview only: the server works out the price from the rate board and keeps the working. */
+function preview(f: FormulaForm, rate: RateLite | undefined): number | null {
+  const q = Number(f.quantity)
+  if (!rate || rate.value === null || !(q > 0)) return null
+  const base = rate.value * q
+  const m = Number(f.making_value) || 0
+  const making = f.making === 'percent' ? (base * m) / 100 : f.making === 'per_unit' ? m * q : f.making === 'flat' ? m : 0
+  return Math.round(base + making + (Number(f.extra) || 0))
+}
+
+function FormulaEditor({ form, setForm, rates, current }: {
+  form: FormulaForm
+  setForm: (f: FormulaForm) => void
+  rates: RateLite[]
+  current: PriceFormula | null
+}) {
+  const rate = rates.find((r) => r.key === form.rate_key)
+  const unit = rate?.unit_label ?? 'g'
+  const set = (k: keyof FormulaForm, v: string) => setForm({ ...form, [k]: v })
+  const est = preview(form, rate)
+  return (
+    <div className="bos-formula">
+      <div className="bos-form-grid">
+        <label>
+          <span className="bos-label">Rate</span>
+          <select name="formula-rate" value={form.rate_key} onChange={(e) => set('rate_key', e.target.value)}>
+            {rates.map((r) => (
+              <option key={r.key} value={r.key}>{r.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="bos-label">{unit === 'g' ? 'Weight (g)' : `Quantity (${unit})`}</span>
+          <input name="formula-quantity" inputMode="decimal" value={form.quantity} onChange={(e) => set('quantity', e.target.value)} placeholder="10.000" />
+        </label>
+        <label>
+          <span className="bos-label">Making charge</span>
+          <select name="formula-making" value={form.making} onChange={(e) => set('making', e.target.value)}>
+            <option value="none">None</option>
+            <option value="percent">% of the metal value</option>
+            <option value="per_unit">₹ per {unit}</option>
+            <option value="flat">₹ for the piece</option>
+          </select>
+        </label>
+        {form.making !== 'none' ? (
+          <label>
+            <span className="bos-label">{form.making === 'percent' ? 'Making (%)' : 'Making (₹)'}</span>
+            <input name="formula-making-value" inputMode="decimal" value={form.making_value} onChange={(e) => set('making_value', e.target.value)} />
+          </label>
+        ) : null}
+        <label>
+          <span className="bos-label">Other charges (₹) — optional</span>
+          <input name="formula-extra" inputMode="decimal" value={form.extra} onChange={(e) => set('extra', e.target.value)} />
+        </label>
+        <label>
+          <span className="bos-label">Called — optional</span>
+          <input name="formula-extra-label" value={form.extra_label} onChange={(e) => set('extra_label', e.target.value)} maxLength={40} placeholder="Stones" />
+        </label>
+      </div>
+      <p className="bos-hint bos-formula__words" role="status" aria-live="polite">
+        {rate?.value === null || !rate
+          ? 'This rate has no value yet — the item cannot be sold until you enter today’s rate.'
+          : est !== null
+            ? `At today’s rate: ${inr(est)}. GST is added on the bill from the item’s HSN and rate.`
+            : 'Enter the weight to see today’s price.'}
+        {current?.last_words ? ` Now: ${current.last_words}.` : ''}
+      </p>
     </div>
   )
 }

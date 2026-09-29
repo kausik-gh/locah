@@ -4,7 +4,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ui'
 import { OfferingEditor } from '../OfferingEditor'
-import type { Kind, Offering, Variant } from '../types'
+import type { Kind, Offering, RateLite, Variant } from '../types'
 import { LabelTools } from './LabelTools'
 
 export const dynamic = 'force-dynamic'
@@ -13,11 +13,12 @@ export default async function EditOfferingPage({ params }: { params: { businessI
   const token = await getAccessToken()
   if (!token) redirect('/login')
   const base = `/v1/platform/businesses/${params.businessId}/products/${params.offeringId}`
-  const [res, kindsRes, varRes, counter] = await Promise.all([
+  const [res, kindsRes, varRes, counter, ratesRes] = await Promise.all([
     apiTry<{ data: Offering }>(base, token),
     apiTry<{ data: Kind[] }>('/v1/public/offering-kinds', token),
     apiTry<{ data: Variant[] }>(`${base}/variants`, token),
     apiTry<{ data: unknown }>(`/v1/platform/businesses/${params.businessId}/pos/setup`, token),
+    apiTry<{ data: RateLite[] }>(`/v1/platform/businesses/${params.businessId}/pricing/rates`, token),
   ])
   const back = <Link href={`/b/${params.businessId}/offerings`}>Products & services</Link>
   if (!res.ok) {
@@ -39,6 +40,7 @@ export default async function EditOfferingPage({ params }: { params: { businessI
           kind={kind}
           offering={offering}
           variants={varRes.ok ? varRes.data.data : []}
+          rates={ratesRes.ok ? ratesRes.data.data : []}
         />
       ) : (
         <div className="bos-empty">This is an older kind of listing and can only be archived.</div>

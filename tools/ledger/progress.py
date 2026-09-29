@@ -508,3 +508,210 @@ done("P1-10C", {
     "OM-19": dict(status=C, code="a business with no online selling gets an information site whose main button is Call or WhatsApp, WhatsApp journeys and the counter (P1-04, P1-07/08); switching ordering on later adds the shop, basket and Order button without a rebuild",
                   test=_MA_TEST),
 })
+
+
+# ---------------------------------------------------------------- P1-10D1 collect what is due (Founder refinement — Payments)
+_PY_TEST = ("✓ test_payment_collect (15, platform_api RLS role) + browser p1_10d1_payments (83/83, Playwright Chromium), "
+            "desktop + 390 px, local worker, sandbox WhatsApp number, fixture provider webhooks")
+_PY_ONLINE = "online payment on a link needs the provider adapter (Cashfree, PY-10) — not offered, never a button that cannot work"
+done("P1-10D1", {
+    "PY-02": dict(status=A, code="a payment link for all or part of what is due on an order, booking, membership, bill or khata balance (7 days; the token is stored only as a hash): shared from the owner's phone or sent from the business's own WhatsApp number (payment_due template; sandbox-verified, a live number needs Meta activation MS-07); the customer pays by UPI straight to the business and says so, the business confirms it arrived; retry, withdraw, cancel and expiry on the same transaction. " + _PY_ONLINE + "; renewal reminders that carry a link come with the Memberships lifecycle (FR-MB-02, P2)",
+                  db="✓ payments_requests + RLS", svc="✓ /collect/requests, /whatsapp, public /pay/{token}", perm="✓ payments.collect; store keeper 403; other business 404",
+                  ws="✓ Money panel on order, booking, membership, bill, khata", cust="✓ /{slug}/pay/{token} in the business's colours", test=_PY_TEST),
+    "PY-04": dict(status=C, code="advances and deposits on orders, bookings and memberships by link or recorded at the desk; total, paid and balance always shown; booking deposits as before; a quote's deposit is collected on the order it converts into (project milestone payments are P5, OM-08)",
+                  ws="✓", test=_PY_TEST),
+    "PY-05": dict(status=C, code="split tender at the counter — cash, UPI, card on the business's terminal and khata in one bill that sees the combined settlement (₹400 cash + ₹600 UPI in the browser); several recorded payments settle one order, booking or membership",
+                  ws="✓ counter + Money panel", test=_PY_TEST + "; test_pos"),
+    "PY-06": dict(status=C, code="cash, UPI, card on the business's own terminal and bank transfer recorded with a reference against counter bills, orders, bookings and memberships — never more than is due; cash collected on delivery settles only the balance left after an advance",
+                  ws="✓", test=_PY_TEST),
+    "PY-07": dict(status=C, code="paying on delivery or at pickup on/off with a cap for a customer's first order: one rule for the website and WhatsApp, kept with pickup and delivery (Deliveries & pickup › Zones & charges, and the WhatsApp page edits the same rule); the checkout states the cap and refuses a first COD order above it; pay at pickup is not COD",
+                  db="✓ fulfilment_settings.cod_allowed / first_order_cod_cap (moved from messaging_settings)", ws="✓ Zones & charges", web="✓ checkout", test=_PY_TEST),
+    "PS-03": dict(status=A, code="cash with change, UPI QR for the exact amount (cashier confirms, or 'UPI to verify'), card with reference, khata with limit and manager's PIN, split tenders (browser-verified); change only from cash. Automatic UPI confirmation by a payment webhook needs the provider (Cashfree, activation required)",
+                  ws="✓", test="✓ test_pos + test_khata + browser p1_05, p1_06, p1_10d1"),
+    "FR-PY-01": dict(status=A, code="payment state is separate from the transaction's own state (unpaid, being confirmed, paid, failed, part paid, refunded, part refunded, cancelled, expired); a failed try never undoes money already taken; retry is a new attempt on the same transaction — never a new order; nothing new is offered while a try is being confirmed; a replayed success pays once and a late success on an older try is kept and flagged 'paid twice' (fixture webhooks). Checking a pending online payment with the provider before another try needs the provider adapter (Cashfree)",
+                     svc="✓", test=_PY_TEST),
+    "FR-PY-02": dict(status=P, code="full, advance, deposit, balance and pay-later collection chosen by the owner per transaction; total, paid and balance on every surface; the balance collected later by link, at the counter, in cash or by UPI. A business-set rule that asks for an advance at checkout (fixed or % — custom cakes, pre-orders) arrives with dated pre-orders (P1-10D2)",
+                     test=_PY_TEST),
+    "FR-PY-03": dict(status=A, code="the link is tied to the real order, booking, membership, bill or khata balance and can go on WhatsApp from the business's number or the owner's phone; UPI to the business is confirmed by the business, and a verified provider webhook would mark the same record paid exactly once (fixture). " + _PY_ONLINE,
+                     test=_PY_TEST),
+    "FR-PY-04": dict(status=C, code="refunds link to a prior payment (full or part) and keep the original and the net; a refund never reopens a balance to chase; a bill issued from an order shows what was paid on the order and takes money only through the order (one money book); owner Payments: paid today (verified money only, each rupee once), waiting for you to confirm, needs attention (failed, paid twice), still owed, refunds",
+                     ws="✓ Payments", test=_PY_TEST),
+    "CR-02": dict(status=P, code="the customer page timeline reads as sentences and now includes each verified payment ('Paid ₹800 (advance) by UPI · Order …') beside orders, bookings and memberships; counter bills, messages, reviews and jobs join as those modules write to it",
+                  ws="✓ Customer › Activity", test=_PY_TEST),
+    "FR-OR-10": dict(status=P, code="the counter does the whole workflow (P1-05/06, serials and batches P1-10A, split tender browser-verified in P1-10D1); a counter bill for a named customer reaches their My Activity and khata, but counter bills do not yet write the owner's customer timeline (CR-02)",
+                     test="✓ test_pos + browser p1_05_pos, p1_10a_counter_serials, p1_10d1_payments"),
+    "FR-OR-07": dict(status=P, code="pickup, delivery zones with charges, paying on delivery on/off with a first-order cap (now one rule for website and WhatsApp, P1-10D1), GST treatment and readiness-driven channels exist; minimum order, free-delivery threshold, preorder rules, cutoff, lead time, cancellation/return policy, packing charge, auto-accept and dine-in are absent, shipping needs an aggregator (FU-02), and settings are not yet filtered to what the business uses"),
+})
+
+
+# ---------------------------------------------------------------- P1-10D2a dated pre-orders (MD §6.1, §21.1; Founder: Orders)
+_PO_TEST = ("✓ test_preorders (10, platform_api RLS role) + browser p1_10d2_preorders (31/31, Playwright Chromium), "
+            "desktop + 390 px; website flows p1_03/p1_10b/p1_10d1 re-run on the new checkout")
+done("P1-10D2", {
+    "OR-04": dict(status=C, code="dated pre-orders on the one order: per-item rules (needs a day or may take one, notice, next-day cutoff, ready times, festival window, days ahead, daily limit, % or ₹ advance, cancel window) checked in one place for the website, WhatsApp and a phone order; the order keeps the day and a snapshot of the terms; the advance becomes a payment link on the same order; the owner works them by day wanted (overdue · prepare now · today · tomorrow · later) with a production list per day",
+                  db="✓ offerings.preorder, orders.due_at/preorder/advance_amount/preorder_terms", svc="✓ orders/preorder.py, orders/board.py, /checkout/price, /orders/board, /orders/production",
+                  perm="✓ orders.read; same RLS as orders", ws="✓ Item › Order ahead; Orders › By day wanted; Production list", cust="✓ checkout day picker, confirmation, account, tracking",
+                  web="✓", test=_PO_TEST),
+    "FR-OR-16": dict(status=C, code="bakery cakes, festival boxes, home-kitchen batches, meat/fresh orders for a day: required day and time, notice, cutoff, window, daily limit (two orders never both take the last one — advisory lock), advance with the customer's confirmation, cancel window enforced for customer self-cancel on WhatsApp; operational board distinguishes overdue, prepare now, today, tomorrow and later; production list adds up what to make with each written message; website, WhatsApp and phone orders use the same check",
+                     test=_PO_TEST),
+    "FR-PY-02": dict(status=C, code="full, advance, deposit, balance and pay-later: an item's own advance rule (% or ₹ per piece) is asked at checkout and on WhatsApp and becomes a link on the order; booking deposits as before; the owner can ask any part by link or record it; total, paid and balance on every surface",
+                     test=_PO_TEST + "; test_payment_collect"),
+    "OR-09": dict(status=C, code="the website checkout shows only the server's prices (POST /checkout/price: lines with choices, tax, delivery, pre-order days, advance) and places at the catalogue's price; WhatsApp re-prices at the confirm button (MS-24); a sent unit price is never used",
+                  svc="✓", web="✓", test="✓ test_checkout_flow + test_preorders + test_journeys + browser p1_10d2"),
+    "FR-OR-04": dict(status=P, code="a real checkout in the business's colours: basket priced by the server with choices and written messages, pickup or delivery with address and zone charge, the day and time for made-to-order items, paying (COD cap stated), GST and total from the server, the advance and the balance, confirmation with the advance link, tracking and My Activity; dine-in (P2), shipping (aggregator), charges other than delivery (packing) and online payment (Cashfree) are missing",
+                     web="✓ /{slug}/checkout", cust="✓ /track + /account + /activity", test=_PO_TEST),
+    "FR-OR-06": dict(status=P, code="price, option prices, tax, delivery charge, stock (problems shown before placing) and pre-order availability (notice, cutoff, window, daily limit) come from the server and are checked again at placement; there are no customer discount codes yet, and ordinary orders are not checked against opening hours",
+                     svc="✓ /checkout/price", test=_PO_TEST),
+    "FR-OR-07": dict(status=P, code="pickup, delivery zones with charges, paying on delivery with a first-order cap (one rule for website and WhatsApp), GST treatment, readiness-driven channels, and per-item pre-order rules (notice, cutoff, ready times, window, daily limit, advance, cancel window — shown only for items sold through a basket); minimum order, free-delivery threshold, packing charge, auto-accept, a business-wide return policy and dine-in are absent, shipping needs an aggregator (FU-02)"),
+    "FR-OR-17": dict(status=P, code="WhatsApp offers 'Make it N' or remove and asks again (MS-18); the website checkout shows 'only N left — change the quantity or remove it' before placing and a full pre-order day cannot be picked; alternatives and a reconfirmation flow when the business finds a line short after accepting are not built",
+                     test=_PO_TEST + "; test_journeys"),
+    "FR-OR-19": dict(status=P, code="cancel releases the reservation, cancels the delivery job and writes My Activity; customers cancel on WhatsApp while waiting, or a pre-order until its cancel window; money already taken shows as 'refund due' in Payments until refunded; there is no cancellation message to the customer and no rule by preparation stage for ordinary orders",
+                     test="✓ test_orders_kernel + test_fulfilment_kernel + test_preorders"),
+    "FR-OR-22": dict(status=C, code="one Orders list for every channel; channel is a filter (Website, WhatsApp, Counter, Phone, Entered by team, Marketplace) and provenance on each order — never a separate book",
+                     ws="✓ Orders › Any channel", svc="✓ ?channel=", test=_PO_TEST),
+    "FR-OR-23": dict(status=P, code="a business that sells made-to-order items or takes dated orders (bakery, home kitchen, festival boxes) opens Orders on the board by day wanted with its production list, chosen from its own data; others keep the plain list. The kirana picking, meat cut-prep/weight-exception, QSR/restaurant KDS and retail shipping/returns workflows are not built",
+                     ws="◐", test=_PO_TEST),
+    "FR-OR-27": dict(status=P, code="website checkout (p1_03, p1_04, p1_10d2), WhatsApp ordering (p1_08), POS sale (p1_05, p1_10d1 split), meat by weight (p1_03, p1_10a), bakery pre-order (p1_10d2) and reorder (p1_10b) exist as browser flows; human phone order, partial availability on the website, cancel and the combined owner view are not yet flows"),
+    "MS-16": dict(status=P, code="cancel an order while it waits to be accepted, a pre-order until its cancel window (P1-10D2), and a booking outside the owner's window; changes (reschedule, edit an order) go to a person with the reason shown",
+                  test="✓ test_journeys + test_preorders"),
+})
+
+
+# ---------------------------------------------------------------- P1-10D2b formula pricing (MD §21.2; Business OS Guide p.22)
+_FP_TEST = ("✓ test_formula_pricing (7, platform_api RLS role: isolation of both tables, append-only rate history) "
+            "+ browser p1_10d2_formula (28/28, Playwright Chromium), desktop + 390 px")
+done("P1-10D2", {
+    "OK-15": dict(status=C, code="any basket/counter item can be priced from a rate the owner enters (22K gold per g, silver, a metal or commodity by weight): rate × quantity + making (% of the metal value, ₹ per unit or ₹ per piece) + other charges, rounded to the rupee or paisa; GST stays the item's HSN/rate on the bill. Entering today's rate keeps the history (append-only) and re-prices the items using it for the next sale; each order line keeps the working at confirmation and each bill line keeps it as price_basis, so a later rate never rewrites a sale; the website card, the order, the bill (screen and PDF) and the customer's bill link show the working; Home asks for rates not entered today",
+                  db="✓ pricing_rates, pricing_rate_values, offerings.price_formula, invoicing_document_lines.price_basis",
+                  svc="✓ pricing/formula.py; /pricing/rates, /pricing/rates/{id}/values", perm="✓ offerings.read / offerings.update; RLS on both tables",
+                  ws="✓ Products & services › Today's rates; Item › Price › From a rate; Home › rates to enter for today",
+                  cust="✓ card shows today's working; bill link shows it", web="✓", test=_FP_TEST),
+    "PB-203": dict(status=P, code="Core built — formula-priced items from a daily rate board, counter billing at today's rate, GST tax invoices that keep weight × rate + making, orders (custom orders can ask an advance, P1-10D2a), stock per piece; Rec leads and bookings built. Hallmark HUID per piece can be kept as the piece's serial number but is not yet named or checked as a HUID",
+                   test="✓ fixture + browser p1_10d2_formula"),
+})
+
+
+# ---------------------------------------------------------------- P1-10E1 basic insights (MD §26.3 P1-10; First Launch §12.1)
+done("P1-10E", {
+    "IS-01": dict(status=C, code="Insights › Your numbers: sales (issued bills less credit notes, counter share), orders (value, by channel, cancelled apart), bookings (held, came in, waiting, did not come, cancelled) and money received (the same count as Payments, split by bills/counter, orders·bookings·plans, khata) for today, the last 7 days and this month; each number opens its page; a tool that is off is named, never a zero; no permission and location scope are respected (a location-limited manager sees their locations and is not shown business-wide money); Home's Today band links to it. Trends and comparisons are the later Analytics module (First Launch §12.2)",
+                  svc="✓ insights/basic.py; GET /insights?period=", perm="✓ per-card permission + module; ORM location scope",
+                  ws="✓ Insights › Your numbers; Home › Today link",
+                  test="✓ test_basic_insights (5, platform_api RLS role) + browser p1_10e_insights (14/14, Playwright Chromium), desktop + 390 px"),
+})
+
+
+# ---------------------------------------------------------------- P1-10E2 tags and rule-built segments (MD §6.1, §18.2)
+_SEG_TEST = ("✓ test_customer_segments (5, platform_api RLS role: rules, counts, consent, tags, branch scope, "
+             "isolation) + browser p1_10e_segments (13/13, Playwright Chromium), desktop + 390 px")
+done("P1-10E", {
+    "CR-03": dict(status=C, code="tags on a customer are added (from the business's existing tags or new) and removed on the customer page; stored cleaned (spaces collapsed, lower case, no duplicates, at most 20); the customer list shows tags, a tag bar with counts, and filters by a tag",
+                  svc="✓ GET /customers/tags, /customers?tag=", ws="✓ Customer › Tags; Customers › tag bar", test=_SEG_TEST),
+    "CR-04": dict(status=C, code="rule-built segments: bought an item N+ times in D days (orders and counter bills, an order's bill never counted twice, cancelled orders excluded), spent ₹X+ in D days, no purchase or visit for D days, became a customer in D days, booked N+ times, membership ended A–B days ago and not renewed, owes on khata, has a tag — all must hold; a rule is offered only when its tool is on; members are worked out from the records every time (never a stale list); each segment shows its count, its rules in words and how many said yes to WhatsApp offers (consent store); the viewer's location scope applies to the orders, bills and bookings read. §18.2's 'within 5 km' and 'birthday this month' need a customer location and birthday the record does not keep; broadcasting to a segment is MK-01/P3",
+                  db="✓ customer_relationships_segments (RLS)", svc="✓ customers/segments.py; /customers/segments(/preview)",
+                  perm="✓ customers.read to view, customers.update to save", ws="✓ Customers › Segments (builder, list, members)",
+                  test=_SEG_TEST),
+})
+
+
+# ---------------------------------------------------------------- P1-10E3 per-customer export and erasure (MD §25.1 DPDP)
+_DPDP_TEST = ("✓ test_customer_privacy (3, platform_api RLS role: export, request, blockers, erasure, kept bill, "
+              "permissions, location scope, isolation) + browser p1_10e_privacy (17/17, Playwright Chromium), desktop + 390 px")
+done("P1-10E", {
+    "CR-08": dict(status=C, code="per-customer export (their record, consents, notes, activity, orders with lines and delivery address, bookings, bills, payments, khata with entries, memberships, quotes, enquiries, reviews, WhatsApp messages) as one file — by the owner on the customer page and by the customer from 'My account' on the business's site; erasure removes name, phone, email, tags, notes, enquiry text, WhatsApp chat, delivery addresses and their My Activity entries, withdraws consents, and keeps issued bills (buyer as billed, CGST Act s.36) and khata entries on an anonymous record; it waits while an order is in progress, a booking is upcoming, a membership runs or a khata balance stands, and needs the name typed; the customer's erasure request reaches the owner (Home + notification), who erases or declines with a reason the customer sees. Export and erasure need a whole-business viewer; erasure needs the new customers.erase (owner by default); the audit records who and when, never the erased details",
+                  db="✓ contacts.erased_at, customer_relationships_privacy_requests (RLS)",
+                  svc="✓ customers/privacy.py; /customers/{id}/export|erase|privacy, /customers/privacy-requests, /me/businesses/{slug}/my-data|erasure-request",
+                  perm="✓ customers.export, customers.erase (new), whole-business only", ws="✓ Customer › Their data; Home request",
+                  cust="✓ My account › Your details (download, ask to delete, status)", web="✓", test=_DPDP_TEST),
+    "CO-01": dict(status=P, code="consent store (PM-08), per-customer export and erasure (CR-08) and the retention defaults stated at erasure (bills 72 months, khata entries 8 years, sales records kept without name) are built; automatic purging on those periods is not, and guardian-first flows arrive with Academics (§20.4, P5). DPDP Rules commencement dates were not verified online in this build (no network lookups made)",
+                  test=_DPDP_TEST),
+})
+
+
+# ---------------------------------------------------------------- P1-10E4 solo businesses (MD §22)
+done("P1-10E", {
+    "OM-21": dict(status=P, code="a business whose organisation shape is solo (chosen, or its family's default) and that has one active member gets no team menus (People, Roles, Staff & rota), a Calendar under Home — bookings, orders wanted for a day, follow-ups, memberships ending and licences due in one list, each opening its record, within the viewer's permissions — and 'Invite someone' under Settings; a second person joining brings the team menus back. 'AI employees act as the staff' waits for the AI employee runtime (P3)",
+                  svc="✓ /me/context solo; GET /calendar (services/one_calendar.py)", ws="✓ solo navigation; Home › Calendar",
+                  test="✓ test_solo_calendar (2) + browser p1_10e_solo (10/10, Playwright Chromium), desktop + 390 px"),
+})
+
+
+# ---------------------------------------------------------------- P1-10E5 phone orders and order changes (Founder: Orders)
+_OC_TEST = ("✓ test_order_changes (5, platform_api RLS role) + browser p1_10e_phone (17/17, Playwright Chromium), "
+            "desktop + 390 px")
+done("P1-10E", {
+    "FR-OR-13": dict(status=C, code="Orders › Take a phone order: the caller's name and number (matched to their customer record by number), items with their pack, option, choices and written message, pickup or delivery with the address, the day a made-to-order item can be ready — priced by the server exactly as the website prices it (/orders/phone/price → price_cart) and placed through the website's own path (place_for_contact: stock reservation, delivery zone and charge, pay-on-delivery rule, pre-order day and advance link, fulfilment job, payment attempt) with channel 'phone' and the staff member as the actor; the advance link can be sent on WhatsApp or read out",
+                     svc="✓ orders/phone.py; /orders/phone, /orders/phone/price", perm="✓ orders.create",
+                     ws="✓ Orders › Take a phone order", test=_OC_TEST),
+    "FR-OR-18": dict(status=C, code="Change order on an open, unbilled order: quantities, lines removed, items added (with their choices); the server re-prices added lines from today's catalogue (agreed lines keep their price), reserves or releases stock for the difference (refusing more than is in stock), re-works tax and total with the billing engine, re-checks a delivered order's charge under today's zones and a dated order's day/limit/advance, and compares the money already taken with the new total (still to collect, or a refund due flagged in Payments; the cash expected on delivery follows the balance); a preview runs the same code in a rolled-back savepoint; saving needs the customer's agreement and records before/after in the order's history and the audit. A billed order is changed with a credit note instead. Changing the address or pickup/delivery is not part of the edit, and the customer confirms by phone/in person (recorded by staff) — no self-confirm link",
+                     svc="✓ orders/edit.py; /orders/{id}/change?preview=", perm="✓ orders.create",
+                     ws="✓ Order › Change order", test=_OC_TEST),
+    "FR-OR-27": dict(status=P, code="website checkout (p1_03, p1_04, p1_10d2), WhatsApp ordering (p1_08), POS sale (p1_05, p1_10d1 split), meat by weight (p1_03, p1_10a), bakery pre-order (p1_10d2), reorder (p1_10b), human phone order and an order changed after the call (p1_10e_phone) exist as browser flows; the AI phone order fixture (P3), restaurant table order and kitchen (P2), partial availability on the website, return/exchange and the combined owner view are not yet flows"),
+})
+
+
+# ---------------------------------------------------------------- P1-10E6 English, Tamil and Hindi (MD §2 r10, §12, §23 #22)
+_LANG_TEST = ("✓ test_customer_language (5), test_site_words (5), test_workspace_words (6) — platform_api RLS role and "
+              "source checks — + browser p1_10e_language (23/23) and p1_10e_workspace_language (15/15), Playwright "
+              "Chromium, desktop + 390 px")
+_LANG_SCOPE = ("WhatsApp: every journey phrase, the person hand-off and STOP answer in the customer's language — "
+               "detected from Tamil/Devanagari script, or chosen from the menu's Language row (then it sticks); "
+               "templates go in the customer's language when that version is approved; links sent carry ?lang=. "
+               "Website: the owner ticks the site's languages (first shown first); visitors switch above the header or "
+               "in the footer; the site's own words — buttons, basket, checkout, booking, headings LOCAH supplies, "
+               "tracking, bills, payment links, khata, reviews, booking management — follow; the owner's words stay as "
+               "written; Tamil and Devanagari faces behind every site font. Workspace: a per-person language saved on "
+               "the account (sidebar picker; a new browser adopts it) for the navigation, Home, Orders, an order, "
+               "phone orders, changes, the production list and the money panel; the rest of the Workspace, the "
+               "counter (POS), the inbox chrome and numbers-with-words the API composes (e.g. '1 order') are still "
+               "English. All Tamil and Hindi wording is LOCAH's first draft and needs a native speaker's review "
+               "(VB-22) before a pilot")
+done("P1-10E6", {
+    "PR-10": dict(status=P, code="INR, GST (invoicing), UPI (POS/collect), WhatsApp-first, DPDP consent records and per-customer export/erasure exist. " + _LANG_SCOPE,
+                  db="✓ contacts.language/language_source, websites.languages, consumer_profiles.preferences.workspace_language",
+                  svc="✓ messaging/words.py; PUT /website/languages; PUT /me/workspace-language",
+                  web="✓ tenant site EN/TA/HI", ws="✓ Website › Languages; sidebar language", test=_LANG_TEST),
+    "PKT-10": dict(status=P, code="basic insights from real data are complete (IS-01). Strings: " + _LANG_SCOPE, test=_LANG_TEST),
+    "GP-22": dict(status=P, code=_LANG_SCOPE, test=_LANG_TEST),
+})
+
+
+# ---------------------------------------------------------------- P1 gate review — stale notes brought up to date (no status raised)
+done("P1-gate", {
+    "FR-OR-01": dict(status=P, code="website checkout, Marketplace (card → the business's own site), WhatsApp journeys, the counter, reorder and a staff phone order in the Workspace (FR-OR-13, P1-10E5) all place the one Order; AI phone ordering (P3), QR/table ordering (P2) and connector orders (P4) are not built"),
+    "OM-09": dict(status=P, code="a portfolio_item kind (client, year, type of work) is sold as an enquiry and renders on the site with its details and 'Enquire' (P1-03); gallery sections and portfolio design families exist. A dedicated 'Our work' section chosen for portfolio-led businesses, and case-study pages, are not built"),
+})
+
+
+# ---------------------------------------------------------------- P2-01 assignment scope + stage engine (MD §7.2–§7.3, §24 #10–#11)
+_AS_TEST = ("✓ test_assignment_scope (5), test_actor_matrix::test_assignment_matrix (2 roles × 8 record types), "
+            "test_roles_and_scope — platform_api RLS role, incl. the RLS-only check with app.current_assignee — + "
+            "browser p2_01_stages_and_assignment (20/20, Playwright Chromium), desktop + 390 px")
+_ST_TEST = ("✓ test_stage_engine (7, platform_api RLS role) + browser p2_01_stages_and_assignment (20/20, Playwright "
+            "Chromium), desktop + 390 px")
+_AS_CODE = ("a member whose role's scope is `assignment` sees and changes only what is assigned to them: bookings where "
+            "they are the provider, enquiries assigned to them, project tasks assigned to them, quotes they wrote or for "
+            "the customer of their enquiry, and of the customer book only the customers on those bookings and "
+            "enquiries. Enforced server-side for every ORM read and write in the request (authorization/"
+            "assignment_scope.py: loader criteria + a flush guard that refuses creating or handing a record to someone "
+            "else), repeated by RESTRICTIVE RLS policies keyed on app.current_assignee; enquiries they add are theirs; "
+            "counts on Home and Insights follow the same rule")
+done("P2-01", {
+    "RL-17": dict(status=P, code=_AS_CODE + ". The arm exists for bookings, enquiries, project tasks and quotes; dispatch jobs, job cards and the Tasks module add theirs when they ship (P2 dispatch, P5 jobs)",
+                  db="✓ assignment_scope_allows_identity/member/quote() + 4 RESTRICTIVE policies", svc="✓ authorization/assignment_scope.py",
+                  perm="✓ scope 'assignment' enforced; custom assignment roles limited to ASSIGNMENT_PERMISSIONS", test=_AS_TEST),
+    "PM-11": dict(status=P, code=_AS_CODE + ". Actor-matrix rows cover provider and sales executive × bookings, customers, enquiries, quotes, orders, stock, payments, projects; delivery partner, technician and housekeeping rows join with their surfaces",
+                  db="✓", svc="✓", perm="✓", test=_AS_TEST),
+    "RL-18": dict(status=P, code="test_actor_matrix has one row per assignment-scoped role × record type for the two roles offered today (provider, sales executive; 8 record types each: own records only, or refused). Delivery partner, technician and housekeeping rows are added with dispatch, job cards and housekeeping, before their crew surfaces ship",
+                  test="✓ test_assignment_matrix (2 × 8)"),
+    "RL-04": dict(status=P, code="Provider is offered wherever Bookings runs: assignment scope; Home 'My day' (today's appointments, the next one marked); Bookings lists only their appointments, which they confirm and move along and add notes to; only the customers on them; the business's booking policy is neither shown nor changeable (PATCH /bookings-policy now needs bookings.manage_availability). Editing their own working hours and the crew app surface are not built",
+                  svc="✓ role_home my_day", perm="✓ bookings.read/update, customers.read — assignment", ws="✓ Home › My day; Bookings",
+                  test=_AS_TEST),
+    "RL-12": dict(status=P, code="Sales executive is offered wherever Enquiries or Quotes run: assignment scope; Home 'Follow-ups due today' (their open enquiries due by tonight, and new ones); enquiries assigned to them (new ones they add are theirs, they cannot hand one to someone else); quotes they wrote or for their enquiries' customers; winning an enquiry makes the customer theirs to quote. Site visits are not built",
+                  svc="✓ role_home follow_ups", perm="✓ leads.*, quotes.read/create/update, customers.read — assignment",
+                  ws="✓ Home › Follow-ups", test=_AS_TEST),
+    "PM-10": dict(status=P, code="a business adds its own steps inside the open statuses of orders, enquiries and projects (up to 20), renames any stage, marks one as needing a note (Settings › Stages); the module's own statuses cannot be removed and no step sits inside an ending. Moving a record to a step of another status runs the module's own service (a cancelled order releases stock, a won enquiry becomes a customer, a project's own transition rules), with the module's permission; each move is kept (platform_stage_events), audited and published (stage.changed). The order, enquiry and project pages show the steps and move along them; the order board card shows the step. Dispatch jobs and job cards join when they are built",
+                  db="✓ platform_stage_sets, platform_stage_events, stage on orders/leads/projects", svc="✓ stages/engine.py; /v1/b/{id}/stages/…",
+                  perm="✓ settings.update to edit; module permission per move", ws="✓ Settings › Stages; order/enquiry/project Steps; board card",
+                  test=_ST_TEST),
+    "FR-OR-23": dict(status=P, code="a business that sells made-to-order items or takes dated orders (bakery, home kitchen, festival boxes) opens Orders on the board by day wanted with its production list, chosen from its own data; others keep the plain list. Any business can now add its own order steps (a kirana's Picking/Packed, a meat shop's Cutting) with the stage engine (P2-01, PM-10). The prebuilt kirana, meat weight-exception, QSR/restaurant KDS and retail shipping/returns workflows are not built"),
+})

@@ -82,11 +82,38 @@ def validate_zone_payload(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def validate_settings_payload(raw: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "pickup_enabled": bool(raw.get("pickup_enabled", True)),
-        "delivery_enabled": bool(raw.get("delivery_enabled", False)),
+def validate_settings_payload(raw: dict[str, Any], *, current: Any = None) -> dict[str, Any]:
+    """A PATCH: what is not sent keeps its current value."""
+    out: dict[str, Any] = {
+        "pickup_enabled": bool(raw["pickup_enabled"]) if "pickup_enabled" in raw
+        else (current.pickup_enabled if current is not None else True),
+        "delivery_enabled": bool(raw["delivery_enabled"]) if "delivery_enabled" in raw
+        else (current.delivery_enabled if current is not None else False),
     }
+    out.update(validate_payment_rules(raw))
+    return out
+
+
+def validate_payment_rules(raw: dict[str, Any]) -> dict[str, Any]:
+    """Paying on delivery / at pickup: on or off, and an optional cap for a
+    customer's first order (empty = no cap)."""
+    out: dict[str, Any] = {}
+    if "cod_allowed" in raw:
+        out["cod_allowed"] = bool(raw["cod_allowed"])
+    if "first_order_cod_cap" in raw:
+        cap = raw["first_order_cod_cap"]
+        if cap is not None and cap != "":
+            try:
+                cap = Decimal(str(cap)).quantize(Decimal("0.01"))
+            except (InvalidOperation, ValueError):
+                raise ValidationError("Enter an amount in rupees", details={"field": "first_order_cod_cap"}) from None
+            if cap <= 0 or cap > Decimal("10000000"):
+                raise ValidationError("Enter an amount above ₹0, or leave it empty for no cap",
+                                      details={"field": "first_order_cod_cap"})
+        else:
+            cap = None
+        out["first_order_cod_cap"] = cap
+    return out
 
 
 def validate_job_status_payload(raw: dict[str, Any], *, current: str) -> dict[str, Any]:
