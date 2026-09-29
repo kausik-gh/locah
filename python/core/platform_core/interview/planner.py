@@ -122,11 +122,12 @@ ASKS: tuple[Ask, ...] = (
         "ta": "{name} பத்தி மக்கள் எதை நினைவில் வைக்கணும் — உங்களை தனித்துவமாக்குவது என்ன?",
     }),
     Ask("photos", ("media.photos",), {
-        "en": "Do you have photos of your {things} or your place to add? Real photos always come first — "
-              "you can attach them any time.",
-        "ta_en": "Unga {things} illa idathoda photos irukkaa? Real photos dhaan first — eppo venaalum attach "
-                 "pannalaam.",
-        "ta": "உங்க பொருட்கள் அல்லது இடத்தோட படங்கள் இருக்கா? எப்போ வேணாலும் இணைக்கலாம்.",
+        "en": "Do you have photos of your {things}, or {material}, you'd like me to use? "
+              "Attach them here — or I'll create draft visuals for you.",
+        "ta_en": "Unga {things} photos illa {material} irukkaa? Inga attach pannunga — illa-na naan "
+                 "draft visuals ready pannuren.",
+        "ta": "உங்க பொருட்களோட படங்கள், இல்ல {material} இருக்கா? இங்க இணைங்க — இல்லன்னா நான் "
+              "மாதிரி படங்கள் ரெடி பண்றேன்.",
     }),
     Ask("payment", ("commerce.payment",), {
         "en": "How do customers pay — UPI, cash, card, or online when they order?",
@@ -226,6 +227,14 @@ def rank(bp: BusinessBlueprint, business_type: str | None = None, *, prof: Profi
             score += WEIGHT[imp] * uncertainty * (t.value / 100) * (1.0 if index == 0 else 0.35)
         if ask.id in asked_before:
             score *= 0.35
+        if ask.id == "photos" and any(
+            t != "media.photos" and importance(t, prof, bp) in {"blocking", "high_value"}
+            and relevant(TARGETS_BY_ID[t], prof, bp) and not resolved(bp, t, importance(t, prof, bp))
+            for t in TARGETS_BY_ID
+        ):
+            # Understand the business first; "what pictures or menu do you
+            # have?" is the last question before the first version.
+            score *= 0.05
         # Follow the thread the owner started: "all types of meat" is best
         # followed by "which meats?", not by an unrelated question.
         if (bp.discovery.get(lead) and bp.discovery[lead].status == "partial"):
@@ -313,7 +322,26 @@ def phrase(ask: Ask, bp: BusinessBlueprint, lang: str, *, prof: Profile | None =
         structure = structure_question(bp, lang if lang != "ta" else "ta") or (
             f"Which {things} do people ask for most?" if lang == "en"
             else f"Customers adhigama endha {things} kepaanga?")
-    return template.format(name=name, things=things, structure=structure).strip()
+    return template.format(name=name, things=things, structure=structure,
+                           material=material_word(prof.playbook.offer_kind, lang)).strip()
+
+
+# What an owner already has that lists what they sell, in their words.
+_MATERIAL = {
+    "menu_item": {"en": "a menu", "ta_en": "menu", "ta": "மெனு"},
+    "plan": {"en": "a timetable or price list", "ta_en": "timetable / price list", "ta": "நேர அட்டவணை / விலைப்பட்டியல்"},
+    "class": {"en": "a timetable or price list", "ta_en": "timetable / price list", "ta": "நேர அட்டவணை / விலைப்பட்டியல்"},
+    "property_project": {"en": "a brochure", "ta_en": "brochure", "ta": "ப்ரோஷர்"},
+    "service": {"en": "a price list or brochure", "ta_en": "price list / brochure", "ta": "விலைப்பட்டியல் / ப்ரோஷர்"},
+    "package": {"en": "a price list or brochure", "ta_en": "price list / brochure", "ta": "விலைப்பட்டியல் / ப்ரோஷர்"},
+}
+_DEFAULT_MATERIAL = {"en": "a price list or brochure", "ta_en": "price list / brochure",
+                     "ta": "விலைப்பட்டியல் / ப்ரோஷர்"}
+
+
+def material_word(offer_kind: str, lang: str) -> str:
+    words = _MATERIAL.get(offer_kind, _DEFAULT_MATERIAL)
+    return words.get(lang) or words["en"]
 
 
 def record(bp: BusinessBlueprint, ask: Ask) -> None:
@@ -344,6 +372,16 @@ CHECKPOINT = {
              "illa innum konjam refine pannalaam — innum details sonna innum personal-aa irukkum.{more}",
     "ta": "நல்ல முதல் வெர்ஷன் உருவாக்க போதுமான தகவல் இருக்கு.{so_far} இப்போவே உருவாக்கலாம், இல்ல இன்னும் "
           "கொஞ்சம் சேர்க்கலாம்.{more}",
+}
+# Said at the checkpoint when the pictures question was not reached: the owner
+# learns the site will have pictures, and that theirs will replace them.
+PICTURES = {
+    "en": " I'll create draft pictures for the site — attach your own photos or {material} any time "
+          "and they'll take their place.",
+    "ta_en": " Website-ku naan draft pictures ready pannuren — unga photos illa {material} eppo "
+             "venaalum attach pannunga, adhu replace aagum.",
+    "ta": " வெப்சைட்டுக்கு நான் மாதிரி படங்கள் ரெடி பண்றேன் — உங்க படங்கள் அல்லது {material} எப்போ "
+          "வேணாலும் இணைக்கலாம்.",
 }
 MORE = {
     "en": " If you like, I can also ask about {items}.",
@@ -386,7 +424,13 @@ def checkpoint_message(bp: BusinessBlueprint, lang: str, worth: list[str]) -> st
         so_far = SO_FAR[lang].format(text=text) if text else ""
     items = list(worth[:3])
     joined = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " or " + items[-1] if items else ""
-    return CHECKPOINT[lang].format(so_far=so_far, more=MORE[lang].format(items=joined) if joined else "")
+    text = CHECKPOINT[lang].format(so_far=so_far, more=MORE[lang].format(items=joined) if joined else "")
+    photos = bp.discovery.get("media.photos")
+    if bp.visual_consent == "unknown" and not (photos and photos.asked):
+        from platform_core.interview.playbooks import playbook_for
+
+        text += PICTURES[lang].format(material=material_word(playbook_for(bp).offer_kind, lang))
+    return text
 
 
 def so_far_line(bp: BusinessBlueprint, lang: str, *, first_shape: bool = False) -> str:

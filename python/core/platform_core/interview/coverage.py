@@ -172,7 +172,10 @@ def importance(target_id: str, prof: Profile, bp: BusinessBlueprint) -> Importan
     if target_id == "brand.story":
         return "high_value" if pb.story_matters and not _story_known(bp) else "enrichment"
     if target_id == "media.photos":
-        return "high_value" if pb.media == "critical" else "enrichment"
+        # Where pictures carry the site (food, fitness, fashion, property, work),
+        # knowing what the owner has — photos, a menu or catalogue, or nothing
+        # (then LOCAH draws drafts) — comes before the first version.
+        return "high_value" if pb.media in {"critical", "high"} else "enrichment"
     if target_id in {"offerings.pricing", "operations.hours", "offerings.customisation"}:
         return "enrichment"
     return "optional"
@@ -244,8 +247,12 @@ def resolved(bp: BusinessBlueprint, target_id: str, imp: Importance) -> bool:
 
 
 def follow_ups(bp: BusinessBlueprint) -> int:
-    """Questions asked after the opening one."""
-    return sum(1 for a in bp.asks if a.ask not in {"opening", "free"})
+    """Questions about the business asked after the opening one.
+
+    "What pictures or menu do you have?" is intake, not a question about the
+    business: it never spends the budget the business's own questions need.
+    """
+    return sum(1 for a in bp.asks if a.ask not in {"opening", "free", "photos"})
 
 
 def budget(prof: Profile, bp: BusinessBlueprint) -> int:

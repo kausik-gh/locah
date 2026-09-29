@@ -43,8 +43,8 @@ export async function finishInterviewUpload(businessId: string, assetId: string)
 /**
  * Mint a short-lived credential for this owner's voice session.
  *
- * The permanent xAI key stays on the API. What reaches the browser expires in
- * about two minutes and is good for one realtime socket and nothing else.
+ * The permanent Gemini key stays on the API. What reaches the browser is a
+ * short-lived Gemini Live token, good for one socket and nothing else.
  */
 export async function startVoiceSession(
   businessId: string

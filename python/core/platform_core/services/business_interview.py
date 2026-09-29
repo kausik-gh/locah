@@ -980,14 +980,26 @@ class BusinessInterviewService:
         plan = await BusinessInterviewService.plan(session, business, bp)
         bp.template_preferences.template_id = plan.template.id
         immediate_strategy = derive_strategy(bp, plan)
+        # An owner-requested cover picture is now part of the site's media plan
+        # (drawn by personalization in the site's own visual world), not a
+        # separate job racing it.
+        if any(r.role == "hero" and r.status == "requested" for r in bp.media_generation_requests):
+            if bp.visual_consent == "unknown":
+                bp.visual_consent = "draft_visuals"
+            bp.media_generation_requests = [
+                r for r in bp.media_generation_requests if not (r.role == "hero" and r.status == "requested")]
         # A design the owner picked by hand is honoured as it is; otherwise the
         # site is composed from its own creative direction, not a template.
         creative = bp.template_preferences.source != "USER_STATEMENT"
         if creative:
             from platform_core.interview.creative_director import direct
+            from platform_core.interview.media_director import plan_media
             from platform_core.interview.site_composer import compose_site
 
+            # Pictures are planned before the design is chosen: a site that will
+            # have them (the owner's, or drafts) gets an image-led composition.
             direction = direct(bp, business.business_type)
+            plan_media(bp, direction)
             payload = compose_site(
                 bp, direction, with_draft(bp, None), business_type=business.business_type,
                 contact=public_contact(bp), active_modules=plan.active_modules,
@@ -1016,10 +1028,16 @@ class BusinessInterviewService:
         bp.completion_state.status = "built"
         bp.completion_state.first_preview_at = now()
         bp.completion_state.generation_job_id = job.id
+        from platform_core.interview.draft_merge import base_fingerprints
+
+        written = await WebsiteService.get_aggregate(session, business_id=business.id)
         job.intake = {
             "blueprint": bp.model_dump(mode="json"),
             "base_version_id": str(draft.id),
             "base_updated_at": draft.updated_at.isoformat(),
+            # What the build wrote, section by section: personalization replaces
+            # only what the owner has not changed since (draft_merge).
+            "base_fingerprints": base_fingerprints(written["draft"]),
             "design_strategy": immediate_strategy.model_dump(mode="json"),
             "design_strategy_version": DESIGN_STRATEGY_VERSION,
             "generation_plan_version": GENERATION_PLAN_VERSION,
@@ -1036,21 +1054,6 @@ class BusinessInterviewService:
             },
             max_attempts=2,
         )
-        if any(r.role == "hero" and r.status == "requested" for r in bp.media_generation_requests):
-            await AsyncJobService.enqueue(
-                session,
-                job_type="interview.generate_media",
-                business_id=business.id,
-                payload={
-                    "business_id": str(business.id),
-                    "actor_id": str(actor_id),
-                    "generation_job_id": str(job.id),
-                },
-                max_attempts=1,
-            )
-            for request in bp.media_generation_requests:
-                if request.role == "hero" and request.status == "requested":
-                    request.status = "queued"
         get_logger("business.interview").info(
             "interview.preview_ready",
             business_id=str(business.id),
@@ -1074,34 +1077,52 @@ class BusinessInterviewService:
         correlation_id: str,
         started: float,
     ) -> dict[str, Any]:
-        """Creative direction + words (one model call) and draft visuals, together."""
-        import asyncio
+        """Creative direction + words (one model call), then the pictures, then the page.
 
-        from platform_core.interview.creative_director import direct, generate_creative_plan
-        from platform_core.interview.media_director import draw_missing, record, slug
+        Order (v4): the model chooses the design language first; the pictures
+        are then drawn in THAT direction's visual world, so every picture on
+        the site belongs to one shoot. If the pictures the design planned for
+        could not be made, the composition is re-chosen for a site without
+        them rather than left with an empty image-led hero.
+        """
+        from platform_core.interview.creative_director import (
+            CreativeChoices,
+            direct,
+            generate_creative_plan,
+        )
+        from platform_core.interview.draft_merge import merge
+        from platform_core.interview.media_director import (
+            draw_missing,
+            owner_photos,
+            pictures_expected,
+            plan_media,
+            record,
+            slug,
+        )
         from platform_core.interview.site_composer import compose_site
-
         from platform_core.services.usage_meter import CapReached, UsageMeterService
 
         ai_capped = await UsageMeterService.over_cap(session, job.business_id, "model_tokens")
         await session.commit()  # no transaction held open across the provider calls
-        baseline = direct(bp, business.business_type)
-        trade = _trade(bp, baseline.archetype)
-        plan_task = None if ai_capped else asyncio.create_task(generate_creative_plan(bp, business.business_type))
-        images_started = time.monotonic()
-        drawn = await draw_missing(bp, baseline, trade)
-        images_ms = int((time.monotonic() - images_started) * 1000)
+        expected = pictures_expected(bp)
+        baseline = direct(bp, business.business_type, media_expected=expected)
         fallback: str | None = None
         provider: Any = None
         latency_ms = 0
         try:
-            if plan_task is None:
+            if ai_capped:
                 raise CapReached("model_tokens")  # the owner's monthly AI limit: keep the baseline
-            direction, copy, provider, latency_ms = await plan_task
+            direction, copy, provider, latency_ms = await generate_creative_plan(
+                bp, business.business_type, media_expected=expected)
             creative_source = direction.source
         except Exception as exc:  # noqa: BLE001 — the pictures still improve the site
             fallback = type(exc).__name__
             direction, copy, creative_source = baseline, None, "deterministic"
+        trade = _trade(bp, direction.archetype)
+        plan_media(bp, direction)
+        images_started = time.monotonic()
+        drawn = await draw_missing(bp, direction, trade)
+        images_ms = int((time.monotonic() - images_started) * 1000)
         drawn_ok = 0
         for slot, image, reason in drawn:
             if image is None:
@@ -1115,19 +1136,28 @@ class BusinessInterviewService:
             )
             record(bp, slot, UUID(asset["id"]))
             drawn_ok += 1
+        hero_ready = any(p.key == "hero" and p.status == "ready" for p in bp.media_plan) or bool(
+            [m for m in owner_photos(bp) if m.role == "hero"])
+        recomposed = expected and not hero_ready
+        if recomposed:
+            # The design planned for pictures that could not be made (quota,
+            # provider down): choose the composition for a site without them.
+            direction = direct(bp, business.business_type,
+                               CreativeChoices(**direction.model_choices) if direction.model_choices else None,
+                               media_expected=False)
+            if creative_source == "ai":
+                direction.source = "ai"
+            plan_media(bp, direction)
         meta = {
             "stage": "personalised", "creative_strategy": creative_source,
             "reference_profile": direction.reference_profile, "archetype": direction.archetype,
             "fallback_used": bool(fallback), "fallback_reason": fallback,
             "validation_repairs": direction.repairs,
-            "media_plan": [r.key for r in bp.media_generation_requests if r.role == "visual"],
+            "media_plan": [{"key": p.key, "truth": p.truth_class, "source": p.source, "status": p.status}
+                           for p in bp.media_plan],
             "media_drawn": drawn_ok, "media_failed": len(drawn) - drawn_ok,
             "creative_latency_ms": latency_ms, "image_latency_ms": images_ms,
         }
-        payload = compose_site(
-            bp, direction, with_draft(bp, copy), business_type=business.business_type,
-            contact=public_contact(bp), active_modules=plan.active_modules, meta=meta,
-        )
         if provider is not None:
             job.ai_provider = provider.provider_name
             job.model_name = provider.model_name
@@ -1156,39 +1186,54 @@ class BusinessInterviewService:
             .scalars()
             .first()
         )
-        # The pictures belong to the business whatever happens to this draft.
+        # The pictures belong to the business whatever happens to this draft,
+        # and the page is composed from the LIVE Blueprint: anything the owner
+        # said since pressing Build is in it.
         live = BusinessInterviewService.read(locked)
-        for request in bp.media_generation_requests:
-            if request.role == "visual":
-                live.media_generation_requests = [
-                    r for r in live.media_generation_requests
-                    if not (r.role == "visual" and r.key == request.key)
-                ] + [request]
+        drawn_keys = {r.key for r in bp.media_generation_requests if r.role == "visual"}
+        live.media_generation_requests = [
+            r for r in live.media_generation_requests if not (r.role == "visual" and r.key in drawn_keys)
+        ] + [r for r in bp.media_generation_requests if r.role == "visual"]
         known = {m.asset_id for m in live.media_assets}
         live.media_assets.extend(m for m in bp.media_assets if m.asset_id not in known)
+        removed = {p.key for p in live.media_plan if p.approval == "removed"}
+        live.media_plan = [p.model_copy(update={"approval": "removed", "status": "skipped"})
+                           if p.key in removed else p for p in bp.media_plan]
         await BusinessInterviewService.save(session, locked, live)
-        if (
-            not draft
-            or str(draft.id) != snapshot["base_version_id"]
-            or draft.updated_at.isoformat() != snapshot["base_updated_at"]
-        ):
+        payload = compose_site(
+            live, direction, with_draft(live, copy), business_type=business.business_type,
+            contact=public_contact(live), active_modules=plan.active_modules, meta=meta,
+        )
+        kept: list[str] = []
+        if not draft or str(draft.id) != snapshot["base_version_id"]:
+            # The owner replaced the whole draft (another design): theirs stands.
             job.status = "superseded"
-            job.fallback_reason = "Owner edits preserved; personalization was not applied."
-        elif fallback and not drawn_ok:
+            job.fallback_reason = "Owner replaced the draft; personalization was not applied."
+        elif fallback and not drawn_ok and not recomposed:
             job.status = "fallback_used"
             job.fallback_reason = fallback
             job.result_version_id = draft.id
         else:
-            website = await WebsiteResolver.resolve_website(session, business_id=job.business_id)
-            generated = await WebsiteService.replace_draft_from_generation(
-                session, business_id=job.business_id, website=website, payload=payload,
-                generated_by="interview_personalization", generation_job_id=job.id,
-            )
-            job.result_version_id = generated.id
-            job.status = "completed"
-            job.fallback_reason = fallback
+            merged: dict[str, Any] | None = payload
+            if draft.updated_at.isoformat() != snapshot["base_updated_at"]:
+                aggregate = await WebsiteService.get_aggregate(session, business_id=job.business_id)
+                base = snapshot.get("base_fingerprints")
+                merged, kept = merge(payload, aggregate["draft"], base) if base else (None, [])
+            if merged is None:
+                job.status = "superseded"
+                job.fallback_reason = "Owner edits preserved; personalization was not applied."
+            else:
+                website = await WebsiteResolver.resolve_website(session, business_id=job.business_id)
+                generated = await WebsiteService.replace_draft_from_generation(
+                    session, business_id=job.business_id, website=website, payload=merged,
+                    generated_by="interview_personalization", generation_job_id=job.id,
+                )
+                job.result_version_id = generated.id
+                job.status = "completed"
+                job.fallback_reason = fallback
         job.provider_usage = {
             **(job.provider_usage or {}),
+            "owner_edits_kept": kept,
             "personalization_latency_ms": int((time.monotonic() - started) * 1000),
             "total_time_to_personalized_preview_ms": int((now() - bp.created_at).total_seconds() * 1000),
         }
@@ -1207,7 +1252,7 @@ class BusinessInterviewService:
             reference_profile=direction.reference_profile, model=job.model_name,
             strategy_source=creative_source, fallback_reason=job.fallback_reason,
             media_drawn=drawn_ok, media_failed=len(drawn) - drawn_ok, image_latency_ms=images_ms,
-            creative_latency_ms=latency_ms,
+            creative_latency_ms=latency_ms, owner_edits_kept=kept,
             personalization_latency_ms=job.provider_usage.get("personalization_latency_ms"),
         )
         return {"status": job.status, "job_id": str(job.id)}

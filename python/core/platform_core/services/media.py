@@ -309,7 +309,7 @@ class MediaService:
         """Persist platform-generated image bytes as a ready media asset.
 
         User uploads still use the signed-URL path. This is only for images
-        the platform produced (Grok Imagine) so they follow the same
+        the platform produced (Gemini drafts) so they follow the same
         ownership and public-URL rules as an owner upload.
         """
         from platform_core.media.supabase_storage import (

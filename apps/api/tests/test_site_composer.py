@@ -237,7 +237,7 @@ PNG = GeneratedImage(mime_type="image/png", bytes=b"png", model="m", latency_ms=
 
 
 @pytest.mark.asyncio
-async def test_draft_visuals_need_consent_and_are_drawn_once():
+async def test_draft_visuals_are_on_by_default_off_for_a_text_led_site_and_drawn_once():
     bp = meat()
     direction = direct(bp, "other")
     calls: list[str] = []
@@ -246,8 +246,9 @@ async def test_draft_visuals_need_consent_and_are_drawn_once():
         calls.append(prompt)
         return PNG, ""
 
-    assert await draw_missing(bp, direction, "a meat shop", draw=draw) == []  # no consent, no spend
-    bp.visual_consent = "draft_visuals"
+    bp.visual_consent = "none"  # the owner asked for a text-led site: nothing is drawn
+    assert await draw_missing(bp, direction, "a meat shop", draw=draw) == []
+    bp.visual_consent = "unknown"  # an owner with no photos gets pictures by default
     drawn = await draw_missing(bp, direction, "a meat shop", draw=draw)
     assert [s.key for s, _, _ in drawn] == ["hero", "category:chicken", "category:mutton",
                                            "category:fish-seafood", "story"]
@@ -272,11 +273,18 @@ async def test_draft_visuals_need_consent_and_are_drawn_once():
 
 
 def test_media_budget_follows_the_archetype():
-    # Truth rule: named dishes and projects are never drawn; a developer's
-    # site gets no drawn pictures at all (its pictures would read as its homes).
-    for build, count in ((meat, 5), (home_food, 5), (gym, 2), (real_estate, 0)):
+    # Media truth policy: a kitchen's featured dishes are drawn as representative
+    # drafts; a developer's projects are factual — listed, never drawn — while its
+    # hero and story (architecture, a courtyard) are mood and may be.
+    for build, count in ((meat, 5), (home_food, 6), (gym, 2), (real_estate, 2)):
         bp = build()
-        assert len(plan_slots(bp, direct(bp, "other"))) == count, build.__name__
+        drawable = [s for s in plan_slots(bp, direct(bp, "other")) if s.truth_class != "factual"]
+        assert len(drawable) == count, build.__name__
+    bp = home_food()
+    assert any(s.key.startswith("item:") for s in plan_slots(bp, direct(bp, "other")))
+    bp = real_estate()
+    projects = [s for s in plan_slots(bp, direct(bp, "other")) if s.purpose in {"category", "item"}]
+    assert projects and all(s.truth_class == "factual" for s in projects)
 
 
 # ------------------------------------------------ found in the live Gemini run

@@ -1,7 +1,7 @@
 /**
  * The Gemini Live transport: microphone in, Locah's voice out, one tool across.
  *
- * Same contract as the xAI transport in `realtime.ts`: it moves audio and
+ * The shared transport contract (`types.ts`): it moves audio and
  * events and knows nothing about businesses. Every spoken utterance reaches
  * Locah through `onTurn`, which posts it to the ordinary interview endpoint the
  * typed form uses, and what Locah decided comes back as the tool result the
@@ -17,7 +17,7 @@
  *     so this file sends only the model name and cannot change them.
  */
 
-import type { VoiceCallbacks, VoiceState } from './realtime'
+import type { VoiceCallbacks, VoiceState } from './types'
 
 export type GeminiLiveSession = {
   provider: 'gemini'

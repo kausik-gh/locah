@@ -1,29 +1,34 @@
-"""Which pictures a website needs, and drawing the ones the owner agreed to.
+"""Which pictures a website needs, where each comes from, and drawing the gaps.
 
-A gradient hero over text cards is the look of a site with no pictures, and
-most small businesses start with none. This decides, per site, the few images
-that change it most — one hero, and a picture per category (or per dish, or per
-project) — and draws them only when the owner said yes to draft visuals.
+A site with no pictures reads as a form that was filled in, and most small
+businesses start with none. The earlier LOCAH sites that owners wanted to
+publish had a picture in every slot that carries the design — the hero, the
+menu or catalogue, the story, the closing band — all from one visual world.
 
-Rules:
+Media plan (decided BEFORE the design is chosen, so the design knows pictures
+will exist):
 
-* The owner's own photos always win; a slot with a real photo is never drawn.
-* Draft visuals are marked AI_GENERATED and labelled as drafts; they are
-  illustrative, never presented as a photograph of this shop or its stock.
-* Each slot is drawn once and cached by key; a rebuild reuses it.
-* Only what improves the composition: a hero and up to six more, never a wall
-  of random images. The budget depends on the archetype.
-* The prompt carries the trade and the owner's own item names — never the
-  transcript, never people, text, logos or prices.
+1. the owner's own uploads, then pictures from their menu/catalogue,
+2. pictures already on the business,
+3. Gemini-drawn drafts — by default, unless the owner asked for a text-led
+   site (``visual_consent == "none"``),
+4. otherwise a designed typographic treatment.
 
-The truth rule (Phase A): a drawn picture may set a mood; it may never stand
-in for evidence. So nothing a visitor could take as proof of THIS business is
-ever drawn — not a named dish or product ("our Vazhaipoo thokku"), not a
-project or a completed home, not a photographer's or architect's work, not a
-doctor or a team, not a certificate, award or review. Portfolio-led trades and
-property developers get no drawn pictures at all: their site is typographic
-until the owner's own photos arrive. What may be drawn is decorative and
-generic — a category's produce, a kind of room — and is labelled a draft.
+The media truth policy (``interview.models.TruthClass``) decides what may be
+drawn at all:
+
+* **mood** — hero, story, closing band: the trade's atmosphere (a home
+  kitchen, a gym floor, calm architecture). Drawn for every trade, never
+  presented as this business's own premises or project.
+* **representative** — what a kind of thing looks like: a category of cuts, a
+  bowl of podi, a family of pumps. Drawn as a labelled draft until a real
+  photo arrives.
+* **factual** — must show THIS project, this work, this person: a developer's
+  named project, a photographer's or an interior studio's work. Never drawn;
+  the card is typographic until the owner's photo arrives.
+
+Every draft is marked AI_GENERATED on the Blueprint, cached by slot key (a
+rebuild never redraws), and loses to a real photo the moment one exists.
 """
 
 from __future__ import annotations
@@ -35,43 +40,70 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from platform_core.interview.creative_director import CreativeDirection
-from platform_core.interview.models import BusinessBlueprint, MediaGenerationRequest, MediaReference
+from platform_core.interview.models import (
+    BusinessBlueprint,
+    MediaGenerationRequest,
+    MediaReference,
+    PlannedMedia,
+    TruthClass,
+)
 from platform_core.website.image_generation import GeneratedImage, generate_image
-
-# Most images per site besides the hero, by archetype.
-BUDGET: dict[str, int] = {
-    "product_commerce": 5, "menu_commerce": 6, "membership_fitness": 0,
-    "real_estate_projects": 3, "service_appointment": 3, "b2b_rfq": 3,
-    "project_portfolio": 3, "local_service": 3,
-}
-
-_NEVER = (
-    "One continuous photograph of a single scene — no collage, split panels, borders, frames "
-    "or inset pictures. No text, words, letters, numbers, logos, labels, packaging, price tags, "
-    "signage or watermarks. No people, faces or hands."
+from platform_core.website.media_prompts import (
+    PROMPT_VERSION,
+    aspect_for_hero,
+    build_prompt,
+    shoot_brief,
 )
 
-# The story section's own picture: where the work happens. Without it the
-# hero photograph appeared three times on one page (hero, story, closing band).
-_STORY = {
-    "product_commerce": "the shop's counter and workspace — clean chopping block, tools and "
-                        "fresh produce laid out, seen from the side",
-    "menu_commerce": "the kitchen where everything is made — spices, brass and clay vessels, "
-                     "a stone grinder and fresh ingredients on a worn wooden counter",
-    "membership_fitness": "the training floor — racks, plates and a lifting platform, "
-                          "seen from a low angle",
-    "real_estate_projects": "a calm landscaped courtyard between low-rise homes — a stone "
-                            "walkway, trees and soft evening light",
+# Category slots per archetype (besides the hero and the story). For evidence-led
+# trades these are factual: listed in the plan (a real photo improves them), never drawn.
+BUDGET: dict[str, int] = {
+    "product_commerce": 5, "menu_commerce": 4, "membership_fitness": 0,
+    "real_estate_projects": 3, "service_appointment": 3, "b2b_rfq": 4,
+    "project_portfolio": 3, "local_service": 3,
 }
+# Named items pictured as featured cards; the rest of the range is a price list.
+FEATURED_ITEMS: dict[str, int] = {"menu_commerce": 6}
+
+# Where the work happens — the story's own picture (mood).
+_STORY = {
+    "product_commerce": "the shop's counter and workspace — clean chopping block, tools and fresh produce "
+                        "laid out, seen from the side",
+    "menu_commerce": "the kitchen where everything is made — spices, brass and clay vessels, a stone grinder "
+                     "and fresh ingredients on a worn wooden counter",
+    "membership_fitness": "the training floor — racks, plates and a lifting platform, seen from a low angle",
+    "real_estate_projects": "a calm landscaped courtyard between low-rise homes — a stone walkway, trees and "
+                            "soft evening light",
+    "b2b_rfq": "the workshop floor — machined parts on a clean workbench, orderly racks, soft industrial light",
+    "service_appointment": "the calm, clean room where the work happens, with soft natural light",
+    "local_service": "the workbench where the work happens, tools laid out neatly",
+    "project_portfolio": "the studio desk — sketches, material samples and tools of the craft by a window",
+}
+# The hero's subject when the catalogue does not supply one (mood only: never
+# a picture of "their" building, room or work).
+_HERO_MOOD = {
+    "real_estate_projects": "contemporary residential architecture with landscaped greenery, seen from the "
+                            "street in soft daylight",
+    "membership_fitness": "a strength-training gym interior — barbells, racks and plates, no people",
+    "b2b_rfq": "a clean, orderly industrial workshop with precise machined parts in the foreground",
+    "project_portfolio": "the tools and materials of the craft arranged on a wide studio table",
+    "service_appointment": "a calm, bright, welcoming interior with soft natural light and plants",
+    "local_service": "the trade's tools and materials, neatly arranged in warm light",
+}
+# Trades whose catalogue IS the evidence: their project/work cards are never drawn.
+_EVIDENCE_LED_ARCHETYPES = frozenset({"real_estate_projects", "project_portfolio"})
 
 
 @dataclass(frozen=True)
 class Slot:
-    key: str  # "hero", "category:chicken", "item:seer-fish", "project:green-meadows"
+    key: str  # "hero", "category:chicken", "item:idli-podi", "story"
     subject: str
     aspect: str
     role: str  # MediaReference role it becomes
     label: str
+    purpose: str = "category"
+    truth_class: TruthClass = "representative"
+    section: str = ""
 
 
 def slug(text: str) -> str:
@@ -83,80 +115,140 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[\d₹$]+", "", text)).strip(" ,.-")[:80]
 
 
-# Trades whose pictures ARE the evidence: nothing is drawn for them, ever.
-_EVIDENCE_LED_ARCHETYPES = frozenset({"real_estate_projects", "project_portfolio"})
+def drafts_allowed(bp: BusinessBlueprint) -> bool:
+    """Draft visuals fill gaps unless the owner asked for a text-led website."""
+    return bool(bp.visual_consent != "none")
+
+
+def owner_photos(bp: BusinessBlueprint) -> list[MediaReference]:
+    """The owner's own pictures (uploads and catalogue pictures), not the logo."""
+    return [m for m in bp.media_assets
+            if m.role != "logo" and m.source in {"USER_UPLOAD", "CATALOGUE_EXTRACTED"}]
+
+
+def pictures_expected(bp: BusinessBlueprint, *, images_available: bool | None = None) -> bool:
+    """Whether this site will have pictures — asked BEFORE the design is chosen.
+
+    True when the owner has their own, or when LOCAH may draw drafts and an
+    image provider is configured. A design is then chosen for a site with
+    pictures, not for an empty one.
+    """
+    if owner_photos(bp):
+        return True
+    if images_available is None:
+        from platform_core.website.image_generation import image_generation_available
+
+        images_available = image_generation_available()
+    return drafts_allowed(bp) and images_available
+
+
+def evidence_led(bp: BusinessBlueprint, direction: CreativeDirection) -> bool:
+    """A trade whose catalogue is its evidence (projects, portfolio work)."""
+    from platform_core.interview.playbooks import playbook_for
+
+    return (direction.archetype in _EVIDENCE_LED_ARCHETYPES or playbook_for(bp).portfolio
+            or direction.dimensions.get("offering") in {"portfolio", "property"})
 
 
 def may_draw(bp: BusinessBlueprint, direction: CreativeDirection) -> bool:
-    """Whether any draft visual is allowed for this business (the truth rule)."""
-    from platform_core.interview.playbooks import playbook_for
+    """Whether any draft visual may be drawn for this site (the owner's choice).
 
-    if direction.archetype in _EVIDENCE_LED_ARCHETYPES or playbook_for(bp).portfolio:
-        return False
-    return direction.dimensions.get("offering") not in {"portfolio", "property"}
+    Kept for callers of the old truth rule; the policy is now per slot.
+    """
+    del direction
+    return drafts_allowed(bp)
 
 
 def plan_slots(bp: BusinessBlueprint, direction: CreativeDirection) -> list[Slot]:
-    """The pictures this site should have, most important first.
-
-    Only decorative, generic subjects: the hero, a picture per category and
-    where the work happens. Never a named item or project (see the truth rule).
-    """
-    if not may_draw(bp, direction):
-        return []
-    groups = bp.taxonomy.groups
+    """The pictures this site should have, most important first — with each
+    slot's truth class. Factual slots are listed (the plan shows what a real
+    photo would improve) but never drawn."""
+    arche = direction.archetype
+    groups = [g for g in bp.taxonomy.groups if g.name]
     names = [_clean(g.name) for g in groups if _clean(g.name)]
-    hero_subject = (
-        ", ".join(names[:4]) if names and direction.archetype in {
-            "product_commerce", "menu_commerce"} else ""
-    )
-    slots = [Slot("hero", hero_subject, "16:9" if direction.hero in {
-        "cinematic", "editorial_overlay"} else "4:3", "hero", "Draft visual · cover")]
-    budget = BUDGET.get(direction.archetype, 3)
-    # A named dish or project is never drawn: a drawn "Vazhaipoo thokku" would
-    # read as a photograph of theirs. Categories are generic enough to illustrate.
-    for group in groups[:budget]:
-        members = ", ".join(_clean(i.name) for i in group.items[:4] if _clean(i.name))
-        subject = _clean(group.name) + (f" — {members}" if members else "")
-        slots.append(Slot(f"category:{slug(group.name)}", subject, "4:3", "offering",
-                          f"Draft visual · {group.name}"[:120]))
-    return _with_story(slots, direction)
-
-
-def _with_story(slots: list[Slot], direction: CreativeDirection) -> list[Slot]:
-    """One picture for the story, last — the least important slot."""
-    subject = _STORY.get(direction.archetype)
-    if subject and direction.story_variant == "story_split":
-        slots.append(Slot("story", subject, "4:5", "gallery", "Draft visual · where it is made"))
+    evidence = evidence_led(bp, direction)
+    if arche in {"product_commerce", "menu_commerce"} and names:
+        hero_subject = ", ".join(names[:4])
+    else:
+        hero_subject = _HERO_MOOD.get(arche, "")
+    slots = [Slot("hero", hero_subject, aspect_for_hero(direction.hero), "hero", "Draft visual · cover",
+                  purpose="hero", truth_class="mood", section="hero")]
+    featured = FEATURED_ITEMS.get(arche, 0)
+    items: list[Slot] = []
+    if featured and not evidence:
+        # Round-robin across groups so every kind of dish is represented.
+        for depth in range(4):
+            for group in groups:
+                if depth < len(group.items) and len(items) < featured:
+                    item = group.items[depth]
+                    subject = _clean(f"{item.name} ({group.name})")
+                    if subject:
+                        items.append(Slot(f"item:{slug(item.name)}", subject, "4:3", "offering",
+                                          f"Draft visual · {item.name}"[:120], purpose="item",
+                                          truth_class="representative", section="product_showcase"))
+    slots += items
+    if not items:
+        for group in groups[:BUDGET.get(arche, 3)]:
+            members = ", ".join(_clean(i.name) for i in group.items[:4] if _clean(i.name))
+            subject = _clean(group.name) + (f" — {members}" if members else "")
+            slots.append(Slot(f"category:{slug(group.name)}", subject, "4:3", "offering",
+                              f"Draft visual · {group.name}"[:120], purpose="category",
+                              truth_class="factual" if evidence else "representative",
+                              section="product_showcase"))
+    story = _STORY.get(arche)
+    if story and direction.story_variant == "story_split":
+        slots.append(Slot("story", story, "4:5", "gallery", "Draft visual · where it is made",
+                          purpose="story", truth_class="mood", section="about"))
     return slots
 
 
-def prompt_for(slot: Slot, direction: CreativeDirection, trade: str) -> str:
-    framing = {
-        "cinematic": "Wide composition with calm, darker space on the left for a headline.",
-        "editorial_overlay": "Wide composition with calm space on the left for a headline.",
-        "full_width": "Wide composition with calm space on the left for a headline.",
-        "commerce_split": "The subject fills the frame, centred, photographed close.",
-        "airy_split": "Architecture on the right, open bright sky on the left.",
-        "editorial_split": "The subject fills the frame, softly lit.",
-    }.get(direction.hero, "The subject fills the frame, softly lit.") if slot.key == "hero" \
-        else "The subject fills the frame, centred."
-    subject = slot.subject or trade
-    return (
-        f"A realistic, professional draft photograph for a small business website ({trade}). "
-        f"Subject: {subject}. Style: {direction.image_style}. {framing} {_NEVER}"
-    )
+def plan_media(bp: BusinessBlueprint, direction: CreativeDirection) -> list[PlannedMedia]:
+    """The media plan, written onto the Blueprint: every slot, its source and state.
+
+    An owner's decision on a slot (approved, removed) survives re-planning.
+    """
+    brief = shoot_brief(direction)
+    before = {p.key: p for p in bp.media_plan}
+    plan: list[PlannedMedia] = []
+    for slot in plan_slots(bp, direction):
+        own = owner_photo(bp, slot)
+        drawn = cached(bp, slot.key)
+        prior = before.get(slot.key)
+        entry = PlannedMedia(
+            key=slot.key, purpose=slot.purpose, section=slot.section, subject=slot.subject[:240],
+            truth_class=slot.truth_class, aspect=slot.aspect,
+            crop="left-space" if slot.purpose == "hero" and slot.aspect == "16:9" else "center",
+            style=brief.world[:400], prompt_version=PROMPT_VERSION,
+            approval=prior.approval if prior else "draft",
+        )
+        if prior and prior.approval == "removed":
+            entry.status, entry.reason = "skipped", "Removed by the owner."
+        elif own:
+            source = next((m.source for m in bp.media_assets if m.asset_id == own), "USER_UPLOAD")
+            entry.source = "catalogue_extracted" if source == "CATALOGUE_EXTRACTED" else "owner_uploaded"
+            entry.asset_id, entry.status = own, "ready"
+        elif drawn:
+            entry.source, entry.asset_id, entry.status = "gemini_generated", drawn, "ready"
+        elif slot.truth_class == "factual":
+            entry.status, entry.reason = "skipped", "Needs a real photo — never drawn."
+        elif not drafts_allowed(bp):
+            entry.status, entry.reason = "skipped", "Text-led website, as the owner asked."
+        else:
+            entry.source = "gemini_generated"
+        plan.append(entry)
+    bp.media_plan = plan[:24]
+    return list(plan[:24])
 
 
 def cached(bp: BusinessBlueprint, key: str) -> UUID | None:
-    """A picture for this slot: the owner's first, then a drawn draft."""
+    """A drawn draft for this slot, if one is ready."""
     request = next((r for r in bp.media_generation_requests
                     if r.role == "visual" and r.key == key and r.status == "ready" and r.asset_id), None)
     return request.asset_id if request else None
 
 
 def owner_photo(bp: BusinessBlueprint, slot: Slot) -> UUID | None:
-    uploads = [m for m in bp.media_assets if m.source == "USER_UPLOAD" and m.role != "logo"]
+    uploads = owner_photos(bp)
     if slot.key == "hero":
         hero = next((m for m in uploads if m.role == "hero"), None)
         return hero.asset_id if hero else None
@@ -171,13 +263,18 @@ def owner_photo(bp: BusinessBlueprint, slot: Slot) -> UUID | None:
     return None
 
 
+def _removed(bp: BusinessBlueprint, key: str) -> bool:
+    return any(p.key == key and p.approval == "removed" for p in bp.media_plan)
+
+
 def picture_for(bp: BusinessBlueprint, key: str) -> str | None:
-    """The asset id to show in a slot, if there is one."""
-    for media in bp.media_assets:
-        if media.source == "USER_UPLOAD" and media.role == "hero" and key == "hero":
+    """The asset id to show in a slot: the owner's first, then a drawn draft."""
+    own = {"hero": "hero", "story": "business"}.get(key)
+    for media in owner_photos(bp):
+        if own and media.role == own:
             return str(media.asset_id)
-        if media.source == "USER_UPLOAD" and media.role == "business" and key == "story":
-            return str(media.asset_id)
+    if _removed(bp, key):
+        return None
     found = cached(bp, key)
     if found:
         return str(found)
@@ -185,12 +282,15 @@ def picture_for(bp: BusinessBlueprint, key: str) -> str | None:
         hero = next((m for m in bp.media_assets if m.role == "hero"), None)
         return str(hero.asset_id) if hero else None
     name = key.split(":", 1)[1] if ":" in key else key
-    for media in bp.media_assets:
-        if media.source == "USER_UPLOAD" and media.role in {"offering", "gallery", "business"} and (
-            slug(media.label).startswith(name[:12])
-        ):
+    for media in owner_photos(bp):
+        if media.role in {"offering", "gallery", "business"} and slug(media.label).startswith(name[:12]):
             return str(media.asset_id)
     return None
+
+
+def prompt_for(slot: Slot, direction: CreativeDirection, trade: str) -> str:
+    return str(build_prompt(subject=slot.subject or trade, purpose=slot.purpose, truth_class=slot.truth_class,
+                            brief=shoot_brief(direction), trade=trade, hero_style=direction.hero))
 
 
 Drawer = Callable[[str, str], Awaitable[tuple[GeneratedImage | None, str]]]
@@ -204,11 +304,16 @@ async def draw_missing(
     draw: Drawer | None = None,
     concurrency: int = 3,
 ) -> list[tuple[Slot, GeneratedImage | None, str]]:
-    """Draw the slots that have no picture yet, a few at a time. Consent first."""
-    if bp.visual_consent != "draft_visuals":
+    """Draw the planned slots that have no picture yet, a few at a time.
+
+    Never a factual slot, never when the owner asked for a text-led site, never
+    a slot the owner removed, never a slot already filled.
+    """
+    if not drafts_allowed(bp):
         return []
     todo = [s for s in plan_slots(bp, direction)
-            if not owner_photo(bp, s) and not cached(bp, s.key)]
+            if s.truth_class != "factual" and not owner_photo(bp, s) and not cached(bp, s.key)
+            and not _removed(bp, s.key)]
     if not todo:
         return []
     gate = asyncio.Semaphore(concurrency)
@@ -223,7 +328,7 @@ async def draw_missing(
 
 
 def record(bp: BusinessBlueprint, slot: Slot, asset_id: UUID | None, reason: str = "") -> None:
-    """Remember a drawn (or failed) slot on the Blueprint."""
+    """Remember a drawn (or failed) slot on the Blueprint, and in its media plan."""
     bp.media_generation_requests = [
         r for r in bp.media_generation_requests if not (r.role == "visual" and r.key == slot.key)
     ]
@@ -236,3 +341,39 @@ def record(bp: BusinessBlueprint, slot: Slot, asset_id: UUID | None, reason: str
             asset_id=asset_id, role=slot.role if slot.role in {"hero", "offering"} else "gallery",
             label=slot.label, source="AI_GENERATED",
         ))
+    for entry in bp.media_plan:
+        if entry.key == slot.key:
+            entry.status = "ready" if asset_id else "failed"
+            entry.asset_id = asset_id or entry.asset_id
+            entry.source = "gemini_generated" if asset_id else entry.source
+            entry.reason = "" if asset_id else (reason or "error")[:200]
+
+
+def section_image_prompt(
+    theme: dict[str, object], section_type: str, trade: str, *, subject: str = "",
+) -> tuple[str, str] | None:
+    """(prompt, aspect) for one picture asked for from the editor or a legacy
+    fill, drawn in the site's own visual world — or None where a drawn picture
+    would stand in for evidence (a developer's project, a studio's work).
+
+    ``theme`` is a draft's stored theme; its ``creative_direction`` carries the
+    image style, palette and archetype the site was designed with.
+    """
+    direction = theme.get("creative_direction") if isinstance(theme.get("creative_direction"), dict) else {}
+    assert isinstance(direction, dict)
+    arche = str(direction.get("archetype") or theme.get("site_archetype") or "")
+    brief = shoot_brief(direction or {"palette": {"mode": theme.get("palette_mode", "light"),
+                                                  "primary": theme.get("primary_color", ""),
+                                                  "accent": theme.get("accent_color", "")}})
+    hero = str(direction.get("hero") or theme.get("hero_style") or "")
+    if section_type in {"hero", "cta_band"}:
+        return build_prompt(subject=subject or _HERO_MOOD.get(arche, trade), purpose="hero", truth_class="mood",
+                            brief=brief, trade=trade, hero_style=hero), aspect_for_hero(hero) \
+            if section_type == "hero" else "16:9"
+    if section_type in {"about", "text_block"}:
+        return build_prompt(subject=subject or _STORY.get(arche, trade), purpose="story", truth_class="mood",
+                            brief=brief, trade=trade), "4:5"
+    if arche in _EVIDENCE_LED_ARCHETYPES:
+        return None
+    return build_prompt(subject=subject or trade, purpose="item", truth_class="representative", brief=brief,
+                        trade=trade), "4:3"

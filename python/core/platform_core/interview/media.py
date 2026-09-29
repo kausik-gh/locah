@@ -37,7 +37,6 @@ from platform_core.services.media import MediaService
 from platform_core.website.image_generation import (
     GeneratedImage,
     generate_image_bytes,
-    hero_prompt,
     logo_prompt,
     FAILURE_REASONS,
     brand_logo_prompt,
@@ -66,20 +65,19 @@ def _palette(bp: BusinessBlueprint) -> tuple[str, ...]:
 
 def prompt_for(request: MediaGenerationRequest, bp: BusinessBlueprint) -> tuple[str, str]:
     """(prompt, aspect ratio) for one request. Nothing the owner said about
-    staff, rooms or products is passed on — only the trade and the colours."""
-    palette = _palette(bp)
+    staff, rooms or products is passed on — only the trade and the site's own
+    visual world (the same shoot brief as every other picture on the site)."""
+    from platform_core.interview.creative_director import direct
+    from platform_core.interview.media_director import prompt_for as slot_prompt
+    from platform_core.interview.media_director import plan_slots
+
     if request.role == "logo":
+        palette = _palette(bp)
         name = str(bp.identity.get("display_name").value if bp.identity.get("display_name") else "")
         return logo_prompt(initial=name, primary=palette[0] if palette else None), "1:1"
-    return (
-        hero_prompt(
-            display_name="",
-            business_type=classification_seed(bp),
-            description=None,
-            palette=palette,
-        ),
-        "16:9",
-    )
+    direction = direct(bp, media_expected=True)  # this job is drawing the picture
+    hero = next(s for s in plan_slots(bp, direction) if s.key == "hero")
+    return slot_prompt(hero, direction, classification_seed(bp).replace("_", " ")), hero.aspect
 
 
 def _queued(bp: BusinessBlueprint, role: str) -> MediaGenerationRequest | None:

@@ -8,62 +8,55 @@ import pytest
 
 from platform_core.website import image_generation
 from platform_core.website.image_generation import (
-    family_for_business_type,
     gemini_image_body,
     gemini_image_from,
     generate_image_bytes,
-    hero_prompt,
     image_generation_available,
     logo_prompt,
-    offering_prompt,
 )
+from platform_core.website.media_prompts import ShootBrief, build_prompt, shoot_brief
 
 # Image calls here go to a recording stub client; the backstop stays on.
 pytestmark = pytest.mark.usefixtures("stubbed_ai_transport")
 
-
-def test_restaurant_and_gym_hero_prompts_diverge() -> None:
-    food = hero_prompt(
-        display_name="Ragi House",
-        business_type="restaurant",
-        description="Millet kitchen",
-    )
-    gym = hero_prompt(
-        display_name="Iron Hall",
-        business_type="gym",
-        description="Strength studio",
-    )
-    assert "spice" in food and "diagonal" in gym
-    assert food != gym
-    assert "No text" in food
+_DIRECTION = {"image_style": "home-style South Indian food in clay and brass bowls on banana leaf",
+              "hero": "editorial_overlay",
+              "palette": {"mode": "light", "primary": "#2f5d1f", "accent": "#c8922a"}}
 
 
-def test_hero_artwork_never_asks_for_the_business_itself() -> None:
-    prompt = hero_prompt(
-        display_name="Meridian Hospital",
-        business_type="clinic",
-        description="Our doctors and our 200-bed hospital",
-        palette=("#1f3d34", "#c89b3c"),
-    )
-    lowered = prompt.lower()
-    # Name and claims stay out; a model given them draws a building and a sign.
-    assert "meridian" not in lowered and "doctors" not in lowered and "200" not in lowered
-    assert "photorealistic" not in lowered
-    assert "no people" in lowered and "not as a photograph" in lowered
-    assert "#1f3d34" in prompt
+def test_every_picture_of_a_site_shares_one_shoot_brief() -> None:
+    brief = shoot_brief(_DIRECTION)
+    hero = build_prompt(subject="podis and pickles", purpose="hero", truth_class="mood", brief=brief,
+                        trade="home food", hero_style="editorial_overlay")
+    item = build_prompt(subject="Idli podi (Podis)", purpose="item", truth_class="representative",
+                        brief=brief, trade="home food")
+    shared = brief.sentence()
+    assert shared in hero and shared in item
+    assert "banana leaf" in hero and "#2f5d1f" in hero
+    assert "calm darker space on the left" in hero  # framed for the composition that holds it
+    for prompt in (hero, item):
+        assert "photograph" in prompt and "No text" in prompt and "No people" in prompt
 
 
-def test_offering_prompt_is_an_illustration_of_the_item() -> None:
-    prompt = offering_prompt(
-        display_name="Ragi House",
-        business_type="restaurant",
-        title="Ragi dosa",
-        description="Crisp, served with sambar",
-    )
-    assert "Ragi dosa" in prompt
-    assert "illustration" in prompt and "photorealistic" not in prompt.lower()
-    assert family_for_business_type("restaurant") == "food"
-    assert family_for_business_type("hotel") == "stay"
+def test_a_dark_site_is_shot_low_key_and_a_light_one_airy() -> None:
+    dark = shoot_brief({"palette": {"mode": "dark"}, "image_style": "gym"})
+    light = shoot_brief({"palette": {"mode": "light"}, "image_style": "gym"})
+    assert "low-key" in dark.light and "daylight" in light.light
+
+
+def test_a_factual_picture_is_never_drawn() -> None:
+    with pytest.raises(ValueError):
+        build_prompt(subject="Aranya Greens", purpose="item", truth_class="factual",
+                     brief=ShootBrief("x", "y", "z", "w"), trade="developer")
+
+
+def test_prompts_carry_no_numbers_or_prices() -> None:
+    prompt = build_prompt(subject="Chicken curry cut ₹240 per 1 kg", purpose="category",
+                          truth_class="representative", brief=shoot_brief(_DIRECTION), trade="meat shop")
+    assert "240" not in prompt and "₹" not in prompt
+    graphic = build_prompt(subject="waves", purpose="background", truth_class="graphic",
+                           brief=shoot_brief(_DIRECTION), trade="spa")
+    assert "illustration" in graphic and "Not a photograph" in graphic
 
 
 def test_logo_is_a_single_letter_monogram() -> None:
@@ -99,12 +92,12 @@ def test_availability_follows_the_configured_provider(monkeypatch: pytest.Monkey
     monkeypatch.delenv("IMAGE_PROVIDER", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.setenv("XAI_API_KEY", "xai-present")
-    # Gemini is the default; an xAI key alone does not switch it on.
+    # Gemini is the only image provider; an old xAI key switches nothing on.
     assert image_generation_available() is False
     monkeypatch.setenv("GEMINI_API_KEY", "g-present")
     assert image_generation_available() is True
     monkeypatch.setenv("IMAGE_PROVIDER", "xai")
-    assert image_generation_available() is True
+    assert image_generation_available() is False
     monkeypatch.setenv("IMAGE_PROVIDER", "none")
     assert image_generation_available() is False
 

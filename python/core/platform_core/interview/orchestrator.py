@@ -969,6 +969,14 @@ _YES = re.compile(r"^\s*(yes|yeah|yep|sure|ok(?:ay)?|please|go ahead|do it|seri|
 _OWN_PHOTOS = re.compile(
     r"\b(i (?:have|'ll|will) (?:upload|send|share|add)|i have (?:photos|pictures|pics)|will upload)\b",
     re.I)
+# An explicit wish for a site WITHOUT generated pictures. "I don't have photos"
+# is not this: an owner with no photos is exactly who draft visuals are for.
+_TEXT_LED = re.compile(
+    r"\b(?:no (?:pictures|images|visuals|photos) at all|without (?:any )?(?:pictures|images|visuals|photos)|"
+    r"text[- ]only|only text|just text|text[- ]led|keep it (?:simple|plain) without|"
+    r"(?:don'?t|do not|no need to|never)\b[^.]{0,20}\b(?:create|generate|make|draw|use)\b[^.]{0,20}"
+    r"\b(?:pictures|images|visuals|photos|ai))\b",
+    re.I)
 
 
 def _contextual_signals(bp: BusinessBlueprint, ti: TurnIntelligence, text: str) -> None:
@@ -976,16 +984,20 @@ def _contextual_signals(bp: BusinessBlueprint, ti: TurnIntelligence, text: str) 
     asked = set(bp.asks[-1].targets) if bp.asks else set()
     if "media.logo" in asked and ti.media_intent == "none" and _GENERATE.search(text):
         ti.media_intent = "generate_logo"
+    text_led = bool(_TEXT_LED.search(text))
+    if ti.media_intent == "no_visuals" and not text_led:
+        # "No, I don't have photos" is a yes to drafts: only an explicit wish for
+        # a text-led site switches pictures off.
+        ti.media_intent = "generate_visuals"
+    if text_led and ti.media_intent == "none":
+        # An explicit "text only, no pictures" counts whenever it is said.
+        ti.media_intent = "no_visuals"
     if "media.photos" in asked and ti.media_intent == "none":
-        # "No photos yet, you can create them" is a yes to drafts, not a no.
-        refused = re.search(r"\b(?:don'?t|do not|no need to|not)\b[^.]{0,20}\b(?:create|generate|make)",
-                            text, re.I)
         if _OWN_PHOTOS.search(text):
             ti.media_intent = "will_upload_photos"
-        elif not refused and (_YES.search(text) or _GENERATE.search(text)):
+        elif _YES.search(text) or _GENERATE.search(text) or _DECLINE.search(text):
+            # "yes, create them", "no photos yet", "nothing" — all mean: draw drafts.
             ti.media_intent = "generate_visuals"
-        elif refused or (_DECLINE.search(text) and len(text) < 40):
-            ti.media_intent = "no_visuals"
 
 
 def _merge_facts(bp: BusinessBlueprint, ti: TurnIntelligence, text: str, source: str) -> int:
@@ -1067,8 +1079,8 @@ def _record_media_intent(bp: BusinessBlueprint, intent: str, image_available: bo
         }[intent]
         photos.summary = {
             "generate_visuals": "Locah will create draft visuals you can replace with real photos.",
-            "will_upload_photos": "You'll add your own photos.",
-            "no_visuals": "No pictures for now.",
+            "will_upload_photos": "You'll add your own photos; Locah fills any gap with drafts until then.",
+            "no_visuals": "A text-led website, without generated pictures.",
         }[intent]
         if intent == "generate_visuals" and image_available:
             return str(VISUALS_QUEUED[lang])

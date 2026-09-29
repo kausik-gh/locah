@@ -172,10 +172,10 @@ class WebsiteGenerationService:
         from platform_core.website.ai_provider import UnavailableAIProvider
 
         provider = get_ai_provider()
-        # Unconfigured provider (no XAI_API_KEY) fails immediately — no retry delay.
+        # Unconfigured provider (no GEMINI_API_KEY) fails immediately — no retry delay.
         if isinstance(provider, UnavailableAIProvider):
             raise RuntimeError(
-                "AI provider not configured (no XAI_API_KEY); use deterministic fallback"
+                "AI provider not configured (no GEMINI_API_KEY); use deterministic fallback"
             )
         prompt = build_generation_prompt(context, intake, plan)
         from platform_core.website.ai_provider import AIProviderPermanentError

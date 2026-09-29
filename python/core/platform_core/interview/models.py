@@ -63,8 +63,10 @@ MediaIntent = Literal[
     # will upload their own, or wants none.
     "generate_visuals", "will_upload_photos", "no_visuals",
 ]
-# What the owner agreed to about pictures for the site. Draft visuals are drawn
-# only after an explicit yes, marked as drafts, and always lose to a real photo.
+# What the owner said about pictures for the site. Draft visuals fill any gap
+# unless the owner explicitly asked for a text-led site ("none"): an owner with
+# no photos gets a site with pictures, marked as drafts internally and always
+# losing to a real photo. "own_photos" still gets drafts until theirs arrive.
 VisualConsent = Literal["unknown", "draft_visuals", "own_photos", "none"]
 # What a catalogue group still needs before it can be sold or shown well.
 CatalogueNeed = Literal["varieties", "cuts", "sizes", "projects", "price", "photo"]
@@ -233,7 +235,44 @@ class MediaReference(StrictModel):
     asset_id: UUID
     role: Literal["logo", "hero", "business", "offering", "gallery"]
     label: str = Field(default="", max_length=120)
-    source: Literal["USER_UPLOAD", "AI_GENERATED"] = "USER_UPLOAD"
+    # USER_UPLOAD: the owner's own picture. CATALOGUE_EXTRACTED: a picture that
+    # came out of the owner's menu/catalogue — still theirs. AI_GENERATED: a
+    # draft LOCAH drew; it always loses to either of the others.
+    source: Literal["USER_UPLOAD", "AI_GENERATED", "CATALOGUE_EXTRACTED"] = "USER_UPLOAD"
+
+
+# How far a picture may stand in for the real thing (the media truth policy):
+#   factual         must show THIS project/person/place/machine — only a real asset;
+#                   never drawn, the section falls back to a designed treatment
+#   representative  what a kind of thing looks like (a bowl of podi, a chicken
+#                   curry cut) — may be a labelled draft until a real photo arrives
+#   mood            atmosphere and context (a home kitchen, a gym floor, calm
+#                   architecture) — generated freely, never captioned as theirs
+#   graphic         pattern, texture or illustration where realism would mislead
+TruthClass = Literal["factual", "representative", "mood", "graphic"]
+MediaSource = Literal[
+    "owner_uploaded", "catalogue_extracted", "existing_business_asset", "gemini_generated",
+    "graphic_generated",
+]
+
+
+class PlannedMedia(StrictModel):
+    """One picture the website needs, decided before the design is chosen."""
+
+    key: str = Field(max_length=120)  # "hero", "category:chicken", "item:idli-podi", "story"
+    purpose: Literal["hero", "category", "item", "story", "cta", "background"]
+    section: str = Field(default="", max_length=40)
+    subject: str = Field(default="", max_length=240)
+    truth_class: TruthClass
+    source: MediaSource | None = None  # where the picture comes from; None until known
+    aspect: str = Field(default="4:3", max_length=8)
+    crop: str = Field(default="center", max_length=40)
+    style: str = Field(default="", max_length=400)
+    prompt_version: str = Field(default="", max_length=40)
+    status: Literal["planned", "ready", "failed", "skipped"] = "planned"
+    asset_id: UUID | None = None
+    approval: Literal["draft", "approved", "removed"] = "draft"
+    reason: str = Field(default="", max_length=200)
 
 
 class MediaGenerationRequest(StrictModel):
@@ -425,6 +464,9 @@ class BusinessBlueprint(StrictModel):
     # What is sold, as a structure: groups, items, units, prices, what is missing.
     taxonomy: OfferingTaxonomy = Field(default_factory=OfferingTaxonomy)
     visual_consent: VisualConsent = "unknown"
+    # The pictures this website needs, slot by slot, with where each comes from
+    # and how far it may stand in for the real thing (see TruthClass).
+    media_plan: list[PlannedMedia] = Field(default_factory=list, max_length=24)
     # Owner-approved draft catalogue items created from the interview. Never
     # infer this from website copy or create sellable items automatically.
     applied_setup_offerings: list[str] = Field(default_factory=list, max_length=12)

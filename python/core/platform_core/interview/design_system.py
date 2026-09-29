@@ -44,7 +44,10 @@ class Dimensions:
     personality: str  # bold | warm | calm | playful | refined | technical | friendly
     energy: str  # high | medium | low
     media_importance: str  # critical | high | medium | low
-    has_media: bool  # the owner's own photos (not a logo)
+    # The site WILL have pictures: the owner's own, or drafts LOCAH draws now.
+    # Decided before the design, so a business without photos still gets the
+    # image-led composition its trade deserves.
+    has_media: bool
     density: str  # catalogue | curated | sparse
     locality: str  # local | regional | national
     portfolio: str  # heavy | light | none
@@ -57,6 +60,8 @@ class Dimensions:
     # The owner described the feel themselves ("fun, colourful") — worth more
     # than anything inferred.
     personality_said: bool = False
+    # The owner's own photos (uploads, catalogue pictures) — not drafts.
+    owner_media: bool = False
     evidence: tuple[str, ...] = ()  # why, in plain words — for review and tests
 
     def as_dict(self) -> dict[str, object]:
@@ -121,8 +126,15 @@ def _said(bp: BusinessBlueprint) -> str:
     return " ".join(words)
 
 
-def read_dimensions(bp: BusinessBlueprint, business_type: str | None = None) -> Dimensions:
-    """The business, as the dimensions a designer would reason from."""
+def read_dimensions(
+    bp: BusinessBlueprint, business_type: str | None = None, *, media_expected: bool | None = None,
+) -> Dimensions:
+    """The business, as the dimensions a designer would reason from.
+
+    ``media_expected`` says whether the site will have pictures; by default it
+    is worked out from the owner's photos, their choice about drafts and
+    whether an image provider is configured (media_director.pictures_expected).
+    """
     from platform_core.interview.discovery import characteristics
     from platform_core.interview.playbooks import playbook_for
     from platform_core.interview.understanding import customer_actions, delivery_area, fulfilment
@@ -189,7 +201,13 @@ def read_dimensions(bp: BusinessBlueprint, business_type: str | None = None) -> 
                        "hospitality": "refined"}.get(service_mode, "friendly")
     evidence.append(f"personality: {personality}")
 
-    owner_photos = [m for m in bp.media_assets if m.role != "logo" and m.source == "USER_UPLOAD"]
+    from platform_core.interview.media_director import owner_photos as _owner_photos
+    from platform_core.interview.media_director import pictures_expected
+
+    owner_photos = _owner_photos(bp)
+    if media_expected is None:
+        media_expected = pictures_expected(bp)
+    media_expected = media_expected or bool(owner_photos)
     items = sum(len(g.items) for g in bp.taxonomy.groups)
     density = "catalogue" if items >= 12 or len(bp.taxonomy.groups) >= 6 else \
         "curated" if items >= 4 or len(bp.taxonomy.groups) >= 3 else "sparse"
@@ -206,13 +224,13 @@ def read_dimensions(bp: BusinessBlueprint, business_type: str | None = None) -> 
         else "in_person"
     return Dimensions(
         offering=offering, journey=journey, primary_action=first, positioning=positioning,
-        personality=personality, energy=energy, media_importance=pb.media, has_media=bool(owner_photos),
+        personality=personality, energy=energy, media_importance=pb.media, has_media=media_expected,
         density=density, locality=locality,
         portfolio="heavy" if pb.portfolio else "light" if offering in {"property", "service"} and
         "made_to_order" in seen else "none",
         audience=audience, trust="high" if category in _HIGH_TRUST or pb.key in {"hospital", "clinic"}
         else "normal", transaction=transaction, service_mode=service_mode, personality_said=personality_said,
-        evidence=tuple(evidence),
+        owner_media=bool(owner_photos), evidence=tuple(evidence),
     )
 
 
@@ -562,8 +580,10 @@ def choose(bp: BusinessBlueprint, dims: Dimensions, *, seed: str = "") -> Choice
         # "offering: menu" — never "offering=menu", which the site's markup guard rightly refuses.
         return ", ".join(sorted(str(k).replace("=", ": ") for k in keys))  # type: ignore[attr-defined]
 
+    pictures = ("owner photos" if dims.owner_media else "draft visuals" if dims.has_media
+                else "no pictures")
     reasons = (f"{family.label} — " + said(d for d in family.affinity if d in values)[:200],
-               f"composition {variant.key} — " + ("owner photos" if dims.has_media else "no owner photos yet")
+               f"composition {variant.key} — " + pictures
                + f", {dims.offering}, {dims.journey}, {dims.service_mode}",
                f"palette {palette.key}")
     return Choice(family, variant, palette, scores, reasons)

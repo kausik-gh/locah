@@ -925,19 +925,15 @@ def test_a_business_with_no_unsupported_ask_raises_nothing():
 def test_interview_extraction_does_not_run_on_the_website_reasoning_model():
     """Extraction is quotation, not reasoning, and the owner waits through it.
 
-    Each provider owns its per-purpose model, so business logic never names a
-    vendor model. Grok routes extraction to its non-reasoning model (measured
-    1.5-2.3s against 8.6-10.2s); Gemini uses its fast model thinking at "low".
+    The provider owns its per-purpose model, so business logic never names a
+    vendor model: Gemini uses its fast model thinking at "low".
     """
     from platform_core.website.ai_provider import (
-        _DEFAULT_MODEL,
         _GEMINI_THINKING,
         GEMINI_DEFAULT_MODEL,
         GeminiProvider,
-        GrokProvider,
     )
 
-    assert GrokProvider("k").model_for("business.interview") != _DEFAULT_MODEL
     assert GeminiProvider("k").model_for("business.interview") == GEMINI_DEFAULT_MODEL
     assert _GEMINI_THINKING["business.interview"] == "low"
 

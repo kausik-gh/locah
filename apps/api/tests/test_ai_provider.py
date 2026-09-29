@@ -1,87 +1,54 @@
-"""Unit tests for the website AI provider abstraction."""
+"""Unit tests for the AI provider boundary: Gemini is LOCAH's only provider."""
 
 from __future__ import annotations
 
-import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from platform_core.website.ai_provider import (
-    GrokProvider,
+    GeminiProvider,
     UnavailableAIProvider,
     get_ai_provider,
 )
 
-# Every provider here talks to a stubbed HTTP client — request building and
-# reply parsing only. The transport backstop still refuses any real AI host.
 pytestmark = pytest.mark.usefixtures("stubbed_ai_transport")
 
 
-def test_get_ai_provider_without_key_returns_unavailable(monkeypatch: Any) -> None:
-    monkeypatch.delenv("XAI_API_KEY", raising=False)
-    monkeypatch.setenv("AI_PROVIDER", "xai")
-    provider = get_ai_provider()
-    assert isinstance(provider, UnavailableAIProvider)
+def test_without_a_key_there_is_no_model(monkeypatch: Any) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    assert isinstance(get_ai_provider(), UnavailableAIProvider)
 
 
-def test_get_ai_provider_with_key_returns_grok(monkeypatch: Any) -> None:
-    monkeypatch.setenv("XAI_API_KEY", "test-key")
-    monkeypatch.setenv("AI_PROVIDER", "xai")
-    monkeypatch.setenv("XAI_MODEL", "grok-test")
+def test_gemini_with_a_key(monkeypatch: Any) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
     provider = get_ai_provider()
-    assert isinstance(provider, GrokProvider)
-    assert provider.provider_name == "xai"
-    assert provider.model_name == "grok-test"
+    assert isinstance(provider, GeminiProvider) and provider.provider_name == "gemini"
+
+
+@pytest.mark.parametrize("leftover", ["xai", "grok", "openai"])
+def test_a_leftover_provider_setting_never_reaches_another_vendor(monkeypatch: Any, leftover: str) -> None:
+    """Grok was removed: an old AI_PROVIDER=xai means no model, not a second vendor."""
+    monkeypatch.setenv("AI_PROVIDER", leftover)
+    monkeypatch.setenv("XAI_API_KEY", "old-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    assert isinstance(get_ai_provider(), UnavailableAIProvider)
+
+
+def test_there_is_no_grok_code_left() -> None:
+    import platform_core.interview.voice as voice
+    import platform_core.website.ai_provider as ai
+    import platform_core.website.image_generation as images
+
+    assert not hasattr(ai, "GrokProvider")
+    assert not hasattr(voice, "mint_client_secret")
+    for module in (ai, images, voice):
+        source = open(module.__file__ or "", encoding="utf-8").read()
+        assert "api.x.ai" not in source, module.__name__
 
 
 @pytest.mark.asyncio
-async def test_grok_provider_parses_structured_response() -> None:
-    payload = {
-        "pages": [{"slug": "home", "title": "Home", "page_type": "home", "sections": []}],
-        "navigation": [{"label": "Home", "path": "/"}],
-        "theme_hints": {"primary_color": "#112233"},
-    }
-    response = MagicMock()
-    response.status_code = 200
-    response.text = ""
-    response.json.return_value = {
-        "choices": [{"message": {"content": json.dumps(payload)}}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 20},
-    }
-    response.raise_for_status = MagicMock()
-    client = AsyncMock()
-    client.post = AsyncMock(return_value=response)
-    client.__aenter__ = AsyncMock(return_value=client)
-    client.__aexit__ = AsyncMock(return_value=None)
-
-    provider = GrokProvider("test-key", "grok-test")
-    with patch("platform_core.website.ai_provider.httpx.AsyncClient", return_value=client):
-        parsed = await provider.generate_structured(
-            "prompt",
-            {"type": "object"},
-            {"purpose": "website.generate"},
-            30,
-        )
-    assert parsed == payload
-    sent = client.post.await_args.kwargs["json"]
-    assert sent["response_format"]["type"] == "json_schema"
-    assert sent["model"] == "grok-test"
-
-
-@pytest.mark.asyncio
-async def test_grok_provider_rejects_non_json() -> None:
-    response = MagicMock()
-    response.status_code = 200
-    response.text = ""
-    response.json.return_value = {"choices": [{"message": {"content": "not json"}}]}
-    response.raise_for_status = MagicMock()
-    client = AsyncMock()
-    client.post = AsyncMock(return_value=response)
-    client.__aenter__ = AsyncMock(return_value=client)
-    client.__aexit__ = AsyncMock(return_value=None)
-
-    provider = GrokProvider("test-key", "grok-test")
-    with patch("platform_core.website.ai_provider.httpx.AsyncClient", return_value=client):
-        with pytest.raises(RuntimeError, match="non-JSON"):
-            await provider.generate_structured("prompt", {"type": "object"}, {}, 30)
+async def test_unavailable_provider_fails_fast() -> None:
+    with pytest.raises(RuntimeError):
+        await UnavailableAIProvider().generate_structured("x", {}, {}, timeout_seconds=1)

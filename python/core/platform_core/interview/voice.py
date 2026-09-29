@@ -9,15 +9,16 @@ model supplies ears, a voice and turn-taking. It does not supply truth.
 
 Two things live here because they must be server-side.
 
-The permanent xAI key is one. The browser cannot send an Authorization header
-on a WebSocket, and it must never hold the account key anyway, so the key is
-exchanged here for a short-lived client secret that is useless for anything
-else and expires in minutes.
+The permanent Gemini key is one. The browser must never hold the account key,
+so it is exchanged here for a short-lived Gemini Live token that carries the
+locked session setup and is useless for anything else.
 
-The session instruction is the other. Grok's behaviour is versioned in this
-repository rather than typed into a console — this team cannot use console
-agents at all (`/v1/agents` answers 403), and a personality that lives in a
-web form is a personality nobody can review, diff or roll back.
+The session instruction is the other. The voice's behaviour is versioned in
+this repository rather than typed into a console: a personality that lives in
+a web form is a personality nobody can review, diff or roll back.
+
+Gemini is the only live-voice provider (VOICE_PROVIDER=gemini, or replay for
+local acceptance runs).
 """
 
 from __future__ import annotations
@@ -34,24 +35,7 @@ from platform_core.logging import get_logger
 
 _log = get_logger("interview.voice")
 
-_CLIENT_SECRETS_URL = "https://api.x.ai/v1/realtime/client_secrets"
-REALTIME_URL = "wss://api.x.ai/v1/realtime"
-
-# What the account actually serves, confirmed against `session.created`:
-# model `grok-voice-think-fast-2.0`, voice `xai_ara`, and turn detection off
-# until the session asks for it. The fast voice model is the deliberate choice
-# — the text interview already showed the non-reasoning model was both quicker
-# and more accurate at structured extraction, and here the thinking that
-# matters happens in Locah's own deterministic code, not in the model.
-VOICE_MODEL = os.getenv("XAI_VOICE_MODEL", "grok-voice-think-fast-2.0")
-VOICE_NAME = os.getenv("XAI_VOICE", "xai_ara")
-
-# Long enough to open a socket on a slow phone, short enough to be worthless if
-# it leaks. The secret is single-use in practice: a second connection with the
-# same value is refused, so one session means one mint.
-SECRET_TTL_SECONDS = 120
-
-# The one tool Grok may call. It carries an utterance to Locah and returns what
+# The one tool the voice may call. It carries an utterance to Locah and returns what
 # Locah decided; it cannot enable a module, write a fact or build a website,
 # because it is executed by the browser against the ordinary authenticated
 # interview endpoint with the owner's own session.
@@ -106,18 +90,16 @@ def _replay_script() -> list[str] | None:
 
 def is_configured() -> bool:
     """Whether voice can work at all, without revealing anything about the key."""
-    provider = os.getenv("VOICE_PROVIDER", "gemini").strip().lower() or "gemini"
+    provider = voice_provider()
     if provider == "replay":
         return _replay_script() is not None
-    if provider == "gemini":
-        return bool(os.getenv("GEMINI_API_KEY", "").strip())
-    return provider in {"xai", "grok"} and bool(os.getenv("XAI_API_KEY", "").strip())
+    return provider == "gemini" and bool(os.getenv("GEMINI_API_KEY", "").strip())
 
 
 def _compact_state(bp: BusinessBlueprint) -> str:
     """The Blueprint as the model needs to hear it, and no more.
 
-    Grok is told what is already known so it does not ask again, and what is
+    The voice is told what is already known so it does not ask again, and what is
     missing so it asks the right thing. It is not told the module registry, the
     website schema, the section types or the transcript — none of which it
     decides, and all of which would cost tokens on every session.
@@ -205,88 +187,13 @@ CURRENT STATE
 {_compact_state(bp)}"""
 
 
-def session_config(bp: BusinessBlueprint) -> dict[str, Any]:
-    """The `session.update` payload the browser sends once the socket opens.
-
-    Server-side VAD is what makes this a conversation rather than a walkie-talkie:
-    the model decides when the owner has finished a thought, and the owner can cut
-    in while Locah is talking.
-    """
-    return {
-        "instructions": build_session_instructions(bp),
-        "voice": VOICE_NAME,
-        "modalities": ["audio", "text"],
-        "audio": {
-            "input": {
-                "format": {"type": "audio/pcm", "rate": 24000},
-                # xAI emits one cumulative `updated` stream followed by one
-                # authoritative `completed` event for this model. The legacy
-                # flat `whisper-1` setting emitted repeated partial
-                # `completed` events, which made one utterance look like many.
-                "transcription": {"model": "grok-transcribe"},
-            },
-            "output": {"format": {"type": "audio/pcm", "rate": 24000}},
-        },
-        "turn_detection": {
-            "type": "server_vad",
-            "threshold": 0.5,
-            "prefix_padding_ms": 300,
-            "silence_duration_ms": 700,
-        },
-        "tools": VOICE_TOOLS,
-        "tool_choice": "auto",
-    }
-
-
 class VoiceSessionError(RuntimeError):
     """Voice could not start. Onboarding continues in chat regardless."""
 
 
-async def mint_client_secret(*, timeout_seconds: int = 12) -> dict[str, Any]:
-    """Exchange the account key for a short-lived browser credential.
-
-    The permanent key never leaves this process. Nothing about the response is
-    persisted — it expires on its own in a couple of minutes, and storing it
-    would only create somewhere for it to be stolen from.
-    """
-    api_key = os.getenv("XAI_API_KEY", "").strip()
-    if not api_key:
-        raise VoiceSessionError("Voice is not configured on this server.")
-    guard_external_ai("voice", "xai", "realtime_client_secret")
-    try:
-        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-            response = await client.post(
-                _CLIENT_SECRETS_URL,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "expires_after": {"anchor": "created_at", "seconds": SECRET_TTL_SECONDS}
-                },
-            )
-    except Exception as exc:  # noqa: BLE001 — network failure is a voice failure, not an outage
-        _log.warning("interview.voice.mint_failed", error=type(exc).__name__)
-        raise VoiceSessionError("Could not reach the voice service.") from exc
-
-    if response.status_code >= 400:
-        # Deliberately no response body in the log: a rejected credential reply
-        # can echo the credential back.
-        _log.warning("interview.voice.mint_rejected", status_code=response.status_code)
-        raise VoiceSessionError("The voice service refused the request.")
-
-    data = response.json()
-    secret = data.get("value")
-    if not isinstance(secret, str) or not secret:
-        raise VoiceSessionError("The voice service returned no credential.")
-    return {"client_secret": secret, "expires_at": data.get("expires_at")}
-
-
 # ---------------------------------------------------------------- providers
 #
-# Voice has its own provider switch because the realtime products differ far
-# more than the text APIs do. Both paths share the same instructions, the same
-# single tool and the same Blueprint; only the wire protocol differs.
+# Gemini Live, with the same instructions, the single tool and the Blueprint.
 
 GEMINI_LIVE_MODEL = os.getenv("GEMINI_LIVE_MODEL", "gemini-3.8-live")
 GEMINI_VOICE_NAME = os.getenv("GEMINI_VOICE", "Kore")
@@ -427,12 +334,4 @@ async def create_voice_session(bp: BusinessBlueprint) -> dict[str, Any]:
         return {"provider": "replay", "utterances": script, "expires_at": None}
     if voice_provider() == "gemini":
         return await mint_gemini_token(bp)
-    minted = await mint_client_secret()
-    return {
-        "provider": "xai",
-        **minted,
-        "url": REALTIME_URL,
-        "model": VOICE_MODEL,
-        "voice": VOICE_NAME,
-        "session": session_config(bp),
-    }
+    raise VoiceSessionError("Voice isn't available on this server.")

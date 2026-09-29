@@ -141,9 +141,12 @@ async def test_build_once_offered_is_never_taken_away() -> None:
     for text in ["We sell chicken, mutton and fish. People order on WhatsApp.",
                  "Chicken - curry cut, boneless. Mutton - curry cut, chops. Fish - seer, pomfret.",
                  "We deliver around Perumbakkam, people can also pick up.",
-                 "Nookampalayam Road, Chennai, 8754722026"]:
+                 "Nookampalayam Road, Chennai, 8754722026",
+                 # V4: a picture-led trade is asked, last, what pictures it has.
+                 "No photos yet."]:
         bp = await Engine.turn(bp, text, provider=Down())
     assert bp.readiness.ready and bp.completion_state.ready_at is not None
+    assert bp.visual_consent == "draft_visuals"  # "no photos" is a yes to drafts
     ready_at = bp.completion_state.ready_at
     # New ways of working after that used to add "essential" questions and hide Build.
     for text in ["We also take bulk orders from restaurants and hotels.",
@@ -170,12 +173,12 @@ async def test_keep_refining_asks_the_most_useful_optional_things_one_at_a_time(
     bp = blueprint("Ishant Proteins", meat)
     for text in ["We sell chicken and mutton by the kg. People order on WhatsApp.",
                  "Chicken - curry cut, boneless. Mutton - curry cut.",
-                 "We deliver around Perumbakkam.", "Perumbakkam, Chennai. 8754722026"]:
+                 "We deliver around Perumbakkam.", "Perumbakkam, Chennai. 8754722026", "Nothing yet"]:
         bp = await Engine.turn(bp, text, provider=Down())
     assert bp.readiness.ready
     bp = Engine.refine(bp)
     first = bp.asks[-1].ask
-    assert first in {"photos", "story", "pricing", "payment", "hours"}
+    assert first in {"story", "pricing", "payment", "hours"}
     assert bp.messages[-1].text.count("?") >= 1
     bp = await Engine.turn(bp, "No", provider=Down())
     assert bp.asks[-1].ask != first  # declined, so the next one — never the same again
