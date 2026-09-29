@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
-import { GateNotice, PageHeader } from '@/components/ui'
+import { Card, GateNotice, PageHeader } from '@/components/ui'
 import { ApplyTemplate } from './ApplyTemplate'
 import { TemplatePreview, type PreviewSection } from './TemplatePreview'
 
@@ -39,7 +39,7 @@ type WebsiteResponse = {
     website: { status: string }
     draft: {
       generated_by?: string | null
-      theme?: { template_id?: string | null } | null
+      theme?: { template_id?: string | null; composer_version?: string | null } | null
       pages: unknown[]
     } | null
   }
@@ -115,6 +115,20 @@ export default async function WebsiteTemplatesPage({
         subtitle="Each one builds a real site you can edit straight away. Nothing goes live until you publish."
         breadcrumb={<Link href={base}>← Your website</Link>}
       />
+
+      {String(draft?.theme?.composer_version ?? '').startsWith('creative') ? (
+        <Card style={{ maxWidth: '44rem', marginBottom: '1.25rem' }}>
+          <h2 style={{ marginBottom: '0.4rem' }}>Your website was designed for your business</h2>
+          <p style={{ color: 'var(--color-muted)' }}>
+            These older starting points are generic layouts. Choosing one replaces the design LOCAH made for
+            you. To change the look, tell LOCAH what you want — &ldquo;make it warmer&rdquo;, &ldquo;darker&rdquo;,
+            &ldquo;put the menu first&rdquo; — or edit it directly.
+          </p>
+          <p style={{ marginTop: '0.75rem' }}>
+            <Link href={`${base}/preview`}>Edit your website →</Link>
+          </p>
+        </Card>
+      ) : null}
 
       <div className="tpl-grid">
         {templates.map((template) => {

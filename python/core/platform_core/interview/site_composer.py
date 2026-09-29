@@ -195,6 +195,32 @@ def _area(text: str) -> str:
     return _place(raw) if raw and len(raw) <= 60 else ""
 
 
+def visit_facts(bp: BusinessBlueprint) -> list[dict[str, str]]:
+    """How visiting or booking works, from the owner's answers — each a real fact.
+
+    The booking-led counterpart of `ordering_facts`: how to book, what is
+    booked, the hours, where. Nothing that was not said.
+    """
+    from platform_core.interview.understanding import customer_actions
+
+    items: list[dict[str, str]] = []
+    labels = {"book_online": "Book online", "book_whatsapp": "Book on WhatsApp", "book_call": "Book by phone",
+              "book_trial": "A free trial first", "book_site_visit": "Site visits", "check_dates": "Check dates",
+              "book_table": "Book a table", "book_consultation": "Book a consultation", "visit": "Walk in",
+              "enquire": "Ask on WhatsApp or call"}
+    said = [labels[a] for a in customer_actions(bp) if a in labels]
+    if said:
+        body = _answer(bp, "bookings.format") or _answer(bp, "commerce.action")
+        items.append({"kind": "book", "title": said[0], "body": _first_sentence(body)[:160] if body else ""})
+    hours = _facts(bp).get("opening_hours", "")
+    if hours:
+        items.append({"kind": "hours", "title": "Opening hours", "body": hours[:160]})
+    where = _address(bp)
+    if where:
+        items.append({"kind": "place", "title": "Where to find us", "body": where[:160]})
+    return [i if i["body"] else {"kind": i["kind"], "title": i["title"]} for i in items][:4]
+
+
 def hero_badges(bp: BusinessBlueprint, business_type: str | None) -> list[str]:
     """Short true chips under the headline — never a rating, a count or an award."""
     badges: list[str] = []
@@ -393,13 +419,16 @@ def compose_site(
     else:
         primary = ("", "")
 
-    sections: list[dict[str, Any]] = []
     hero: dict[str, Any] = {
-        "headline": (copy.headline or name)[:120],
-        "subheadline": (copy.subheadline or _first_sentence(facts.get("description", "")))[:300],
+        "headline": (copy.headline or designed_headline(bp, arche) or name)[:120],
+        "subheadline": (copy.subheadline or designed_subheadline(bp, business_type))[:300],
     }
     if copy.headline and copy.headline_accent and copy.headline_accent in copy.headline:
         hero["headline_accent"] = copy.headline_accent[:60]
+    elif not copy.headline:
+        accent = designed_accent(hero["headline"])
+        if accent:
+            hero["headline_accent"] = accent
     place = _town(bp)
     if place:
         hero["eyebrow"] = place[:60]
@@ -418,41 +447,68 @@ def compose_site(
         hero["image_asset_id"] = hero_picture
     if not hero["subheadline"]:
         hero.pop("subheadline")
-    sections.append({"section_type_id": "hero", "layout_variant": direction.hero, "content": hero})
-    sections.extend(browse)
 
+    # Every section this business has something true to say in, by role; the
+    # architecture below decides which appear and in what order.
+    parts: dict[str, list[dict[str, Any]]] = {
+        "hero": [{"section_type_id": "hero", "layout_variant": direction.hero, "content": hero}],
+        "catalogue": browse,
+    }
     ordering = ordering_facts(bp, business_type)
+    if arche not in _COMMERCE and len(ordering) < 2:
+        # A booking- or visit-led business: how visiting or booking works.
+        visiting = visit_facts(bp)
+        if len(visiting) >= 2:
+            parts["how"] = [{"section_type_id": "fulfilment_strip", "layout_variant": "icons", "content": {
+                "title": (copy.steps_title or "Good to know")[:120], "anchor": "visit", "items": visiting}}]
     if len(ordering) >= 2:
-        sections.append({
+        parts["how"] = [{
             "section_type_id": "fulfilment_strip", "layout_variant": "icons",
             "content": {"title": (copy.steps_title or ("How ordering works" if arche in _COMMERCE
                                                      else "Good to know"))[:120],
                         "anchor": "ordering", "items": ordering},
-        })
+        }]
+    if copy.steps:
+        # How customers work with the business, each step from the owner's own sentence.
+        parts["steps"] = [{"section_type_id": "feature_grid", "layout_variant": "steps", "content": {
+            "title": (copy.steps_title or "How it works")[:120],
+            "items": [{"title": st.title[:80], "body": st.body[:240]} for st in copy.steps[:4]]}}]
+    served = served_list(bp)
+    if served:
+        parts["served"] = [{"section_type_id": "feature_grid", "layout_variant": "list", "content": {
+            "title": "Industries we serve" if arche == "b2b_rfq" else "Who we work with",
+            "items": [{"title": item[:80]} for item in served[:9]]}}]
+    if len(bp.highlights) >= 2:
+        parts["proof"] = [{"section_type_id": "highlights", "layout_variant": "strip", "content": {
+            "items": [{"value": h.value[:24], "label": h.label[:40]} for h in bp.highlights[:6]]}}]
 
-    story_body = copy.about_body
+    from_owner = not copy.about_body
+    story_body = copy.about_body or owner_story(bp)
     # The owner's own answer to "what should people remember?" is the story's
     # line; a claim the model filed is only the fallback ("Crab and squid
     # cleaned and sold by kg" was quoted as the shop's story).
     remembered = (bp.discovery.get("brand.story") or TargetState()).quote
     claims = [_first_sentence(remembered)] if remembered else []
     claims += [c.claim for c in bp.website_draft.owner_claims]
+    story_picture: str | None = None
     if story_body:
         story: dict[str, Any] = {"title": (copy.about_title or "Our story")[:120], "body": story_body[:2000],
                                  "eyebrow": "Our story", "anchor": "story"}
-        if claims:
+        # A pull quote beside a written story; not the same words twice when the
+        # story IS the owner's own answer.
+        if claims and not (from_owner and _plain_text(claims[0]) in _plain_text(story_body)):
             story["quote"] = claims[0][:200]
         # Its own picture first; else the first category's (the last one was
         # just shown above); the hero only as a last resort.
-        picture = picture_for(bp, "story")
-        if not picture and bp.taxonomy.groups:
-            picture = picture_for(bp, "category:" + slug(bp.taxonomy.groups[0].name))
-        picture = picture or hero_picture
-        if picture:
-            story["image_asset_id"] = picture
-        sections.append({"section_type_id": "about",
-                         "layout_variant": direction.story_variant if picture else "text_only",
-                         "content": story})
+        story_picture = picture_for(bp, "story")
+        if not story_picture and bp.taxonomy.groups:
+            story_picture = picture_for(bp, "category:" + slug(bp.taxonomy.groups[0].name))
+        story_picture = story_picture or hero_picture
+        if story_picture:
+            story["image_asset_id"] = story_picture
+        parts["story"] = [{"section_type_id": "about",
+                           "layout_variant": direction.story_variant if story_picture else "text_only",
+                           "content": story}]
 
     if phone or whatsapp or (primary[0] and primary[1]):
         band: dict[str, Any] = {
@@ -462,11 +518,13 @@ def compose_site(
         }
         if copy.closing_body:
             band["body"] = copy.closing_body[:500]
-        if hero_picture:
-            band["image_asset_id"] = hero_picture
-        sections.append({"section_type_id": "cta_band",
-                         "layout_variant": "image_banner" if hero_picture else "centered",
-                         "content": band})
+        # A picture the page has not already shown, where there is one.
+        band_picture = _unshown_picture(bp, {hero_picture, story_picture}) or hero_picture
+        if band_picture:
+            band["image_asset_id"] = band_picture
+        parts["cta"] = [{"section_type_id": "cta_band",
+                         "layout_variant": "image_banner" if band_picture else "centered",
+                         "content": band}]
 
     contact_section: dict[str, Any] = {"title": (copy.contact_title or ("Visit us" if place else "Get in touch"))[:120],
                                        "show_map": False}
@@ -480,7 +538,9 @@ def compose_site(
     if facts.get("opening_hours"):
         contact_section["hours_summary"] = facts["opening_hours"][:500]
     if len(contact_section) > 2:
-        sections.append({"section_type_id": "contact", "layout_variant": "full", "content": contact_section})
+        parts["contact"] = [{"section_type_id": "contact", "layout_variant": "full", "content": contact_section}]
+
+    sections = [section for role in page_architecture(arche, direction.page_order) for section in parts.get(role, [])]
 
     lead = bp.website_prefs.lead_section
     if lead:
@@ -534,6 +594,7 @@ def compose_site(
         # not layer its serif and weights on top of it.
         "typography_direction": "modern_sans",
         "creative_direction": direction.model_dump(mode="json"),
+        "mobile": direction.mobile,
         "composer_version": COMPOSER_VERSION,
         "generation": meta or {},
     }
@@ -610,6 +671,152 @@ def _trade_nav(bp: BusinessBlueprint, arche: str) -> str:
     pb = playbook_for(bp)
     return pb.browse_label if pb.key != "other" else NAV_BROWSE[arche]
 
+
+
+# ------------------------------------------------------ page architecture
+#
+# Which sections a site has, and in what order, follows what the business is:
+# a kitchen leads with its menu and how ordering works; a gym with programmes
+# and plans, then proof; a developer with projects and its record; a B2B
+# supplier with product families, who it serves and how buying works. The
+# model may reorder or drop the optional roles (never hero, catalogue, the
+# closing band or contact), and a role with nothing true to show is left out.
+
+ARCHITECTURE: dict[str, tuple[str, ...]] = {
+    "menu_commerce": ("hero", "catalogue", "how", "story", "proof", "cta", "contact"),
+    "product_commerce": ("hero", "catalogue", "how", "story", "proof", "cta", "contact"),
+    "membership_fitness": ("hero", "catalogue", "proof", "steps", "story", "cta", "contact"),
+    "real_estate_projects": ("hero", "catalogue", "proof", "story", "steps", "cta", "contact"),
+    "b2b_rfq": ("hero", "catalogue", "served", "steps", "proof", "story", "cta", "contact"),
+    "service_appointment": ("hero", "catalogue", "steps", "how", "story", "proof", "cta", "contact"),
+    "project_portfolio": ("hero", "catalogue", "story", "steps", "proof", "cta", "contact"),
+    "local_service": ("hero", "catalogue", "how", "steps", "story", "proof", "cta", "contact"),
+}
+_FIXED_ROLES = ("hero", "catalogue", "cta", "contact")
+
+
+def page_architecture(archetype: str, proposed: list[str] | None = None) -> list[str]:
+    """The order of roles on the page: the archetype's recipe, or the model's
+    proposal when it only reorders or drops optional roles of that recipe."""
+    recipe = list(ARCHITECTURE.get(archetype, ARCHITECTURE["local_service"]))
+    if not proposed:
+        return recipe
+    middle = [r for r in dict.fromkeys(proposed) if r in recipe and r not in _FIXED_ROLES]
+    return ["hero", "catalogue", *middle, "cta", "contact"]
+
+
+_GENERIC_GROUP = re.compile(r"^(?:our )?(projects?|services?|products?|items?|offerings?|work|portfolio|"
+                            r"range|catalogue|menu|options)$", re.I)
+_KINDS = re.compile(r"\b(villas?|apartments?|plots?|flats?|homes?|row houses?|commercial spaces?|offices?)\b", re.I)
+
+
+def _headline_name(text: str) -> str:
+    name = re.sub(r"^(?:a|an|the|our)\s+", "", text.strip(), flags=re.I)
+    return name[0].upper() + name[1:] if name else ""
+
+
+def designed_headline(bp: BusinessBlueprint, archetype: str) -> str:
+    """A headline with a point of view, from the owner's own words, when no model
+    wrote one: what they offer and where ("Podis, Pickles & Sweets in Coimbatore")."""
+    names: list[str] = []
+    for group in bp.taxonomy.groups:
+        name, vague = normalise_name(group.name)
+        if name and not vague and not _GENERIC_GROUP.match(name):
+            names.append(_headline_name(name))
+    if not names and archetype == "real_estate_projects":
+        # "Projects" says nothing; the kinds the owner builds do ("villas and apartments").
+        said = " ".join(f.value for k, f in {**bp.known_facts, **bp.unconfirmed_facts}.items()
+                        if k in {"description", "offerings"})
+        names = list(dict.fromkeys(m.group(1).lower() for m in _KINDS.finditer(said)))
+        names = [n[0].upper() + n[1:] for n in names]
+    if not names:
+        return ""
+    word = "and" if any("&" in n for n in names) else "&"
+    head = _join(names[:3], word)
+    if len(head) > 34:
+        head = _join(names[:2], word)
+    # The place, as short as it can be said: "Coimbatore", not "Saibaba Colony,
+    # Coimbatore" (the eyebrow carries the full place). A headline that would
+    # sprawl drops it — "Chicken, Mutton & Fish" says enough.
+    place = _town(bp).split(",")[-1].strip()
+    latin = all(re.fullmatch(r"[\x00-\x7F’–—]+", n) for n in names)
+    joiner = "across" if archetype == "real_estate_projects" else "in"
+    return f"{head} {joiner} {place}" if place and latin and len(head) + len(place) <= 40 else head
+
+
+def designed_accent(headline: str) -> str:
+    """The second voice of a designed headline: what follows its first item."""
+    head = re.split(r" (?:in|across) ", headline, maxsplit=1)[0]
+    for sep in (", ", " & ", " and "):
+        first, found, rest = head.partition(sep)
+        if found and rest:
+            return rest
+    return ""
+
+
+def designed_subheadline(bp: BusinessBlueprint, business_type: str | None) -> str:
+    """One plain line of how buying works, from the owner's answers — never the
+    raw first sentence of a Tamil or Tanglish answer."""
+    description = _first_sentence(_facts(bp).get("description", ""))
+    if description and reads_as_english(description) and len(description) > 24:
+        return description
+    facts = [f["body"].rstrip(".") for f in ordering_facts(bp, business_type) if f["kind"] in {"delivery", "pickup"}]
+    from platform_core.interview.understanding import customer_actions
+
+    actions = {"order_whatsapp": "Order on WhatsApp", "order_online": "Order online", "order_call": "Order by phone",
+               "book_online": "Book online", "book_whatsapp": "Book on WhatsApp", "book_call": "Book by phone",
+               "request_quote": "Ask for a quotation", "book_site_visit": "Book a site visit",
+               "book_trial": "Book a free trial"}
+    lead = next((actions[a] for a in customer_actions(bp) if a in actions), "")
+    line = " · ".join(p for p in [lead, *facts[:1]] if p)
+    return line or description
+
+
+def owner_story(bp: BusinessBlueprint) -> str:
+    """The story in the owner's own words when no model wrote one: their answer
+    to "what should people remember?", as they said it (English only)."""
+    state = bp.discovery.get("brand.story")
+    if not state or state.status not in {"answered", "partial"} or bp.language_style != "en":
+        return ""
+    words = " ".join((state.quote or state.summary or "").split())
+    return words if len(words) >= 24 and reads_as_english(words) else ""
+
+
+_ENGLISH = frozenset("a an the and or but we our us i my me is are was be to of in on at for from with by "
+                     "it its this that you your they their all every only just who what how when".split())
+
+
+def reads_as_english(text: str) -> bool:
+    """Whether a sentence the owner typed is English, not Tanglish or Tamil —
+    "Naan veetla irundhu home food pannuren" is not a website subheadline."""
+    words = re.findall(r"[a-zA-Z']+", text.lower())
+    if not words or len(words) < len(text.split()) * 0.8:
+        return False  # Tamil script, or mostly not Latin letters
+    function = sum(1 for w in words if w in _ENGLISH)
+    return function >= 2 and function / len(words) >= 0.15
+
+
+def served_list(bp: BusinessBlueprint) -> list[str]:
+    """Who a B2B business supplies, as the owner listed them."""
+    state = bp.discovery.get("b2b.customers")
+    if not state or state.status not in {"answered", "partial"}:
+        return []
+    text = state.quote or state.summary or ""
+    items = [p.strip(" .") for p in re.split(r",|\band\b|;|/", text) if p.strip(" .")]
+    items = [i[0].upper() + i[1:] for i in items if 2 < len(i) <= 40]
+    return items if len(items) >= 2 else []
+
+
+def _plain_text(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (text or "").casefold()).strip()
+
+
+def _unshown_picture(bp: BusinessBlueprint, shown: set[str | None]) -> str | None:
+    for group in bp.taxonomy.groups:
+        picture = picture_for(bp, "category:" + slug(group.name))
+        if picture and picture not in shown:
+            return picture
+    return None
 
 WHATSAPP = "whatsapp:"
 _CHANNEL = re.compile(r"\b(whats\s?app|call|phone|ring|message|dm)\b", re.I)

@@ -286,6 +286,10 @@ class CreativeChoices(BaseModel):
     reference_profile: str = Field(default="", max_length=40)
     primary_color: str = Field(default="", max_length=7)
     accent_color: str = Field(default="", max_length=7)
+    # v4: the order of the page's optional parts for THIS business, from the
+    # roles the archetype allows (site_composer.ARCHITECTURE). Hero, catalogue,
+    # closing band and contact are fixed; anything else may be reordered or left out.
+    page_order: list[str] = Field(default_factory=list, max_length=8)
 
 
 class CreativeDirection(BaseModel):
@@ -321,6 +325,11 @@ class CreativeDirection(BaseModel):
     # v4: what the model chose, kept so the direction can be re-derived (e.g.
     # when the pictures it planned for could not be drawn).
     model_choices: dict[str, Any] = Field(default_factory=dict)
+    # v4: the order of the page's parts (see site_composer.page_architecture).
+    page_order: list[str] = Field(default_factory=list)
+    # v4: the phone is its own composition: whether the primary action rides in
+    # the bottom bar, and where a full-bleed hero picture keeps its subject.
+    mobile: dict[str, Any] = Field(default_factory=dict)
 
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -340,10 +349,48 @@ def contrast(a: str, b: str) -> float:
     return (la + 0.05) / (lb + 0.05)
 
 
-def _owner_colours(bp: BusinessBlueprint) -> list[str]:
+# Colour words an owner uses, as tones that work on a website (not raw #00ff00).
+COLOUR_WORDS: dict[str, str] = {
+    "green": "#2f6b3a", "forest": "#2f5d1f", "olive": "#6b7a3a", "emerald": "#0f8a5f", "mint": "#20c997",
+    "teal": "#0f766e", "gold": "#c8922a", "golden": "#c8922a", "turmeric": "#d99a2b", "saffron": "#e08e0b",
+    "mustard": "#c9a227", "yellow": "#f5c518", "blue": "#1d4ed8", "navy": "#1e3a5f", "sky": "#0f8fd6",
+    "red": "#c62828", "maroon": "#7a2336", "burgundy": "#7a2336", "crimson": "#b3202e", "orange": "#e4572e",
+    "terracotta": "#b3563a", "brown": "#7a4b2a", "pink": "#d6336c", "purple": "#6b4de6", "violet": "#6b4de6",
+    "lavender": "#8b7fd6", "grey": "#4b5563", "gray": "#4b5563", "silver": "#9ca3af", "copper": "#b87333",
+}
+_DARK_WORDS = re.compile(r"\b(black|dark|charcoal|moody)\b", re.I)
+_LIGHT_WORDS = re.compile(r"\b(white|light|airy|minimal white|cream|pastel)\b", re.I)
+
+
+def _colour_text(bp: BusinessBlueprint) -> str:
     facts = {**bp.known_facts, **bp.unconfirmed_facts}
-    text = " ".join(facts[k].value for k in ("colours", "brand") if k in facts)
-    return [c.lower() for c in re.findall(r"#[0-9a-fA-F]{6}\b", text)]
+    parts = [facts[k].value for k in ("colours", "brand") if k in facts]
+    feel = bp.discovery.get("brand.feel")
+    if feel:
+        parts += [feel.quote, feel.summary]
+    return " ".join(p for p in parts if p)
+
+
+def _owner_colours(bp: BusinessBlueprint) -> list[str]:
+    """The owner's colours in the order they said them: hex codes, or colour
+    words ("green and gold", "black and yellow") as website-ready tones."""
+    text = _colour_text(bp)
+    found: list[tuple[int, str]] = [(m.start(), m.group(0).lower()) for m in re.finditer(r"#[0-9a-fA-F]{6}\b", text)]
+    for word, tone in COLOUR_WORDS.items():
+        for m in re.finditer(rf"\b{word}\b", text, re.I):
+            found.append((m.start(), tone))
+    ordered = [tone for _, tone in sorted(found)]
+    return list(dict.fromkeys(ordered))
+
+
+def owner_ground(bp: BusinessBlueprint) -> str | None:
+    """"dark" when the owner asked for black or a dark look, "light" for white/airy."""
+    text = _colour_text(bp)
+    if _DARK_WORDS.search(text):
+        return "dark"
+    if _LIGHT_WORDS.search(text):
+        return "light"
+    return None
 
 
 def allowed_families(
@@ -395,6 +442,13 @@ def direct(
         else:
             repairs.append("family_not_allowed")
     family, variant, pal = picked.family, picked.variant, picked.palette
+    ground = owner_ground(bp)
+    if ground and pal.mode != ground:
+        # "Black and yellow": the owner's ground, where the family has one.
+        matching = [p for p in family.palettes if p.mode == ground]
+        if matching:
+            pal = matching[0]
+            repairs.append(f"owner_ground_{ground}")
     profile = REFERENCE_PROFILES[family.base_profile]
     primary, accent = pal.primary, pal.accent
     owner = _owner_colours(bp)
@@ -447,7 +501,26 @@ def direct(
         words=list(family.words),
         dimensions=dims.as_dict(),
         reasons=list(picked.reasons),
+        page_order=[r for r in (choices.page_order if choices else []) if isinstance(r, str)][:8],
+        mobile=mobile_strategy(archetype, variant.hero),
     )
+
+
+def mobile_strategy(archetype: str, hero: str) -> dict[str, Any]:
+    """How the site recomposes at 390 px — a decision, not a scaled desktop.
+
+    * the business's main action (order, book a trial, a site visit) sits in
+      the bottom bar beside call and WhatsApp where acting is the point;
+    * a full-bleed hero keeps the subject that the picture was framed for on
+      the right (the headline's calm space is on the left) in view;
+    * split heroes put the picture first (site-studio.css).
+    """
+    acting = archetype in {"menu_commerce", "product_commerce", "membership_fitness", "real_estate_projects",
+                           "service_appointment"}
+    focus = "right" if hero in {"editorial_overlay", "cinematic", "full_width"} else "center"
+    return {"sticky_primary": acting, "hero_focus": focus,
+            "picture_first": hero in {"commerce_split", "airy_split", "editorial_split", "image_left",
+                                      "image_right"}}
 
 
 # What the earlier LOCAH sites owners wanted to publish did, per design family —
@@ -503,6 +576,22 @@ def profile_context(
             "default_primary": family.palettes[0].primary, "default_accent": family.palettes[0].accent,
         })
     return out
+
+
+_ROLE_MEANING = {
+    "how": "how ordering works (delivery, pickup, payment — from the owner's answers)",
+    "steps": "how working with them goes, step by step (only steps the owner described)",
+    "served": "the kinds of businesses they supply",
+    "proof": "numbers the owner stated (years, projects, members)",
+    "story": "their story, with their own line as a quote",
+}
+
+
+def _page_roles(archetype: str) -> list[dict[str, str]]:
+    from platform_core.interview.site_composer import _FIXED_ROLES, ARCHITECTURE
+
+    roles = ARCHITECTURE.get(archetype, ARCHITECTURE["local_service"])
+    return [{"id": r, "is": _ROLE_MEANING.get(r, r)} for r in roles if r not in _FIXED_ROLES]
 
 
 class CreativePlan(BaseModel):
@@ -609,6 +698,8 @@ async def generate_creative_plan(
         "business_name": bp.identity["display_name"].value if "display_name" in bp.identity else "",
         "site_archetype": archetype,
         "reference_profiles": profile_context(bp, business_type, media_expected=media_expected),
+        # The optional parts this kind of page may have, for creative.page_order.
+        "page_roles": _page_roles(archetype),
         "facts": {k: v.value[:400] for k, v in facts.items()},
         "owner_said": [m.text[:600] for m in bp.messages if m.role == "user"][-10:],
         "brief": build_brief(bp, business_type).model_dump(exclude_defaults=True),
@@ -627,7 +718,9 @@ async def generate_creative_plan(
             "suits this business better. You "
             "may set primary_color and accent_color (six-digit hex) to suit the business — keep "
             "the profile's ground (light/dark) in mind so buttons stay readable; leave them empty "
-            "to keep the profile's colours.\n\n"
+            "to keep the profile's colours. page_order: order the page's optional parts from "
+            "`page_roles` for THIS business (what a visitor should see first after the catalogue); "
+            "leave out a part that would be weak for it; leave empty to keep the default.\n\n"
             + COPY_PROMPT
             + "\nOutput only schema-valid JSON."
         ),

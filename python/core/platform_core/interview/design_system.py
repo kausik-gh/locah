@@ -615,23 +615,31 @@ _PALETTE_BY_EVIDENCE: dict[tuple[str, str], str] = {
 
 
 def _variant(family: Family, d: Dimensions) -> Variant:
-    """The composition inside the family, from the evidence — one readable rule per family."""
+    """The composition inside the family, from the evidence — one readable rule per family.
+
+    Pictures (the owner's, or drafts LOCAH draws) make image-led compositions
+    possible; they do not decide which one. A restaurant people book and a
+    café people drop into are both warm and pictured, and still not the same
+    page.
+    """
     photos = d.has_media
+    order, weighed = d.journey == "order", d.offering == "weighed_product"
+    modern = d.positioning == "modern" or d.transaction == "online"
     key = {
-        "editorial_warm": "overlay" if photos else "counter_book" if d.offering == "weighed_product"
-        else "menu_board" if d.journey == "order" else "split" if d.positioning == "heritage" else "letterpress",
-        "premium_dark": "gallery" if photos else "counter" if d.journey == "order" or d.density == "catalogue"
-        else "salon",
-        "modern_commerce": "storefront" if photos else "app_like"
-        if d.positioning == "modern" or d.transaction == "online" else "catalogue",
-        "playful_editorial": "scrapbook" if photos else "sticker" if d.offering in {"class", "service"}
-        else "poster",
-        "calm_professional": "reassure" if photos else "desk" if d.service_mode == "advisory"
-        else "retreat" if d.service_mode == "wellbeing" else "campus" if d.service_mode == "learning"
-        else "reassure" if d.positioning in {"modern", "premium"} or d.journey == "enquire" else "practice",
+        "editorial_warm": "overlay" if photos and order and not weighed else "counter_book" if weighed
+        else "menu_board" if order else "split" if d.positioning == "heritage" else "letterpress",
+        "premium_dark": "counter" if order or d.density == "catalogue" else "gallery" if photos else "salon",
+        "modern_commerce": "app_like" if modern else "storefront" if photos else "catalogue",
+        "playful_editorial": "scrapbook" if photos and d.offering not in {"class", "service"}
+        else "sticker" if d.offering in {"class", "service"} else "poster",
+        "calm_professional": "desk" if d.service_mode == "advisory" else "retreat" if d.service_mode == "wellbeing"
+        else "campus" if d.service_mode == "learning" else "reassure" if d.positioning in {
+            "modern", "premium"} or d.journey == "enquire" else "practice",
         "monumental": "cinema" if photos else "wordmark" if d.offering == "plan" else "block",
-        "portfolio_sketchbook": "contact_sheet" if photos else "notebook" if d.journey == "dates" else "studio",
-        "technical_b2b": "plant" if photos else "blueprint" if d.density == "catalogue" else "spec_sheet",
+        "portfolio_sketchbook": "contact_sheet" if photos and d.owner_media else "notebook"
+        if d.journey == "dates" else "studio",
+        "technical_b2b": "plant" if photos and d.offering == "b2b_catalogue" else "blueprint"
+        if d.density == "catalogue" else "spec_sheet",
         "airy_property": "estate" if d.offering == "stay" else "horizon" if photos else "brochure",
         "local_friendly": "shopfront" if photos else "neighbour" if d.density == "sparse" else "noticeboard",
     }.get(family.key, "")

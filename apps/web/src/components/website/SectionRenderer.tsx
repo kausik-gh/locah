@@ -37,6 +37,34 @@ export function resolvePath(path: string, contact?: SiteContact, businessName?: 
   return path
 }
 
+/** Which live capability an action needs (website/capabilities.py decides). */
+export function actionNeeds(href: string): 'order' | 'book' | 'join' | 'enquire' | null {
+  if (/\/checkout/.test(href)) return 'order'
+  if (/\/book(\b|\/|\?|$)/.test(href)) return 'book'
+  if (/#plans|#join/.test(href)) return 'join'
+  if (/\/enquire/.test(href)) return 'enquire'
+  return null
+}
+
+/**
+ * The same rule as the header's button: a button whose tool is not ready yet
+ * gives way to the business's primary action (from the one capability
+ * decision the server makes), or to none. No dead buttons in any section.
+ */
+export function liveAction(
+  label: string,
+  path: string,
+  capabilities?: Record<string, boolean | string | null>
+): [string, string] {
+  const needs = actionNeeds(path)
+  if (!needs || capabilities?.[needs]) return [label, path]
+  const fallbackPath = typeof capabilities?.primary_path === 'string' ? capabilities.primary_path : ''
+  const fallbackLabel = typeof capabilities?.primary_label === 'string' ? capabilities.primary_label : ''
+  const fallbackNeeds = actionNeeds(fallbackPath)
+  const fallbackLive = !fallbackNeeds || Boolean(capabilities?.[fallbackNeeds])
+  return fallbackPath && fallbackLabel && fallbackLive ? [fallbackLabel, fallbackPath] : ['', '']
+}
+
 /** The chat opens with a greeting in the visitor's language — which is also
  *  how the business's WhatsApp knows to answer in it (P1-10E6). */
 export function whatsappHref(number: string, businessName?: string, t?: Words) {
@@ -146,6 +174,9 @@ function FactIcon({ kind }: { kind: string }) {
     pickup: 'M4 10l2-5h12l2 5M4 10v9h16v-9M4 10h16M9 19v-5h6v5',
     payment: 'M3 6h18v12H3zM3 10h18M7 15h3',
     order: 'M5 5h14v14H5zM9 9h6M9 13h6',
+    book: 'M4 6h16v14H4zM4 10h16M8 3v5M16 3v5M8 14h3',
+    hours: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7v5l3 2',
+    place: 'M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11ZM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z',
   }
   return (
     <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" className="ls-fact__icon">
@@ -332,8 +363,11 @@ export function SectionRenderer({
       const accent = str(c.headline_accent)
       const eyebrow = str(c.eyebrow)
       const sub = str(c.subheadline)
-      const ctaLabel = str(c.cta_label)
-      const ctaPath = resolvePath(str(c.cta_url || c.cta_path), contact, businessName, t)
+      const [ctaLabel, ctaPath] = liveAction(
+        str(c.cta_label),
+        resolvePath(str(c.cta_url || c.cta_path), contact, businessName, t),
+        capabilities
+      )
       const onMedia = !split && Boolean(image)
       const actions =
         (ctaLabel && ctaPath) || contact?.phone || contact?.whatsapp ? (
@@ -500,8 +534,11 @@ export function SectionRenderer({
     /* -------------------------------------------------------- cta_band */
     case 'cta_band': {
       const variant = v || 'centered'
-      const ctaLabel = str(c.cta_label)
-      const ctaPath = resolvePath(str(c.cta_url || c.cta_path), contact, businessName, t)
+      const [ctaLabel, ctaPath] = liveAction(
+        str(c.cta_label),
+        resolvePath(str(c.cta_url || c.cta_path), contact, businessName, t),
+        capabilities
+      )
       // A band with nothing to press is a banner with no point.
       if (!(ctaLabel && ctaPath) && !contact?.phone && !contact?.whatsapp) return null
       return (

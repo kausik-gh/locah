@@ -81,8 +81,10 @@ function Picture({ image, name, className }: { image?: Asset; name: string; clas
         // eslint-disable-next-line @next/next/no-img-element
         <img src={image.url} alt={image.alt_text || name} loading="lazy" />
       ) : (
-        <span className="ls-picture__initial" aria-hidden="true">
-          {name.trim().charAt(0)}
+        // No picture yet (or one that must be a real photo, like a project):
+        // a designed plate in the site's own colours — never a giant initial.
+        <span className="ls-picture__plate" aria-hidden="true">
+          <span>{name.trim()}</span>
         </span>
       )}
     </div>
