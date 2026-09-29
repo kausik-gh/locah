@@ -67,6 +67,8 @@ export default async function StockPage({ params, searchParams }: {
     <nav className="bos-stock-tabs" aria-label="Stock views">
       {prof.lenses.map((l) => <Link key={l.key} href={href(l.key)} aria-current={view === l.key ? 'page' : undefined}>{TAB_LABEL[l.key]}</Link>)}
       {EXTRA_VIEWS.filter((v) => v.key !== 'setup' || prof.can.setup).map((v) => <Link key={v.key} href={href(v.key)} aria-current={view === v.key ? 'page' : undefined}>{v.label}</Link>)}
+      <Link href={`/b/${b}/inventory/transfers`}>Transfers</Link>
+      <Link href={`/b/${b}/inventory/vans`}>Van stock</Link>
       {locations.length > 1 ? <form className="bos-stock-tabs__where" action={`/b/${b}/inventory`}>
         <input type="hidden" name="view" value={view} />
         <label className="sr-only" htmlFor="stock-loc">Location</label>

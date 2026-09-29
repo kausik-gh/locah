@@ -60,6 +60,8 @@ export const AREAS: NavArea[] = [
     children: [
       { href: '/offerings', label: 'Products & services', perm: 'offerings.read', module: 'offerings-catalog' },
       { href: '/inventory', label: 'Stock', perm: 'inventory.read', module: 'inventory' },
+      { href: '/inventory/transfers', label: 'Transfers', perm: 'inventory.read', module: 'inventory' },
+      { href: '/inventory/vans', label: 'Van stock', perm: 'inventory.read', module: 'inventory' },
     ],
   },
   {

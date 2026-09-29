@@ -239,7 +239,8 @@ class StockService:
         query = (select(InventoryRecord, Offering, OfferingVariant)
                  .join(Offering, Offering.id == InventoryRecord.offering_id)
                  .outerjoin(OfferingVariant, OfferingVariant.id == InventoryRecord.variant_id)
-                 .where(InventoryRecord.business_id == business_id, Offering.deleted_at.is_(None)))
+                 .where(InventoryRecord.business_id == business_id, Offering.deleted_at.is_(None),
+                        InventoryRecord.owner_customer_id.is_(None)))
         if location_id is not None:
             query = query.where(InventoryRecord.location_id == location_id)
         if allowed is not None:
@@ -883,6 +884,7 @@ class StockService:
             raise ConflictError("A count for this shelf is already open — finish it first", details={"count_id": str(busy)})
         q = (select(InventoryRecord).join(Offering, Offering.id == InventoryRecord.offering_id)
              .where(InventoryRecord.business_id == business_id, InventoryRecord.location_id == location_id,
+                    InventoryRecord.owner_customer_id.is_(None),
                     Offering.deleted_at.is_(None), Offering.track_inventory.is_(True)))
         if category_id:
             q = q.where(Offering.category_id == category_id)

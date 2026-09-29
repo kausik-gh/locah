@@ -56,10 +56,12 @@ class InventoryResolver:
         location_id: uuid.UUID,
         variant_id: uuid.UUID | None,
     ) -> InventoryRecord | None:
+        # Sale and reservation read the business-owned balance only.
         query = select(InventoryRecord).where(
             InventoryRecord.business_id == business_id,
             InventoryRecord.offering_id == offering_id,
             InventoryRecord.location_id == location_id,
+            InventoryRecord.owner_customer_id.is_(None),
         )
         if variant_id is None:
             query = query.where(InventoryRecord.variant_id.is_(None))
@@ -89,6 +91,8 @@ class InventoryResolver:
             "offering_id": str(record.offering_id),
             "variant_id": str(record.variant_id) if record.variant_id else None,
             "location_id": str(record.location_id),
+            "owner_customer_id": str(record.owner_customer_id) if record.owner_customer_id else None,
+            "ownership": "client" if record.owner_customer_id else "business",
             "quantity_on_hand": record.quantity_on_hand,
             "quantity_reserved": record.quantity_reserved,
             "quantity_available": max(available, 0),

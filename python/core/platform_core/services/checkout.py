@@ -259,7 +259,7 @@ class CheckoutService:
 
                 record = (await session.execute(select(InventoryRecord).where(
                     InventoryRecord.business_id == business.id, InventoryRecord.offering_id == offering.id,
-                    InventoryRecord.location_id == location.id,
+                    InventoryRecord.location_id == location.id, InventoryRecord.owner_customer_id.is_(None),
                     InventoryRecord.variant_id == variant.id if variant else InventoryRecord.variant_id.is_(None),
                 ))).scalars().first()
                 free = max((record.quantity_on_hand - record.quantity_reserved) if record else 0, 0)
