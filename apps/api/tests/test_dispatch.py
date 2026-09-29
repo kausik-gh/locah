@@ -147,7 +147,12 @@ def test_delivery_runs_from_create_to_delivered_and_replays(monkeypatch: Any) ->
     stranger = client.get(f"/v1/b/{bid}/dispatch/board", headers=new_identity(monkeypatch)[1])
     assert stranger.status_code == 403
 
-    # The events messaging already listens for, plus the dispatch-owned ones.
+    # Dispatch publishes its own events; Fulfilment follows them through the
+    # worker and publishes the fulfilment events messaging listens for, once.
+    from platform_testing.phase_b import drain_events
+
+    drain_events(bid)
+    drain_events(bid)
     async def _outbox() -> list[tuple[str, str | None]]:
         from platform_testing.phase_b import db_url
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -166,8 +171,9 @@ def test_delivery_runs_from_create_to_delivered_and_replays(monkeypatch: Any) ->
 
     published = asyncio.run(_outbox())
     assert published.count(("dispatch.assigned", "assigned")) == 1
-    assert published.count(("fulfilment.status_changed", "out_for_delivery")) == 1
-    assert published.count(("fulfilment.delivered", "delivered")) == 1
+    # This order has no fulfilment record, so nothing is moved or messaged on its
+    # behalf (test_integration_dispatch_messaging covers a real delivery order).
+    assert not [row for row in published if row[0].startswith("fulfilment.")]
     assert published.count(("dispatch.delivered", "delivered")) == 1
 
     # The customer page reads the same dispatch state. No coordinate is stored.

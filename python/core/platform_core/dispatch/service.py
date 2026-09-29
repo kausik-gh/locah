@@ -139,6 +139,23 @@ def _dropoff(raw: Any) -> dict[str, Any] | None:
     return out or None
 
 
+def _dropoff_from_fulfilment(address: dict[str, Any]) -> dict[str, Any] | None:
+    """The customer's checkout address, read into a drop-off. It is the
+    customer's own shape (line1/line2, pincode, latitude…), so it is mapped
+    rather than refused; unknown keys are simply not carried."""
+    def first(*keys: str) -> Any:
+        return next((address[k] for k in keys if address.get(k) not in (None, "")), None)
+
+    line = ", ".join(str(address[k]).strip() for k in ("line", "line1", "line2", "address_line", "landmark")
+                     if address.get(k))
+    mapped: dict[str, Any] = {"line": line or None, "area": first("area", "locality"), "city": first("city"),
+                              "postal_code": first("postal_code", "pincode", "postal")}
+    lat, lng = first("lat", "latitude"), first("lng", "longitude")
+    if lat is not None and lng is not None:
+        mapped.update(lat=lat, lng=lng)
+    return _dropoff(mapped)
+
+
 def reached_step(job: DispatchJob) -> str:
     """How far the customer stepper has got, including after a failure."""
     if job.delivered_at or job.status == "delivered":
@@ -319,7 +336,7 @@ class DispatchService:
         location = await DispatchService._location(session, business_id, location_id)
         dropoff = _dropoff(payload.get("dropoff"))
         if dropoff is None and fulfilment is not None and isinstance(fulfilment.delivery_address, dict):
-            dropoff = _dropoff(fulfilment.delivery_address)
+            dropoff = _dropoff_from_fulfilment(fulfilment.delivery_address)
         if kind == "delivery" and not _place_text(dropoff):
             raise ValidationError("A delivery needs a drop-off address", details={"field": "dropoff"})
 
@@ -362,7 +379,6 @@ class DispatchService:
             to_status="unassigned",
             note=None,
             key=f"create:{job.id}",
-            notify=False,
         )
         return job
 
@@ -439,7 +455,6 @@ class DispatchService:
                 to_status=nxt,
                 note=note,
                 key=key,
-                notify=True,
             )
         except IntegrityError:
             # The savepoint undid this attempt. The winner already committed
@@ -463,9 +478,8 @@ class DispatchService:
         to_status: str,
         note: str | None,
         key: str,
-        notify: bool,
     ) -> None:
-        """Append the history row, then the events messaging already listens for."""
+        """Append the history row and publish the dispatch event."""
         event = DispatchEvent(
             business_id=job.business_id,
             job_id=job.id,
@@ -500,28 +514,9 @@ class DispatchService:
             business_id=job.business_id,
             correlation_id=correlation_id,
         )
-        if not notify:
-            return
-        # Existing subscribers. Messaging is not modified; these are the event
-        # types it already handles. Assigned has no customer template.
-        compatible = _messaging_event(to_status)
-        if compatible is None:
-            return
-        await OutboxService.publish(
-            session,
-            event_type=compatible,
-            payload=_event_payload(job, from_status, to_status, note),
-            business_id=job.business_id,
-            correlation_id=correlation_id,
-        )
-        if compatible != "fulfilment.status_changed":
-            await OutboxService.publish(
-                session,
-                event_type="fulfilment.status_changed",
-                payload=_event_payload(job, from_status, to_status, note),
-                business_id=job.business_id,
-                correlation_id=correlation_id,
-            )
+        # The customer's record and messages follow from these dispatch events:
+        # Fulfilment subscribes and moves its own record (fulfilment_follows_dispatch),
+        # so dispatch never publishes another module's events for it.
 
     @staticmethod
     async def list_jobs(
@@ -643,17 +638,6 @@ def _event_payload(job: DispatchJob, from_status: str | None, to_status: str, no
         "reason": note,
         "source": "dispatch",
     }
-
-
-def _messaging_event(status: str) -> str | None:
-    """Event types messaging already subscribes to. None for assigned."""
-    if status == "out_for_delivery":
-        return "fulfilment.status_changed"
-    if status == "delivered":
-        return "fulfilment.delivered"
-    if status == "failed":
-        return "fulfilment.failed"
-    return None
 
 
 def _serialize(
