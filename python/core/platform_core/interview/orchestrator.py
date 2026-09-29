@@ -837,6 +837,14 @@ def _read_for_question(
         if raw:
             fact("phone", raw)
             answer("contact.phone", "Your number", evidence=raw)
+    # Opening hours are opening hours whatever was asked ("Open 5:30 am to
+    # 10 pm every day" once became the gym's membership plans).
+    if not _answered(ti, "operations.hours") and not any(f.field == "opening_hours" for f in ti.facts):
+        said = next((s.strip(" .") for s in re.split(r"(?<=[.!?])\s+", text)
+                     if rd.looks_like_hours(s) and rd.valid_for("operations.hours", s)), "")
+        if said:
+            fact("opening_hours", said)
+            answer("operations.hours", said[:120], evidence=said)
     if reading.finish or (reading.decline and not reading.phone):
         # "No, just this much" / "skip" — the pieces just asked are declined, not answered.
         if reading.decline and not reading.finish:
@@ -901,7 +909,9 @@ def _read_for_question(
             if not offer(rd.offer_statement(text) or rd.offering_names(text), rd.group_items(text)):
                 continue
         elif target in _FREE_TEXT and target == lead and not text.rstrip().endswith("?") \
-                and len(words) >= (2 if not model_ok else 3):
+                and len(words) >= (2 if not model_ok else 3) \
+                and not (rd.looks_like_hours(text) and _answered(ti, "operations.hours")):
+            # (A reply that is the opening hours answers the hours, not the plans.)
             # A real reply to the question just asked answers it, even when the
             # model filed it elsewhere — the gym was asked "what do people book?"
             # twice. Only for questions whose answer is free text.

@@ -474,8 +474,10 @@ FAMILIES: dict[str, Family] = {f.key: f for f in (
     ),
     Family(
         "airy_property", "Airy Property", ("Spacious", "Assured", "Light"), "airy_real_estate",
+        # Calm is how a property site should feel: a developer who says "calm,
+        # green" is describing homes, not asking for a clinic's page.
         {"offering=property": 5, "journey=visit": 3, "offering=stay": 4, "service_mode=hospitality": 2,
-         "positioning=premium": 0.5, "trust=high": 0.5},
+         "positioning=premium": 0.5, "trust=high": 0.5, "personality=calm": 3},
         (
             _pal("sky_navy", "light", "#0f8fd6", "#0b1220", "#ffffff", "#f1f8fd", "#0b1220", "#5a6778", "blue"),
             _pal("sand_sage", "light", "#5b7a5a", "#b88a55", "#fcfbf8", "#f2efe7", "#1d231c", "#666d64", "green"),

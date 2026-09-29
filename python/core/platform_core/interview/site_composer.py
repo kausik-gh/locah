@@ -106,8 +106,19 @@ def _town(bp: BusinessBlueprint) -> str:
     return _place(parts[0]) if parts else ""
 
 
+def _home_based(bp: BusinessBlueprint) -> bool:
+    """A home kitchen or home baker: pickup is from their home, not a store."""
+    sub = (bp.category.subcategory_key if bp.category else "") or ""
+    said = " ".join(m.text for m in bp.messages if m.role == "user")
+    return sub.startswith("home_") or bool(re.search(
+        r"\b(?:from (?:my|our) home|at (?:my|our) home|home kitchen|veet(?:la|il|ile)|veedu)\b", said, re.I))
+
+
 def _pickup_line(bp: BusinessBlueprint) -> str:
     parts = _places(bp)
+    if _home_based(bp):
+        spot = _place(parts[-1]) if parts else ""
+        return f"Collect your order from our home in {spot}." if spot else "Collect your order from our home."
     if not parts:
         return "Collect your order from the shop."
     spot = parts[-1]
@@ -166,7 +177,8 @@ def ordering_facts(bp: BusinessBlueprint, business_type: str | None) -> list[dic
                           "body": f"Across {where}." if where else "Packed and sent to you."})
         else:
             items.append({"kind": "delivery", "title": "Home delivery",
-                          "body": f"Delivered around {where}." if where else "Brought to your door."})
+                          "body": (f"Delivered {where}." if where.startswith("within ") else f"Delivered around {where}.")
+                          if where else "Brought to your door."})
     if pickup:
         items.append({"kind": "pickup", "title": "Pickup", "body": _pickup_line(bp)})
     if payment:
@@ -192,6 +204,13 @@ def _area(text: str) -> str:
     raw = re.sub(r"^\s*(?:we\s+)?(?:deliver|ship|send|courier)\w*\s+", "", raw.strip(), flags=re.I)
     raw = re.sub(r"^(?:all over|across|anywhere in|throughout|around|in|to|within)\s+", "", raw.strip(), flags=re.I)
     raw = raw.strip(" .,")
+    # "3 km kulla" (Tamil: within 3 km) / "within 5 km" — a radius, not a place.
+    radius = re.search(r"(\d+(?:\.\d+)?)\s*(?:km|kms|kilomet\w*)\b(?:\s*(?:kulla|kulle|ulla|ulle|radius))?",
+                       raw, re.I)
+    if radius and re.search(r"kulla|kulle|ulla|ulle", text, re.I):
+        return f"within {radius.group(1)} km"
+    if radius and raw.lower().startswith(radius.group(1)):
+        return f"within {raw}"[:60]  # "within 5 km of Adyar"
     return _place(raw) if raw and len(raw) <= 60 else ""
 
 
@@ -208,10 +227,9 @@ def visit_facts(bp: BusinessBlueprint) -> list[dict[str, str]]:
               "book_trial": "A free trial first", "book_site_visit": "Site visits", "check_dates": "Check dates",
               "book_table": "Book a table", "book_consultation": "Book a consultation", "visit": "Walk in",
               "enquire": "Ask on WhatsApp or call"}
-    said = [labels[a] for a in customer_actions(bp) if a in labels]
+    said = [a for a in customer_actions(bp) if a in labels]
     if said:
-        body = _answer(bp, "bookings.format") or _answer(bp, "commerce.action")
-        items.append({"kind": "book", "title": said[0], "body": _first_sentence(body)[:160] if body else ""})
+        items.append({"kind": "book", "title": labels[said[0]], "body": _booking_sentence(bp, said[0])})
     hours = _facts(bp).get("opening_hours", "")
     if hours:
         items.append({"kind": "hours", "title": "Opening hours", "body": hours[:160]})
@@ -219,6 +237,29 @@ def visit_facts(bp: BusinessBlueprint) -> list[dict[str, str]]:
     if where:
         items.append({"kind": "place", "title": "Where to find us", "body": where[:160]})
     return [i if i["body"] else {"kind": i["kind"], "title": i["title"]} for i in items][:4]
+
+
+_BOOKING_WORDS = {
+    "book_trial": r"\btrial\b", "book_site_visit": r"\bsite visit|\bvisit\b", "book_table": r"\btable\b",
+    "book_consultation": r"\bconsult", "check_dates": r"\bdates?\b|\bavailab", "visit": r"\bwalk|\bvisit\b",
+}
+
+
+def _booking_sentence(bp: BusinessBlueprint, action: str) -> str:
+    """The owner's own sentence about how that booking works — or nothing.
+
+    Never a summary glued to a quote ("Sign up, Book a trial, WhatsApp Monthly
+    membership is 3500…"): one sentence the owner said, that names it.
+    """
+    words = _BOOKING_WORDS.get(action, r"\bbook|\bappointment|\bslot")
+    said = [_answer(bp, "bookings.format"), (bp.discovery.get("commerce.action") or TargetState()).quote,
+            *(m.text for m in bp.messages if m.role == "user")]
+    for text in said:
+        for sentence in re.split(r"(?<=[.!?])\s+|\s[—–]\s", " ".join((text or "").split())):
+            if re.search(words, sentence, re.I) and not re.search(r"\d{3,}", sentence) and len(sentence) <= 140:
+                sentence = sentence.strip(" .")
+                return (sentence[0].upper() + sentence[1:] + ".") if sentence else ""
+    return ""
 
 
 def hero_badges(bp: BusinessBlueprint, business_type: str | None) -> list[str]:
@@ -299,8 +340,13 @@ def browse_sections(
             name, vague = normalise_name(item.name)
             if not name or vague:
                 continue  # "fish different varieties" is not a product
-            entry: dict[str, Any] = {"name": name[:80], "category": group.name[:80]}
+            # "Projects" above every project says nothing: a generic group is no label.
+            entry: dict[str, Any] = {"name": name[:80]}
+            if not _GENERIC_GROUP.match(group.name):
+                entry["category"] = group.name[:80]
             description = item.description or _line(copy, name, "item")
+            if not description and arche == "real_estate_projects":
+                description = project_status(bp, name)
             draft = drafts.get(name.casefold())
             if not description and draft and draft.description:
                 description = draft.description.text
@@ -473,6 +519,15 @@ def compose_site(
         parts["steps"] = [{"section_type_id": "feature_grid", "layout_variant": "steps", "content": {
             "title": (copy.steps_title or "How it works")[:120],
             "items": [{"title": st.title[:80], "body": st.body[:240]} for st in copy.steps[:4]]}}]
+    plans = plans_from_answer(bp) if arche == "membership_fitness" else []
+    if plans:
+        parts["plans"] = [{"section_type_id": "product_showcase", "layout_variant": "plan_cards", "content": {
+            "title": "Memberships", "anchor": "memberships", "items": plans}}]
+        if primary[1] == "#shop" and "plan" in primary[0].lower():
+            # "See plans" goes to the plans the owner listed. (Not "#plans":
+            # that means joining online, which needs the memberships tool.)
+            primary = (primary[0], "#memberships")
+            hero["cta_url"] = "#memberships"
     served = served_list(bp)
     if served:
         parts["served"] = [{"section_type_id": "feature_grid", "layout_variant": "list", "content": {
@@ -685,11 +740,11 @@ def _trade_nav(bp: BusinessBlueprint, arche: str) -> str:
 ARCHITECTURE: dict[str, tuple[str, ...]] = {
     "menu_commerce": ("hero", "catalogue", "how", "story", "proof", "cta", "contact"),
     "product_commerce": ("hero", "catalogue", "how", "story", "proof", "cta", "contact"),
-    "membership_fitness": ("hero", "catalogue", "proof", "steps", "story", "cta", "contact"),
-    "real_estate_projects": ("hero", "catalogue", "proof", "story", "steps", "cta", "contact"),
-    "b2b_rfq": ("hero", "catalogue", "served", "steps", "proof", "story", "cta", "contact"),
+    "membership_fitness": ("hero", "catalogue", "plans", "proof", "how", "steps", "story", "cta", "contact"),
+    "real_estate_projects": ("hero", "catalogue", "proof", "story", "steps", "how", "cta", "contact"),
+    "b2b_rfq": ("hero", "catalogue", "served", "steps", "proof", "story", "how", "cta", "contact"),
     "service_appointment": ("hero", "catalogue", "steps", "how", "story", "proof", "cta", "contact"),
-    "project_portfolio": ("hero", "catalogue", "story", "steps", "proof", "cta", "contact"),
+    "project_portfolio": ("hero", "catalogue", "story", "steps", "proof", "how", "cta", "contact"),
     "local_service": ("hero", "catalogue", "how", "steps", "story", "proof", "cta", "contact"),
 }
 _FIXED_ROLES = ("hero", "catalogue", "cta", "contact")
@@ -796,12 +851,59 @@ def reads_as_english(text: str) -> bool:
     return function >= 2 and function / len(words) >= 0.15
 
 
+_PLAN = re.compile(
+    r"^(?P<name>[a-z][a-z &'-]{1,30}?)\s*(?:plan|membership|pass)?\s*(?:is|at|for|costs?|-|:|=)?\s*"
+    r"(?:rs\.?|₹|inr)?\s*(?P<price>\d[\d,]*)\s*(?:(?:/|per|a)\s*(?P<per>month|quarter|year|session))?$", re.I)
+_PACK = re.compile(r"^(?P<name>[a-z][a-z &'-]{1,30}?)\s+(?:of|with)\s+(?P<size>\d+\s+[a-z]+)$", re.I)
+
+
+def plans_from_answer(bp: BusinessBlueprint) -> list[dict[str, str]]:
+    """ "Monthly 2500, quarterly 6500, and PT packs of 12 sessions" — the plans
+    as the owner said them. A price only where the owner gave a number."""
+    state = bp.discovery.get("memberships.plans")
+    if not state or state.status not in {"answered", "partial"}:
+        return []
+    text = state.quote or state.summary or ""
+    plans: list[dict[str, str]] = []
+    for part in re.split(r",|;|\band\b", text):
+        part = part.strip(" .")
+        plan, pack = _PLAN.match(part), _PACK.match(part)
+        if plan:
+            entry = {"name": plan.group("name").strip().capitalize()[:60], "price": money(plan.group("price"))[:40]}
+            if plan.group("per"):
+                entry["unit"] = f"per {plan.group('per').lower()}"
+            plans.append(entry)
+        elif pack:
+            plans.append({"name": pack.group("name").strip()[:60], "description": pack.group("size")[:80]})
+    return plans[:6] if sum(1 for p in plans if p.get("price")) >= 2 else []
+
+
+_STATUS = re.compile(r"\b(ready to move(?: in)?|ready for possession|under construction|upcoming|"
+                     r"launching soon|newly launched|sold out|completed|nearing completion)\b", re.I)
+
+
+def project_status(bp: BusinessBlueprint, project: str) -> str:
+    """ "Aranya Greens is ready to move, Heights is under construction" — the
+    status the owner gave this project, in their words. Nothing if not said."""
+    words = [w for w in re.split(r"\s+", project) if w]
+    names = [re.escape(project)] + ([re.escape(words[-1])] if len(words) > 1 else [])
+    said = " ".join(m.text for m in bp.messages if m.role == "user")
+    for name in names:
+        match = re.search(rf"\b{name}\b[^,.;]{{0,30}}?\b(?:is|are)\s+(?:now\s+)?([^,.;]{{3,40}})", said, re.I)
+        status = _STATUS.search(match.group(1)) if match else None
+        if status:
+            return status.group(1)[0].upper() + status.group(1)[1:].lower()
+    return ""
+
+
 def served_list(bp: BusinessBlueprint) -> list[str]:
     """Who a B2B business supplies, as the owner listed them."""
     state = bp.discovery.get("b2b.customers")
     if not state or state.status not in {"answered", "partial"}:
         return []
     text = state.quote or state.summary or ""
+    # "factories and apartment builders around Chennai and Hosur": who, not where.
+    text = re.sub(r"\s+(?:around|in|across|near|within|throughout|all over)\s+[A-Z][\w .&-]*$", "", text.strip(" ."))
     items = [p.strip(" .") for p in re.split(r",|\band\b|;|/", text) if p.strip(" .")]
     items = [i[0].upper() + i[1:] for i in items if 2 < len(i) <= 40]
     return items if len(items) >= 2 else []

@@ -63,6 +63,9 @@ _DATES = re.compile(r"\b(check (?:the )?(?:dates?|availability)|date availabilit
 _QUOTE = re.compile(r"\b(quot\w*|estimate\w*|rfq|price (?:request|enquiry)|ask (?:for )?(?:the )?(?:price|rates?))\b", re.I)
 _ENQUIRE = re.compile(r"\b(enquir\w*|inquir\w*|requirement\w*|get in touch|contact us|reach (?:out|us))\b", re.I)
 _CALL = re.compile(r"\b(call\w*|phone|ring|dial)\b", re.I)
+_TO_ORDER = re.compile(
+    r"\b(?:made|cut|cooked|baked|prepared|stitched|tailored|built|fresh|freshly|packed)\s+(?:fresh\s+|freshly\s+)?"
+    r"to\s+order\b", re.I)
 _WHATSAPP = re.compile(r"\b(whats\s?app\w*|wa\b|dm\b|message us|text us)|வாட்ஸ்\s?(?:அப்|ஆப்)", re.I)
 _ONLINE = re.compile(r"\b(online|website|site|app|internet|on the web)\b", re.I)
 _TAMIL_SCRIPT = re.compile(r"[஀-௿]")
@@ -109,6 +112,8 @@ def _find(pattern: re.Pattern[str], text: str) -> bool:
 def _clause_actions(text: str) -> list[str]:
     """Actions in one clause: a channel word belongs to the verb beside it."""
     found: list[str] = []
+    # "cut fresh to order", "made to order" describe the product, not how people buy.
+    text = _TO_ORDER.sub(" ", text)
 
     def add(action: str) -> None:
         if action not in found:

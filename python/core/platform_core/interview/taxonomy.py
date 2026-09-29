@@ -77,10 +77,33 @@ def split_listing(text: str) -> list[str]:
     return [p.strip(" .") for p in parts if p.strip(" .")]
 
 
+# How a thing is sold, said after its name: "fish by the kg", "podi in jars".
+_SOLD_AS = re.compile(
+    r"\s+(?:by the (?:kg|kilo|piece|dozen|litre|box)|per (?:kg|kilo|piece|plate|litre)|in (?:jars|packs|bulk)|"
+    r"(?:cut |made )?(?:fresh(?:ly)?|daily)(?: to order)?)$", re.I)
+# A clause, not a thing sold: who does what ("people order on WhatsApp", "we deliver around …").
+_CLAUSE = re.compile(
+    r"\b(?:we|i|people|customers|they|you|our customers|order|orders|ordering|deliver\w*|pick(?:s|ing)? up|"
+    r"call|whatsapp|book\w*|visit|open|to order|cut|made|cooked|come|serve)\b", re.I)
+
+
 def taxonomy_from_listing(text: str) -> list[CatalogueGroup]:
-    """The plain reading when the model offered none: one group per phrase."""
+    """The plain reading when the model offered none: one group per phrase.
+
+    Only the listing itself: the first sentence, after any "Our projects:"
+    label, each phrase trimmed of how it is sold — and never a clause about
+    ordering or delivery, which is not something the business sells.
+    """
     groups: list[CatalogueGroup] = []
-    for part in split_listing(text):
+    first = re.split(r"(?<=[a-z0-9)])\.\s+", " ".join((text or "").split()), maxsplit=1)[0]
+    # "Our projects: A, B" / "home-style food — idli, dosa": the list follows the label.
+    labelled = re.split(r":\s|\s[—–-]\s", first, maxsplit=1)
+    if len(labelled) == 2 and "," in labelled[1]:
+        first = labelled[1]
+    for part in split_listing(first):
+        part = _SOLD_AS.sub("", part).strip(" .")
+        if not part or _CLAUSE.search(part) or len(part.split()) > 5:
+            continue
         name, deep = normalise_name(part)
         if not name or len(name) > 60 or re.search(r"\d", name):
             continue

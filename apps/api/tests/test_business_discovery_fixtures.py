@@ -144,7 +144,10 @@ FURNITURE = Fixture(
     useful={"projects"},
     never={"orders", "payments", "inventory", "bookings", "workforce"},
     never_asked={"bookings.format", "commerce.payment", "memberships.plans"},
-    asked={"offerings.customisation"},
+    # "made to order" describes the furniture, not how people buy it: the
+    # first thing worth asking is how customers order (it once read as
+    # "order online", which skipped that question).
+    asked={"commerce.action"},
 )
 
 RESTAURANT = Fixture(
