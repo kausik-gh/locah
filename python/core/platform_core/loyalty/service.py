@@ -32,6 +32,7 @@ from platform_core.loyalty.models import (
     LoyaltyProgram,
     ReferralCode,
     ReferralRelationship,
+    StampAward,
     StampCard,
     StampProgram,
     StampReward,
@@ -462,6 +463,46 @@ class StampCardService:
         return prog
 
     @staticmethod
+    async def list_programs(session: AsyncSession, business_id: uuid.UUID) -> list[StampProgram]:
+        rows = await session.execute(
+            select(StampProgram)
+            .where(StampProgram.business_id == business_id)
+            .order_by(StampProgram.created_at.desc())
+        )
+        return list(rows.scalars().all())
+
+    @staticmethod
+    async def create_program(
+        session: AsyncSession,
+        business_id: uuid.UUID,
+        *,
+        name: str,
+        required_stamps: int = 10,
+        reward_kind: str = "free_item",
+        reward_details: dict[str, Any] | None = None,
+    ) -> StampProgram:
+        """A stamp card the owner configures. '10th coffee free' is the default shape."""
+        clean = name.strip()
+        if not clean or len(clean) > 80:
+            raise ValidationError("Name the stamp card in 80 characters or fewer")
+        if required_stamps < 2 or required_stamps > 100:
+            raise ValidationError("A stamp card needs between 2 and 100 stamps")
+        if reward_kind not in ("free_item", "discount_paise", "discount_percent", "points"):
+            raise ValidationError("Unknown reward")
+        prog = StampProgram(
+            business_id=business_id,
+            name=clean,
+            required_stamps=required_stamps,
+            reward_kind=reward_kind,
+            reward_details=reward_details or {"item_name": "Free reward item"},
+            qualifying_rule={"all_items": True},
+            status="active",
+        )
+        session.add(prog)
+        await session.flush()
+        return prog
+
+    @staticmethod
     async def award_stamp(
         session: AsyncSession,
         business_id: uuid.UUID,
@@ -484,7 +525,33 @@ class StampCardService:
         if not prog or prog.status != "active":
             return {"stamps_awarded": 0, "reward_issued": None}
 
-        # Idempotency check via a unique stamp log or reward
+        # The visit is the idempotency key. A replay must not add a stamp or a second reward.
+        already = (
+            await session.execute(
+                select(StampAward).where(
+                    StampAward.business_id == business_id,
+                    StampAward.idempotency_key == idempotency_key,
+                )
+            )
+        ).scalars().first()
+        if already is not None:
+            held = (
+                await session.execute(
+                    select(StampCard).where(
+                        StampCard.business_id == business_id,
+                        StampCard.program_id == prog.id,
+                        StampCard.customer_contact_id == customer_contact_id,
+                    )
+                )
+            ).scalars().first()
+            return {
+                "current_stamps": held.current_stamps if held else 0,
+                "required_stamps": prog.required_stamps,
+                "cycle_count": held.cycle_count if held else 0,
+                "reward_issued": None,
+                "already_processed": True,
+            }
+
         q_card = select(StampCard).where(
             StampCard.business_id == business_id,
             StampCard.program_id == prog.id,
@@ -503,27 +570,15 @@ class StampCardService:
             session.add(card)
             await session.flush()
 
-        # Check if reward for this idempotency key was already created or handled
-        reward_code_prefix = f"STAMP-{idempotency_key}"
-        existing_reward = (
-            await session.execute(
-                select(StampReward).where(
-                    StampReward.business_id == business_id,
-                    StampReward.reward_code == reward_code_prefix,
-                )
+        session.add(
+            StampAward(
+                business_id=business_id,
+                program_id=prog.id,
+                customer_contact_id=customer_contact_id,
+                idempotency_key=idempotency_key,
+                created_at=now,
             )
-        ).scalars().first()
-        if existing_reward:
-            return {
-                "current_stamps": card.current_stamps,
-                "required_stamps": prog.required_stamps,
-                "reward_issued": {
-                    "code": existing_reward.reward_code,
-                    "reward_kind": prog.reward_kind,
-                    "cycle": existing_reward.cycle_completed,
-                },
-                "already_processed": True,
-            }
+        )
 
         # Increment stamps
         card.current_stamps += 1

@@ -170,6 +170,17 @@ PROJECTS_MANAGE_LIFECYCLE = "projects.manage_lifecycle"
 # it is grantable on its own to someone who schedules but does not scope.
 PROJECTS_ASSIGN = "projects.assign"
 
+# Loyalty (Capability Universe §18.2). The owner holds both through ALL_PERMISSIONS.
+LOYALTY_READ = "loyalty.read"
+LOYALTY_MANAGE = "loyalty.manage"
+
+# Marketing (Capability Universe §18). A marketer may read and draft.
+# Approving a broadcast or a rupee, and sending, stay with the owner.
+MARKETING_READ = "marketing.read"
+MARKETING_CREATE = "marketing.create"
+MARKETING_APPROVE = "marketing.approve"
+MARKETING_SEND = "marketing.send"
+
 ALL_PERMISSIONS: frozenset[str] = frozenset(
     str(v) for k, v in globals().items() if k.isupper() and isinstance(v, str) and "." in v
 )

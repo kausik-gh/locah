@@ -22,8 +22,36 @@ from platform_core.marketing.offers import OfferService
 from platform_core.marketing.regulated import RegulatedCategoryPolicyService
 from platform_core.marketing.results import MarketingResultsService
 from platform_core.models import Business
+from platform_core.permissions import (
+    MARKETING_APPROVE,
+    MARKETING_CREATE,
+    MARKETING_READ,
+    MARKETING_SEND,
+)
+
+# marketing.approve and marketing.send stay with the owner.
+# A marketer may read and draft. Approval is not the same permission.
+_MODULE = "marketing"
+_READ = require_business_actor(MARKETING_READ, _MODULE)
+_CREATE = require_business_actor(MARKETING_CREATE, _MODULE)
+_APPROVE = require_business_actor(MARKETING_APPROVE, _MODULE)
+_SEND = require_business_actor(MARKETING_SEND, _MODULE)
 
 router = APIRouter(prefix="/v1/platform/businesses", tags=["marketing"])
+
+
+async def _keep(session: AsyncSession) -> None:
+    """The request session rolls back on the way out unless the handler commits."""
+    await session.commit()
+
+
+async def _enabled_traits(session: AsyncSession, business: Business | None) -> frozenset[str]:
+    """Enabled operating traits. Marketing rules read these, not a free-form bag."""
+    if business is None:
+        return frozenset()
+    from platform_core.services.business_classification import BusinessClassificationService
+
+    return await BusinessClassificationService.effective_traits(session, business)
 
 
 # -----------------------------------------------------------------------------
@@ -54,12 +82,6 @@ class PatchCampaignRequest(BaseModel):
     creative: dict[str, Any] | None = None
     budget_paise: int | None = None
     schedule_type: str | None = None
-
-
-class ApproveCampaignRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    override_declaration: bool = False
 
 
 class CreateOfferRequest(BaseModel):
@@ -107,7 +129,7 @@ class MetaSpendTestRequest(BaseModel):
 async def list_campaigns(
     business_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
     q = select(MarketingCampaign).where(MarketingCampaign.business_id == business_id).order_by(MarketingCampaign.created_at.desc())
     items = (await session.execute(q)).scalars().all()
@@ -137,7 +159,7 @@ async def create_campaign(
     business_id: uuid.UUID,
     body: CreateCampaignRequest,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_CREATE),
 ) -> dict[str, Any]:
     c = await CampaignService.create_campaign(
         session,
@@ -150,8 +172,9 @@ async def create_campaign(
         creative=body.creative,
         budget_paise=body.budget_paise,
         schedule_type=body.schedule_type,
-        created_by=getattr(context, "identity_id", None),
+        created_by=context.request.identity_id,
     )
+    await _keep(session)
     return {
         "id": str(c.id),
         "name": c.name,
@@ -167,7 +190,7 @@ async def get_campaign(
     business_id: uuid.UUID,
     campaign_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
     c = await CampaignService.get_campaign(session, business_id, campaign_id)
     return {
@@ -196,7 +219,7 @@ async def patch_campaign(
     campaign_id: uuid.UUID,
     body: PatchCampaignRequest,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_CREATE),
 ) -> dict[str, Any]:
     c = await CampaignService.update_campaign(
         session,
@@ -211,6 +234,7 @@ async def patch_campaign(
         budget_paise=body.budget_paise,
         schedule_type=body.schedule_type,
     )
+    await _keep(session)
     return {
         "id": str(c.id),
         "name": c.name,
@@ -224,36 +248,37 @@ async def prepare_campaign(
     business_id: uuid.UUID,
     campaign_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_CREATE),
 ) -> dict[str, Any]:
     biz = await session.get(Business, business_id)
-    return await CampaignService.prepare_for_approval(
+    traits = await _enabled_traits(session, biz)
+    result = await CampaignService.prepare_for_approval(
         session,
         business_id,
         campaign_id,
-        business_category=getattr(biz, "category_key", None),
-        business_subcategory=getattr(biz, "subcategory_key", None),
-        business_traits=getattr(biz, "business_traits", None),
+        business_category=getattr(biz, "category_key", None) if biz else None,
+        business_subcategory=getattr(biz, "subcategory_key", None) if biz else None,
+        business_traits=traits,
     )
+    await _keep(session)
+    return result
 
 
 @router.post("/{business_id}/marketing/campaigns/{campaign_id}/approve")
 async def approve_campaign(
     business_id: uuid.UUID,
     campaign_id: uuid.UUID,
-    body: ApproveCampaignRequest,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_APPROVE),
 ) -> dict[str, Any]:
-    approver_id = getattr(context, "identity_id", uuid.uuid4())
+    # marketing.approve is the owner's permission. A marketer template does not hold it.
     c = await CampaignService.owner_approve_campaign(
         session,
         business_id,
         campaign_id,
-        approver_identity_id=approver_id,
-        is_owner=True,
-        override_declaration=body.override_declaration,
+        approver_identity_id=context.request.identity_id,
     )
+    await _keep(session)
     return {
         "id": str(c.id),
         "status": c.status,
@@ -267,11 +292,13 @@ async def dispatch_campaign(
     business_id: uuid.UUID,
     campaign_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_SEND),
 ) -> dict[str, Any]:
-    return await WhatsAppBroadcastOrchestrator.dispatch_campaign(
+    result = await WhatsAppBroadcastOrchestrator.dispatch_campaign(
         session, business_id, campaign_id
     )
+    await _keep(session)
+    return result
 
 
 @router.get("/{business_id}/marketing/campaigns/{campaign_id}/results")
@@ -279,7 +306,7 @@ async def get_campaign_results(
     business_id: uuid.UUID,
     campaign_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
     return await MarketingResultsService.get_campaign_results(
         session, business_id, campaign_id
@@ -290,7 +317,7 @@ async def get_campaign_results(
 async def list_offers(
     business_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
     q = select(MarketingOffer).where(MarketingOffer.business_id == business_id).order_by(MarketingOffer.created_at.desc())
     items = (await session.execute(q)).scalars().all()
@@ -317,7 +344,7 @@ async def create_offer(
     business_id: uuid.UUID,
     body: CreateOfferRequest,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_CREATE),
 ) -> dict[str, Any]:
     o = await OfferService.create_offer(
         session,
@@ -331,6 +358,7 @@ async def create_offer(
         usage_limit_total=body.usage_limit_total,
         usage_limit_per_customer=body.usage_limit_per_customer,
     )
+    await _keep(session)
     return {
         "id": str(o.id),
         "code": o.code,
@@ -344,7 +372,7 @@ async def evaluate_offer_code(
     business_id: uuid.UUID,
     body: EvaluateOfferRequest,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
     return await OfferService.evaluate_offer(
         session,
@@ -362,7 +390,7 @@ async def get_audience_counts(
     segment_id: uuid.UUID,
     channel: str = "whatsapp",
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
     return await MarketingAudienceService.resolve_segment_audience(
         session, business_id, segment_id, channel=channel
@@ -373,19 +401,20 @@ async def get_audience_counts(
 async def check_marketing_policy(
     business_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_READ),
 ) -> dict[str, Any]:
     biz = await session.get(Business, business_id)
+    traits = await _enabled_traits(session, biz)
     res = RegulatedCategoryPolicyService.evaluate(
-        category_key=getattr(biz, "category_key", None),
-        subcategory_key=getattr(biz, "subcategory_key", None),
-        business_traits=getattr(biz, "business_traits", None),
+        category_key=getattr(biz, "category_key", None) if biz else None,
+        subcategory_key=getattr(biz, "subcategory_key", None) if biz else None,
+        traits=traits,
     )
     return {
         "allowed": res.allowed,
         "status": res.status,
         "reason": res.reason,
-        "requires_declaration": res.requires_declaration,
+        "meta_targeting_check": res.meta_targeting_check,
     }
 
 
@@ -394,7 +423,7 @@ async def configure_meta_spend_cap(
     business_id: uuid.UUID,
     body: MetaSpendCapRequest,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_APPROVE),
 ) -> dict[str, Any]:
     cfg = await MetaAdsContractService.configure_spend_cap(
         session,
@@ -404,6 +433,7 @@ async def configure_meta_spend_cap(
         pixel_id=body.pixel_id,
         conversions_api_enabled=body.conversions_api_enabled,
     )
+    await _keep(session)
     return {
         "business_id": str(cfg.business_id),
         "monthly_spend_cap_paise": cfg.monthly_spend_cap_paise,
@@ -416,8 +446,10 @@ async def test_meta_spend_request(
     business_id: uuid.UUID,
     body: MetaSpendTestRequest,
     session: AsyncSession = Depends(get_db_session),
-    context: BusinessActorContext = Depends(require_business_actor()),
+    context: BusinessActorContext = Depends(_APPROVE),
 ) -> dict[str, Any]:
-    return await MetaAdsContractService.prepare_campaign_spend_request(
+    result = await MetaAdsContractService.prepare_campaign_spend_request(
         session, business_id, requested_spend_paise=body.requested_spend_paise
     )
+    await _keep(session)
+    return result

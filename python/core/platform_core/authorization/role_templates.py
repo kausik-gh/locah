@@ -29,10 +29,10 @@ SURFACES = {"workspace": "Workspace", "pos": "Counter billing (POS)", "crew": "C
 BUILT_SURFACES = frozenset({"workspace", "pos"})
 CURRENT_PHASES = frozenset({"P1"})
 # Later-phase roles whose scope, surface and permissions all work today: the
-# provider and the sales executive, since assignment scope is enforced (P2-01).
-# Their later tools (a provider's crew app, a sales executive's site visits)
-# join their permissions as those ship.
-READY_AHEAD = frozenset({"provider", "sales_executive"})
+# provider and the sales executive, since assignment scope is enforced (P2-01),
+# and the marketer, once loyalty or marketing is actually on for the business.
+# Their later tools join their permissions as those ship.
+READY_AHEAD = frozenset({"provider", "sales_executive", "marketer"})
 
 
 @dataclass(frozen=True)
@@ -160,7 +160,12 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
     RoleTemplate(
         "marketer", "Marketer", "Campaigns and audiences as counts; cannot export phone numbers",
         "business", "workspace", "What is running and what it earned",
-        _READ_BASICS | {p.OFFERINGS_READ, p.WEBSITE_READ, p.MARKETPLACE_READ, p.REVIEWS_READ}, (), "P3",
+        # Draft and read. marketing.approve and marketing.send stay with the owner (§18).
+        _READ_BASICS | {
+            p.MARKETING_READ, p.MARKETING_CREATE, p.LOYALTY_READ,
+            p.OFFERINGS_READ, p.WEBSITE_READ, p.MARKETPLACE_READ, p.REVIEWS_READ,
+        },
+        ("marketing", "loyalty"), "P3",
     ),
 )}
 
@@ -229,6 +234,12 @@ PERMISSION_WORDS: dict[str, str] = {
     "workforce.read": "See staff and schedules", "workforce.create": "Add staff profiles",
     "workforce.update": "Edit staff and rota", "workforce.deactivate": "Deactivate staff",
     "workforce.manage_availability": "Set staff availability",
+    "loyalty.read": "See points, stamps and vouchers",
+    "loyalty.manage": "Change the loyalty programme and issue rewards",
+    "marketing.read": "See campaigns, audiences and results",
+    "marketing.create": "Draft campaigns and offers",
+    "marketing.approve": "Approve a campaign, its audience and its spend",
+    "marketing.send": "Send an approved broadcast",
 }
 
 

@@ -73,12 +73,13 @@ _FOUNDATION_FEATURES = frozenset(
 _FOUNDATION_MODULES = _FOUNDATION_MODULES | _UNPRICED_MODULES
 _FOUNDATION_FEATURES = _FOUNDATION_FEATURES | _UNPRICED_FEATURES
 
-_GROWTH_MODULES = _FOUNDATION_MODULES | frozenset({"analytics", "messaging", "marketing", "reviews"})
+_GROWTH_MODULES = _FOUNDATION_MODULES | frozenset({"analytics", "messaging", "marketing", "loyalty", "reviews"})
 _GROWTH_FEATURES = _FOUNDATION_FEATURES | frozenset(
     {
         "analytics.core",
         "messaging.core",
         "marketing.core",
+        "loyalty.core",
         "reviews.core",
         "inventory.stock_transfer",
         "inventory.purchase_orders",

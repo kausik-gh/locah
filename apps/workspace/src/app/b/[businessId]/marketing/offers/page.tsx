@@ -2,17 +2,8 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
-import {
-  EmptyState,
-  GateNotice,
-  PageHeader,
-  Section,
-  StatusPill,
-  TABLE,
-  TH,
-  TD,
-  ROW,
-} from '@/components/ModuleState'
+import { EmptyState, GateNotice, PageHeader, ROW, StatusPill, TABLE, TD, TH } from '@/components/ModuleState'
+import { createOffer } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,113 +13,92 @@ type Offer = {
   name: string
   kind: string
   discount_value: number
-  min_order_amount_paise: number
-  max_discount_paise: number | null
   times_used: number
   status: string
 }
 
-function offerKindLabel(kind: string): string {
-  const labels: Record<string, string> = {
-    percentage_discount: 'Percentage off',
-    flat_discount: 'Flat off',
-    free_delivery: 'Free delivery',
-    buy_x_get_y: 'Buy X get Y',
-    free_item: 'Free item',
-  }
-  return labels[kind] ?? kind
-}
+const INPUT: React.CSSProperties = { width: '100%' }
 
-function fmtDiscount(offer: Offer): string {
-  if (offer.kind === 'percentage_discount') return `${offer.discount_value}%`
-  if (offer.kind === 'flat_discount') return `₹${offer.discount_value}`
-  return String(offer.discount_value)
-}
-
-/**
- * Doc 11 §9.7 Marketing Offers (MK-07). Coupon codes and discount offers
- * that can be attached to marketing campaigns or shared directly.
- */
+/** Offers and coupons, including the form that creates one. Checkout validates later. */
 export default async function OffersPage({ params }: { params: { businessId: string } }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
 
   const base = `/v1/platform/businesses/${params.businessId}`
   const offersRes = await apiTry<{ offers: Offer[] }>(`${base}/marketing/offers`, token)
-
   if (!offersRes.ok) {
     return (
       <div>
-        <PageHeader title="Offers & Coupons" />
+        <PageHeader title="Offers & coupons" />
         <GateNotice error={offersRes.error} businessId={params.businessId} moduleLabel="Marketing" />
       </div>
     )
   }
-
   const offers = offersRes.data.offers ?? []
 
   return (
     <div>
       <PageHeader
-        title="Offers & Coupons"
-        description="Coupon codes and discount offers you can attach to campaigns or share directly."
-        action={{ label: 'New offer', href: `/b/${params.businessId}/marketing/offers/new` }}
+        title="Offers & coupons"
+        subtitle="Usage limits and expiry live on the offer. Checkout will validate the code later."
+        actions={<Link href={`/b/${params.businessId}/marketing`}>Campaigns</Link>}
       />
 
-      <Section title="Active offers">
-        {offers.length === 0 ? (
-          <EmptyState
-            title="No offers yet"
-            description="Create a coupon code or discount offer to attach to a campaign or share with customers."
-            action={{ label: 'New offer', href: `/b/${params.businessId}/marketing/offers/new` }}
-          />
-        ) : (
-          <TABLE>
+      {offers.length === 0 ? <EmptyState>No offers yet.</EmptyState> : (
+        <div className="ws-tablewrap">
+          <table style={TABLE}>
             <thead>
               <tr>
-                <TH>Code</TH>
-                <TH>Name</TH>
-                <TH>Type</TH>
-                <TH>Discount</TH>
-                <TH>Min order</TH>
-                <TH>Times used</TH>
-                <TH>Status</TH>
+                <th style={TH}>Code</th>
+                <th style={TH}>Name</th>
+                <th style={TH}>Kind</th>
+                <th style={TH}>Value</th>
+                <th style={TH}>Used</th>
+                <th style={TH}>Status</th>
               </tr>
             </thead>
             <tbody>
-              {offers.map((o) => (
-                <ROW key={o.id}>
-                  <TD>
-                    <code
-                      style={{
-                        background: 'var(--color-surface-2)',
-                        padding: '0.1rem 0.4rem',
-                        borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.85rem',
-                        fontFamily: 'monospace',
-                      }}
-                    >
-                      {o.code}
-                    </code>
-                  </TD>
-                  <TD>{o.name}</TD>
-                  <TD>{offerKindLabel(o.kind)}</TD>
-                  <TD>{fmtDiscount(o)}</TD>
-                  <TD>
-                    {o.min_order_amount_paise > 0
-                      ? `₹${(o.min_order_amount_paise / 100).toFixed(0)}+`
-                      : 'No minimum'}
-                  </TD>
-                  <TD>{o.times_used}</TD>
-                  <TD>
-                    <StatusPill status={o.status} />
-                  </TD>
-                </ROW>
+              {offers.map((offer) => (
+                <tr key={offer.id} style={ROW}>
+                  <td style={TD}>{offer.code}</td>
+                  <td style={TD}>{offer.name}</td>
+                  <td style={TD}>{offer.kind}</td>
+                  <td style={TD}>{offer.discount_value}</td>
+                  <td style={TD}>{offer.times_used}</td>
+                  <td style={TD}>
+                    <StatusPill value={offer.status} />
+                  </td>
+                </tr>
               ))}
             </tbody>
-          </TABLE>
-        )}
-      </Section>
+          </table>
+        </div>
+      )}
+
+      <section id="new-offer" style={{ marginTop: '2rem', maxWidth: '32rem' }}>
+        <h2>New offer</h2>
+        <form action={createOffer} style={{ display: 'grid', gap: '0.6rem' }}>
+          <input type="hidden" name="businessId" value={params.businessId} />
+          <input name="code" required maxLength={30} placeholder="Code, for example DIWALI10" style={INPUT} />
+          <input name="name" required maxLength={80} placeholder="Name" style={INPUT} />
+          <label>
+            Kind
+            <select name="kind" defaultValue="percentage_discount" style={INPUT}>
+              <option value="percentage_discount">Percentage off</option>
+              <option value="fixed_amount">Fixed amount</option>
+              <option value="free_delivery">Free delivery</option>
+              <option value="first_order">First order</option>
+              <option value="win_back">Win back</option>
+            </select>
+          </label>
+          <input name="discount_value" type="number" min="0.01" step="0.01" required placeholder="Discount value" style={INPUT} />
+          <label>
+            Uses per customer
+            <input name="usage_limit_per_customer" type="number" min="1" defaultValue={1} style={INPUT} />
+          </label>
+          <button type="submit">Create offer</button>
+        </form>
+      </section>
     </div>
   )
 }

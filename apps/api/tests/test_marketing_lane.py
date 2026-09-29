@@ -279,39 +279,47 @@ async def test_same_campaign_contact_dispatch_idempotent() -> None:
 
 
 def test_regulated_marketing_policy_guards() -> None:
-    """18. Regulated marketing policy blocks/restricts according to source rules."""
-    # A. Minors: Strictly prohibited under DPDP Act 2023 §9
-    policy_minors = RegulatedCategoryPolicyService.evaluate(
-        target_tags=["minors", "students"],
-    )
+    """18. Regulated marketing follows the Capability Universe, without extra legal gates."""
+    # §20.4 — the minors_involved trait means no marketing templates to minors.
+    policy_minors = RegulatedCategoryPolicyService.evaluate(traits={"minors_involved"})
     assert policy_minors.allowed is False
     assert policy_minors.status == "prohibited"
-    assert "DPDP Act 2023 §9" in policy_minors.reason
+    assert policy_minors.reason == "No marketing templates to minors."
 
-    # B. Legal profession: Marketing off by default under Bar Council rules
-    policy_legal = RegulatedCategoryPolicyService.evaluate(
-        category_key="legal_services",
-        subcategory_key="advocate",
-        owner_override=False,
-    )
+    # §21.9 / §25.1 — marketing is off by default for the lawyer subcategory.
+    # There is no owner bypass. Invented category names do not trigger it.
+    policy_legal = RegulatedCategoryPolicyService.evaluate(subcategory_key="lawyer")
     assert policy_legal.allowed is False
-    assert policy_legal.status == "requires_owner_override"
-    assert "Bar Council of India" in policy_legal.reason
+    assert policy_legal.status == "off_by_default"
+    assert RegulatedCategoryPolicyService.evaluate(category_key="legal_services").allowed is True
 
-    # Legal with owner override permitted
-    policy_legal_override = RegulatedCategoryPolicyService.evaluate(
-        category_key="legal_services",
-        owner_override=True,
-    )
-    assert policy_legal_override.allowed is True
-
-    # C. Finance: Restricted category requiring disclosures
-    policy_finance = RegulatedCategoryPolicyService.evaluate(
-        category_key="financial_services",
-    )
+    # §25.1 — finance is restricted: no product selling or advice. Not a disclosure form.
+    policy_finance = RegulatedCategoryPolicyService.evaluate(category_key="finance_insurance")
     assert policy_finance.allowed is True
     assert policy_finance.status == "restricted"
-    assert policy_finance.requires_declaration is True
+    assert policy_finance.meta_targeting_check is True
+    assert "No product selling or advice" in policy_finance.reason
+
+    # §18.3 — Meta targeting is checked for housing, employment and health. WhatsApp is not blocked.
+    policy_health = RegulatedCategoryPolicyService.evaluate(traits={"health_regulated"})
+    assert policy_health.allowed is True
+    assert policy_health.meta_targeting_check is True
+    policy_jobs = RegulatedCategoryPolicyService.evaluate(subcategory_key="recruitment")
+    assert policy_jobs.allowed is True
+    assert policy_jobs.meta_targeting_check is True
+
+
+def test_marketer_can_draft_but_cannot_approve_or_send() -> None:
+    """§18: the owner approves every broadcast and every rupee. The marketer does not."""
+    from platform_core.authorization.role_templates import role_permissions
+
+    held = role_permissions("marketer")
+    assert "marketing.read" in held
+    assert "marketing.create" in held
+    assert "loyalty.read" in held
+    assert "marketing.approve" not in held
+    assert "marketing.send" not in held
+    assert "customers.export" not in held
 
 
 @pytest.mark.asyncio

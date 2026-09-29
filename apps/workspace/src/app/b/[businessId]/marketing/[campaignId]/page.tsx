@@ -1,12 +1,9 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
-import {
-  GateNotice,
-  PageHeader,
-  Section,
-  StatusPill,
-} from '@/components/ModuleState'
+import { GateNotice, PageHeader, StatusPill } from '@/components/ModuleState'
+import { approveCampaign, dispatchCampaign, prepareCampaign, saveCampaignBuild } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,28 +15,31 @@ type Campaign = {
   status: string
   budget_paise: number
   estimated_cost_paise: number | null
-  actual_cost_paise: number
   audience_segment_id: string | null
-  audience_snapshot: Record<string, unknown> | null
+  audience_snapshot: { total_count?: number; consented_count?: number; excluded_no_consent_count?: number } | null
   offer_id: string | null
-  creative: Record<string, unknown>
-  approved_by: string | null
+  creative: { text?: string }
   approved_at: string | null
-  approval_record: Record<string, unknown> | null
-  version: number
 }
 
-function fmtPaise(paise: number | null): string {
-  if (paise == null) return '—'
-  if (paise === 0) return 'Free'
-  return `₹${(paise / 100).toFixed(0)}`
+type Segment = { id: string; name: string; count: number; whatsapp_offers: number }
+type Offer = { id: string; code: string; name: string }
+type Results = {
+  attribution_label: string
+  recipients_sent: number
+  excluded_no_consent: number
+  excluded_frequency: number
+  attributed_orders: number
+  data_source: string
 }
+
+const INPUT: React.CSSProperties = { width: '100%' }
 
 /**
- * Campaign detail page: shows the full campaign state, approval record,
- * audience snapshot and creative. Owner can approve/dispatch from here.
+ * Campaign builder: audience, offer, creative, budget, then approval.
+ * Dispatch records a fixture send. Messaging delivers it later.
  */
-export default async function CampaignPage({
+export default async function CampaignBuilderPage({
   params,
 }: {
   params: { businessId: string; campaignId: string }
@@ -49,7 +49,6 @@ export default async function CampaignPage({
 
   const base = `/v1/platform/businesses/${params.businessId}`
   const res = await apiTry<Campaign>(`${base}/marketing/campaigns/${params.campaignId}`, token)
-
   if (!res.ok) {
     return (
       <div>
@@ -58,73 +57,143 @@ export default async function CampaignPage({
       </div>
     )
   }
-
-  const c = res.data
-
-  const FIELD_ROWS: { label: string; value: string }[] = [
-    { label: 'ID', value: c.id },
-    { label: 'Status', value: c.status },
-    { label: 'Goal', value: c.goal },
-    { label: 'Channel', value: c.channel },
-    { label: 'Budget', value: fmtPaise(c.budget_paise) },
-    { label: 'Estimated cost', value: fmtPaise(c.estimated_cost_paise) },
-    { label: 'Actual cost', value: fmtPaise(c.actual_cost_paise) },
-    { label: 'Version', value: String(c.version) },
-    { label: 'Approved at', value: c.approved_at ? new Date(c.approved_at).toLocaleString('en-IN') : '—' },
-  ]
+  const campaign = res.data
+  const [segmentsRes, offersRes, resultsRes] = await Promise.all([
+    apiTry<{ data: Segment[] }>(`${base}/customers/segments`, token),
+    apiTry<{ offers: Offer[] }>(`${base}/marketing/offers`, token),
+    apiTry<Results>(`${base}/marketing/campaigns/${params.campaignId}/results`, token),
+  ])
+  const segments = segmentsRes.ok ? segmentsRes.data.data || [] : []
+  const offers = offersRes.ok ? offersRes.data.offers || [] : []
+  const results = resultsRes.ok ? resultsRes.data : null
+  const snap = campaign.audience_snapshot
+  const locked = campaign.status === 'RUNNING' || campaign.status === 'COMPLETED' || campaign.status === 'CANCELLED'
 
   return (
     <div>
-      <PageHeader title={c.name} description={`Campaign · ${c.channel}`} />
+      <p style={{ marginBottom: '0.75rem' }}>
+        <Link href={`/b/${params.businessId}/marketing`}>Campaigns</Link>
+      </p>
+      <PageHeader title={campaign.name} subtitle={campaign.goal} />
+      <p>
+        Approval state: <StatusPill value={campaign.status} />
+        {campaign.approved_at ? ` · approved ${new Date(campaign.approved_at).toLocaleString('en-IN')}` : ''}
+      </p>
 
-      <Section title="Details">
-        <dl style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '0.35rem 1rem' }}>
-          {FIELD_ROWS.map((r) => (
-            <>
-              <dt key={`dt-${r.label}`} style={{ color: 'var(--color-muted)', fontSize: '0.85rem' }}>
-                {r.label}
-              </dt>
-              <dd key={`dd-${r.label}`} style={{ margin: 0, fontWeight: r.label === 'Status' ? 600 : undefined }}>
-                {r.label === 'Status' ? <StatusPill status={r.value} /> : r.value}
-              </dd>
-            </>
-          ))}
-        </dl>
-      </Section>
+      <section style={{ marginTop: '1.5rem', maxWidth: '36rem' }}>
+        <h2>Builder</h2>
+        <form action={saveCampaignBuild} style={{ display: 'grid', gap: '0.6rem' }}>
+          <input type="hidden" name="businessId" value={params.businessId} />
+          <input type="hidden" name="campaignId" value={campaign.id} />
+          <label>
+            Audience
+            <select name="audience_segment_id" defaultValue={campaign.audience_segment_id ?? ''} style={INPUT} disabled={locked}>
+              <option value="">Choose a segment</option>
+              {segments.map((segment) => (
+                <option key={segment.id} value={segment.id}>
+                  {segment.name} · {segment.count} people · {segment.whatsapp_offers} consented
+                </option>
+              ))}
+            </select>
+          </label>
+          {segments.length === 0 ? (
+            <p style={{ color: 'var(--color-muted)', fontSize: '0.9rem' }}>
+              No segments yet. Build one under Customers, then come back.
+            </p>
+          ) : null}
+          <label>
+            Offer
+            <select name="offer_id" defaultValue={campaign.offer_id ?? ''} style={INPUT} disabled={locked}>
+              <option value="">No offer</option>
+              {offers.map((offer) => (
+                <option key={offer.id} value={offer.id}>
+                  {offer.code} · {offer.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Channel
+            <select name="channel" defaultValue={campaign.channel} style={INPUT} disabled={locked}>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="meta_ads">Meta ads</option>
+            </select>
+          </label>
+          <label>
+            Message
+            <textarea name="creative" rows={4} defaultValue={campaign.creative?.text ?? ''} style={INPUT} disabled={locked} />
+          </label>
+          <label>
+            Budget (rupees)
+            <input
+              name="budget_rupees"
+              type="number"
+              min="0"
+              step="1"
+              defaultValue={Math.round(campaign.budget_paise / 100)}
+              style={INPUT}
+              disabled={locked}
+            />
+          </label>
+          {locked ? null : <button type="submit">Save draft</button>}
+        </form>
+      </section>
 
-      {c.creative && Object.keys(c.creative).length > 0 && (
-        <Section title="Creative">
-          <pre
-            style={{
-              background: 'var(--color-surface-2)',
-              borderRadius: 'var(--radius)',
-              padding: '0.75rem 1rem',
-              fontSize: '0.82rem',
-              overflowX: 'auto',
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {JSON.stringify(c.creative, null, 2)}
-          </pre>
-        </Section>
-      )}
+      <section style={{ marginTop: '1.5rem' }}>
+        <h2>Consent count</h2>
+        {typeof snap?.total_count === 'number' ? (
+          <p>
+            {snap.total_count ?? 0} in the audience, {snap.consented_count ?? 0} with marketing consent,{' '}
+            {snap.excluded_no_consent_count ?? 0} excluded.
+            {campaign.estimated_cost_paise != null
+              ? ` Estimated WhatsApp cost ₹${(campaign.estimated_cost_paise / 100).toFixed(0)}.`
+              : ''}
+          </p>
+        ) : (
+          <p style={{ color: 'var(--color-muted)' }}>Submit for approval to count consented contacts.</p>
+        )}
+        {locked ? null : (
+          <form action={prepareCampaign}>
+            <input type="hidden" name="businessId" value={params.businessId} />
+            <input type="hidden" name="campaignId" value={campaign.id} />
+            <button type="submit">Count audience and submit for approval</button>
+          </form>
+        )}
+      </section>
 
-      {c.approval_record && Object.keys(c.approval_record).length > 0 && (
-        <Section title="Approval record">
-          <pre
-            style={{
-              background: 'var(--color-surface-2)',
-              borderRadius: 'var(--radius)',
-              padding: '0.75rem 1rem',
-              fontSize: '0.82rem',
-              overflowX: 'auto',
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {JSON.stringify(c.approval_record, null, 2)}
-          </pre>
-        </Section>
-      )}
+      <section style={{ marginTop: '1.5rem' }}>
+        <h2>Approval</h2>
+        <p style={{ maxWidth: '36rem', color: 'var(--color-muted)' }}>
+          Only someone with marketing approval can approve. A marketer can draft this page, not send it.
+        </p>
+        {campaign.status === 'READY_FOR_APPROVAL' || campaign.status === 'DRAFT' ? (
+          <form action={approveCampaign}>
+            <input type="hidden" name="businessId" value={params.businessId} />
+            <input type="hidden" name="campaignId" value={campaign.id} />
+            <button type="submit">Approve</button>
+          </form>
+        ) : null}
+        {campaign.status === 'APPROVED' ? (
+          <form action={dispatchCampaign}>
+            <input type="hidden" name="businessId" value={params.businessId} />
+            <input type="hidden" name="campaignId" value={campaign.id} />
+            <button type="submit">Record fixture send</button>
+          </form>
+        ) : null}
+      </section>
+
+      {results ? (
+        <section style={{ marginTop: '1.5rem' }}>
+          <h2>Results</h2>
+          <p>
+            Sent {results.recipients_sent}. Excluded for consent {results.excluded_no_consent}. Excluded for frequency{' '}
+            {results.excluded_frequency}. Orders attributed {results.attributed_orders}.
+          </p>
+          <p>
+            {results.attribution_label}. {results.data_source}
+          </p>
+        </section>
+      ) : null}
     </div>
   )
 }

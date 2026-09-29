@@ -280,10 +280,10 @@ async def test_stamp_card_10th_reward_issued_once() -> None:
     session = AsyncMock()
     session.get.return_value = mock_prog
     session.execute.side_effect = [
-        # Card lookup
-        MagicMock(scalars=lambda: MagicMock(first=lambda: mock_card)),
-        # Reward duplicate lookup
+        # No earlier stamp for this visit
         MagicMock(scalars=lambda: MagicMock(first=lambda: None)),
+        # Existing card, one stamp short of the reward
+        MagicMock(scalars=lambda: MagicMock(first=lambda: mock_card)),
     ]
 
     res = await StampCardService.award_stamp(

@@ -114,9 +114,11 @@ CREATE TABLE IF NOT EXISTS referral_codes (
     customer_contact_id UUID NOT NULL REFERENCES customer_relationships_contacts(id),
     code TEXT NOT NULL CHECK (char_length(code) BETWEEN 3 AND 30),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT referral_codes_unique_code UNIQUE (business_id, lower(code)),
     CONSTRAINT referral_codes_one_per_customer UNIQUE (business_id, customer_contact_id)
 );
+-- Expression uniqueness cannot live inside a table constraint.
+CREATE UNIQUE INDEX IF NOT EXISTS referral_codes_unique_code
+    ON referral_codes (business_id, lower(code));
 
 CREATE TABLE IF NOT EXISTS referral_relationships (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -154,9 +156,10 @@ CREATE TABLE IF NOT EXISTS gift_vouchers (
     expires_at TIMESTAMPTZ,
     created_by UUID REFERENCES platform_identities(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT gift_vouchers_unique_code UNIQUE (business_id, upper(code))
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS gift_vouchers_unique_code
+    ON gift_vouchers (business_id, upper(code));
 CREATE INDEX IF NOT EXISTS gift_vouchers_holder ON gift_vouchers (business_id, holder_contact_id);
 
 CREATE TABLE IF NOT EXISTS gift_voucher_transactions (
@@ -195,9 +198,10 @@ CREATE TABLE IF NOT EXISTS marketing_offers (
     expires_at TIMESTAMPTZ,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'expired')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT marketing_offers_unique_code UNIQUE (business_id, upper(code))
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS marketing_offers_unique_code
+    ON marketing_offers (business_id, upper(code));
 
 -- ============================================================================
 -- 6. MARKETING CAMPAIGNS & BROADCAST ORCHESTRATION

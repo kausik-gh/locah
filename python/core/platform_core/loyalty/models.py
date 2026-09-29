@@ -139,6 +139,23 @@ class StampReward(Base):
     order_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
 
 
+class StampAward(Base):
+    """One qualifying visit. The idempotency key is the visit, so it cannot stamp twice."""
+
+    __tablename__ = "stamp_awards"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), nullable=False)
+    program_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("stamp_programs.id"), nullable=False)
+    customer_contact_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("customer_relationships_contacts.id"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ReferralCode(Base):
     __tablename__ = "referral_codes"
 

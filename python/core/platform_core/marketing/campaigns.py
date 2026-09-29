@@ -192,7 +192,7 @@ class CampaignService:
         *,
         business_category: str | None = None,
         business_subcategory: str | None = None,
-        business_traits: dict[str, Any] | None = None,
+        business_traits: set[str] | frozenset[str] | None = None,
     ) -> dict[str, Any]:
         """Calculates audience snapshot, estimated cost, and checks regulated category policy."""
         campaign = await CampaignService.get_campaign(session, business_id, campaign_id)
@@ -204,7 +204,7 @@ class CampaignService:
         policy = RegulatedCategoryPolicyService.evaluate(
             category_key=business_category,
             subcategory_key=business_subcategory,
-            business_traits=business_traits,
+            traits=set(business_traits or ()),
         )
         if not policy.allowed and policy.status == "prohibited":
             raise ValidationError(f"Campaign prohibited: {policy.reason}")
@@ -231,7 +231,7 @@ class CampaignService:
             "policy": {
                 "status": policy.status,
                 "reason": policy.reason,
-                "requires_declaration": policy.requires_declaration,
+                "meta_targeting_check": policy.meta_targeting_check,
             },
         }
 
@@ -242,16 +242,14 @@ class CampaignService:
         campaign_id: uuid.UUID,
         approver_identity_id: uuid.UUID,
         *,
-        is_owner: bool = True,
-        override_declaration: bool = False,
         now: datetime | None = None,
     ) -> MarketingCampaign:
-        """Owner approval is mandatory before any broadcast or rupee spent."""
+        """Records approval. The route allows this only for marketing.approve.
+
+        The owner holds that permission. A marketer who can draft does not.
+        """
         now = now or datetime.now(timezone.utc)
         campaign = await CampaignService.get_campaign(session, business_id, campaign_id)
-
-        if not is_owner:
-            raise ValidationError("Only the business owner or authorized administrator can approve marketing campaigns")
 
         if campaign.status not in ("READY_FOR_APPROVAL", "DRAFT"):
             raise ConflictError(f"Cannot approve campaign in {campaign.status} status")
@@ -275,7 +273,6 @@ class CampaignService:
             "budget_cap_paise": campaign.budget_paise,
             "content_hash": campaign.content_hash,
             "channel": campaign.channel,
-            "override_declaration": override_declaration,
         }
 
         campaign.approved_by = approver_identity_id
