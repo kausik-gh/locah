@@ -69,6 +69,7 @@ export const AREAS: NavArea[] = [
       { href: '/customers', label: 'Customers', perm: 'customers.read', module: 'customer-relationships' },
       { href: '/leads', label: 'Enquiries', perm: 'leads.read', module: 'leads' },
       { href: '/reviews', label: 'Reviews', perm: 'reviews.read', module: 'reviews' },
+      { href: '/loyalty', label: 'Loyalty & Rewards', perm: 'customers.read', module: 'loyalty' },
     ],
   },
   {
@@ -92,14 +93,15 @@ export const AREAS: NavArea[] = [
       { href: '/workforce', label: 'Staff & rota', perm: 'workforce.read', module: 'workforce', shape: 'team' },
     ],
   },
-  // AI Employees join as their tools ship (P3); campaigns join Reach in P3.
-  // Until then they have nothing to show.
+  // AI Employees join as their tools ship (P3).
   {
     key: 'reach',
     label: 'Reach',
     children: [
       { href: '/inbox', label: 'WhatsApp inbox', perm: 'messaging.read', module: 'messaging' },
       { href: '/whatsapp', label: 'WhatsApp', perm: 'messaging.read', module: 'messaging' },
+      { href: '/marketing', label: 'Campaigns', perm: 'marketing.send', module: 'marketing' },
+      { href: '/marketing/offers', label: 'Offers & coupons', perm: 'marketing.send', module: 'marketing' },
     ],
   },
   {
