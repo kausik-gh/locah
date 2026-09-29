@@ -29,6 +29,8 @@ export type PublicOffering = {
   variants?: { id: string; name: string; price_amount: number | null }[]
   raised_amount?: number
   preorder?: PreorderInfo
+  /** Priced from today's rate (OK-15): how the price is made up. */
+  price_basis?: { words: string | null; rate_at: string | null }
 }
 
 export function money(amount?: number | null, currency?: string) {

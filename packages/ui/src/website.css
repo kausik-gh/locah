@@ -1938,6 +1938,7 @@
 [data-locah-site] .ls-checkout__place { width: 100%; justify-content: center; margin-top: 0.4rem; }
 [data-locah-site] .ls-checkout__place:disabled { opacity: 0.6; cursor: progress; }
 [data-locah-site] .ls-offer__ahead { margin: 0.2rem 0 0; font-size: 0.84rem; color: var(--site-muted); }
+[data-locah-site] .ls-offer__basis { margin: 0.2rem 0 0; font-size: 0.84rem; color: var(--site-muted); font-variant-numeric: tabular-nums; }
 [data-locah-site] .ls-chooser__text { display: grid; gap: 0.3rem; font-size: 0.86rem; color: var(--site-muted); }
 [data-locah-site] .ls-chooser__text input {
   font: inherit; color: var(--site-ink); background: var(--site-bg); min-height: 40px; padding: 0.4rem 0.7rem;

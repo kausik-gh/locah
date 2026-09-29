@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
@@ -119,7 +120,8 @@ export default async function BillPage({ params }: { params: { businessId: strin
                 </thead>
                 <tbody>
                   {lines.map((l) => (
-                    <tr key={l.id}>
+                    <Fragment key={l.id}>
+                    <tr className={l.basis_words ? 'has-basis' : undefined}>
                       <td>{l.title}{l.discount > 0 ? <small className="bos-bill__disc">Discount {rupees(l.discount)}</small> : null}</td>
                       {gst ? <td>{l.hsn_sac ?? '—'}</td> : null}
                       <td data-num>{l.quantity}{l.unit_label ? ` ${l.unit_label}` : ''}</td>
@@ -130,6 +132,13 @@ export default async function BillPage({ params }: { params: { businessId: strin
                       {gst && !intra ? <td data-num>{rupees(l.igst)}</td> : null}
                       <td data-num>{rupees(l.line_total)}</td>
                     </tr>
+                    {l.basis_words ? (
+                      // OK-15: the rate working this line was sold at, on its own row so the columns stay readable.
+                      <tr className="bos-bill__basis">
+                        <td colSpan={4 + (gst ? 3 : 0) + (gst && intra ? 2 : gst ? 1 : 0)}>{l.basis_words}</td>
+                      </tr>
+                    ) : null}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

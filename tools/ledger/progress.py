@@ -575,3 +575,17 @@ done("P1-10D2", {
     "MS-16": dict(status=P, code="cancel an order while it waits to be accepted, a pre-order until its cancel window (P1-10D2), and a booking outside the owner's window; changes (reschedule, edit an order) go to a person with the reason shown",
                   test="✓ test_journeys + test_preorders"),
 })
+
+
+# ---------------------------------------------------------------- P1-10D2b formula pricing (MD §21.2; Business OS Guide p.22)
+_FP_TEST = ("✓ test_formula_pricing (7, platform_api RLS role: isolation of both tables, append-only rate history) "
+            "+ browser p1_10d2_formula (28/28, Playwright Chromium), desktop + 390 px")
+done("P1-10D2", {
+    "OK-15": dict(status=C, code="any basket/counter item can be priced from a rate the owner enters (22K gold per g, silver, a metal or commodity by weight): rate × quantity + making (% of the metal value, ₹ per unit or ₹ per piece) + other charges, rounded to the rupee or paisa; GST stays the item's HSN/rate on the bill. Entering today's rate keeps the history (append-only) and re-prices the items using it for the next sale; each order line keeps the working at confirmation and each bill line keeps it as price_basis, so a later rate never rewrites a sale; the website card, the order, the bill (screen and PDF) and the customer's bill link show the working; Home asks for rates not entered today",
+                  db="✓ pricing_rates, pricing_rate_values, offerings.price_formula, invoicing_document_lines.price_basis",
+                  svc="✓ pricing/formula.py; /pricing/rates, /pricing/rates/{id}/values", perm="✓ offerings.read / offerings.update; RLS on both tables",
+                  ws="✓ Products & services › Today's rates; Item › Price › From a rate; Home › rates to enter for today",
+                  cust="✓ card shows today's working; bill link shows it", web="✓", test=_FP_TEST),
+    "PB-203": dict(status=P, code="Core built — formula-priced items from a daily rate board, counter billing at today's rate, GST tax invoices that keep weight × rate + making, orders (custom orders can ask an advance, P1-10D2a), stock per piece; Rec leads and bookings built. Hallmark HUID per piece can be kept as the piece's serial number but is not yet named or checked as a HUID",
+                   test="✓ fixture + browser p1_10d2_formula"),
+})

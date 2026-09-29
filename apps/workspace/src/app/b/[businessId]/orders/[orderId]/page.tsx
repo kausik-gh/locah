@@ -46,7 +46,7 @@ export default async function OrderDetailPage({
       advance_amount?: number | null
       preorder_terms?: { cancel_hours?: number | null }
       currency: string
-      items?: Array<{ title: string; quantity: number; line_total: number }>
+      items?: Array<{ title: string; quantity: number; line_total: number; basis_words?: string | null }>
     }
   }>(`/v1/platform/businesses/${params.businessId}/orders/${params.orderId}`, token)
   const bills = await apiTry<{ data: Array<{ id: string; number: string | null; kind_label: string; status: string; doc_kind: string }> }>(
@@ -131,7 +131,10 @@ export default async function OrderDetailPage({
               <tbody>
                 {(order.items || []).map((item, idx) => (
                   <tr key={idx}>
-                    <td>{item.title}</td>
+                    <td>
+                      {item.title}
+                      {item.basis_words ? <small className="bos-line-basis">{item.basis_words}</small> : null}
+                    </td>
                     <td data-num>{item.quantity}</td>
                     <td data-num>{money(Number(item.line_total) || 0, order.currency)}</td>
                   </tr>

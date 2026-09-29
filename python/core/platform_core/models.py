@@ -621,6 +621,9 @@ class Offering(Base):
     # Pre-order rules (P1-10D2): needs a date or may take one, notice, cutoff,
     # ready times, festival window, daily limit, advance, cancel window.
     preorder: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    # Formula pricing (P1-10D2b): a rate on the board × quantity + making + extras;
+    # "last" holds the inputs today's price was worked out from.
+    price_formula: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     sell_units: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     variant_options: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     stock_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'piece'"))
@@ -2249,6 +2252,8 @@ class InvoicingDocumentLine(Base):
     stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     serials: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
     batch_allocations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # What a formula-priced line was sold at: rate, quantity, making (P1-10D2b).
+    price_basis: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -2782,3 +2787,35 @@ class InventoryCountLine(Base):
     counted_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     counted_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     counted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PricingRate(Base):
+    """A rate on the business's rate board (22K gold per gram, silver per gram)."""
+
+    __tablename__ = "pricing_rates"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    key: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    unit: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'g'"))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class PricingRateValue(Base):
+    """One value an owner entered for a rate (append-only history)."""
+
+    __tablename__ = "pricing_rate_values"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    rate_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("pricing_rates.id"))
+    value: Mapped[Any] = mapped_column(Numeric(14, 4), nullable=False)
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entered_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

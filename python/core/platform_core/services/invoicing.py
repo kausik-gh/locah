@@ -62,6 +62,7 @@ from platform_core.models import (
     PaymentAttempt,
     SalesOrder,
 )
+from platform_core.pricing.formula import basis_words
 from platform_core.secrets import resolve_signing_secret
 from platform_core.services.audit import AuditService
 from platform_core.services.invoicing_setup import InvoicingSetupService, TaxRateService, local_today
@@ -143,6 +144,8 @@ class _Line:
     stock_quantity: int
     # §15.1: the serial numbers sold (or returned) on this line.
     serials: list[str] = field(default_factory=list)
+    # OK-15: the rate working behind a formula-priced line, as it stood when sold.
+    basis: dict[str, Any] | None = None
 
 
 def _rate_key(line: _Line) -> tuple[uuid.UUID | None, str | None, Any]:
@@ -308,6 +311,9 @@ class InvoiceService:
             if price is None:
                 raise _err(f"lines.{i}.unit_price", f"Enter a price for {title}")
             unit_price = money(dec(price))
+            # A rate-priced item sold at today's price keeps the working behind it (OK-15).
+            last = (offering.price_formula or {}).get("last") if offering is not None else None
+            basis = last if last and money(dec(last["price"])) == unit_price else None
             discount = money(dec(raw.get("discount") or 0))
             if unit_price < 0 or discount < 0:
                 raise _err(f"lines.{i}.unit_price", "Prices and discounts cannot be negative")
@@ -334,7 +340,7 @@ class InvoiceService:
             if serials and (offering is None or not offering.serial_tracked):
                 raise _err(f"lines.{i}.serials", f"{title} does not keep serial numbers")
             out.append(_Line(offering, variant.id if variant else None, None, None, title[:300], hsn, unit_label,
-                             quantity, unit_price, discount, rate, stock, serials))
+                             quantity, unit_price, discount, rate, stock, serials, basis))
         # Rates for catalogue lines (and free lines with only an HSN/SAC) come from data.
         need = [i for i, x in enumerate(out) if x.offering is not None or x.rate is None]
         resolved = await TaxRateService.resolve(session, business_id, [_rate_key(out[i]) for i in need], on)
@@ -358,7 +364,7 @@ class InvoiceService:
                 offering, item.variant_id, item.id, None, item.title, offering.hsn_sac if offering else None,
                 _unit_label(offering), Decimal(item.quantity), money(dec(item.unit_price)), ZERO,
                 dec(item.tax_rate) if item.tax_rate is not None else None, int(item.stock_quantity or 0),
-                list(item.serials or []),
+                list(item.serials or []), (item.options or {}).get("formula"),
             ))
         missing = [i for i, x in enumerate(out) if x.rate is None]
         if missing:
@@ -389,7 +395,7 @@ class InvoiceService:
                 hsn_sac=x.hsn_sac, unit_label=x.unit_label, quantity=x.quantity, unit_price=x.unit_price,
                 discount=out.discount, taxable_value=out.taxable, tax_rate=out.rate,
                 cgst=out.cgst, sgst=out.sgst, igst=out.igst, line_total=out.total,
-                stock_quantity=x.stock_quantity, serials=list(x.serials), sort_order=i,
+                stock_quantity=x.stock_quantity, serials=list(x.serials), sort_order=i, price_basis=x.basis,
             ))
         return rows
 
@@ -398,7 +404,7 @@ class InvoiceService:
         return [_Line(offerings.get(r.offering_id) if r.offering_id else None, r.variant_id, r.order_line_id,
                       r.original_line_id, r.title, r.hsn_sac, r.unit_label, dec(r.quantity), dec(r.unit_price),
                       dec(r.discount), dec(r.tax_rate) if r.tax_rate is not None else None, r.stock_quantity,
-                      list(r.serials or []))
+                      list(r.serials or []), r.price_basis)
                 for r in rows]
 
     # ------------------------------------------------------------------ stock
@@ -1169,6 +1175,7 @@ class InvoiceService:
             "igst": _f(r.igst), "line_total": _f(r.line_total), "stock_quantity": r.stock_quantity,
             "returnable_quantity": _f(dec(r.quantity) - returned.get(r.id, ZERO)),
             "creditable_amount": _f(dec(r.line_total) - credited.get(r.id, ZERO)),
+            "basis_words": basis_words(r.price_basis),
         } for r in rows]
         data["payments"] = [{
             "id": str(p.id), "amount": _f(p.amount), "method": p.method, "method_label": PAYMENT_METHODS[p.method],
@@ -1325,6 +1332,9 @@ def build_spec(d: dict[str, Any], *, thermal: bool = False) -> DocSpec:
         for g in d["tax_by_rate"]:
             tax = g["cgst"] + g["sgst"] + g["igst"]
             notes.append(f"GST {g['rate']:g}%: taxable {_inr(g['taxable'])}, tax {_inr(tax)}")
+    for ln in d["lines"]:  # OK-15: how a rate-priced line was worked out, as sold
+        if ln.get("basis_words"):
+            notes.append(f"{ln['title']}: {ln['basis_words']}")
     if d.get("notes"):
         notes.append(d["notes"])
     if d.get("terms") and kind in INVOICE_KINDS:
@@ -1383,6 +1393,7 @@ async def public_bill(session: AsyncSession, slug: str, token: str) -> dict[str,
         "quantity": _f(r.quantity), "unit_price": _f(r.unit_price), "discount": _f(r.discount),
         "taxable_value": _f(r.taxable_value), "tax_rate": _f(r.tax_rate) if r.tax_rate is not None else None,
         "cgst": _f(r.cgst), "sgst": _f(r.sgst), "igst": _f(r.igst), "line_total": _f(r.line_total),
+        "basis_words": basis_words(r.price_basis),
     } for r in rows]
     data["related"] = [original] if original else []
     data["tax_by_rate"] = InvoiceService._tax_by_rate(rows)

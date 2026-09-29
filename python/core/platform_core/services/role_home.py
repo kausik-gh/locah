@@ -182,6 +182,13 @@ class _Ctx:
             if low:
                 items.append(_item("items low or out of stock", len(low), "/inventory?stock_status=low_stock",
                                    ", ".join(r["title"] for r in low[:3])))
+        if self.can("offerings.update", "offerings-catalog"):
+            # OK-15: items priced from a daily rate keep yesterday's price until today's is entered.
+            from platform_core.pricing.formula import RateService
+
+            stale = await RateService.not_entered_since(self.s, self.b, self.day_start)
+            if stale:
+                items.append(_item("rates to enter for today", len(stale), "/offerings/rates", ", ".join(stale[:3])))
         if self.can("leads.read", "leads"):
             n = await self._count(Lead, Lead.business_id == self.b, Lead.deleted_at.is_(None), Lead.status == "new")
             if n:

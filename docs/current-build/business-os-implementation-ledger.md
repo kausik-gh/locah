@@ -29,14 +29,14 @@ Cells: ✓ built and exercised by a test here · ◐ partly built · ✗ not bui
 | Phase | Total | COMPLETE | PARTIAL | NOT_STARTED | ACTIVATION_REQUIRED | FUTURE |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | 21 | 17 | 4 | 0 | 0 | 0 |
-| P1 | 261 | 136 | 95 | 8 | 22 | 0 |
+| P1 | 261 | 137 | 95 | 7 | 22 | 0 |
 | P2 | 207 | 3 | 73 | 123 | 8 | 0 |
 | P3 | 74 | 0 | 2 | 57 | 15 | 0 |
 | P4 | 84 | 0 | 10 | 66 | 8 | 0 |
 | P5 | 97 | 0 | 41 | 55 | 1 | 0 |
 | P6 | 13 | 0 | 0 | 0 | 0 | 13 |
 | X | 36 | 18 | 14 | 2 | 2 | 0 |
-| **All** | **793** | **174** | **239** | **311** | **56** | **13** |
+| **All** | **793** | **175** | **239** | **310** | **56** | **13** |
 
 Open decisions: 11 of 13 · Verify-at-build items: 23
 
@@ -362,7 +362,7 @@ One catalogue, many kinds; the kind decides fields, website section and transact
 | OK-12 | P1 | MD §6.3 | digital_product → order → download link | offerings-catalog | NEW | [P1-03] digital product sold through the cart with its format and how the buyer receives it; automatic download links need private file storage (not configured) — the business sends it after payment | — | — | — | — | — | — | — | — | — | — | **PARTIAL** |
 | OK-13 | P1 | MD §6.3 | cause → donation | offerings-catalog | NEW | [P1-03] cause takes gifts through checkout above its smallest gift with suggested amounts and real progress (paid gifts only); receipts and 80G come with Donations (P5) | — | — | — | — | — | ✓ | — | — | — | ✓ API + browser | **PARTIAL** |
 | OK-14 | P1 | MD §26.3 P1-03 | New kinds render on the tenant site; existing catalogue tests still pass | website | NEW | [P1-03] new kinds render on the tenant site in the business's own theme; all existing catalogue tests pass (912 backend tests) | — | — | — | — | — | ✓ | — | — | — | ✓ browser p1_03 + full suite | **COMPLETE** |
-| OK-15 | P1 | MD §21.2 | Formula-priced offerings (jewellery: metal rate × weight + making + GST from a daily rate board) | offerings-catalog | NEW | absent | — | — | — | — | — | — | — | — | — | — | **NOT_STARTED** |
+| OK-15 | P1 | MD §21.2 | Formula-priced offerings (jewellery: metal rate × weight + making + GST from a daily rate board) | offerings-catalog | NEW | [P1-10D2] any basket/counter item can be priced from a rate the owner enters (22K gold per g, silver, a metal or commodity by weight): rate × quantity + making (% of the metal value, ₹ per unit or ₹ per piece) + other charges, rounded to the rupee or paisa; GST stays the item's HSN/rate on the bill. Entering today's rate keeps the history (append-only) and re-prices the items using it for the next sale; each order line keeps the working at confirmation and each bill line keeps it as price_basis, so a later rate never rewrites a sale; the website card, the order, the bill (screen and PDF) and the customer's bill link show the working; Home asks for rates not entered today | ✓ pricing_rates, pricing_rate_values, offerings.price_formula, invoicing_document_lines.price_basis | ✓ pricing/formula.py; /pricing/rates, /pricing/rates/{id}/values | ✓ offerings.read / offerings.update; RLS on both tables | ✓ Products & services › Today's rates; Item › Price › From a rate; Home › rates to enter for today | ✓ card shows today's working; bill link shows it | ✓ | — | — | — | ✓ test_formula_pricing (7, platform_api RLS role: isolation of both tables, append-only rate history) + browser p1_10d2_formula (28/28, Playwright Chromium), desktop + 390 px | **COMPLETE** |
 
 ## H. Orders and commerce loop (MD §6.1, §22, §23; Founder §22)
 
@@ -969,7 +969,7 @@ Every adapter declares data families, owner, direction; credentials in secrets s
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PB-201 | P1 | MD §21.2 | Clothing, footwear, fashion retail — Core: offerings (variants), pos, inventory, orders, payments, fulfilment, invoicing · Rec: loyalty, marketing, reviews, connectors | playbook | NEW | [P1-10A] Core built — size × colour variants with a stock grid, counter, orders, fulfilment, GST bills; Rec reviews built, loyalty/marketing (P3) and connectors (P4) not yet | — | — | — | — | — | — | — | — | — | ✓ fixture + browser p1_10a_stock | **PARTIAL** |
 | PB-202 | P1 | MD §21.2 | Electronics, mobile stores — Core: offerings (serialised), pos, inventory (serials), invoicing, payments · Rec: jobs, bookings, leads | playbook | NEW | [P1-10A] Core built — serialised items with IMEI at the counter and warranty lookup, GST bills, payments; Rec bookings/leads built, repair job cards (P5) not yet | — | — | — | — | — | — | — | — | — | ✓ fixture + browser p1_10a_counter_serials | **PARTIAL** |
-| PB-203 | P1 | MD §21.2 | Jewellery — Core: offerings (formula-priced), pos, invoicing, inventory (per piece), orders · Rec: leads, bookings (consultation) | playbook | NEW | [P1-01] fixture asserts this family's Core/Rec for every subcategory; Core modules not all built yet | — | — | — | — | — | — | — | — | — | ✓ fixture | **PARTIAL** |
+| PB-203 | P1 | MD §21.2 | Jewellery — Core: offerings (formula-priced), pos, invoicing, inventory (per piece), orders · Rec: leads, bookings (consultation) | playbook | NEW | [P1-10D2] Core built — formula-priced items from a daily rate board, counter billing at today's rate, GST tax invoices that keep weight × rate + making, orders (custom orders can ask an advance, P1-10D2a), stock per piece; Rec leads and bookings built. Hallmark HUID per piece can be kept as the piece's serial number but is not yet named or checked as a HUID | — | — | — | — | — | — | — | — | — | ✓ fixture + browser p1_10d2_formula | **PARTIAL** |
 | PB-204 | P2 | MD §21.2 | Furniture, home decor, kitchenware — Core: offerings, orders, quotes, payments (advance), fulfilment, dispatch · Rec: bookings, jobs (installation), procurement | playbook | NEW | [P1-01] fixture asserts this family's Core/Rec for every subcategory; Core modules not all built yet | — | — | — | — | — | — | — | — | — | ✓ fixture | **PARTIAL** |
 | PB-205 | P1 | MD §21.2 | Hardware, sports, stationery, books, toys, gifts — Core: pos, inventory, invoicing, ledger, orders · Rec: quotes, loyalty, procurement, connectors | playbook | NEW | [P1-01] fixture asserts this family's Core/Rec for every subcategory; Core modules not all built yet | — | — | — | — | — | — | — | — | — | ✓ fixture | **PARTIAL** |
 | PB-206 | P1 | MD §21.2 | Cosmetics, optical — Core: pos, inventory (batches), orders, invoicing · Rec: jobs (lens orders), bookings, loyalty | playbook | NEW | [P1-10A] Core built for cosmetics — batches and expiry at the counter, orders, bills; optical lens orders as jobs (P5) not yet | — | — | — | — | — | — | — | — | — | ✓ fixture | **PARTIAL** |

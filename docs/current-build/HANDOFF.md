@@ -22,6 +22,7 @@ Branch `main`. Packets done, newest last:
 | P1-10C module-aware website + Marketplace | 366ad71 | test_module_aware_site (11) + browser p1_10c_site 21/21; suite 1059 |
 | P1-10D1 collect what is due (payments) | see git log ("feat(p1-10d1)… browser-verified") | test_payment_collect (15) + browser p1_10d1_payments 83/83 (Playwright Chromium, desktop + 390 px); suite 1073 |
 | P1-10D2a dated pre-orders | see git log ("feat(p1-10d2a)") | test_preorders (10) + browser p1_10d2_preorders 31/31; p1_03, p1_08, p1_10b, p1_10d1 re-run green on the new checkout; suite 1083 |
+| P1-10D2b formula pricing | see git log ("feat(p1-10d2b)") | test_formula_pricing (7) + browser p1_10d2_formula 28/28 (Playwright Chromium, desktop + 390 px); suite 1090 |
 
 P1 gate after P1-10C: **TOTAL 240 · COMPLETE 122 · PARTIAL 90 · NOT_STARTED 12 ·
 ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 763 rows (P1 total grew by the
@@ -35,6 +36,9 @@ P1 gate after P1-10D1: **TOTAL 261 · COMPLETE 131 · PARTIAL 97 · NOT_STARTED 
 ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 P1 gate after P1-10D2a: **TOTAL 261 · COMPLETE 136 · PARTIAL 95 · NOT_STARTED 8 ·
+ACTIVATION_REQUIRED 22 · FUTURE 0.**
+
+P1 gate after P1-10D2b: **TOTAL 261 · COMPLETE 137 · PARTIAL 95 · NOT_STARTED 7 ·
 ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 ### Founder refinements (authority 1) — read before touching these modules
@@ -68,6 +72,39 @@ MD §11.2 closes the AI Receptionist's tool list ("Nothing else") and §11.3
 sends restaurant phone orders to a WhatsApp link; the Orders refinement
 authorises AI phone ordering for simple orders where enabled. The founder
 wins; the WhatsApp-link/human path remains for long, custom or risky orders.
+
+### P1-10D2b — formula pricing (DONE, browser-verified)
+
+- Migration `20260929130000_p1_formula_pricing.sql`: `pricing_rates` (per
+  business, unique key), `pricing_rate_values` (append-only: the API role has
+  no UPDATE/DELETE — a correction is a new value), `offerings.price_formula`,
+  `invoicing_document_lines.price_basis`; RLS on both new tables. Applied to
+  local DBs only.
+- `platform_core/pricing/formula.py`: `clean_formula` (rate key, quantity,
+  making % / ₹ per unit / ₹ per piece, other charges, rupee or paisa
+  rounding; basket/counter items only), `compute` (pure), `basis_words`,
+  `RateService` (board, create, `set_value` → history + re-price every item on
+  that rate + audit + `pricing.rate.updated`; `apply_to` on item save;
+  `not_entered_since` for Home). An item priced from a rate keeps
+  `price_amount` = today's price, so website, WhatsApp, checkout and the
+  counter read one catalogue price; a typed price is ignored for such items.
+- Snapshot, never rewrite: order lines copy `price_formula.last` into
+  `options.formula` at confirmation (when the server priced them); bill lines
+  keep it as `price_basis` (order bills from the order line; counter/Workspace
+  bills when sold at today's price — a changed price keeps none). The bill
+  screen shows the working on its own row, the PDF lists it in notes, and the
+  customer's bill link shows it.
+- API: `GET/POST /v1/platform/businesses/{id}/pricing/rates`,
+  `POST …/pricing/rates/{rateId}/values` (offerings.read / offerings.update).
+- Workspace: Products & services › Today's rates (enter the day's rate, items
+  priced from it with their working, history); item editor Price › "From a
+  rate" (offered once a rate exists; goods items without rates get a pointer
+  to add rates); Home "rates to enter for today" when a rate pricing a live item
+  has no value since the start of the day. Website card: "Today's price: 10 g ×
+  ₹6,450 (22K gold) + making ₹7,740 (12%)" in the tenant's own muted colour.
+- Honest gaps: HUID per piece is a serial number, not a named/checked HUID
+  (PB-203 PARTIAL); the Workspace bill table scrolls sideways a few px on
+  nine-column intra-state GST bills at 1440 px (pre-existing layout).
 
 ### P1-10D2a — dated pre-orders (DONE, browser-verified)
 
@@ -212,21 +249,20 @@ wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 
 ## Remaining work snapshot (P1 first)
 
-P1 NOT_STARTED (8): OK-15 (formula-priced jewellery), FR-OR-18 (order edits that
-revalidate), CR-04 (segments), CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation),
-IS-01 (basic insights), PKT-10 (P1-10 packet).
+P1 NOT_STARTED (7): FR-OR-18 (order edits that revalidate), CR-04 (segments),
+CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation), IS-01 (basic
+insights), PKT-10 (P1-10 packet).
 P1 PARTIAL groups: FD-02 (portal items with Academics), FD-03 (strategy
 placement of tool sections), OM-09 (portfolio kind), OM-18 (digital delivery),
 GP-22 + PR-10 (English/Tamil/Hindi), payments provider (Cashfree =
 ACTIVATION), playbook rows waiting on P2–P5 modules.
 
 Planned next packets (dependency order):
-1. **P1-10D2b** formula pricing (OK-15): reusable calculated prices from a
-   daily rate board (jewellery: metal rate × weight + making + GST), snapshot at
-   confirmation.
-2. **P1-10E** EN/TA/HI UI strings, basic insights from real data, solo
-   navigation, tags/segments, DPDP export/erase; then the P1 gate.
-3. P2 → P5 per MD §26.2 / ledger sections W–AL, then E2E flows (section BG).
+1. **P1-10E** EN/TA/HI UI strings, basic insights from real data (IS-01),
+   solo navigation (OM-21), tags/segments (CR-03/CR-04), DPDP export/erase
+   (CR-08, CO-01), order edits that revalidate (FR-OR-18), pilot hardening
+   (PKT-10); then the P1 gate.
+2. P2 → P5 per MD §26.2 / ledger sections W–AL, then E2E flows (section BG).
 
 ## How to run things locally (Linux / Claude Code cloud) — used since P1-10D1
 

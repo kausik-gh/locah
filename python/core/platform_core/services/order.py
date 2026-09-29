@@ -109,7 +109,7 @@ class OrderService:
             line_tax=float(totals["line_tax"]),
             line_total=float(totals["line_total"]),
             track_inventory=offering.track_inventory,
-            options=priced.options if priced is not None else {},
+            options=_with_formula(priced.options if priced is not None else {}, offering, raw),
             stock_quantity=raw["quantity"] * (priced.stock_per_unit if priced is not None else 1),
             sort_order=sort_order,
         )
@@ -451,3 +451,12 @@ class OrderService:
             "list[OrderStatusHistory]",
             await OrderResolver.load_status_history(session, order_id=order_id),
         )
+
+
+def _with_formula(options: dict[str, Any], offering: Any, raw: dict[str, Any]) -> dict[str, Any]:
+    """A rate-priced item keeps the working behind its price at confirmation
+    (OK-15): a later rate never rewrites this order or its bill."""
+    last = (offering.price_formula or {}).get("last")
+    if not last or raw.get("unit_price") is not None:
+        return options
+    return {**options, "formula": last}

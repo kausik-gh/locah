@@ -28,7 +28,8 @@ DESCRIPTION_MAX = 5000
 SLUG_MAX = 120
 
 OFFERING_TYPES = frozenset(KINDS)
-KIND_FIELDS = ("attributes", "option_groups", "sell_units", "variant_options", "hsn_sac", "stock_unit", "preorder")
+KIND_FIELDS = ("attributes", "option_groups", "sell_units", "variant_options", "hsn_sac", "stock_unit", "preorder",
+               "price_formula")
 OFFERING_STATUSES = frozenset({"draft", "active", "archived"})
 PRICE_TYPES = frozenset({"fixed", "starting_from", "variable", "free", "enquiry"})
 VISIBILITY = frozenset({"public", "private"})
@@ -283,4 +284,8 @@ def clean_kind_fields(offering_type: str, raw: dict[str, Any], current: dict[str
         from platform_core.orders.preorder import clean_rules
 
         out["preorder"] = clean_rules(k.flow, raw.get("preorder"))
+    if current is None or "price_formula" in raw:
+        from platform_core.pricing.formula import clean_formula
+
+        out["price_formula"] = clean_formula(k.flow, raw.get("price_formula"))
     return out

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { makeVariants, saveOffering } from './offering-actions'
-import type { Axis, Kind, KindField, Offering, OptionGroup, Pack, Preorder, Variant } from './types'
+import type { Axis, Kind, KindField, Offering, OptionGroup, Pack, Preorder, PriceFormula, RateLite, Variant } from './types'
 import { inr } from './types'
 
 type Attr = Record<string, string | boolean>
@@ -25,11 +25,14 @@ export function OfferingEditor({
   kind,
   offering,
   variants,
+  rates = [],
 }: {
   businessId: string
   kind: Kind
   offering: Offering | null
   variants: Variant[]
+  /** The owner's rate board, for items priced from a daily rate (OK-15). */
+  rates?: RateLite[]
 }) {
   const router = useRouter()
   const isNew = offering === null
@@ -37,7 +40,9 @@ export function OfferingEditor({
   const [description, setDescription] = useState(offering?.description ?? '')
   const [status, setStatus] = useState(offering?.status === 'active' ? 'active' : 'draft')
   const defaultPriceType = kind.flow === 'enquiry' ? 'starting_from' : 'fixed'
-  const [priceType, setPriceType] = useState(offering?.price_type ?? defaultPriceType)
+  const [priceType, setPriceType] = useState(offering?.price_formula ? 'rate' : offering?.price_type ?? defaultPriceType)
+  const [formula, setFormula] = useState<FormulaForm>(() => toFormula(offering?.price_formula ?? null, rates))
+  const canRate = kind.flow === 'cart' && !kind.packs
   const [price, setPrice] = useState(offering?.price_amount != null ? String(offering.price_amount) : '')
   const [taxCode, setTaxCode] = useState(offering?.hsn_sac ?? '')
   const [taxRate, setTaxRate] = useState(offering?.tax_rate != null ? String(offering.tax_rate) : '')
@@ -77,9 +82,12 @@ export function OfferingEditor({
       hsn_sac: taxCode.trim() || null,
       tax_rate: taxRate === '' ? null : Number(taxRate),
     }
-    if (kind.flow !== 'give') {
+    if (priceType === 'rate') {
+      payload.price_formula = fromFormula(formula)
+    } else if (kind.flow !== 'give') {
       payload.price_type = kind.packs ? 'fixed' : priceType
       payload.price_amount = price === '' || priceType === 'free' || priceType === 'enquiry' ? null : Number(price)
+      if (offering?.price_formula) payload.price_formula = null
     }
     if (kind.tax_code === 'HSN') {
       payload.sku = sku.trim() || null
@@ -102,6 +110,7 @@ export function OfferingEditor({
     setError(null)
     setSaved(null)
     if (!title.trim()) return setError('Give it a name.')
+    if (priceType === 'rate' && !(Number(formula.quantity) > 0)) return setError('Enter how much of the rate one piece uses, for example its weight.')
     start(async () => {
       const r = await saveOffering(businessId, offering?.id ?? null, body())
       if (!r.ok) return setError(r.message)
@@ -161,6 +170,7 @@ export function OfferingEditor({
               <legend className="sr-only">How it is priced</legend>
               {[
                 ['fixed', 'Fixed price'],
+                ...(canRate && (rates.length || priceType === 'rate') ? [['rate', 'From a rate']] : []),
                 ['starting_from', 'Starts from'],
                 ['free', 'Free'],
                 ['enquiry', 'Ask for price'],
@@ -172,8 +182,16 @@ export function OfferingEditor({
               ))}
             </fieldset>
           ) : null}
+          {priceType === 'rate' ? (
+            <FormulaEditor form={formula} setForm={setFormula} rates={rates} current={offering?.price_formula ?? null} />
+          ) : canRate && kind.tax_code === 'HSN' && !rates.length ? (
+            <p className="bos-hint">
+              Priced by weight from a rate you enter each day, like gold or silver?{' '}
+              <a href={`/b/${businessId}/offerings/rates`}>Add your rates</a> first.
+            </p>
+          ) : null}
           <div className="bos-form-grid">
-            {priceType !== 'free' && priceType !== 'enquiry' ? (
+            {priceType !== 'free' && priceType !== 'enquiry' && priceType !== 'rate' ? (
               <label>
                 <span className="bos-label">{kind.packs ? `Price per ${per} (₹)` : 'Price (₹)'}</span>
                 <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
@@ -530,5 +548,106 @@ function AheadEditor({ form, setForm }: { form: AheadForm; setForm: (f: AheadFor
         </div>
       ) : null}
     </section>
+  )
+}
+
+type FormulaForm = {
+  rate_key: string
+  quantity: string
+  making: 'none' | 'percent' | 'per_unit' | 'flat'
+  making_value: string
+  extra: string
+  extra_label: string
+}
+
+function toFormula(f: PriceFormula | null, rates: RateLite[]): FormulaForm {
+  return {
+    rate_key: f?.rate_key ?? rates[0]?.key ?? '',
+    quantity: f ? String(Number(f.quantity)) : '',
+    making: f?.making?.type ?? 'none',
+    making_value: f?.making ? String(Number(f.making.value)) : '',
+    extra: f && Number(f.extra) ? String(Number(f.extra)) : '',
+    extra_label: f?.extra_label ?? '',
+  }
+}
+
+function fromFormula(f: FormulaForm): Record<string, unknown> {
+  return {
+    rate_key: f.rate_key,
+    quantity: f.quantity,
+    making: f.making === 'none' ? null : { type: f.making, value: f.making_value || '0' },
+    extra: f.extra || '0',
+    extra_label: f.extra_label.trim() || null,
+  }
+}
+
+/** A preview only: the server works out the price from the rate board and keeps the working. */
+function preview(f: FormulaForm, rate: RateLite | undefined): number | null {
+  const q = Number(f.quantity)
+  if (!rate || rate.value === null || !(q > 0)) return null
+  const base = rate.value * q
+  const m = Number(f.making_value) || 0
+  const making = f.making === 'percent' ? (base * m) / 100 : f.making === 'per_unit' ? m * q : f.making === 'flat' ? m : 0
+  return Math.round(base + making + (Number(f.extra) || 0))
+}
+
+function FormulaEditor({ form, setForm, rates, current }: {
+  form: FormulaForm
+  setForm: (f: FormulaForm) => void
+  rates: RateLite[]
+  current: PriceFormula | null
+}) {
+  const rate = rates.find((r) => r.key === form.rate_key)
+  const unit = rate?.unit_label ?? 'g'
+  const set = (k: keyof FormulaForm, v: string) => setForm({ ...form, [k]: v })
+  const est = preview(form, rate)
+  return (
+    <div className="bos-formula">
+      <div className="bos-form-grid">
+        <label>
+          <span className="bos-label">Rate</span>
+          <select name="formula-rate" value={form.rate_key} onChange={(e) => set('rate_key', e.target.value)}>
+            {rates.map((r) => (
+              <option key={r.key} value={r.key}>{r.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="bos-label">{unit === 'g' ? 'Weight (g)' : `Quantity (${unit})`}</span>
+          <input name="formula-quantity" inputMode="decimal" value={form.quantity} onChange={(e) => set('quantity', e.target.value)} placeholder="10.000" />
+        </label>
+        <label>
+          <span className="bos-label">Making charge</span>
+          <select name="formula-making" value={form.making} onChange={(e) => set('making', e.target.value)}>
+            <option value="none">None</option>
+            <option value="percent">% of the metal value</option>
+            <option value="per_unit">₹ per {unit}</option>
+            <option value="flat">₹ for the piece</option>
+          </select>
+        </label>
+        {form.making !== 'none' ? (
+          <label>
+            <span className="bos-label">{form.making === 'percent' ? 'Making (%)' : 'Making (₹)'}</span>
+            <input name="formula-making-value" inputMode="decimal" value={form.making_value} onChange={(e) => set('making_value', e.target.value)} />
+          </label>
+        ) : null}
+        <label>
+          <span className="bos-label">Other charges (₹) — optional</span>
+          <input name="formula-extra" inputMode="decimal" value={form.extra} onChange={(e) => set('extra', e.target.value)} />
+        </label>
+        <label>
+          <span className="bos-label">Called — optional</span>
+          <input name="formula-extra-label" value={form.extra_label} onChange={(e) => set('extra_label', e.target.value)} maxLength={40} placeholder="Stones" />
+        </label>
+      </div>
+      <p className="bos-hint bos-formula__words" role="status" aria-live="polite">
+        {rate?.value === null || !rate
+          ? 'This rate has no value yet — the item cannot be sold until you enter today’s rate.'
+          : est !== null
+            ? `At today’s rate: ${inr(est)}. GST is added on the bill from the item’s HSN and rate.`
+            : 'Enter the weight to see today’s price.'}
+        {current?.last_words ? ` Now: ${current.last_words}.` : ''}
+      </p>
+    </div>
   )
 }

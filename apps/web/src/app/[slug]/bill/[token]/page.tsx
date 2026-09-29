@@ -7,7 +7,7 @@ import { siteThemeVars } from '@/components/website/WebsitePageView'
 
 export const dynamic = 'force-dynamic'
 
-type Line = { id: string; title: string; hsn_sac: string | null; unit_label: string | null; quantity: number; line_total: number; tax_rate: number | null }
+type Line = { id: string; title: string; hsn_sac: string | null; unit_label: string | null; quantity: number; line_total: number; tax_rate: number | null; basis_words?: string | null }
 type PublicBill = {
   doc_kind: string
   kind_label: string
@@ -78,6 +78,7 @@ export default async function BillPage({ params }: { params: { slug: string; tok
                   <span>
                     {l.title}
                     <small>{l.quantity}{l.unit_label ? ` ${l.unit_label}` : ''}{gst && l.tax_rate !== null ? ` · GST ${l.tax_rate}%` : ''}</small>
+                    {l.basis_words ? <small>{l.basis_words}</small> : null}
                   </span>
                   <strong>{rupees(l.line_total)}</strong>
                 </li>

@@ -75,6 +75,8 @@ class CreateProductRequest(BaseModel):
     variant_options: list[dict[str, Any]] = Field(default_factory=list)
     # Dated pre-orders (P1-10D2): needs a date or may take one, notice, cutoff, window, limit, advance.
     preorder: dict[str, Any] | None = None
+    # Formula pricing (P1-10D2b, OK-15): today's rate × quantity + making + extras.
+    price_formula: dict[str, Any] | None = None
 
 
 class PatchProductRequest(VersionedBody):
@@ -100,6 +102,7 @@ class PatchProductRequest(VersionedBody):
     sell_units: list[dict[str, Any]] | None = None
     variant_options: list[dict[str, Any]] | None = None
     preorder: dict[str, Any] | None = None
+    price_formula: dict[str, Any] | None = None
 
 
 class CreateVariantRequest(BaseModel):
@@ -408,3 +411,72 @@ async def generate_variant_matrix(
     return {"data": [OfferingService.serialize_variant(v) for v in created],
             "meta": {"correlation_id": actor.request.correlation_id, "created": len(created)}}
 
+
+
+# ---------------------------------------------------------------- rate board
+# Formula pricing (P1-10D2b, OK-15; MD §21.2): the rates the owner enters each
+# day (22K gold per g, silver per g, …) and the items priced from them.
+
+
+class CreateRateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1, max_length=60)
+    unit: str = "g"
+    value: float | None = Field(default=None, gt=0)
+
+
+class RateValueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: float = Field(gt=0)
+    note: str | None = Field(default=None, max_length=200)
+
+
+@router.get("/{business_id}/pricing/rates")
+async def list_rates(
+    business_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(OFFERINGS_READ, "offerings-catalog")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.pricing.formula import RateService
+
+    return {"data": await RateService.board(session, business_id),
+            "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/pricing/rates")
+async def create_rate(
+    business_id: UUID,
+    body: CreateRateRequest,
+    actor: BusinessActorContext = Depends(require_business_actor(OFFERINGS_UPDATE, "offerings-catalog")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.pricing.formula import RateService
+
+    rate = await RateService.create(session, business_id, actor.request.identity_id, label=body.label,
+                                    unit=body.unit)
+    data = RateService.serialize(rate, None)
+    if body.value is not None:
+        data = (await RateService.set_value(session, business_id, actor.request.identity_id, rate.id,
+                                            value=body.value, note=None,
+                                            correlation_id=actor.request.correlation_id))["rate"]
+    await session.commit()
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/pricing/rates/{rate_id}/values")
+async def set_rate_value(
+    business_id: UUID,
+    rate_id: UUID,
+    body: RateValueRequest,
+    actor: BusinessActorContext = Depends(require_business_actor(OFFERINGS_UPDATE, "offerings-catalog")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.pricing.formula import RateService
+
+    result = await RateService.set_value(session, business_id, actor.request.identity_id, rate_id,
+                                         value=body.value, note=body.note,
+                                         correlation_id=actor.request.correlation_id)
+    await session.commit()
+    return {"data": result, "meta": {"correlation_id": actor.request.correlation_id}}

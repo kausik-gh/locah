@@ -132,6 +132,8 @@ class OrderResolver:
             "track_inventory": item.track_inventory,
             "quantity_reserved": item.quantity_reserved,
             "options": dict(item.options or {}),
+            # OK-15: the rate working this line was sold at (kept from confirmation).
+            "basis_words": _basis_words((item.options or {}).get("formula")),
             "stock_quantity": item.stock_quantity,
             "quantity_deducted": item.quantity_deducted,
             "sort_order": item.sort_order,
@@ -172,3 +174,12 @@ class OrderResolver:
         data = OrderResolver.serialize_order(order)
         data["items"] = [OrderResolver.serialize_line_item(i) for i in line_items]
         return data
+
+
+def _basis_words(basis: dict[str, Any] | None) -> str | None:
+    if not basis:
+        return None
+    from platform_core.pricing.formula import basis_words
+
+    words: str | None = basis_words(basis)
+    return words

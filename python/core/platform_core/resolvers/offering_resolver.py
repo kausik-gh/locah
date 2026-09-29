@@ -139,6 +139,7 @@ class OfferingResolver:
             "variant_options": list(offering.variant_options or []),
             "stock_unit": offering.stock_unit,
             "preorder": offering.preorder,
+            "price_formula": _formula_out(offering.price_formula),
             "version": offering.version,
             "created_at": offering.created_at.isoformat(),
             "updated_at": offering.updated_at.isoformat(),
@@ -175,3 +176,12 @@ def _missing(offering: Offering) -> list[str]:
 
     k = KINDS.get(offering.offering_type)
     return missing_fields(k, offering.attributes) if k else []
+
+
+def _formula_out(formula: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The item's price formula with the working behind today's price, in words."""
+    if not formula:
+        return None
+    from platform_core.pricing.formula import basis_words
+
+    return {**formula, "last_words": basis_words(formula.get("last"))}

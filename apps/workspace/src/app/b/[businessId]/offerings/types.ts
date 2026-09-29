@@ -48,6 +48,18 @@ export type Preorder = {
   advance: { type: 'percent' | 'fixed'; value: string } | null
   cancel_hours: number | null
 }
+/** Priced from a rate the owner enters each day (OK-15): rate × quantity + making + extras. */
+export type PriceFormula = {
+  rate_key: string
+  quantity: string
+  making: { type: 'percent' | 'per_unit' | 'flat'; value: string } | null
+  extra: string
+  extra_label: string | null
+  round: 'rupee' | 'paise'
+  last?: Record<string, unknown>
+  last_words?: string | null
+}
+export type RateLite = { key: string; label: string; unit: string; unit_label: string; value: number | null }
 export type Pack = { label: string; qty: number }
 export type Axis = { name: string; values: string[] }
 
@@ -72,6 +84,7 @@ export type Offering = {
   attributes: Record<string, unknown>
   option_groups: OptionGroup[]
   preorder?: Preorder | null
+  price_formula?: PriceFormula | null
   sell_units: Pack[]
   variant_options: Axis[]
   missing_fields: string[]

@@ -120,6 +120,7 @@ export function OfferingCard({
         <h3 className="ls-item__title">{o.title}</h3>
         {o.description ? <p className="ls-item__desc">{o.description}</p> : null}
         <Specs o={o} />
+        {o.price_basis?.words ? <p className="ls-offer__basis">Today&apos;s price: {o.price_basis.words}</p> : null}
         {o.preorder && canOrder ? (
           <p className="ls-offer__ahead">
             {o.preorder.needed ? 'Made to order' : 'Order ahead'}

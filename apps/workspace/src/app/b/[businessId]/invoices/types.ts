@@ -17,6 +17,8 @@ export type BillLine = {
   line_total: number
   returnable_quantity: number
   creditable_amount: number
+  /** OK-15: how a rate-priced line was worked out when sold. */
+  basis_words?: string | null
 }
 
 export type Party = {

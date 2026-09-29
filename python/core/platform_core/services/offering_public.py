@@ -72,6 +72,12 @@ async def public_details(
             item["raised_amount"] = float(raised.get(str(o.id), Decimal(0)))
         if o.preorder:
             item["preorder"] = await _preorder_public(session, business_id, o)
+        if (o.price_formula or {}).get("last"):
+            # OK-15: the customer sees how today's price is made up (weight × today's rate + making).
+            from platform_core.pricing.formula import basis_words
+
+            last = o.price_formula["last"]
+            item["price_basis"] = {"words": basis_words(last), "rate_at": last.get("rate_at")}
         out[str(o.id)] = item
     return out
 

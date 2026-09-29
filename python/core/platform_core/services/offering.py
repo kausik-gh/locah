@@ -186,6 +186,10 @@ class OfferingService:
             **validated,
         )
         session.add(offering)
+        if offering.price_formula:  # priced from today's rate on the owner's rate board
+            from platform_core.pricing.formula import RateService
+
+            await RateService.apply_to(session, business_id, offering)
         await session.flush()
         after = OfferingService.serialize(offering)
         await OfferingService._publish_offering(
@@ -221,7 +225,7 @@ class OfferingService:
         before = OfferingService.serialize(offering)
         validated = validate_product_patch_payload(payload)
         kind_keys = [k for k in ("attributes", "option_groups", "sell_units", "variant_options", "hsn_sac",
-                                 "stock_unit", "preorder") if k in validated]
+                                 "stock_unit", "preorder", "price_formula") if k in validated]
         if kind_keys:
             from platform_core.validation.offering import clean_kind_fields
 
@@ -241,8 +245,16 @@ class OfferingService:
                 sku=validated["sku"],
                 exclude_id=offering.id,
             )
+        if offering.price_formula and "price_formula" not in validated:
+            # a rate-priced item's price comes from the rate board, not a typed amount
+            validated.pop("price_amount", None)
+            validated.pop("price_type", None)
         for key, value in validated.items():
             setattr(offering, key, value)
+        if "price_formula" in validated and offering.price_formula:
+            from platform_core.pricing.formula import RateService
+
+            await RateService.apply_to(session, business_id, offering)
         offering.version += 1
         await session.flush()
         after = OfferingService.serialize(offering)
