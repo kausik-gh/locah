@@ -271,13 +271,13 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         "expenses", "Expenses & cash book", "P4",
         "Expenses, petty cash and the daily cash closing.",
         staff_can=("Record expenses", "Close the day's cash"),
-        packs=("back_office",),
+        packs=("back_office",), built=True,
     ),
     ModuleInfo(
         "procurement", "Buying", "P4",
         "Suppliers, requisitions, purchase orders, goods received and supplier bills.",
         staff_can=("Raise and approve POs", "Receive goods", "Record supplier bills"),
-        packs=("food_service", "trade"),
+        packs=("food_service", "trade"), built=True,
     ),
     ModuleInfo(
         "recipes", "Recipes & BOM", "P4",
@@ -317,7 +317,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         "Causes, one-off and recurring gifts, and receipts that are right first time.",
         customer_can=("Give to a cause", "Get a receipt"),
         staff_can=("Run causes", "Issue receipts", "See donor history"),
-        packs=("community",), site=("donate",), marketplace_actions=("donate",),
+        packs=("community",), site=("donate",), marketplace_actions=("donate",), built=True,
     ),
     # ---------------------------------------------------------- FUTURE (MD §6.2)
     ModuleInfo("payroll", "Payroll", "FUTURE", "Salary runs from attendance and commissions.", future=True),
