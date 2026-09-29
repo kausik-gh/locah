@@ -54,6 +54,20 @@
 .bos-compliance__form .bos-compliance__check { display: flex; align-items: center; gap: .5rem; }
 .bos-compliance__form .bos-compliance__check input { width: auto; }
 .bos-compliance__form button { justify-self: start; align-self: end; }
+
+/* Walk-in queue board and the shared task list. */
+.bos-queue__lanes, .bos-queue__actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.bos-queue__lanes { margin: 1rem 0; }
+.bos-queue__lanes a[aria-current=page] { font-weight: 700; text-decoration: underline; text-underline-offset: .25rem; }
+.bos-queue__board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin: 1rem 0; }
+.bos-queue__board section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: .9rem 1rem; min-width: 0; }
+.bos-queue__board h2 { font-size: .95rem; margin: 0 0 .6rem; }
+.bos-queue__board ol { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; gap: .65rem; }
+.bos-queue__issue { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; margin: .8rem 0; }
+.bos-queue__issue label { display: grid; gap: .3rem; font-size: .82rem; font-weight: 650; }
+.bos-tasks__list { list-style: none; margin: 1rem 0; padding: 0; display: grid; gap: .55rem; }
+.bos-tasks__list li { padding: .75rem 1rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+@media (max-width: 900px) { .bos-queue__board { grid-template-columns: 1fr; } }
 .bos-more > summary { cursor: pointer; list-style: none; }
 .bos-more > summary::-webkit-details-marker { display: none; }
 .bos-more > summary::after { content: '▸'; color: var(--color-muted); font-size: .8rem; margin-left: .2rem; }
