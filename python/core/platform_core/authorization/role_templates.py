@@ -87,6 +87,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
             p.KITCHEN_READ, p.KITCHEN_ADVANCE, p.KITCHEN_CONFIGURE,
             p.MESSAGING_READ, p.MESSAGING_REPLY, p.REVIEWS_READ, p.REVIEWS_REPLY, p.COMPLIANCE_READ,
             p.QUEUE_READ, p.QUEUE_OPERATE, p.QUEUE_CONFIGURE, p.TASKS_READ, p.TASKS_MANAGE, p.TASKS_COMPLETE,
+            p.ATTENDANCE_READ, p.ATTENDANCE_RECORD, p.ATTENDANCE_MANAGE,
         },
         (), "P1", system_role=p.ROLE_MANAGER,
     ),
@@ -133,8 +134,9 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
         _READ_BASICS | {p.BOOKINGS_READ, p.BOOKINGS_CREATE, p.BOOKINGS_UPDATE, p.BOOKINGS_CANCEL,
                         p.CUSTOMERS_READ, p.CUSTOMERS_UPDATE, p.CUSTOMERS_MANAGE_NOTES, p.PAYMENTS_READ,
                         p.PAYMENTS_COLLECT, p.MEMBERSHIPS_READ, p.MEMBERSHIPS_MANAGE_ENROLMENT,
-                        p.QUEUE_READ, p.QUEUE_OPERATE, p.QUEUE_CONFIGURE, p.TASKS_READ, p.TASKS_MANAGE},
-        ("bookings", "memberships", "queue-operations"), "P2",
+                        p.QUEUE_READ, p.QUEUE_OPERATE, p.QUEUE_CONFIGURE, p.TASKS_READ, p.TASKS_MANAGE,
+                        p.ATTENDANCE_READ, p.ATTENDANCE_RECORD},
+        ("bookings", "memberships", "queue-operations", "attendance"), "P2",
     ),
     RoleTemplate(
         "provider", "Provider", "Their own schedule, appointments and booking notes",
@@ -181,7 +183,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
     RoleTemplate(
         "teacher", "Teacher", "Own batches: classes, marks and notices. Not the customer book and not fees",
         "assignment", "workspace", "Today's classes",
-        _READ_BASICS | {p.ACADEMICS_READ, p.ACADEMICS_TEACH},
+        _READ_BASICS | {p.ACADEMICS_READ, p.ACADEMICS_TEACH, p.ATTENDANCE_READ, p.ATTENDANCE_RECORD},
         ("academics",), "P5",
     ),
     RoleTemplate(
@@ -224,6 +226,8 @@ PERMISSION_WORDS: dict[str, str] = {
     "compliance.read": "See licences and filing dates", "compliance.manage": "Record and renew licences and filings",
     "queue.read": "See the walk-in queue", "queue.operate": "Call, serve and miss tokens",
     "queue.configure": "Set up queues",
+    "attendance.read": "See who checked in", "attendance.record": "Check people in and take class attendance",
+    "attendance.manage": "Correct attendance with a reason",
     "tasks.read": "See tasks", "tasks.manage": "Create and assign tasks",
     "tasks.complete": "Complete tasks and checklists",
     "pos.use": "Bill at the counter and run a cash shift", "pos.approve": "Approve counter overrides with a PIN",

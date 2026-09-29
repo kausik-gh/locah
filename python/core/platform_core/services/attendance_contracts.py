@@ -23,8 +23,15 @@ class MembershipCheckinEligibility(Protocol):
     async def decide(self, session: AsyncSession, business_id: uuid.UUID,
                      enrolment_id: uuid.UUID) -> MembershipCheckinDecision: ...
 
+    async def resolve(self, session: AsyncSession, business_id: uuid.UUID, code: str) -> uuid.UUID:
+        """The member's printed code or QR payload → the enrolment it names."""
+        ...
+
 
 class UnconnectedMembershipEligibility:
     async def decide(self, session: AsyncSession, business_id: uuid.UUID,
                      enrolment_id: uuid.UUID) -> MembershipCheckinDecision:
+        raise ServiceUnavailable("Membership eligibility is not connected; check-in was not recorded")
+
+    async def resolve(self, session: AsyncSession, business_id: uuid.UUID, code: str) -> uuid.UUID:
         raise ServiceUnavailable("Membership eligibility is not connected; check-in was not recorded")

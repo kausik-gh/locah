@@ -13,20 +13,23 @@ from platform_api.db import get_db_session
 from platform_api.dependencies import BusinessActorContext, require_business_actor
 from platform_core.permissions import ATTENDANCE_MANAGE, ATTENDANCE_READ, ATTENDANCE_RECORD
 from platform_core.services.attendance import AttendanceService
-from platform_core.services.attendance_contracts import (MembershipCheckinEligibility,
-                                                          UnconnectedMembershipEligibility)
+from platform_core.exceptions import ValidationError
+from platform_core.memberships.checkin import MembershipsCheckinEligibility
+from platform_core.services.attendance_contracts import MembershipCheckinEligibility
 
 router = APIRouter(prefix="/v1/b/{business_id}/attendance", tags=["attendance"])
 
 
 def get_membership_eligibility() -> MembershipCheckinEligibility:
-    """Memberships' P2-02 eligibility adapter replaces this fail-closed default."""
-    return UnconnectedMembershipEligibility()
+    """Memberships decides who may come in; Attendance only records the visit."""
+    return MembershipsCheckinEligibility()
 
 
 class MemberCheckin(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    enrolment_id: UUID
+    # The enrolment itself, or the member's printed code / QR payload.
+    enrolment_id: UUID | None = None
+    code: str | None = Field(default=None, min_length=4, max_length=64)
     location_id: UUID | None = None
     channel: Literal["manual", "qr"] = "manual"
     idempotency_key: str = Field(min_length=1, max_length=80)
@@ -84,8 +87,13 @@ async def member_checkin(business_id: UUID, body: MemberCheckin,
                          actor: BusinessActorContext = Depends(require_business_actor(ATTENDANCE_RECORD, "attendance")),
                          session: AsyncSession = Depends(get_db_session),
                          eligibility: MembershipCheckinEligibility = Depends(get_membership_eligibility)) -> dict[str, Any]:
+    enrolment_id = body.enrolment_id
+    if enrolment_id is None:
+        if not body.code:
+            raise ValidationError("Scan the member's code or choose the membership")
+        enrolment_id = await eligibility.resolve(session, business_id, body.code)
     row = await AttendanceService.member_checkin(session, business_id=business_id,
-        enrolment_id=body.enrolment_id, location_id=body.location_id,
+        enrolment_id=enrolment_id, location_id=body.location_id,
         channel=body.channel, idempotency_key=body.idempotency_key,
         actor_id=actor.request.identity_id, correlation_id=actor.request.correlation_id,
         eligibility=eligibility)

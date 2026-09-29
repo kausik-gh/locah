@@ -54,11 +54,13 @@ async def _lock(session: AsyncSession, business_id: uuid.UUID, key: str) -> None
 
 async def _event(session: AsyncSession, *, business_id: uuid.UUID, actor_id: uuid.UUID,
                  correlation_id: str, kind: str, event_id: uuid.UUID,
-                 context: str, status: str) -> None:
+                 context: str, status: str, source_id: str | None = None) -> None:
+    # source_id is the owning domain's occurrence (a membership enrolment, an
+    # academic session, a booking), so a subscriber never reads attendance rows.
     await OutboxService.publish(session, event_type=kind, business_id=business_id,
                                 correlation_id=correlation_id,
                                 payload={"attendance_event_id": str(event_id), "context": context,
-                                         "status": status})
+                                         "status": status, "source_id": source_id})
     await AuditService.record(session, event_type=kind, actor_identity_id=actor_id,
                               actor_context="business", business_id=business_id,
                               resource_type="attendance_event", resource_id=event_id,
@@ -225,7 +227,8 @@ class AttendanceService:
             metadata={"eligibility_state": decision.state})
         await _event(session, business_id=business_id, actor_id=actor_id,
                      correlation_id=correlation_id, kind="attendance.checked_in",
-                     event_id=uuid.UUID(record["id"]), context=record["context"], status=record["status"])
+                     event_id=uuid.UUID(record["id"]), context=record["context"], status=record["status"],
+                     source_id=record.get("source_id"))
         return record
 
     @staticmethod
@@ -266,7 +269,8 @@ class AttendanceService:
             key=key, actor_id=actor_id, metadata={"geo_verification": "not_requested"})
         await _event(session, business_id=business_id, actor_id=actor_id,
                      correlation_id=correlation_id, kind="attendance.checked_in",
-                     event_id=uuid.UUID(record["id"]), context=record["context"], status=record["status"])
+                     event_id=uuid.UUID(record["id"]), context=record["context"], status=record["status"],
+                     source_id=record.get("source_id"))
         return record
 
     @staticmethod
@@ -302,7 +306,8 @@ class AttendanceService:
             metadata={"booking_state": "confirmed"})
         await _event(session, business_id=business_id, actor_id=actor_id,
                      correlation_id=correlation_id, kind="attendance.checked_in",
-                     event_id=uuid.UUID(record["id"]), context=record["context"], status=record["status"])
+                     event_id=uuid.UUID(record["id"]), context=record["context"], status=record["status"],
+                     source_id=record.get("source_id"))
         return record
 
     @staticmethod

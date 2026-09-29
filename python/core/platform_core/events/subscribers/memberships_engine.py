@@ -300,6 +300,31 @@ async def booking_sessions(session: AsyncSession, event: EventContext) -> None:
 
 
 
+# ---------------------------------------------------------------- session packs ← attendance check-in (§6, §8)
+@subscribe(  # type: ignore[untyped-decorator, unused-ignore]
+    "memberships.checkin_session", "attendance.checked_in",
+    description="A check-in on a pack that counts at the door uses one session — once per visit",
+)
+async def checkin_sessions(session: AsyncSession, event: EventContext) -> None:
+    from platform_core.exceptions import ConflictError
+
+    if event.payload.get("context") != "membership_checkin" or not event.payload.get("source_id"):
+        return
+    business_id = event.require_business_id()
+    enrolment = await session.get(MembershipEnrolment, event.require_uuid("source_id"))
+    if enrolment is None or enrolment.business_id != business_id:
+        return
+    plan = await session.get(MembershipPlan, enrolment.plan_id)
+    if plan is None or plan.plan_kind != "session_pack" or plan.consume_on != "checkin":
+        return
+    visit = event.require_uuid("attendance_event_id")
+    try:
+        await MembershipCore.consume_session(session, enrolment, source_type="checkin", source_id=visit,
+                                             idempotency_key=f"checkin:{visit}", actor_id=None)
+    except ConflictError:
+        pass  # the desk already refused a pack with nothing left; a race keeps the visit as recorded
+
+
 # ---------------------------------------------------------------- receipt when a period is paid
 @subscribe(  # type: ignore[untyped-decorator, unused-ignore]
     "memberships.receipt", "membership.period_paid",

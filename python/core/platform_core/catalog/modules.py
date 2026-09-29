@@ -233,10 +233,9 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
     ),
     ModuleInfo(
         "attendance", "Check-ins", "P2",
-        "Member, student and staff check-ins by QR or by hand.",
-        customer_can=("Check in with a QR",),
-        staff_can=("Check people in", "See who is here"),
-        packs=("memberships", "learning"),
+        "Member, student and staff check-ins by code or by hand. Memberships decides who may come in.",
+        staff_can=("Check people in", "Take class attendance", "See who is here"),
+        packs=("memberships", "learning"), built=True,
     ),
     ModuleInfo(
         "kitchen", "Kitchen display", "P2",

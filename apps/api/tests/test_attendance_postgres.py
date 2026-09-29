@@ -287,7 +287,10 @@ async def test_class_roster_defaults_present_and_replay_is_single_occurrence() -
         await session.execute(text("SELECT set_config('app.current_assignee',:id,true)"),
                               {"id": str(unrelated)})
         bind_assignment(session, unrelated)
-        with pytest.raises(OutsideAssignmentScope):
+        # With the real Academics tables, their restrictive RLS hides another
+        # teacher's class entirely (not found); the stub tables only reach the
+        # service's own scope check. Either way the roster is refused.
+        with pytest.raises(ResourceNotFound if academics_installed else OutsideAssignmentScope):
             await AttendanceService.roster(session, business_id=business,
                                             class_session_id=occurrence)
         # No customer-facing attendance route exists: guardians cannot obtain

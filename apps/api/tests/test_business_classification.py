@@ -101,12 +101,12 @@ def test_recommendations_carry_real_readiness(owner: dict[str, str]) -> None:
     assert plans["readiness"]["steps"] == [
         {"key": "plan_live", "label": "Publish at least one plan", "done": False}
     ]
-    assert by["attendance"]["built"] is False  # recommended by the source, not built yet
+    assert by["attendance"]["built"] is True  # check-ins shipped; Memberships decides who may come in
 
 
 def test_unbuilt_module_cannot_be_switched_on(owner: dict[str, str]) -> None:
     bid = create_business(client, owner)
-    resp = client.post(f"/v1/b/{bid}/modules/dispatch/enable", headers=owner)
+    resp = client.post(f"/v1/b/{bid}/modules/trade-network/enable", headers=owner)  # entitled, not built
     assert resp.status_code == 422, resp.text
     assert "not available yet" in resp.text
 
