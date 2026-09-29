@@ -6,7 +6,7 @@
 
 ## HEAD SHA
 
-977f09c7ef7ba1b81a5daee7613dd5b18d067cd6
+`09aebc53903eb2fc2aa598614732e98b5ac10b3e`
 
 ## MAIN BASE SHA
 
@@ -16,7 +16,7 @@
 
 1. `feat(kitchen): keep preparation on its own ticket` — domain, migration, API module, KDS UI, stations setup, intake subscriber module, tests, browser script, product handoff body.
 2. `chore(integration): wire kitchen` — router import, nav links, permissions, catalogue events, module `built`, role templates, subscriber registration.
-3. Close-out commit — idempotency test, TSC fix, handoff verification block (this file).
+3. `09aebc5` — `chore(kitchen): close-out verification and handoff` (idempotency test, Served browser step, TSC Board export, handoff block).
 
 ## MIGRATIONS
 
