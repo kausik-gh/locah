@@ -33,12 +33,16 @@ def _scoped_models() -> tuple[type[Any], ...]:
         PosShift,
         InventoryRecord,
         Project,
+        QueueEntry,
+        QueueLane,
         Quote,
         SalesOrder,
+        WorkTask,
     )
 
     return (SalesOrder, Booking, FulfilmentJob, InventoryRecord, InventoryMovement, Quote, Project,
-            InvoicingDocument, InvoicingRegister, PosShift, PosCashMovement)
+            InvoicingDocument, InvoicingRegister, PosShift, PosCashMovement, QueueLane, QueueEntry,
+            WorkTask)
 
 
 def scoped_locations(membership: Any) -> tuple[uuid.UUID, ...] | None:

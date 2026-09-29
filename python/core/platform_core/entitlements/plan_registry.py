@@ -17,7 +17,9 @@ from platform_core.entitlements.module_registry import PHASE_B_MODULE_IDS
 # MD §5 "Storefront (all)": a Storefront module is on every plan once built.
 # Built Storefront modules are included on every plan; analytics joins when built.
 _STOREFRONT_BUILT = frozenset({"messaging", "reviews", "compliance"})
-_UNPRICED_MODULES = PHASE_B_MODULE_IDS | frozenset({"invoicing"}) | _STOREFRONT_BUILT
+# queue-operations lives in the first-launch registry, not the Phase B set.
+# It is unpriced with the other §6.2 modules once it is built.
+_UNPRICED_MODULES = PHASE_B_MODULE_IDS | frozenset({"invoicing", "queue-operations"}) | _STOREFRONT_BUILT
 _UNPRICED_FEATURES = frozenset(
     {f"{m}.core" for m in _UNPRICED_MODULES}
 )

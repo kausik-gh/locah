@@ -369,6 +369,21 @@ _CATALOGUE: dict[str, frozenset[str]] = {
     "donations": frozenset({"donation.received"}),
     "connectors": frozenset({"connector.sync.completed"}),
     "documents": frozenset({"document.recorded"}),
+    # Business OS Guide §6.2 walk-in queue. queue.turn_soon is the Messaging contract.
+    "queue": frozenset(
+        {
+            "queue.turn_soon",
+        }
+    ),
+    # Business OS Guide §6.2 shared tasks.
+    "tasks": frozenset(
+        {
+            "task.created",
+            "task.assigned",
+            "task.due",
+            "task.completed",
+        }
+    ),
 }
 
 KNOWN_EVENT_TYPES: frozenset[str] = frozenset().union(*_CATALOGUE.values())

@@ -115,6 +115,16 @@ REVIEWS_MANAGE = "reviews.manage"
 COMPLIANCE_READ = "compliance.read"
 COMPLIANCE_MANAGE = "compliance.manage"
 
+# Walk-in queue (Business OS Guide §6.2 `queue-operations`).
+QUEUE_READ = "queue.read"
+QUEUE_OPERATE = "queue.operate"
+QUEUE_CONFIGURE = "queue.configure"
+
+# Shared tasks and checklists (Business OS Guide §6.2 `tasks`).
+TASKS_READ = "tasks.read"
+TASKS_MANAGE = "tasks.manage"
+TASKS_COMPLETE = "tasks.complete"
+
 PAYMENTS_READ = "payments.read"
 PAYMENTS_REFUND = "payments.refund"
 PAYMENTS_MANAGE_CONNECTION = "payments.manage_connection"

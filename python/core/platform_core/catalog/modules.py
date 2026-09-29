@@ -223,13 +223,13 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         "Tokens for walk-ins, a live queue board, and a WhatsApp nudge when it's nearly their turn.",
         customer_can=("Take a token and see the queue",),
         staff_can=("Call next, mark served or missed",),
-        packs=("appointments", "health"), site=("queue_status",),
+        packs=("appointments", "health"), site=("queue_status",), built=True,
     ),
     ModuleInfo(
         "tasks", "Tasks & checklists", "P2",
         "Housekeeping, maintenance, prep and opening/closing checklists assigned to people.",
         staff_can=("Assign and complete tasks with photo proof",),
-        packs=("stays",), surfaces=("workspace", "crew"),
+        packs=("stays",), surfaces=("workspace", "crew"), built=True,
     ),
     ModuleInfo(
         "attendance", "Check-ins", "P2",

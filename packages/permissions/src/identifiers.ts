@@ -125,6 +125,16 @@ export const PERMISSIONS = {
   COMPLIANCE_READ: 'compliance.read',
   COMPLIANCE_MANAGE: 'compliance.manage',
 
+  // Module: queue-operations — walk-in tokens (Business OS Guide §6.2)
+  QUEUE_READ: 'queue.read',
+  QUEUE_OPERATE: 'queue.operate',
+  QUEUE_CONFIGURE: 'queue.configure',
+
+  // Module: tasks — shared tasks and checklists (Business OS Guide §6.2)
+  TASKS_READ: 'tasks.read',
+  TASKS_MANAGE: 'tasks.manage',
+  TASKS_COMPLETE: 'tasks.complete',
+
   // Module: projects
   PROJECTS_READ: 'projects.read',
   PROJECTS_CREATE: 'projects.create',
