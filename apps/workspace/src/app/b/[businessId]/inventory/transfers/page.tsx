@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ui'
-import { TransferBoard, type Good, type Place, type TransferCard } from './TransferBoard'
+import { TransferBoard, type Good, type Place, type TransferCard } from '../TransferBoard'
 
 export const dynamic = 'force-dynamic'
 
