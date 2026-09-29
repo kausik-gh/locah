@@ -1313,6 +1313,46 @@ class SupplyService:
         }
 
     @staticmethod
+    async def list_causes(
+        session: AsyncSession,
+        business_id: uuid.UUID,
+        permissions: set[str] | None,
+    ) -> list[dict[str, Any]]:
+        _need(permissions, "donations.read")
+        await _as(session, business_id)
+        return _rows(await session.execute(
+            text(
+                """
+                SELECT id, name, status FROM donations_causes
+                WHERE business_id = :business_id ORDER BY created_at DESC
+                """
+            ),
+            {"business_id": business_id},
+        ))
+
+    @staticmethod
+    async def list_gifts(
+        session: AsyncSession,
+        business_id: uuid.UUID,
+        permissions: set[str] | None,
+    ) -> list[dict[str, Any]]:
+        _need(permissions, "donations.read")
+        await _as(session, business_id)
+        return _rows(await session.execute(
+            text(
+                """
+                SELECT g.id, g.donor_name, g.amount_paise, g.receipt_reference, g.kind, c.name AS cause
+                FROM donations_gifts g
+                JOIN donations_causes c ON c.id = g.cause_id
+                WHERE g.business_id = :business_id
+                ORDER BY g.created_at DESC
+                LIMIT 20
+                """
+            ),
+            {"business_id": business_id},
+        ))
+
+    @staticmethod
     async def buying_home(
         session: AsyncSession,
         business_id: uuid.UUID,
