@@ -121,13 +121,30 @@ def _acceptance_code(quote_id: str) -> str:
     return asyncio.run(_run())
 
 
+def _reachable_customer(client: TestClient, headers: dict[str, str], business_id: str, name: str = "Ravi") -> str:
+    """Online acceptance sends its code on WhatsApp, so a business that takes it has
+    Messaging on and a number connected (the sandbox here), and the quote names a
+    customer with a phone. Returns that customer."""
+    enabled = client.post(f"/v1/b/{business_id}/modules/messaging/enable", headers=headers)
+    assert enabled.status_code == 200, enabled.text
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("MESSAGING_SANDBOX", "1")
+        ch = client.post(f"/v1/platform/businesses/{business_id}/messaging/channel/sandbox",
+                         json={"display_phone": "+919840000099", "display_name": "QuoteCo"}, headers=headers)
+        assert ch.status_code in (200, 409), ch.text
+    made = client.post(f"/v1/platform/businesses/{business_id}/customers", headers=headers,
+                       json={"display_name": name, "phone": f"+9198{uuid.uuid4().int % 10**8:08d}"})
+    assert made.status_code == 200, made.text
+    return cast(str, made.json()["data"]["id"])
+
+
 def _accept_from_share(client: TestClient, token: str, quote_id: str, name: str = "Ravi") -> Any:
     asked = client.post(
         f"/v1/public/quotes/{token}",
         data={"decision": "request_code", "name": name},
     )
     assert asked.status_code == 200, asked.text
-    assert "Enter the code" in asked.text
+    assert "sent a 6-digit code to your WhatsApp" in asked.text
     code = _acceptance_code(quote_id)
     assert len(code) == 6 and code not in asked.text
     return client.post(
@@ -278,10 +295,11 @@ def test_empty_quote_cannot_be_issued(owner: dict[str, str]) -> None:
     assert resp.status_code == 422, resp.text
 
 
-def test_customer_accepts_from_the_share_link(owner: dict[str, str]) -> None:
+def test_customer_accepts_from_the_share_link(owner: dict[str, str], monkeypatch: Any) -> None:
+    monkeypatch.setenv("MESSAGING_SANDBOX", "1")
     client = TestClient(app)
     business_id = _business(client, owner)
-    quote = _quote(client, owner, business_id)
+    quote = _quote(client, owner, business_id, customer_contact_id=_reachable_customer(client, owner, business_id))
     token = client.post(
         f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/issue",
         json={},
@@ -297,12 +315,51 @@ def test_customer_accepts_from_the_share_link(owner: dict[str, str]) -> None:
     ).json()["data"]
     assert detail["status"] == "accepted"
     assert detail["accepted_at"] is not None
+    # The code reached the customer on WhatsApp — the only place it goes.
+    from platform_testing.phase_b import drain_events, sql
+
+    drain_events(business_id)
+    code = _acceptance_code(quote["id"])
+    sent = sql("select status, body from messaging_messages where business_id = :b "
+               "and template_key = 'quote_acceptance_code'", b=business_id)
+    assert [(st, code in body) for st, body in sent] == [("sent", True)], sent
+
+
+def test_no_code_is_promised_when_whatsapp_cannot_reach_the_customer(owner: dict[str, str]) -> None:
+    """The code travels only on WhatsApp. Without a connected number the page says who
+    confirms instead — it never claims a code was sent — and the business records it."""
+    client = TestClient(app)
+    business_id = _business(client, owner)
+    quote = _quote(client, owner, business_id)
+    token = client.post(f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/issue", json={},
+                        headers=owner).json()["data"]["share_token"]
+    asked = client.post(f"/v1/public/quotes/{token}", data={"decision": "request_code", "name": "Ravi"})
+    assert asked.status_code == 200, asked.text
+    assert "cannot send you a code on WhatsApp" in asked.text and "sent a 6-digit code" not in asked.text
+
+    async def issued_codes() -> int:
+        url = get_database_url()
+        assert url
+        engine = create_async_engine(url.replace("postgresql://", "postgresql+asyncpg://", 1), echo=False,
+                                     poolclass=NullPool)
+        try:
+            async with AsyncSession(engine) as session:
+                return int((await session.execute(text(
+                    "select count(*) from platform_outbox_events where event_type = 'quote.acceptance_code_issued' "
+                    "and payload->>'quote_id' = :id"), {"id": quote["id"]})).scalar_one())
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(issued_codes()) == 0
+    recorded = client.post(f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/decision",
+                           json={"decision": "accepted"}, headers=owner)
+    assert recorded.status_code == 200, recorded.text
 
 
 def test_a_decided_quote_cannot_be_decided_again(owner: dict[str, str]) -> None:
     client = TestClient(app)
     business_id = _business(client, owner)
-    quote = _quote(client, owner, business_id)
+    quote = _quote(client, owner, business_id, customer_contact_id=_reachable_customer(client, owner, business_id))
     token = client.post(
         f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/issue",
         json={},

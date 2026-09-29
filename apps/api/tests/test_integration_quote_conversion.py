@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from platform_api.main import app
 from platform_testing.phase_b import drain_events, sql
 
-from test_quotes import TEST_JWT_SECRET, _accept_from_share, _business, _headers, _quote, _seed
+from test_quotes import TEST_JWT_SECRET, _accept_from_share, _business, _headers, _quote, _reachable_customer, _seed
 
 pytestmark = pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 client = TestClient(app)
@@ -36,6 +36,7 @@ def owner(monkeypatch: Any) -> dict[str, str]:
 
 
 def _accepted(owner: dict[str, str], bid: str, **quote: Any) -> str:
+    quote.setdefault("customer_contact_id", _reachable_customer(client, owner, bid))
     q = _quote(client, owner, bid, **quote)
     issued = client.post(f"/v1/platform/businesses/{bid}/quotes/{q['id']}/issue", json={"valid_days": 10},
                          headers=owner)

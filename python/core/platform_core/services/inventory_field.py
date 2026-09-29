@@ -740,6 +740,15 @@ class InventoryFieldService:
 
     # ---------------------------------------------------------------- customer assets
     @staticmethod
+    async def asset_customer(session: AsyncSession, business_id: uuid.UUID, asset_id: uuid.UUID) -> uuid.UUID | None:
+        """Whose asset this is (a stable reference other modules may check — a service
+        contract covers it); None when it is not this business's or was removed."""
+        owner = (await session.execute(select(CustomerAsset.customer_id).where(
+            CustomerAsset.id == asset_id, CustomerAsset.business_id == business_id,
+            CustomerAsset.deleted_at.is_(None)))).scalar_one_or_none()
+        return uuid.UUID(str(owner)) if owner is not None else None
+
+    @staticmethod
     def _traits(raw: Any) -> dict[str, Any]:
         if raw in (None, ""):
             return {}

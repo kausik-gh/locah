@@ -89,6 +89,43 @@ def test_issue_call_serve_and_turn_soon_once(monkeypatch: Any) -> None:
 
 
 @DB
+def test_your_turn_soon_goes_out_on_whatsapp_once_per_visit(monkeypatch: Any) -> None:
+    # Not only a notice row: Messaging tells the customer, once, and the owner can switch it off.
+    monkeypatch.setenv("MESSAGING_SANDBOX", "1")
+    _, owner = new_identity(monkeypatch)
+    bid = create_business(client, owner, business_type="clinic", modules=(
+        "workforce", "bookings", "customer-relationships", "queue-operations", "messaging"))
+    loc = primary_location(client, owner, bid)
+    base = f"/v1/platform/businesses/{bid}"
+    assert client.post(f"{base}/messaging/channel/sandbox", json={
+        "display_phone": "+919840000071", "display_name": "Sri Clinic"}, headers=owner).status_code == 200
+    meena = client.post(f"{base}/customers", json={"display_name": "Meena", "phone": "+919876500071"},
+                        headers=owner).json()["data"]["id"]
+    lane = _lane(owner, bid, loc, "OPD", avg_service_minutes=10)
+    _token(owner, bid, lane, "Walk-in")  # no number: called at the desk
+    _token(owner, bid, lane, "Meena", customer_contact_id=meena)
+    drain_events(bid)
+
+    def sent() -> list[Any]:
+        return list(sql("select status, body from messaging_messages where business_id = :b "
+                        "and template_key = 'queue_turn_soon' order by created_at", b=bid))
+
+    assert sent() == [], "the walk-in at the front has no number; Meena is not next yet"
+    assert client.post(f"{base}/queue/lanes/{lane}/call-next", headers=owner).status_code == 200
+    drain_events(bid)
+    drain_events(bid)
+    assert [(st, "token 2, 0 ahead" in body) for st, body in sent()] == [("sent", True)], sent()
+    client.put(f"{base}/messaging/settings", json={"customer_updates": {"queue_turn_soon": False}}, headers=owner)
+    ravi = client.post(f"{base}/customers", json={"display_name": "Ravi", "phone": "+919876500072"},
+                       headers=owner).json()["data"]["id"]
+    later = _lane(owner, bid, loc, "Dental")
+    _token(owner, bid, later, "Ravi", customer_contact_id=ravi)
+    drain_events(bid)
+    assert len(sent()) == 1, "switched off: the notice is kept, no message goes"
+    assert sql("select count(*) from queue_turn_notices where business_id = :b", b=bid) == [(3,)]
+
+
+@DB
 def test_miss_requeue_and_requeue_refused(monkeypatch: Any) -> None:
     bid, owner, loc = _clinic(monkeypatch)
     lane = _lane(owner, bid, loc, "Lab")

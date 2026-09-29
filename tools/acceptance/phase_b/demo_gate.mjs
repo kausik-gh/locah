@@ -143,8 +143,10 @@ try {
 
 // ---------------------------------------------------------------- field service: quote → project
 const fix = await newBusiness({ name: `Cool Fix ${tag}`, type: 'professional_service',
-  modules: ['offerings-catalog', 'quotes', 'customer-relationships', 'projects'] })
+  modules: ['offerings-catalog', 'quotes', 'customer-relationships', 'projects', 'messaging'] })
 const f = `/v1/platform/businesses/${fix.id}`
+// The acceptance code travels only on WhatsApp (the local sandbox number).
+await api(`${f}/messaging/channel/sandbox`, { method: 'POST', body: { display_phone: '+919840061099', display_name: 'Cool Fix' } })
 const client = (await api(`${f}/customers`, { method: 'POST', body: { display_name: 'Ravi Kumar', phone: '+919840061003' } })).data
 const quote = (await api(`${f}/quotes`, { method: 'POST', body: { title: 'AC servicing — 3 units', customer_contact_id: client.id,
   items: [{ title: 'Split AC deep service', quantity: 3, unit_price: 1200, tax_rate: 18 }] } })).data
