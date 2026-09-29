@@ -329,6 +329,23 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "compliance.item.archived",
         }
     ),
+    # Supply lane. Buying, recipes, expenses, connectors, documents, donations.
+    "procurement": frozenset(
+        {
+            "procurement.requisition.created",
+            "procurement.po.approved",
+            "procurement.po.sent",
+            "procurement.po.countered",
+            "procurement.goods_received",
+            "supplier.bill.created",
+            "recipe.consumed",
+            "trade.message.received",
+        }
+    ),
+    "expenses": frozenset({"expense.created"}),
+    "donations": frozenset({"donation.received"}),
+    "connectors": frozenset({"connector.sync.completed"}),
+    "documents": frozenset({"document.recorded"}),
 }
 
 KNOWN_EVENT_TYPES: frozenset[str] = frozenset().union(*_CATALOGUE.values())

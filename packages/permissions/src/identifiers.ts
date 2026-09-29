@@ -172,6 +172,22 @@ export const PERMISSIONS = {
   INVENTORY_APPROVE: 'inventory.approve',
   INVENTORY_COST: 'inventory.cost',
 
+  // Module: procurement, expenses, connectors, documents, donations
+  PROCUREMENT_READ: 'procurement.read',
+  PROCUREMENT_CREATE: 'procurement.create',
+  PROCUREMENT_APPROVE: 'procurement.approve',
+  PROCUREMENT_RECEIVE: 'procurement.receive',
+  PROCUREMENT_COST: 'procurement.cost',
+  SUPPLIER_READ: 'supplier.read',
+  EXPENSES_READ: 'expenses.read',
+  EXPENSES_WRITE: 'expenses.write',
+  CONNECTORS_READ: 'connectors.read',
+  CONNECTORS_MANAGE: 'connectors.manage',
+  DOCUMENTS_READ: 'documents.read',
+  DOCUMENTS_WRITE: 'documents.write',
+  DONATIONS_READ: 'donations.read',
+  DONATIONS_WRITE: 'donations.write',
+
   // Module: fulfilment
   FULFILMENT_READ: 'fulfilment.read',
   FULFILMENT_UPDATE_STATUS: 'fulfilment.update_status',

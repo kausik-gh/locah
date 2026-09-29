@@ -149,6 +149,24 @@ INVENTORY_APPROVE = "inventory.approve"
 # What stock cost and is worth — owner, manager and accountant, not the counter.
 INVENTORY_COST = "inventory.cost"
 
+# Buying. The primary owner receives these through ALL_PERMISSIONS.
+# Manager, store keeper and accountant receive the slices in role_templates.py.
+# Approval is not given to every employee.
+PROCUREMENT_READ = "procurement.read"
+PROCUREMENT_CREATE = "procurement.create"
+PROCUREMENT_APPROVE = "procurement.approve"
+PROCUREMENT_RECEIVE = "procurement.receive"
+PROCUREMENT_COST = "procurement.cost"
+SUPPLIER_READ = "supplier.read"
+EXPENSES_READ = "expenses.read"
+EXPENSES_WRITE = "expenses.write"
+CONNECTORS_READ = "connectors.read"
+CONNECTORS_MANAGE = "connectors.manage"
+DOCUMENTS_READ = "documents.read"
+DOCUMENTS_WRITE = "documents.write"
+DONATIONS_READ = "donations.read"
+DONATIONS_WRITE = "donations.write"
+
 FULFILMENT_READ = "fulfilment.read"
 FULFILMENT_UPDATE_STATUS = "fulfilment.update_status"
 FULFILMENT_MANAGE_CONFIG = "fulfilment.manage_config"
@@ -215,6 +233,12 @@ TEMPLATES: dict[str, frozenset[str]] = {
             INVENTORY_READ,
             INVENTORY_ADJUST,
             INVENTORY_EXPORT,
+            PROCUREMENT_READ,
+            PROCUREMENT_CREATE,
+            PROCUREMENT_APPROVE,
+            PROCUREMENT_RECEIVE,
+            PROCUREMENT_COST,
+            SUPPLIER_READ,
             FULFILMENT_READ,
             FULFILMENT_UPDATE_STATUS,
             FULFILMENT_MANAGE_CONFIG,
@@ -237,7 +261,16 @@ TEMPLATES: dict[str, frozenset[str]] = {
         }
     ),
     "tmpl_inventory_manager": frozenset(
-        {INVENTORY_READ, INVENTORY_ADJUST, INVENTORY_EXPORT, OFFERINGS_READ}
+        {
+            INVENTORY_READ,
+            INVENTORY_ADJUST,
+            INVENTORY_EXPORT,
+            OFFERINGS_READ,
+            PROCUREMENT_READ,
+            PROCUREMENT_CREATE,
+            PROCUREMENT_RECEIVE,
+            SUPPLIER_READ,
+        }
     ),
     "tmpl_booking_coordinator": frozenset(
         {

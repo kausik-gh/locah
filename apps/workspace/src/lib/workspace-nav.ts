@@ -60,6 +60,7 @@ export const AREAS: NavArea[] = [
     children: [
       { href: '/offerings', label: 'Products & services', perm: 'offerings.read', module: 'offerings-catalog' },
       { href: '/inventory', label: 'Stock', perm: 'inventory.read', module: 'inventory' },
+      { href: '/buying', label: 'Buying', perm: 'procurement.read', module: 'procurement' },
     ],
   },
   {
@@ -78,6 +79,8 @@ export const AREAS: NavArea[] = [
       { href: '/invoices', label: 'Bills & invoices', perm: 'invoices.read', module: 'invoicing' },
       { href: '/payments', label: 'Payments', perm: 'payments.read', module: 'payments' },
       { href: '/khata', label: 'Khata (credit book)', perm: 'ledger.read', module: 'ledger' },
+      { href: '/expenses', label: 'Expenses', perm: 'expenses.read', module: 'expenses' },
+      { href: '/donations', label: 'Donations', perm: 'donations.read', module: 'donations' },
       { href: '/invoices/tax-rates', label: 'Tax rates', perm: 'invoices.read', module: 'invoicing' },
       { href: '/pos/shifts', label: 'Counter shifts', perm: 'pos.approve', module: 'pos' },
       { href: '/invoices/reports', label: 'Reports for your CA', perm: 'invoices.export', module: 'invoicing' },
