@@ -14,7 +14,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.exceptions import ConflictError, ValidationError
-from platform_core.models import Booking
+from platform_core.models import Booking, Offering
 from platform_core.services.workforce import WorkforceService
 from platform_core.validation.booking import RESERVATION_MODES
 
@@ -28,17 +28,51 @@ class AvailabilityService:
         *,
         business_id: uuid.UUID,
         location_id: uuid.UUID,
-        provider_id: uuid.UUID | None,
-        offering_id: uuid.UUID | None,
         reservation_mode: str,
     ) -> None:
-        """Serialize overlapping create/reschedule checks (concurrency / overbooking)."""
-        key = (
-            f"{business_id}:{location_id}:{provider_id or ''}:"
-            f"{offering_id or ''}:{reservation_mode}"
-        )
+        """Serialise every capacity check for one mode at one location.
+
+        The key used to include the provider and the offering, so a request
+        naming the instructor and one that did not queued on different locks
+        and could both see the last place free. The pool being summed is the
+        location's bookings of this mode (narrowed by offering when there is
+        one), so that is what the lock covers. Held to the end of the
+        transaction: the check and the insert commit together. Provider
+        exclusivity does not rely on it - that is the allocation's exclusion
+        constraint.
+        """
+        key = f"{business_id}:{location_id}:{reservation_mode}"
         lock_id = zlib.crc32(key.encode("utf-8")) & 0x7FFFFFFF
         await session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_id})
+
+    @staticmethod
+    async def configured_capacity(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        offering_id: uuid.UUID | None,
+        reservation_mode: str,
+    ) -> int | None:
+        """A class's places per session, as the owner set them on the class.
+
+        Configuration outranks the request: a caller must not be able to lift
+        the limit by sending a bigger number, and a guest - who sends none -
+        must still meet it.
+        """
+        if reservation_mode != "class_session" or offering_id is None:
+            return None
+        attributes = (
+            await session.execute(
+                select(Offering.attributes).where(
+                    Offering.id == offering_id, Offering.business_id == business_id
+                )
+            )
+        ).scalar_one_or_none()
+        try:
+            places = int((attributes or {}).get("capacity") or 0)
+        except (TypeError, ValueError):
+            return None
+        return places if places > 0 else None
 
     @staticmethod
     async def _assert_provider_at_location(
@@ -129,10 +163,16 @@ class AvailabilityService:
             session,
             business_id=business_id,
             location_id=location_id,
-            provider_id=provider_id,
+            reservation_mode=reservation_mode,
+        )
+        configured = await AvailabilityService.configured_capacity(
+            session,
+            business_id=business_id,
             offering_id=offering_id,
             reservation_mode=reservation_mode,
         )
+        if configured is not None:
+            capacity = configured
 
         # Appointment: provider exclusivity — NOT a capacity/room pool (Doc 11 §17.5).
         if provider_id:

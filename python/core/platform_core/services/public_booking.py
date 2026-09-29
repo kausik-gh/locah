@@ -315,6 +315,7 @@ class PublicBookingService:
                 "idempotency_key": payload.get("idempotency_key"),
             },
             allow_capacity_override=False,
+            assign_free_resource=True,
         )
         data = BookingResolver.serialize_booking(booking)
         data["management_token"] = booking.management_token

@@ -86,6 +86,7 @@ class BookingService:
         correlation_id: str,
         payload: dict[str, Any],
         allow_capacity_override: bool = True,
+        assign_free_resource: bool = False,
     ) -> Booking:
         """Create a booking and claim whatever it consumes.
 
@@ -93,7 +94,13 @@ class BookingService:
         limit availability is checked against, so letting an anonymous caller
         supply it makes the check decorative. Staff may still set it for a
         business that has configured no resources, where nothing else knows the
-        number; once resources exist, they win regardless.
+        number; once resources exist, or the class states its places, those win
+        regardless.
+
+        `assign_free_resource` is True where the customer is never asked which
+        table or chair (website, WhatsApp): if the business allocates resources
+        and none was named, a free one is held under lock, or the booking is
+        refused - the check and the claim commit together.
         """
         business = await BusinessService.get_by_id(session, business_id)
         assert_business_mutable(business.state, action="create booking")
@@ -137,9 +144,6 @@ class BookingService:
             session,
             business_id=business_id,
             resource_ids=validated["resource_ids"],
-        )
-        capacity = BookingAllocationService.effective_capacity(
-            resources, fallback=validated["capacity"] if allow_capacity_override else None
         )
         if validated["offering_id"]:
             offering = await OfferingResolver.resolve(
@@ -207,6 +211,19 @@ class BookingService:
                 details={"field": "title"},
             )
 
+        configured = await AvailabilityService.configured_capacity(
+            session,
+            business_id=business_id,
+            offering_id=validated["offering_id"],
+            reservation_mode=validated["reservation_mode"],
+        )
+        capacity = BookingAllocationService.effective_capacity(
+            resources,
+            fallback=configured
+            if configured is not None
+            else (validated["capacity"] if allow_capacity_override else None),
+        )
+
         # The legacy path stays for bookings that name no resource: a business
         # that has not configured any still gets provider exclusivity and the
         # offering-level pool it has always had. Where resources exist they are
@@ -269,19 +286,34 @@ class BookingService:
         # Claim the subjects. Raises ConflictError if any is taken, which rolls
         # the whole request back - the booking row never survives without its
         # allocations, so a calendar entry cannot exist holding nothing.
-        await BookingAllocationService.allocate(
-            session,
-            business_id=business_id,
-            booking_id=booking.id,
-            requests=BookingAllocationService.requests_for(
-                resources=resources,
+        if not resources and assign_free_resource:
+            held = await BookingAllocationService.allocate_first_free(
+                session,
+                business_id=business_id,
+                booking_id=booking.id,
+                location_id=validated["location_id"],
                 provider_id=validated["provider_id"],
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
                 party_size=validated["party_size"],
-            ),
-            starts_at=validated["starts_at"],
-            ends_at=validated["ends_at"],
-            party_size=validated["party_size"],
-        )
+            )
+            if held is not None:
+                booking.capacity = BookingAllocationService.effective_capacity([held])
+                await session.flush()
+        else:
+            await BookingAllocationService.allocate(
+                session,
+                business_id=business_id,
+                booking_id=booking.id,
+                requests=BookingAllocationService.requests_for(
+                    resources=resources,
+                    provider_id=validated["provider_id"],
+                    party_size=validated["party_size"],
+                ),
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
+                party_size=validated["party_size"],
+            )
 
         history = BookingStatusHistory(
             business_id=business_id,
