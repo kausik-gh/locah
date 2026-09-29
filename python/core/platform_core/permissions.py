@@ -231,6 +231,11 @@ MARKETING_CREATE = "marketing.create"
 MARKETING_APPROVE = "marketing.approve"
 MARKETING_SEND = "marketing.send"
 
+# Shared attendance (membership check-in, class roster, staff site, booking arrival).
+ATTENDANCE_READ = "attendance.read"
+ATTENDANCE_RECORD = "attendance.record"
+ATTENDANCE_MANAGE = "attendance.manage"
+
 ALL_PERMISSIONS: frozenset[str] = frozenset(
     str(v) for k, v in globals().items() if k.isupper() and isinstance(v, str) and "." in v
 )

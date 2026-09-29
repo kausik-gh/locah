@@ -78,6 +78,7 @@ from platform_api.routers import (
     v1_dispatch,
     v1_platform_loyalty,
     v1_platform_marketing,
+    v1_attendance,
 )
 
 # Database lifecycle state
@@ -283,6 +284,7 @@ app.include_router(v1_tasks.router)
 app.include_router(v1_dispatch.router)
 app.include_router(v1_platform_loyalty.router)
 app.include_router(v1_platform_marketing.router)
+app.include_router(v1_attendance.router)
 
 app.add_exception_handler(PlatformError, platform_error_handler)
 

@@ -55,6 +55,8 @@ ASSIGNMENT_PERMISSIONS = frozenset({
     "tasks.read", "tasks.complete",
     # Delivery jobs assigned to them. Assigning is the dispatcher's, not theirs.
     "dispatch.read", "dispatch.update_status",
+    # Attendance they record for their own classes, lanes and sites.
+    "attendance.read", "attendance.record",
 })
 
 

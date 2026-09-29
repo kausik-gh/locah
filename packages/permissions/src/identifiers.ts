@@ -163,6 +163,11 @@ export const PERMISSIONS = {
   ACADEMICS_MANAGE: 'academics.manage',
   ACADEMICS_TEACH: 'academics.teach',
 
+  // Module: attendance — one engine for member, class, staff and booking arrivals
+  ATTENDANCE_READ: 'attendance.read',
+  ATTENDANCE_RECORD: 'attendance.record',
+  ATTENDANCE_MANAGE: 'attendance.manage',
+
   // Module: payments
   PAYMENTS_READ: 'payments.read',
   PAYMENTS_REFUND: 'payments.refund',

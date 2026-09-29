@@ -297,6 +297,9 @@ _CATALOGUE: dict[str, frozenset[str]] = {
         "academics.student.enrolled", "academics.assessment.created", "academics.result.recorded",
         "academics.announcement.created",
     }),
+    "attendance": frozenset({
+        "attendance.checked_in", "attendance.checked_out", "attendance.session_recorded",
+    }),
     "membership_plan": frozenset(
         {
             "membership.plan.created",
