@@ -9,6 +9,7 @@ import {
   IBM_Plex_Sans,
   Manrope,
   Newsreader,
+  Noto_Sans_Devanagari,
   Noto_Sans_Tamil,
   Outfit,
   Playfair_Display,
@@ -41,8 +42,9 @@ import {
  *   calm_serif            Fraunces (soft) over Manrope
  *
  * Older personalities keep their faces (Fraunces, Anton, Manrope). None of
- * these is LOCAH's own brand face. Noto Sans Tamil sits behind all of them as
- * a glyph fallback: an owner who writes in Tamil sees a real Tamil face.
+ * these is LOCAH's own brand face. Noto Sans Tamil and Noto Sans Devanagari sit
+ * behind all of them as glyph fallbacks: Tamil and Hindi words — the owner's, or
+ * the site's own in a visitor's language (P1-10E6) — render in a real face.
  *
  * Loaded from this module so the files are only requested by pages that
  * render a tenant site.
@@ -135,6 +137,12 @@ export const notoTamil = Noto_Sans_Tamil({
   variable: '--font-site-tamil',
 })
 
+export const notoDevanagari = Noto_Sans_Devanagari({
+  subsets: ['devanagari'],
+  display: 'swap',
+  variable: '--font-site-devanagari',
+})
+
 export const siteFontVariables = [
   fraunces,
   anton,
@@ -149,6 +157,7 @@ export const siteFontVariables = [
   newsreader,
   plexMono,
   notoTamil,
+  notoDevanagari,
 ]
   .map((font) => font.variable)
   .join(' ')

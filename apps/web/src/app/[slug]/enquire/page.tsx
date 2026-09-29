@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation'
 import { RESERVED_SLUGS } from '@/lib/reserved-slugs'
 import { fetchPublicWebsite } from '@/lib/public-website'
 import { fetchPublicOfferings, fetchPublicPlans } from '@/lib/checkout-api'
-import { siteThemeVars } from '@/components/website/WebsitePageView'
+import { SiteFrame } from '@/components/website/SiteFrame'
+import { siteLang } from '@/lib/site-lang'
+import { siteWords } from '@/lib/site-words'
 import { EnquiryForm } from '@/components/website/EnquiryForm'
 import { Specs, priceLabel, type PublicOffering } from '@/components/website/offering-view'
 
@@ -15,12 +17,13 @@ export default async function EnquirePage({
   searchParams,
 }: {
   params: { slug: string }
-  searchParams: { offering_id?: string; plan_id?: string; purpose?: string }
+  searchParams: { offering_id?: string; plan_id?: string; purpose?: string; lang?: string }
 }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
   const site = await fetchPublicWebsite(params.slug)
   if (!site) notFound()
-  const { styleVars, paletteMode } = siteThemeVars(site)
+  const lang = siteLang(site.website.languages, searchParams.lang)
+  const t = siteWords(lang)
   const offerings = ((await fetchPublicOfferings(params.slug)).offerings ?? []) as PublicOffering[]
   const offering = searchParams.offering_id ? offerings.find((o) => o.id === searchParams.offering_id) : undefined
   const plan = searchParams.plan_id
@@ -29,7 +32,7 @@ export default async function EnquirePage({
   const name = site.business.display_name
   const open = Boolean(site.capabilities?.enquire)
   return (
-    <div data-locah-site="" data-palette={paletteMode} style={styleVars}>
+    <SiteFrame site={site} lang={lang} style={{ minHeight: undefined }}>
       <main className="ls-section">
         <div className="ls-inner ls-enquire">
           <p><Link href={`/${params.slug}`}>← {name}</Link></p>
@@ -40,37 +43,37 @@ export default async function EnquirePage({
                 <img src={offering.image_url} alt="" />
               ) : null}
               <div>
-                {offering.kind ? <p className="ls-offer__kind">{offering.kind.label}</p> : null}
+                {offering.kind ? <p className="ls-offer__kind">{t(offering.kind.label)}</p> : null}
                 <h1 className="ls-title">{offering.title}</h1>
-                {priceLabel(offering) ? <p className="ls-price">{priceLabel(offering)}</p> : null}
+                {priceLabel(offering, t) ? <p className="ls-price">{priceLabel(offering, t)}</p> : null}
                 {offering.description ? <p className="ls-item__desc">{offering.description}</p> : null}
-                <Specs o={offering} />
+                <Specs o={offering} t={t} />
               </div>
             </article>
           ) : plan ? (
             <article className="ls-enquire__item">
               <div>
-                <p className="ls-offer__kind">Plan</p>
+                <p className="ls-offer__kind">{t('Plan')}</p>
                 <h1 className="ls-title">{plan.title}</h1>
                 <p className="ls-price">
                   {new Intl.NumberFormat('en-IN', { style: 'currency', currency: plan.currency || 'INR', maximumFractionDigits: 0 }).format(Number(plan.price_amount))}
-                  {plan.duration_days ? ` · ${plan.duration_days} days` : ''}
+                  {plan.duration_days ? ` · ${t('{n} days', { n: plan.duration_days })}` : ''}
                 </p>
                 {plan.description ? <p className="ls-item__desc">{plan.description}</p> : null}
               </div>
             </article>
           ) : (
-            <h1 className="ls-title">Contact {name}</h1>
+            <h1 className="ls-title">{t('Contact {business}', { business: name })}</h1>
           )}
           {open ? (
             <EnquiryForm slug={params.slug} businessName={name} offeringId={offering?.id}
               offeringTitle={offering?.title} planId={plan?.id} planTitle={plan?.title}
               purpose={plan ? 'membership' : searchParams.purpose} />
           ) : (
-            <p className="ls-meta">{name} is not taking enquiries online yet. Use the contact details on their site.</p>
+            <p className="ls-meta">{t('{business} is not taking enquiries online yet. Use the contact details on their site.', { business: name })}</p>
           )}
         </div>
       </main>
-    </div>
+    </SiteFrame>
   )
 }

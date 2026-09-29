@@ -74,6 +74,12 @@ STATE_WORDS = {
     "refunded": "Refunded",
     "partially_refunded": "Part refunded",
 }
+# A payment link's state as its page says it (the tenant page translates these — P1-10E6).
+LINK_STATE_WORDS: dict[str, str | None] = {
+    "open": None, "being_confirmed": STATE_WORDS["pending"], "failed": STATE_WORDS["failed"],
+    "paid": STATE_WORDS["paid"], "cancelled": "This payment link was cancelled",
+    "expired": "This payment link has expired — ask for a new one",
+}
 
 
 def _d(v: Any) -> Decimal:
@@ -466,10 +472,7 @@ class PaymentCollectService:
                          "contact": await _public_contact(session, business.id)},
             "for": money["label"], "purpose": req.purpose, "purpose_label": PURPOSES[req.purpose],
             "note": req.note, "state": link_state,
-            "state_words": {"open": None, "being_confirmed": STATE_WORDS["pending"],
-                            "failed": STATE_WORDS["failed"], "paid": STATE_WORDS["paid"],
-                            "cancelled": "This payment link was cancelled",
-                            "expired": "This payment link has expired — ask for a new one"}[link_state],
+            "state_words": LINK_STATE_WORDS[link_state],
             "amount_due": _f(_d(money["total"])) if money["total"] is not None else money["balance"],
             "already_paid": money["paid"], "paying_now": _f(paying_now),
             "balance_after": _f(max(balance - paying_now, ZERO)) if balance is not None else None,

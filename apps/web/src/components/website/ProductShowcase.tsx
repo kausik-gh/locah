@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { cartStorageKey, fetchPublicOfferings, type CartItem } from '@/lib/checkout-api'
 import type { SiteContact } from './SectionRenderer'
+import { useWords } from './SiteWords'
+import type { Words } from '@/lib/site-words'
 
 /**
  * The things a visitor chooses between — cuts, dishes, plans, projects —
@@ -53,9 +55,9 @@ function money(amount?: number | null, currency?: string) {
   }
 }
 
-function orderHref(contact: SiteContact | undefined, businessName: string, item: string) {
+function orderHref(contact: SiteContact | undefined, businessName: string, item: string, t: Words) {
   if (contact?.whatsapp) {
-    const text = encodeURIComponent(`Hi ${businessName}, I'd like to order ${item}.`)
+    const text = encodeURIComponent(t('Hi {business}, I’d like to order {item}.', { business: businessName, item }))
     return `https://wa.me/${contact.whatsapp.replace(/\D/g, '')}?text=${text}`
   }
   if (contact?.phone) return `tel:${contact.phone}`
@@ -116,6 +118,7 @@ export function ProductShowcase({
   capabilities?: Record<string, boolean | string | null>
   alt?: boolean
 }) {
+  const t = useWords()
   const [active, setActive] = useState('All')
   const [live, setLive] = useState<Live[]>([])
   const [added, setAdded] = useState('')
@@ -200,7 +203,7 @@ export function ProductShowcase({
                       <strong>{money(row.price_amount, row.currency)}</strong>
                     </span>
                     <button type="button" className="ls-btn ls-btn--sm" onClick={() => add(row)}>
-                      + Add
+                      + {t('Add')}
                     </button>
                   </div>
                 </div>
@@ -209,9 +212,9 @@ export function ProductShowcase({
           </ul>
           {added ? (
             <div className="ls-basket-bar" role="status">
-              <span>Added {added}</span>
+              <span>{t('Added {item}', { item: added })}</span>
               <Link className="ls-btn ls-btn--sm" href={`/${businessSlug}/checkout`}>
-                View basket →
+                {t('View basket')} →
               </Link>
             </div>
           ) : null}
@@ -221,7 +224,7 @@ export function ProductShowcase({
   }
 
   const order = (name: string) => {
-    const href = orderHref(contact, businessName, name)
+    const href = orderHref(contact, businessName, name, t)
     if (!href || !orderLabel) return null
     return (
       <a
@@ -230,14 +233,14 @@ export function ProductShowcase({
         target={href.startsWith('https') ? '_blank' : undefined}
         rel={href.startsWith('https') ? 'noopener noreferrer' : undefined}
       >
-        {orderLabel}
+        {t(orderLabel)}
       </a>
     )
   }
 
   const chips =
     filters.length > 1 && variant !== 'category_boards' ? (
-      <div className="ls-chips" role="tablist" aria-label="Categories">
+      <div className="ls-chips" role="tablist" aria-label={t('Categories')}>
         {['All', ...filters].map((name) => (
           <button
             key={name}
@@ -247,7 +250,7 @@ export function ProductShowcase({
             className="ls-chip"
             onClick={() => setActive(name)}
           >
-            {name}
+            {name === 'All' ? t('All') : name}
           </button>
         ))}
       </div>
@@ -384,7 +387,7 @@ export function ProductShowcase({
         </ul>
         {rest.length > 0 ? (
           <div className="ls-more">
-            <h3 className="ls-more__title">Also available</h3>
+            <h3 className="ls-more__title">{t('Also available')}</h3>
             <ul className="ls-more__list">
               {rest.map((item) => (
                 <li key={`${item.category}-${item.name}`} className="ls-pricelist__row">

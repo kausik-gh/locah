@@ -5,12 +5,13 @@ import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
 import { businessSiteUrl, platformUrl } from '@platform/config'
 import { ToolsOnSite, type SiteAction, type ToolSection } from './ToolsOnSite'
+import { SiteLanguages } from './SiteLanguages'
 
 export const dynamic = 'force-dynamic'
 
 type WebsiteResponse = {
   data: {
-    website: { status: string; published_version_id: string | null }
+    website: { status: string; published_version_id: string | null; languages?: string[] }
     draft: {
       generated_by?: string | null
       pages: { id: string; title: string; slug: string; sections?: unknown[] }[]
@@ -123,6 +124,8 @@ export default async function WebsiteOverviewPage({
           sections={capRes.data.data.auto_sections}
         />
       ) : null}
+
+      <SiteLanguages businessId={params.businessId} initial={website.languages ?? ['en']} />
 
       <h2 className="ws-section-title">Make it yours <span>Manage your website</span></h2>
       <div className="ws-actions">

@@ -180,6 +180,7 @@ class WebsiteResolver:
                 str(website.published_version_id) if website.published_version_id else None
             ),
             "custom_domain": website.custom_domain,
+            "languages": list(website.languages or ["en"]),
             "created_at": website.created_at.isoformat() if website.created_at else None,
             "updated_at": website.updated_at.isoformat() if website.updated_at else None,
         }

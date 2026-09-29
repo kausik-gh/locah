@@ -119,4 +119,6 @@ export function sql(query) {
 }
 
 /** True when nothing on the page is wider than the viewport (no sideways scroll). */
-export const fits = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
+// Against the device's own width: Chrome's mobile emulation zooms out to fit a
+// page wider than the phone, which would make innerWidth grow with the overflow.
+export const fits = (page) => page.evaluate(() => document.documentElement.scrollWidth <= Math.min(window.innerWidth, screen.width) + 1)

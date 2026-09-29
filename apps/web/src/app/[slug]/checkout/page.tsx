@@ -4,7 +4,8 @@ import { RESERVED_SLUGS } from '@/lib/reserved-slugs'
 import { cartKey, fetchCheckoutOptions, type CartItem } from '@/lib/checkout-api'
 import { fetchPublicWebsite } from '@/lib/public-website'
 import { getAccessToken } from '@/lib/supabase/access-token'
-import { siteThemeVars } from '@/components/website/WebsitePageView'
+import { SiteFrame } from '@/components/website/SiteFrame'
+import { siteLang } from '@/lib/site-lang'
 import CheckoutClient from './CheckoutClient'
 
 export const dynamic = 'force-dynamic'
@@ -17,7 +18,7 @@ type ReorderLine = { offering_id: string; variant_id: string | null; title: stri
  * (Founder §12); `?reorder=` refills the cart from one of their earlier orders
  * at today's catalogue price (§12.3 "Repeat last order").
  */
-export default async function CheckoutPage({ params, searchParams }: { params: { slug: string }; searchParams?: { reorder?: string } }) {
+export default async function CheckoutPage({ params, searchParams }: { params: { slug: string }; searchParams?: { reorder?: string; lang?: string } }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
   let options
   try {
@@ -26,7 +27,7 @@ export default async function CheckoutPage({ params, searchParams }: { params: {
     notFound()
   }
   const site = await fetchPublicWebsite(params.slug)
-  const theme = site ? siteThemeVars(site) : { styleVars: {}, paletteMode: 'light' }
+  const lang = siteLang(site?.website.languages, searchParams?.lang)
   const token = await getAccessToken()
   let customer: { name: string; email: string } | null = null
   let reorder: CartItem[] | null = null
@@ -53,8 +54,8 @@ export default async function CheckoutPage({ params, searchParams }: { params: {
     }
   }
   return (
-    <div data-locah-site="" data-palette={theme.paletteMode} style={{ ...theme.styleVars, minHeight: '100vh' }}>
+    <SiteFrame site={site} lang={lang}>
       <CheckoutClient slug={params.slug} options={options} customer={customer} authToken={customer ? token : null} reorder={reorder} unavailable={unavailable} />
-    </div>
+    </SiteFrame>
   )
 }

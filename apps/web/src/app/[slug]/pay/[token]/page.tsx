@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation'
 import { platformUrl } from '@platform/config'
 import { RESERVED_SLUGS } from '@/lib/reserved-slugs'
 import { fetchPublicWebsite } from '@/lib/public-website'
-import { siteThemeVars } from '@/components/website/WebsitePageView'
+import { SiteFrame } from '@/components/website/SiteFrame'
+import { siteLang } from '@/lib/site-lang'
 import { PayActions, type PayView } from './PayActions'
 
 export const dynamic = 'force-dynamic'
@@ -24,15 +25,14 @@ async function fetchPay(slug: string, token: string): Promise<PayView | null> {
  * goes straight to the business; the business confirms it arrived, so the page
  * says "still being confirmed" until it does. The link is the credential.
  */
-export default async function PayPage({ params }: { params: { slug: string; token: string } }) {
+export default async function PayPage({ params, searchParams }: { params: { slug: string; token: string }; searchParams?: { lang?: string } }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
   const view = await fetchPay(params.slug, params.token)
   if (!view) notFound()
   const site = await fetchPublicWebsite(params.slug)
-  const theme = site ? siteThemeVars(site) : { styleVars: {}, paletteMode: 'light' }
   const qr = `${platformUrl('api')}/v1/public/websites/${encodeURIComponent(params.slug)}/pay/${encodeURIComponent(params.token)}/upi-qr.svg`
   return (
-    <div data-locah-site="" data-palette={theme.paletteMode} style={theme.styleVars}>
+    <SiteFrame site={site} lang={siteLang(site?.website.languages, searchParams?.lang, true)} style={{ minHeight: undefined }}>
       <main className="ls-section">
         <div className="ls-inner ls-bill ls-pay">
           {site ? (
@@ -43,6 +43,6 @@ export default async function PayPage({ params }: { params: { slug: string; toke
           <PayActions slug={params.slug} token={params.token} initial={view} qrUrl={qr} />
         </div>
       </main>
-    </div>
+    </SiteFrame>
   )
 }

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { addToBasket } from '@/lib/checkout-api'
 import { Specs, money, priceLabel, type OptionGroup, type PublicOffering } from './offering-view'
+import { useWords } from './SiteWords'
 
 export type { PublicOffering } from './offering-view'
 
@@ -30,6 +31,7 @@ export function OfferingCard({
   canEnquire: boolean
   onAdded?: (count: number) => void
 }) {
+  const t = useWords()
   const flow = o.kind?.flow ?? 'cart'
   const groups = useMemo(() => o.option_groups ?? [], [o.option_groups])
   const [pack, setPack] = useState(o.packs?.[0]?.label ?? '')
@@ -67,9 +69,9 @@ export function OfferingCard({
   const add = () => {
     setError(null)
     const missing = groups.find((g) => !g.text && g.required && !(picked[g.name] ?? []).length)
-    if (missing) return setError(`Choose ${missing.name.toLowerCase()}`)
+    if (missing) return setError(t('Choose {name}', { name: missing.name.toLowerCase() }))
     const unwritten = groups.find((g) => g.text && g.required && !(notes[g.name] ?? '').trim())
-    if (unwritten) return setError(`Write the ${unwritten.name.toLowerCase()}`)
+    if (unwritten) return setError(t('Write the {name}', { name: unwritten.name.toLowerCase() }))
     const options: Record<string, unknown> = {}
     const words: string[] = []
     if (pack) { options.pack = pack; words.push(pack) }
@@ -83,19 +85,19 @@ export function OfferingCard({
       offering_id: o.id, title: o.title, quantity: 1, unit_price: unitPrice, currency: o.currency || 'INR',
       options: Object.keys(options).length ? options : undefined, variant_id: v?.id, detail: words.join(' · ') || undefined,
     })
-    setAdded(`Added${words.length ? ` — ${words.join(' · ')}` : ''}`)
+    setAdded(words.length ? t('Added — {what}', { what: words.join(' · ') }) : t('Added'))
     onAdded?.(count)
   }
 
   const give = () => {
     setError(null)
     const amount = Number(gift)
-    if (!amount || amount < minGift) return setError(`Gifts start at ${money(minGift, o.currency)}`)
+    if (!amount || amount < minGift) return setError(t('Gifts start at {amount}', { amount: money(minGift, o.currency) ?? '' }))
     const count = addToBasket(slug, {
       offering_id: o.id, title: o.title, quantity: 1, unit_price: amount, currency: o.currency || 'INR',
-      options: { amount }, detail: `Gift of ${money(amount, o.currency)}`,
+      options: { amount }, detail: t('Gift of {amount}', { amount: money(amount, o.currency) ?? '' }),
     })
-    setAdded(`Gift of ${money(amount, o.currency)} added`)
+    setAdded(t('Gift of {amount} added', { amount: money(amount, o.currency) ?? '' }))
     onAdded?.(count)
   }
 
@@ -116,48 +118,48 @@ export function OfferingCard({
         </div>
       ) : null}
       <div className="ls-item__body">
-        {o.kind && flow !== 'cart' ? <p className="ls-offer__kind">{o.kind.label}</p> : null}
+        {o.kind && flow !== 'cart' ? <p className="ls-offer__kind">{t(o.kind.label)}</p> : null}
         <h3 className="ls-item__title">{o.title}</h3>
         {o.description ? <p className="ls-item__desc">{o.description}</p> : null}
-        <Specs o={o} />
-        {o.price_basis?.words ? <p className="ls-offer__basis">Today&apos;s price: {o.price_basis.words}</p> : null}
+        <Specs o={o} t={t} />
+        {o.price_basis?.words ? <p className="ls-offer__basis">{t('Today’s price: {basis}', { basis: o.price_basis.words })}</p> : null}
         {o.preorder && canOrder ? (
           <p className="ls-offer__ahead">
-            {o.preorder.needed ? 'Made to order' : 'Order ahead'}
-            {o.preorder.earliest_words ? ` · ready from ${o.preorder.earliest_words}` : ''}
-            {o.preorder.advance ? ` · ${o.preorder.advance.type === 'percent' ? `${o.preorder.advance.value}%` : money(o.preorder.advance.value, o.currency)} advance` : ''}
+            {o.preorder.needed ? t('Made to order') : t('Order ahead')}
+            {o.preorder.earliest_words ? ` · ${t('ready from {when}', { when: o.preorder.earliest_words })}` : ''}
+            {o.preorder.advance ? ` · ${t('{amount} advance', { amount: o.preorder.advance.type === 'percent' ? `${o.preorder.advance.value}%` : money(o.preorder.advance.value, o.currency) ?? '' })}` : ''}
           </p>
         ) : null}
         {flow === 'give' ? (
           <div className="ls-gift">
             {goal > 0 ? (
               <div className="ls-gift__progress" role="progressbar" aria-valuemin={0} aria-valuemax={goal} aria-valuenow={Math.min(raised, goal)}
-                aria-label={`${money(raised, o.currency)} given of ${money(goal, o.currency)}`}>
+                aria-label={t('{raised} given of {goal}', { raised: money(raised, o.currency) ?? '', goal: money(goal, o.currency) ?? '' })}>
                 <span style={{ width: `${Math.min(100, (raised * 100) / goal)}%` }} />
               </div>
             ) : null}
-            {goal > 0 ? <p className="ls-meta">{money(raised, o.currency)} given of {money(goal, o.currency)}</p> : null}
+            {goal > 0 ? <p className="ls-meta">{t('{raised} given of {goal}', { raised: money(raised, o.currency) ?? '', goal: money(goal, o.currency) ?? '' })}</p> : null}
             {canOrder ? (
               <>
-                <div className="ls-choice" role="group" aria-label="Amount">
+                <div className="ls-choice" role="group" aria-label={t('Amount')}>
                   {suggested.map((a) => (
                     <button key={a} type="button" className={`ls-chip${Number(gift) === a ? ' is-on' : ''}`} onClick={() => setGift(String(a))}>
                       {money(a, o.currency)}
                     </button>
                   ))}
                   <label className="ls-gift__other">
-                    <span>Other</span>
-                    <input inputMode="numeric" value={gift} onChange={(e) => setGift(e.target.value.replace(/[^\d]/g, ''))} aria-label="Amount to give" />
+                    <span>{t('Other')}</span>
+                    <input inputMode="numeric" value={gift} onChange={(e) => setGift(e.target.value.replace(/[^\d]/g, ''))} aria-label={t('Amount to give')} />
                   </label>
                 </div>
-                <div className="ls-item__foot"><span /><button type="button" className="ls-btn" onClick={give}>{o.kind?.cta ?? 'Give'}</button></div>
+                <div className="ls-item__foot"><span /><button type="button" className="ls-btn" onClick={give}>{t(o.kind?.cta ?? 'Give')}</button></div>
               </>
             ) : null}
           </div>
         ) : chooses && canOrder ? (
           <div className="ls-chooser">
             {o.packs?.length ? (
-              <div className="ls-choice" role="radiogroup" aria-label="Pack size">
+              <div className="ls-choice" role="radiogroup" aria-label={t('Pack size')}>
                 {o.packs.map((p) => (
                   <button key={p.label} type="button" role="radio" aria-checked={pack === p.label}
                     className={`ls-chip${pack === p.label ? ' is-on' : ''}`} onClick={() => setPack(p.label)}>
@@ -168,7 +170,7 @@ export function OfferingCard({
             ) : null}
             {o.variants && o.variants.length > 0 ? (
               <label className="ls-chooser__select">
-                <span>Option</span>
+                <span>{t('Option')}</span>
                 <select value={variant} onChange={(e) => setVariant(e.target.value)}>
                   {o.variants.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </select>
@@ -176,13 +178,13 @@ export function OfferingCard({
             ) : null}
             {groups.map((g) => g.text ? (
               <label key={g.name} className="ls-chooser__text">
-                <span>{g.name}{g.required ? '' : ' (optional)'}</span>
+                <span>{g.name}{g.required ? '' : ` ${t('(optional)')}`}</span>
                 <input value={notes[g.name] ?? ''} maxLength={g.max_length ?? 40}
                   onChange={(e) => setNotes((n) => ({ ...n, [g.name]: e.target.value }))} />
               </label>
             ) : (
               <div key={g.name} className="ls-choice" role="group" aria-label={g.name}>
-                <span className="ls-choice__name">{g.name}{g.max > 1 ? ` (up to ${g.max})` : ''}</span>
+                <span className="ls-choice__name">{g.name}{g.max > 1 ? ` ${t('(up to {n})', { n: g.max })}` : ''}</span>
                 {g.choices.map((c) => {
                   const on = (picked[g.name] ?? []).includes(c.label)
                   return (
@@ -195,25 +197,25 @@ export function OfferingCard({
             ))}
             <div className="ls-item__foot">
               <span className="ls-price">{money(unitPrice, o.currency)}</span>
-              <button type="button" className="ls-btn" onClick={add}>{o.kind?.cta ?? 'Add'}</button>
+              <button type="button" className="ls-btn" onClick={add}>{t(o.kind?.cta ?? 'Add')}</button>
             </div>
           </div>
         ) : (
           <div className="ls-item__foot">
-            {priceLabel(o) ? <span className="ls-price">{priceLabel(o)}</span> : <span />}
+            {priceLabel(o, t) ? <span className="ls-price">{priceLabel(o, t)}</span> : <span />}
             <span className="ls-offer__actions">
-              {flow === 'cart' && canOrder ? <button type="button" className="ls-btn" onClick={add}>{o.kind?.cta ?? 'Add'}</button> : null}
-              {flow === 'booking' && canBook ? <Link className="ls-btn" href={`/${slug}/book?offering_id=${o.id}`}>{o.kind?.cta ?? 'Book'}</Link> : null}
+              {flow === 'cart' && canOrder ? <button type="button" className="ls-btn" onClick={add}>{t(o.kind?.cta ?? 'Add')}</button> : null}
+              {flow === 'booking' && canBook ? <Link className="ls-btn" href={`/${slug}/book?offering_id=${o.id}`}>{t(o.kind?.cta ?? 'Book')}</Link> : null}
               {(flow === 'enquiry' || flow === 'membership') && canEnquire ? (
                 <>
-                  {(o.kind?.extra_ctas ?? []).map((label) => enquire(extraPurpose(label.toLowerCase()), label, true))}
-                  {enquire('enquiry', flow === 'membership' ? 'Join' : o.kind?.cta ?? 'Enquire', (o.kind?.extra_ctas ?? []).length === 0)}
+                  {(o.kind?.extra_ctas ?? []).map((label) => enquire(extraPurpose(label.toLowerCase()), t(label), true))}
+                  {enquire('enquiry', flow === 'membership' ? t('Join') : t(o.kind?.cta ?? 'Enquire'), (o.kind?.extra_ctas ?? []).length === 0)}
                 </>
               ) : null}
             </span>
           </div>
         )}
-        {added ? <p className="ls-offer__added" role="status">{added} · <Link href={`/${slug}/checkout`}>View basket</Link></p> : null}
+        {added ? <p className="ls-offer__added" role="status">{added} · <Link href={`/${slug}/checkout`}>{t('View basket')}</Link></p> : null}
         {error ? <p className="ls-offer__error" role="alert">{error}</p> : null}
       </div>
     </article>

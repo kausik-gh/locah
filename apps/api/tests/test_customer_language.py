@@ -188,7 +188,8 @@ def test_a_customer_who_writes_in_tamil_orders_in_tamil(monkeypatch: Any) -> Non
     assert channel == "whatsapp"
     placed = tr("ta", "Order {number} placed for {amount}. {business} will confirm it here. Follow it: {link}",
                 number=number, amount="₹640.00", business="Anbu Stores", link="")
-    assert any(m.startswith(placed) and "/track/" in m for m in phone.last(3)), phone.last(3)
+    assert any(m.startswith(placed) and "/track/" in m and m.endswith("lang=ta") for m in phone.last(3)), \
+        "the tracking link opens in Tamil too"
 
     # Asking for a person, and STOP, are answered in Tamil too.
     phone.say("ஆளிடம் பேச வேண்டும்")

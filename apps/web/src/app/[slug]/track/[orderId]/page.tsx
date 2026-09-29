@@ -2,95 +2,113 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { RESERVED_SLUGS } from '@/lib/reserved-slugs'
 import { fetchTracking } from '@/lib/checkout-api'
+import { fetchPublicWebsite } from '@/lib/public-website'
+import { siteLang } from '@/lib/site-lang'
+import { siteWords, type Words } from '@/lib/site-words'
+import { SiteFrame } from '@/components/website/SiteFrame'
 
 export const dynamic = 'force-dynamic'
 
 /** The customer reads plain words, never stored states (Founder refinement — Payments §13). */
-const PAYMENT_WORDS: Record<string, string> = {
-  pending: 'Not paid yet',
-  pending_offline: 'To pay when you collect it',
-  partially_paid: 'Part paid',
-  paid: 'Payment received',
-  refunded: 'Refunded',
-  partially_refunded: 'Part refunded',
-  failed: 'Payment failed — try again',
-}
+const paymentWords = (t: Words): Record<string, string> => ({
+  pending: t('Not paid yet'),
+  pending_offline: t('To pay when you collect it'),
+  partially_paid: t('Part paid'),
+  paid: t('Payment received'),
+  refunded: t('Refunded'),
+  partially_refunded: t('Part refunded'),
+  failed: t('Payment failed — try again'),
+})
 
-/** WEB-008 Order Tracking — Doc 12 §11.2 / Doc 09 WEB-008. */
+const orderWords = (t: Words): Record<string, string> => ({
+  pending: t('Waiting for the shop to accept'),
+  accepted: t('Accepted'),
+  preparing: t('Being prepared'),
+  ready: t('Ready'),
+  completed: t('Completed'),
+  cancelled: t('Cancelled'),
+  rejected: t('Declined'),
+})
+
+const jobWords = (t: Words): Record<string, string> => ({
+  received: t('Received'),
+  preparing: t('Being prepared'),
+  ready: t('Ready'),
+  out_for_delivery: t('Out for delivery'),
+  delivered: t('Delivered'),
+  failed: t('Could not be completed'),
+  cancelled: t('Cancelled'),
+})
+
+const modeWords = (t: Words): Record<string, string> => ({ pickup: t('Pickup'), delivery: t('Delivery'), shipping: t('Shipping') })
+
+/**
+ * WEB-008 Order Tracking — Doc 12 §11.2 / Doc 09 WEB-008. Reached from the
+ * order confirmation and from WhatsApp (?lang= carries the customer's
+ * language), in the business's own colours.
+ */
 export default async function TrackOrderPage({
   params,
   searchParams,
 }: {
   params: { slug: string; orderId: string }
-  searchParams?: { token?: string }
+  searchParams?: { token?: string; lang?: string }
 }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
+  const site = await fetchPublicWebsite(params.slug)
+  const lang = siteLang(site?.website.languages, searchParams?.lang, true)
+  const t = siteWords(lang)
   const token = searchParams?.token
+  const data = token ? await fetchTracking(params.orderId, token) : null
+  const name = site?.business.display_name
+
+  let body: React.ReactNode
   if (!token) {
-    return (
-      <TrackingShell slug={params.slug}>
-        <h1>Tracking unavailable</h1>
-        <p>This tracking link is missing a token.</p>
-      </TrackingShell>
+    body = <><h1 className="ls-title">{t('Tracking unavailable')}</h1><p className="ls-meta">{t('This tracking link is missing a token.')}</p></>
+  } else if (!data) {
+    body = <><h1 className="ls-title">{t('Invalid tracking link')}</h1><p className="ls-meta">{t('We could not find this order. The link may be incorrect.')}</p></>
+  } else if (data.state === 'expired') {
+    body = (
+      <>
+        <h1 className="ls-title">{t('Tracking link expired')}</h1>
+        <p className="ls-meta">{t('Order {number} can no longer be viewed with this link.', { number: data.order?.order_number ?? '' })}</p>
+      </>
     )
-  }
-  const data = await fetchTracking(params.orderId, token)
-  if (!data) {
-    return (
-      <TrackingShell slug={params.slug}>
-        <h1>Invalid tracking link</h1>
-        <p>We could not find this order. The link may be incorrect.</p>
-      </TrackingShell>
-    )
-  }
-  if (data.state === 'expired') {
-    return (
-      <TrackingShell slug={params.slug}>
-        <h1>Tracking link expired</h1>
-        <p>Order {data.order?.order_number} can no longer be viewed with this link.</p>
-      </TrackingShell>
-    )
-  }
-
-  return (
-    <TrackingShell slug={params.slug}>
-      <h1>Order {data.order.order_number}</h1>
-      <p style={{ opacity: 0.8 }}>Order status: {data.order.status}</p>
-      <p style={{ opacity: 0.8 }}>Payment: {PAYMENT_WORDS[data.order.payment_status] || 'Being checked'}</p>
-      {data.order.due_words ? <p style={{ opacity: 0.8 }}>Ready: {data.order.due_words}</p> : null}
-      {data.fulfilment ? (
-        <section style={{ marginTop: '1.25rem' }}>
-          <h2>Fulfilment</h2>
-          <p>Mode: {data.fulfilment.mode}</p>
-          <p>Status: {data.fulfilment.customer_status}</p>
-          {data.state === 'delayed' ? (
-            <p style={{ color: '#8a5a00' }}>Delivery appears delayed. Contact the Business if needed.</p>
-          ) : null}
-          {data.state === 'failed' ? (
-            <p style={{ color: '#b00020' }}>Fulfilment failed. Contact the Business for help.</p>
-          ) : null}
-          {data.state === 'cancelled' ? <p>This fulfilment was cancelled.</p> : null}
+  } else {
+    const job = data.fulfilment
+    body = (
+      <>
+        <h1 className="ls-title">{t('Order {number}', { number: data.order.order_number })}</h1>
+        <section className="ls-bill__card">
+          <dl className="ls-bill__totals">
+            <dt>{t('Order')}</dt>
+            <dd>{orderWords(t)[data.order.status] ?? data.order.status}</dd>
+            <dt>{t('Payment')}</dt>
+            <dd>{paymentWords(t)[data.order.payment_status] ?? t('Being checked')}</dd>
+            {data.order.due_words ? (<><dt>{t('Ready')}</dt><dd>{data.order.due_words}</dd></>) : null}
+            {job ? (
+              <>
+                <dt>{modeWords(t)[job.mode] ?? job.mode}</dt>
+                <dd>{jobWords(t)[job.customer_status] ?? job.customer_status}</dd>
+              </>
+            ) : null}
+          </dl>
+          {data.state === 'delayed' ? <p className="ls-meta">{t('Delivery appears delayed. Contact the business if needed.')}</p> : null}
+          {data.state === 'failed' ? <p className="ls-offer__error" role="alert">{t('This could not be completed. Contact the business for help.')}</p> : null}
+          {data.state === 'cancelled' ? <p className="ls-meta">{t('This was cancelled.')}</p> : null}
         </section>
-      ) : null}
-    </TrackingShell>
-  )
-}
+      </>
+    )
+  }
 
-function TrackingShell({ slug, children }: { slug: string; children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        fontFamily: 'Georgia, serif',
-        background: 'linear-gradient(165deg, #f4f7f2, #eef2f7)',
-        color: '#152028',
-        padding: '2rem 1.25rem',
-      }}
-    >
-      <div style={{ maxWidth: '36rem', margin: '0 auto' }}>
-        <Link href={`/${slug}`}>← Website</Link>
-        <div style={{ marginTop: '1rem' }}>{children}</div>
-      </div>
-    </div>
+    <SiteFrame site={site} lang={lang}>
+      <main className="ls-section">
+        <div className="ls-inner ls-checkout">
+          <p><Link href={`/${params.slug}`}>← {name ?? t('Website')}</Link></p>
+          {body}
+        </div>
+      </main>
+    </SiteFrame>
   )
 }

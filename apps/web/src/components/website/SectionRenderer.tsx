@@ -5,6 +5,7 @@ import { LiveItemsSection } from './LiveItemsSection'
 import { ProductShowcase } from './ProductShowcase'
 import { ReviewsSection } from './ReviewsSection'
 import { withPreviewToken } from './preview-links'
+import { siteWords, type SiteLang, type Words } from '@/lib/site-words'
 
 /**
  * Renders one platform website section.
@@ -30,15 +31,18 @@ export type SiteContact = { phone?: string; whatsapp?: string; email?: string }
  * URL (stored content never holds external URLs) and resolves here, from the
  * number the business published — or to nothing when there is none.
  */
-export function resolvePath(path: string, contact?: SiteContact, businessName?: string) {
+export function resolvePath(path: string, contact?: SiteContact, businessName?: string, t?: Words) {
   if (path === 'whatsapp:')
-    return contact?.whatsapp ? whatsappHref(contact.whatsapp, businessName) : ''
+    return contact?.whatsapp ? whatsappHref(contact.whatsapp, businessName, t) : ''
   return path
 }
 
-export function whatsappHref(number: string, businessName?: string) {
+/** The chat opens with a greeting in the visitor's language — which is also
+ *  how the business's WhatsApp knows to answer in it (P1-10E6). */
+export function whatsappHref(number: string, businessName?: string, t?: Words) {
   const digits = number.replace(/\D/g, '')
-  const text = businessName ? `?text=${encodeURIComponent(`Hi ${businessName}, `)}` : ''
+  const hello = t ? t('Hi {business}, ', { business: businessName || '' }) : `Hi ${businessName}, `
+  const text = businessName ? `?text=${encodeURIComponent(hello)}` : ''
   return `https://wa.me/${digits}${text}`
 }
 
@@ -64,12 +68,14 @@ function ContactActions({
   businessName,
   onMedia = false,
   primaryPath = '',
+  t,
 }: {
   contact?: SiteContact
   businessName?: string
   onMedia?: boolean
   /** The section's main button — its channel is not repeated beside it. */
   primaryPath?: string
+  t: Words
 }) {
   if (!contact?.phone && !contact?.whatsapp) return null
   const tone = onMedia ? 'ls-btn--ghost-onmedia' : 'ls-btn--outline'
@@ -79,13 +85,13 @@ function ContactActions({
     <>
       {showPhone ? (
         <a className={`ls-btn ${tone}`} href={`tel:${contact.phone}`}>
-          Call now
+          {t('Call now')}
         </a>
       ) : null}
       {showWhatsapp && contact.whatsapp ? (
         <a
           className={`ls-btn ${tone} ls-btn--whatsapp`}
-          href={whatsappHref(contact.whatsapp, businessName)}
+          href={whatsappHref(contact.whatsapp, businessName, t)}
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -236,6 +242,17 @@ type Section = {
   layout_variant?: string | null
   content: Record<string, unknown>
   assets?: Record<string, Asset>
+  /** Added by a module (website/capabilities.auto_sections): LOCAH's words, so translated. */
+  is_auto?: boolean
+}
+
+/** A section a module added carries LOCAH's words, not the owner's: those follow the visitor's language. */
+function autoWords(content: Record<string, unknown>, t: Words): Record<string, unknown> {
+  const out = { ...content }
+  for (const key of ['title', 'headline', 'cta_label', 'subtitle']) {
+    if (typeof out[key] === 'string') out[key] = t(out[key] as string)
+  }
+  return out
 }
 
 function str(v: unknown): string {
@@ -276,8 +293,10 @@ export function SectionRenderer({
   contact,
   businessName,
   previewToken,
+  lang = 'en',
 }: {
   section: Section
+  lang?: SiteLang
   businessSlug: string
   /** Position on the page — used only to alternate section grounds. */
   index?: number
@@ -289,7 +308,8 @@ export function SectionRenderer({
   businessName?: string
   previewToken?: string
 }) {
-  const c = section.content || {}
+  const t = siteWords(lang)
+  const c = section.is_auto ? autoWords(section.content || {}, t) : section.content || {}
   const v = str(section.layout_variant) || undefined
   const assets = section.assets || {}
   const image = assets.image_asset_id
@@ -313,7 +333,7 @@ export function SectionRenderer({
       const eyebrow = str(c.eyebrow)
       const sub = str(c.subheadline)
       const ctaLabel = str(c.cta_label)
-      const ctaPath = resolvePath(str(c.cta_url || c.cta_path), contact, businessName)
+      const ctaPath = resolvePath(str(c.cta_url || c.cta_path), contact, businessName, t)
       const onMedia = !split && Boolean(image)
       const actions =
         (ctaLabel && ctaPath) || contact?.phone || contact?.whatsapp ? (
@@ -328,6 +348,7 @@ export function SectionRenderer({
               />
             ) : null}
             <ContactActions
+              t={t}
               contact={contact}
               businessName={businessName}
               onMedia={onMedia || !split}
@@ -409,7 +430,7 @@ export function SectionRenderer({
                 <img src={image.url} alt={image.alt_text || title} loading="lazy" />
               </div>
               <div className="ls-story__copy">
-                <p className="ls-eyebrow">{str(c.eyebrow) || 'Our story'}</p>
+                <p className="ls-eyebrow">{str(c.eyebrow) || t('Our story')}</p>
                 <h2 className="ls-title">{title}</h2>
                 <p className="ls-about__body">{body}</p>
                 {c.quote ? (
@@ -428,7 +449,7 @@ export function SectionRenderer({
             className={`ls-section ls-about--text_only ${alt ? 'ls-section--alt' : ''}`}
           >
             <div className="ls-inner ls-inner--prose">
-              <Heading eyebrow="About" title={title} />
+              <Heading eyebrow={t('About')} title={title} />
               <p className="ls-about__body">{body}</p>
               {c.quote ? <blockquote className="ls-story__quote">{str(c.quote)}</blockquote> : null}
             </div>
@@ -445,7 +466,7 @@ export function SectionRenderer({
                 <img src={image.url} alt={image.alt_text || title} />
               </div>
               <div>
-                <Heading eyebrow="About" title={title} />
+                <Heading eyebrow={t('About')} title={title} />
                 <p className="ls-about__body" style={{ marginTop: '1rem' }}>
                   {body}
                 </p>
@@ -480,7 +501,7 @@ export function SectionRenderer({
     case 'cta_band': {
       const variant = v || 'centered'
       const ctaLabel = str(c.cta_label)
-      const ctaPath = resolvePath(str(c.cta_url || c.cta_path), contact, businessName)
+      const ctaPath = resolvePath(str(c.cta_url || c.cta_path), contact, businessName, t)
       // A band with nothing to press is a banner with no point.
       if (!(ctaLabel && ctaPath) && !contact?.phone && !contact?.whatsapp) return null
       return (
@@ -508,6 +529,7 @@ export function SectionRenderer({
                 />
               ) : null}
               <ContactActions
+                t={t}
                 contact={contact}
                 businessName={businessName}
                 onMedia
@@ -534,9 +556,9 @@ export function SectionRenderer({
           className={`ls-section ls-contact--${variant} ${alt ? 'ls-section--alt' : ''}`}
         >
           <div className="ls-inner">
-            <Heading eyebrow="Get in touch" title={str(c.title) || 'Visit us'} />
+            <Heading eyebrow={t('Get in touch')} title={str(c.title) || t('Visit us')} />
             <div className="ls-contact__actions">
-              <ContactActions contact={contact} businessName={businessName} />
+              <ContactActions t={t} contact={contact} businessName={businessName} />
               {findable(address) ? (
                 <a
                   className="ls-btn ls-btn--outline"
@@ -544,7 +566,7 @@ export function SectionRenderer({
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Get directions
+                  {t('Get directions')}
                 </a>
               ) : null}
             </div>
@@ -552,13 +574,13 @@ export function SectionRenderer({
               <ul className="ls-contact__list">
                 {address ? (
                   <li className="ls-contact__item">
-                    <span className="ls-contact__label">Address</span>
+                    <span className="ls-contact__label">{t('Address')}</span>
                     <span className="ls-contact__value">{address}</span>
                   </li>
                 ) : null}
                 {phone ? (
                   <li className="ls-contact__item">
-                    <span className="ls-contact__label">Phone</span>
+                    <span className="ls-contact__label">{t('Phone')}</span>
                     <span className="ls-contact__value">
                       <a href={`tel:${phone.replace(/\s+/g, '')}`}>{phone}</a>
                     </span>
@@ -566,7 +588,7 @@ export function SectionRenderer({
                 ) : null}
                 {email ? (
                   <li className="ls-contact__item">
-                    <span className="ls-contact__label">Email</span>
+                    <span className="ls-contact__label">{t('Email')}</span>
                     <span className="ls-contact__value">
                       <a href={`mailto:${email}`}>{email}</a>
                     </span>
@@ -574,7 +596,7 @@ export function SectionRenderer({
                 ) : null}
                 {hours ? (
                   <li className="ls-contact__item">
-                    <span className="ls-contact__label">Hours</span>
+                    <span className="ls-contact__label">{t('Hours')}</span>
                     <span className="ls-contact__value">{hours}</span>
                   </li>
                 ) : null}
@@ -582,7 +604,7 @@ export function SectionRenderer({
               {showMap ? (
                 <div className="ls-map">
                   <iframe
-                    title="Map"
+                    title={t('Map')}
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
                     src={`https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed`}
@@ -601,9 +623,9 @@ export function SectionRenderer({
       if (rows.length < 2) return null
       const variant = v || 'strip'
       return (
-        <section className={`ls-highlights ls-highlights--${variant}`} aria-label="At a glance">
+        <section className={`ls-highlights ls-highlights--${variant}`} aria-label={t('At a glance')}>
           <div className="ls-inner">
-            {c.title ? <Heading eyebrow="At a glance" title={str(c.title)} center /> : null}
+            {c.title ? <Heading eyebrow={t('At a glance')} title={str(c.title)} center /> : null}
             <dl className="ls-highlights__list">
               {rows.map((row, i) => (
                 <div key={i} className="ls-highlights__item">
@@ -622,7 +644,7 @@ export function SectionRenderer({
       const rows = items(c.items)
       if (rows.length === 0) return null
       const variant = v || 'cards'
-      const eyebrow = variant === 'steps' ? 'How it works' : 'What we do'
+      const eyebrow = variant === 'steps' ? t('How it works') : t('What we do')
       return (
         <section
           className={`ls-section ls-features ls-features--${variant} ${alt ? 'ls-section--alt' : ''}`}
@@ -793,7 +815,7 @@ export function SectionRenderer({
           <div className="ls-inner ls-inner--narrow">
             <EnquiryForm
               slug={businessSlug}
-              businessName={businessName || 'the business'}
+              businessName={businessName || t('the business')}
               purpose={capabilities?.request_quote ? 'quote_request' : 'enquiry'}
             />
           </div>
@@ -837,7 +859,7 @@ export function SectionRenderer({
           capabilities={capabilities}
           businessSlug={businessSlug}
           kind="offerings"
-          title={str(c.title) || 'What we offer'}
+          title={str(c.title) || t('What we offer')}
           subtitle={c.subtitle ? str(c.subtitle) : undefined}
           variant={v}
           maxItems={num(c.max_items)}
@@ -853,7 +875,7 @@ export function SectionRenderer({
           capabilities={capabilities}
           businessSlug={businessSlug}
           kind="menu"
-          title={str(c.title) || 'Menu'}
+          title={str(c.title) || t('Menu')}
           variant={v}
           showPrices={c.show_prices === undefined ? true : bool(c.show_prices)}
           offeringTypes={c.category_filter ? [str(c.category_filter)] : undefined}
@@ -867,7 +889,7 @@ export function SectionRenderer({
           capabilities={capabilities}
           businessSlug={businessSlug}
           kind="plans"
-          title={str(c.title) || 'Membership plans'}
+          title={str(c.title) || t('Membership plans')}
           subtitle={c.subtitle ? str(c.subtitle) : undefined}
           variant={v}
           altGround={alt}
@@ -881,7 +903,7 @@ export function SectionRenderer({
           capabilities={capabilities}
           businessSlug={businessSlug}
           kind="rooms"
-          title={str(c.title) || 'Rooms & suites'}
+          title={str(c.title) || t('Rooms & suites')}
           subtitle={c.subtitle ? str(c.subtitle) : undefined}
           variant={v}
           sectionClass={`ls-rooms--${v || 'list'}`}
@@ -896,7 +918,7 @@ export function SectionRenderer({
           capabilities={capabilities}
           businessSlug={businessSlug}
           kind="classes"
-          title={str(c.title) || 'Classes'}
+          title={str(c.title) || t('Classes')}
           variant={v}
           maxItems={num(c.max_items)}
           offeringTypes={strArray(c.offering_types)}
@@ -905,7 +927,7 @@ export function SectionRenderer({
       )
 
     case 'reviews_section':
-      return <ReviewsSection slug={businessSlug} title={str(c.title) || 'What our customers say'} subtitle={str(c.subtitle) || undefined} alt={alt} />
+      return <ReviewsSection slug={businessSlug} lang={lang} title={str(c.title) || t('What our customers say')} subtitle={str(c.subtitle) || undefined} alt={alt} />
 
     /* --------------------------------------------------- location_list */
     case 'location_list': {
@@ -918,14 +940,14 @@ export function SectionRenderer({
         <section className={`ls-section ${alt ? 'ls-section--alt' : ''}`}>
           <div className="ls-inner">
             <div className="ls-head">
-              <h2 className="ls-title">{str(c.title) || 'Where to find us'}</h2>
+              <h2 className="ls-title">{str(c.title) || t('Where to find us')}</h2>
             </div>
             <div className={`ls-locs--${variant}`}>
               {locations.map((loc, i) => (
                 <div key={str(loc.id) || i} className="ls-loc">
                   <h3 className="ls-loc__name">
                     {str(loc.name)}
-                    {bool(loc.is_primary) ? <span className="ls-loc__primary">Main</span> : null}
+                    {bool(loc.is_primary) ? <span className="ls-loc__primary">{t('Main')}</span> : null}
                   </h3>
                   {loc.address ? <p className="ls-loc__addr">{str(loc.address)}</p> : null}
                   {bool(c.show_hours) && loc.hours_summary ? (

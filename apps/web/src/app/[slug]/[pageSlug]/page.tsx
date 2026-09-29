@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { RESERVED_SLUGS } from '@/lib/reserved-slugs'
 import { fetchPublicWebsite, websiteMetadata } from '@/lib/public-website'
 import { WebsitePageView } from '@/components/website/WebsitePageView'
+import { siteLang } from '@/lib/site-lang'
 
 export const revalidate = 60
 
@@ -11,7 +12,7 @@ export async function generateMetadata({
   searchParams,
 }: {
   params: { slug: string; pageSlug: string }
-  searchParams?: { preview_token?: string }
+  searchParams?: { preview_token?: string; lang?: string }
 }): Promise<Metadata> {
   if (RESERVED_SLUGS.has(params.slug)) return {}
   // See the home route: a preview of an unlisted draft needs the token here
@@ -26,7 +27,7 @@ export default async function BusinessWebsitePage({
   searchParams,
 }: {
   params: { slug: string; pageSlug: string }
-  searchParams?: { preview_token?: string }
+  searchParams?: { preview_token?: string; lang?: string }
 }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
   const data = await fetchPublicWebsite(params.slug, params.pageSlug, searchParams?.preview_token)
@@ -35,6 +36,7 @@ export default async function BusinessWebsitePage({
     <WebsitePageView
       data={data}
       previewToken={data.is_preview ? searchParams?.preview_token : undefined}
+      lang={siteLang(data.website.languages, searchParams?.lang)}
     />
   )
 }

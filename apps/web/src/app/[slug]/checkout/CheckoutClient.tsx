@@ -10,6 +10,8 @@ import {
   priceCart,
   type PricedCart,
 } from '@/lib/checkout-api'
+import { LANG_LOCALE, type Words } from '@/lib/site-words'
+import { useSiteLang, useWords } from '@/components/website/SiteWords'
 
 type Options = {
   fulfilment_modes: string[]
@@ -66,14 +68,15 @@ const rupees = (v: number | null | undefined) =>
     ? ''
     : new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: Number.isInteger(v) ? 0 : 2 }).format(v)
 
-const hour = (hhmm: string) => {
+const hour = (hhmm: string, locale = 'en-IN') => {
   const [h, m] = hhmm.split(':').map(Number)
+  if (locale !== 'en-IN') return new Date(2000, 0, 1, h, m).toLocaleTimeString(locale, { hour: 'numeric', minute: m ? '2-digit' : undefined })
   const suffix = h >= 12 ? 'pm' : 'am'
   const h12 = h % 12 === 0 ? 12 : h % 12
   return m ? `${h12}:${String(m).padStart(2, '0')} ${suffix}` : `${h12} ${suffix}`
 }
 
-const MODE_WORDS: Record<string, string> = { pickup: 'Pickup', delivery: 'Delivery', shipping: 'Shipping' }
+const modeWords = (t: Words): Record<string, string> => ({ pickup: t('Pickup'), delivery: t('Delivery'), shipping: t('Shipping') })
 
 type Confirmation = {
   order_number: string
@@ -109,6 +112,11 @@ export default function CheckoutClient({
   reorder?: CartItem[] | null
   unavailable?: string[]
 }) {
+  const t = useWords()
+  const locale = LANG_LOCALE[useSiteLang()]
+  /** A day as the visitor reads it: the server's English label, or the date in their language. */
+  const dayLabel = (d: { date: string; label: string }) =>
+    locale === 'en-IN' ? d.label : new Date(`${d.date}T00:00:00`).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
   const [items, setItems] = useState<CartItem[]>([])
   const [loaded, setLoaded] = useState(false)
   const [mode, setMode] = useState(options.fulfilment_modes[0] || '')
@@ -169,7 +177,7 @@ export default function CheckoutClient({
     }
     let live = true
     setPricing(true)
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       priceCart(slug, { items: cartBody, fulfilment_mode: mode || undefined, delivery_address: address, due })
         .then((p) => {
           if (!live) return
@@ -183,12 +191,12 @@ export default function CheckoutClient({
             }
           }
         })
-        .catch((e: unknown) => live && setPriceError(e instanceof Error ? e.message : 'We could not price your basket.'))
+        .catch((e: unknown) => live && setPriceError(e instanceof Error ? e.message : t('We could not price your basket.')))
         .finally(() => live && setPricing(false))
     }, 250)
     return () => {
       live = false
-      clearTimeout(t)
+      clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, cartBody, mode, city, line1, postal, stateCode, dueDate, dueTime])
@@ -211,10 +219,10 @@ export default function CheckoutClient({
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!items.length) return setError('Your basket is empty.')
-    if (!mode) return setError('This business is not taking pickup or delivery orders right now.')
-    if (mode === 'delivery' && delivery && !delivery.serviceable) return setError('We do not deliver to this address yet.')
-    if (pre?.needed && !dueDate) return setError('Choose the day you need it.')
+    if (!items.length) return setError(t('Your basket is empty.'))
+    if (!mode) return setError(t('This business is not taking pickup or delivery orders right now.'))
+    if (mode === 'delivery' && delivery && !delivery.serviceable) return setError(t('We do not deliver to this address yet.'))
+    if (pre?.needed && !dueDate) return setError(t('Choose the day you need it.'))
     setSubmitting(true)
     try {
       const data = await placeCheckoutOrder(
@@ -238,14 +246,14 @@ export default function CheckoutClient({
         order_number: data.confirmation.order_number,
         tracking: data.tracking,
         state: data.state,
-        due_words: pre?.offered && dueDate && day ? `${day.label}, ${hour(dueTime)}` : null,
+        due_words: pre?.offered && dueDate && day ? `${dayLabel(day)}, ${hour(dueTime, locale)}` : null,
         advance: data.advance ? { amount: data.advance.amount, path: data.advance.path } : null,
         checkout: payment?.checkout ?? null,
         paymentError: payment?.failure_reason ?? null,
       })
       if (payment?.checkout) openRazorpayCheckout(payment.checkout, options.business.display_name)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'That did not go through. Try again.')
+      setError(err instanceof Error ? err.message : t('That did not go through. Try again.'))
     } finally {
       setSubmitting(false)
     }
@@ -257,35 +265,35 @@ export default function CheckoutClient({
         <div className="ls-inner ls-checkout">
           <header className="ls-bill__head">
             <p className="ls-meta">{options.business.display_name}</p>
-            <h1 className="ls-title">Order confirmed</h1>
-            <p className="ls-meta">Order {confirmation.order_number}{confirmation.due_words ? ` · ready ${confirmation.due_words}` : ''}</p>
+            <h1 className="ls-title">{t('Order confirmed')}</h1>
+            <p className="ls-meta">{t('Order {number}', { number: confirmation.order_number })}{confirmation.due_words ? ` · ${t('ready {when}', { when: confirmation.due_words })}` : ''}</p>
           </header>
           {confirmation.advance ? (
             <div className="ls-bill__card">
               <p style={{ margin: 0 }}>
-                Please pay the <strong>{rupees(confirmation.advance.amount)}</strong> advance to confirm your order. The rest is paid when you collect it.
+                {t('Please pay the {amount} advance to confirm your order. The rest is paid when you collect it.', { amount: rupees(confirmation.advance.amount) })}
               </p>
               <div className="ls-bill__actions">
-                <Link className="ls-btn" href={confirmation.advance.path}>Pay {rupees(confirmation.advance.amount)} advance</Link>
+                <Link className="ls-btn" href={confirmation.advance.path}>{t('Pay {amount} advance', { amount: rupees(confirmation.advance.amount) })}</Link>
               </div>
             </div>
           ) : (
             <p className="ls-meta">
               {confirmation.checkout && !['succeeded', 'paid'].includes(confirmation.state)
-                ? 'Your order is held. Finish the payment to confirm it.'
+                ? t('Your order is held. Finish the payment to confirm it.')
                 : confirmation.state === 'paid' || confirmation.state === 'succeeded'
-                  ? 'Payment received.'
-                  : confirmation.paymentError || (mode === 'delivery' ? 'Pay when it is delivered.' : 'Pay when you collect your order.')}
+                  ? t('Payment received.')
+                  : confirmation.paymentError || (mode === 'delivery' ? t('Pay when it is delivered.') : t('Pay when you collect your order.'))}
             </p>
           )}
           {confirmation.checkout ? (
             <button type="button" className="ls-btn" onClick={() => openRazorpayCheckout(confirmation.checkout!, options.business.display_name)}>
-              Pay now
+              {t('Pay now')}
             </button>
           ) : null}
           <div className="ls-bill__actions">
-            <Link className="ls-btn ls-btn--outline" href={confirmation.tracking.href}>Track your order</Link>
-            <Link className="ls-btn ls-btn--outline" href={`/${slug}`}>Back to {options.business.display_name}</Link>
+            <Link className="ls-btn ls-btn--outline" href={confirmation.tracking.href}>{t('Track your order')}</Link>
+            <Link className="ls-btn ls-btn--outline" href={`/${slug}`}>{t('Back to {business}', { business: options.business.display_name })}</Link>
           </div>
         </div>
       </main>
@@ -298,19 +306,19 @@ export default function CheckoutClient({
         <p>
           <Link href={`/${slug}`}>← {options.business.display_name}</Link>
         </p>
-        <h1 className="ls-title">Your order</h1>
-        {reorder && reorder.length ? <p className="ls-meta" role="status">Your earlier order, at today&apos;s prices. Change anything before you place it.</p> : null}
-        {unavailable && unavailable.length ? <p className="ls-meta" role="status">No longer sold: {unavailable.join(', ')}.</p> : null}
+        <h1 className="ls-title">{t('Your order')}</h1>
+        {reorder && reorder.length ? <p className="ls-meta" role="status">{t('Your earlier order, at today’s prices. Change anything before you place it.')}</p> : null}
+        {unavailable && unavailable.length ? <p className="ls-meta" role="status">{t('No longer sold: {items}.', { items: unavailable.join(', ') })}</p> : null}
 
         {loaded && items.length === 0 ? (
           <section className="ls-bill__card">
-            <h2 className="ls-checkout__h">Your basket is empty</h2>
-            <Link className="ls-btn" href={`/${slug}`}>See what {options.business.display_name} sells</Link>
+            <h2 className="ls-checkout__h">{t('Your basket is empty')}</h2>
+            <Link className="ls-btn" href={`/${slug}`}>{t('See what {business} sells', { business: options.business.display_name })}</Link>
           </section>
         ) : (
           <form onSubmit={onSubmit} className="ls-checkout__form">
             <section className="ls-bill__card" aria-labelledby="basket-h">
-              <h2 id="basket-h" className="ls-checkout__h">Basket</h2>
+              <h2 id="basket-h" className="ls-checkout__h">{t('Basket')}</h2>
               <ul className="ls-bill__lines">
                 {items.map((item, idx) => {
                   const line = priced?.lines[idx]
@@ -324,7 +332,7 @@ export default function CheckoutClient({
                         <strong>{line ? rupees(line.line_total) : '…'}</strong>
                         <button type="button" className="ls-checkout__remove"
                           onClick={() => persist(items.filter((i) => (i.key ?? i.offering_id) !== (item.key ?? item.offering_id)))}>
-                          Remove
+                          {t('Remove')}
                         </button>
                       </span>
                     </li>
@@ -333,40 +341,40 @@ export default function CheckoutClient({
               </ul>
               {priced?.problems.length ? (
                 <p className="ls-offer__error" role="alert">
-                  {priced.problems.map((p) => `${p.title}: ${p.message}`).join(' · ')} — change the quantity or remove it.
+                  {priced.problems.map((p) => `${p.title}: ${p.available ? t('only {n} left', { n: p.available }) : t('out of stock')}`).join(' · ')} — {t('change the quantity or remove it.')}
                 </p>
               ) : null}
             </section>
 
             <section className="ls-bill__card" aria-labelledby="how-h">
-              <h2 id="how-h" className="ls-checkout__h">How you get it</h2>
+              <h2 id="how-h" className="ls-checkout__h">{t('How you get it')}</h2>
               {options.fulfilment_modes.length === 0 ? (
-                <p className="ls-meta">This business is not taking pickup or delivery orders right now.</p>
+                <p className="ls-meta">{t('This business is not taking pickup or delivery orders right now.')}</p>
               ) : (
-                <div className="ls-choice" role="radiogroup" aria-label="Pickup or delivery">
+                <div className="ls-choice" role="radiogroup" aria-label={t('Pickup or delivery')}>
                   {options.fulfilment_modes.map((m) => (
                     <button key={m} type="button" role="radio" aria-checked={mode === m} className={`ls-chip${mode === m ? ' is-on' : ''}`}
                       onClick={() => setMode(m)}>
-                      {MODE_WORDS[m] || m}
+                      {modeWords(t)[m] || m}
                     </button>
                   ))}
                 </div>
               )}
               {mode === 'delivery' ? (
                 <div className="ls-checkout__fields">
-                  <label><span>Address</span><input name="line1" value={line1} onChange={(e) => setLine1(e.target.value)} required autoComplete="street-address" /></label>
-                  <label><span>City</span><input name="city" value={city} onChange={(e) => setCity(e.target.value)} required autoComplete="address-level2" /></label>
-                  <label><span>PIN code</span><input name="postal_code" value={postal} onChange={(e) => setPostal(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" maxLength={6} autoComplete="postal-code" /></label>
+                  <label><span>{t('Address')}</span><input name="line1" value={line1} onChange={(e) => setLine1(e.target.value)} required autoComplete="street-address" /></label>
+                  <label><span>{t('City')}</span><input name="city" value={city} onChange={(e) => setCity(e.target.value)} required autoComplete="address-level2" /></label>
+                  <label><span>{t('PIN code')}</span><input name="postal_code" value={postal} onChange={(e) => setPostal(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" maxLength={6} autoComplete="postal-code" /></label>
                   {states.length ? (
-                    <label><span>State</span>
+                    <label><span>{t('State')}</span>
                       <select value={stateCode} onChange={(e) => setStateCode(e.target.value)}>
-                        <option value="">Choose</option>
+                        <option value="">{t('Choose')}</option>
                         {states.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
                       </select>
                     </label>
                   ) : null}
                   {delivery ? (
-                    <p className="ls-meta">{delivery.serviceable ? `Delivery charge ${rupees(delivery.charge ?? 0)}` : 'We do not deliver to this address yet.'}</p>
+                    <p className="ls-meta">{delivery.serviceable ? t('Delivery charge {amount}', { amount: rupees(delivery.charge ?? 0) }) : t('We do not deliver to this address yet.')}</p>
                   ) : null}
                 </div>
               ) : null}
@@ -374,30 +382,30 @@ export default function CheckoutClient({
 
             {pre?.offered ? (
               <section className="ls-bill__card" aria-labelledby="when-h">
-                <h2 id="when-h" className="ls-checkout__h">{pre.needed ? 'When do you need it?' : 'Want it on a particular day?'}</h2>
-                {pre.earliest_words ? <p className="ls-meta">Made to order — the earliest is {pre.earliest_words}.</p> : null}
+                <h2 id="when-h" className="ls-checkout__h">{pre.needed ? t('When do you need it?') : t('Want it on a particular day?')}</h2>
+                {pre.earliest_words ? <p className="ls-meta">{t('Made to order — the earliest is {when}.', { when: pre.earliest_words })}</p> : null}
                 {pre.dates.filter((d) => !d.full).length === 0 ? (
-                  <p className="ls-offer__error" role="alert">No day is open for these items right now. Call the business to ask.</p>
+                  <p className="ls-offer__error" role="alert">{t('No day is open for these items right now. Call the business to ask.')}</p>
                 ) : (
                   <div className="ls-checkout__fields">
                     <label>
-                      <span>Day</span>
+                      <span>{t('Day')}</span>
                       <select value={dueDate} onChange={(e) => {
                         const d = pre.dates.find((x) => x.date === e.target.value)
                         setDueDate(e.target.value)
                         setDueTime(d?.times[0] ?? '')
                       }}>
-                        {!pre.needed ? <option value="">As soon as possible</option> : null}
+                        {!pre.needed ? <option value="">{t('As soon as possible')}</option> : null}
                         {pre.dates.map((d) => (
-                          <option key={d.date} value={d.date} disabled={d.full}>{d.label}{d.full ? ' — full' : ''}</option>
+                          <option key={d.date} value={d.date} disabled={d.full}>{dayLabel(d)}{d.full ? ` — ${t('full')}` : ''}</option>
                         ))}
                       </select>
                     </label>
                     {day ? (
                       <label>
-                        <span>Ready at</span>
+                        <span>{t('Ready at')}</span>
                         <select value={dueTime} onChange={(e) => setDueTime(e.target.value)}>
-                          {day.times.map((t) => <option key={t} value={t}>{hour(t)}</option>)}
+                          {day.times.map((x) => <option key={x} value={x}>{hour(x, locale)}</option>)}
                         </select>
                       </label>
                     ) : null}
@@ -405,76 +413,77 @@ export default function CheckoutClient({
                 )}
                 {priced?.due_error ? <p className="ls-offer__error" role="alert">{priced.due_error}</p> : null}
                 {pre.cancel_hours !== null && pre.cancel_hours !== undefined ? (
-                  <p className="ls-meta">You can cancel up to {pre.cancel_hours} hours before it is due.</p>
+                  <p className="ls-meta">{t('You can cancel up to {hours} hours before it is due.', { hours: pre.cancel_hours })}</p>
                 ) : null}
               </section>
             ) : null}
 
             <section className="ls-bill__card" aria-labelledby="pay-h">
-              <h2 id="pay-h" className="ls-checkout__h">Paying</h2>
-              <div className="ls-choice" role="radiogroup" aria-label="How you pay">
+              <h2 id="pay-h" className="ls-checkout__h">{t('Paying')}</h2>
+              <div className="ls-choice" role="radiogroup" aria-label={t('How you pay')}>
                 {options.payment_methods.map((m) => (
                   <button key={m} type="button" role="radio" aria-checked={paymentMethod === m}
                     className={`ls-chip${paymentMethod === m ? ' is-on' : ''}`} onClick={() => setPaymentMethod(m)}>
-                    {m === 'cod' ? (mode === 'delivery' ? 'Cash on delivery' : 'Pay at pickup') : 'Pay online'}
+                    {m === 'cod' ? (mode === 'delivery' ? t('Cash on delivery') : t('Pay at pickup')) : t('Pay online')}
                   </button>
                 ))}
               </div>
               {payingNow > 0 ? (
-                <p className="ls-meta">This order asks for a {rupees(payingNow)} advance — you pay it by UPI right after placing the order.</p>
+                <p className="ls-meta">{t('This order asks for a {amount} advance — you pay it by UPI right after placing the order.', { amount: rupees(payingNow) })}</p>
               ) : null}
               {mode === 'delivery' && paymentMethod === 'cod' && cod && !cod.on_delivery ? (
-                <p className="ls-meta">Cash on delivery is not available. Choose pickup to pay when you collect.</p>
+                <p className="ls-meta">{t('Cash on delivery is not available. Choose pickup to pay when you collect.')}</p>
               ) : null}
               {mode === 'delivery' && paymentMethod === 'cod' && cod?.on_delivery && cod.first_order_cap !== null ? (
-                <p className="ls-meta">For a first order, cash on delivery is up to {rupees(cod.first_order_cap)}.</p>
+                <p className="ls-meta">{t('For a first order, cash on delivery is up to {amount}.', { amount: rupees(cod.first_order_cap) })}</p>
               ) : null}
             </section>
 
             <section className="ls-bill__card" aria-labelledby="you-h">
-              <h2 id="you-h" className="ls-checkout__h">Your details</h2>
+              <h2 id="you-h" className="ls-checkout__h">{t('Your details')}</h2>
               {customer ? (
                 <p className="ls-meta">
-                  Ordering as <strong>{customer.name || customer.email}</strong> · {customer.email}. It will be in{' '}
-                  <Link href={`/${slug}/account`}>your account</Link>.
+                  {t('Ordering as {who}.', { who: `${customer.name || customer.email} · ${customer.email}` })}{' '}
+                  <Link href={`/${slug}/account`}>{t('It will be in your account.')}</Link>
                 </p>
               ) : (
                 <p className="ls-meta">
-                  <a href={`/login?destination=${encodeURIComponent(`/${slug}/checkout`)}`}>Sign in</a> to keep this order with your others, or order as a guest.
+                  <a href={`/login?destination=${encodeURIComponent(`/${slug}/checkout`)}`}>{t('Sign in')}</a> ·{' '}
+                  {t('Signing in keeps this order with your others. Or order as a guest.')}
                 </p>
               )}
               <div className="ls-checkout__fields">
-                <label><span>Name</span><input name="name" aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></label>
+                <label><span>{t('Name')}</span><input name="name" aria-label={t('Name')} value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></label>
                 {customer ? null : (
-                  <label><span>Email</span><input name="email" type="email" aria-label="Email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></label>
+                  <label><span>{t('Email')}</span><input name="email" type="email" aria-label={t('Email')} value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></label>
                 )}
-                <label><span>Phone (for updates on WhatsApp)</span><input name="phone" aria-label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" /></label>
+                <label><span>{t('Phone (for updates on WhatsApp)')}</span><input name="phone" aria-label={t('Phone')} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" /></label>
               </div>
             </section>
 
-            <section className="ls-bill__card" aria-label="Total">
+            <section className="ls-bill__card" aria-label={t('Total')}>
               <dl className="ls-bill__totals">
-                <dt>Items</dt>
+                <dt>{t('Items')}</dt>
                 <dd>{priced ? rupees(priced.items_total) : '…'}</dd>
                 {priced && priced.tax_amount > 0 ? (
                   <>
-                    <dt>GST{priced.tax_included ? ' (included)' : ''}</dt>
+                    <dt>{priced.tax_included ? t('GST (included)') : t('GST')}</dt>
                     <dd>{rupees(priced.tax_amount)}</dd>
                   </>
                 ) : null}
                 {delivery?.serviceable ? (
                   <>
-                    <dt>Delivery</dt>
+                    <dt>{t('Delivery')}</dt>
                     <dd>{rupees(delivery.charge ?? 0)}</dd>
                   </>
                 ) : null}
-                <dt className="is-total">Total</dt>
+                <dt className="is-total">{t('Total')}</dt>
                 <dd className="is-total">{priced ? rupees(priced.total) : '…'}</dd>
                 {payingNow > 0 && priced ? (
                   <>
-                    <dt>Advance now</dt>
+                    <dt>{t('Advance now')}</dt>
                     <dd>{rupees(payingNow)}</dd>
-                    <dt>Balance at {mode === 'delivery' ? 'delivery' : 'pickup'}</dt>
+                    <dt>{mode === 'delivery' ? t('Balance at delivery') : t('Balance at pickup')}</dt>
                     <dd>{rupees(Math.max(0, priced.total - payingNow))}</dd>
                   </>
                 ) : null}
@@ -483,12 +492,12 @@ export default function CheckoutClient({
               {error ? <p className="ls-offer__error" role="alert">{error}</p> : null}
               <button type="submit" className="ls-btn ls-checkout__place" disabled={submitting || pricing || !mode || !priced}>
                 {submitting
-                  ? 'Placing your order…'
+                  ? t('Placing your order…')
                   : paymentMethod === 'online'
-                    ? 'Place order and pay'
+                    ? t('Place order and pay')
                     : payingNow > 0
-                      ? `Place order · pay ${rupees(payingNow)} advance`
-                      : 'Place order'}
+                      ? t('Place order · pay {amount} advance', { amount: rupees(payingNow) })
+                      : t('Place order')}
               </button>
             </section>
           </form>

@@ -16,7 +16,8 @@ export type PublicWebsitePayload = {
   /** The business's connected WhatsApp number, when a WhatsApp journey
    *  (order, book, ask) can run right now: "menu" is already typed. */
   whatsapp?: { href: string; label: string; journeys: string[] } | null
-  website: { status: string }
+  /** languages: the site's own words, first shown first (P1-10E6). */
+  website: { status: string; languages?: string[] }
   page: {
     title: string
     slug: string

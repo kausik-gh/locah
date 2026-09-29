@@ -1,6 +1,10 @@
 /* Pure helpers shared by the offering card (client) and server-rendered
    tenant pages such as the enquiry page. No hooks here. */
 
+import { siteWords, type Words } from '@/lib/site-words'
+
+const english = siteWords('en')
+
 export type Choice = { label: string; price_delta: string }
 export type OptionGroup = { name: string; required: boolean; max: number; choices: Choice[]; text?: boolean; max_length?: number }
 /** Ordering ahead (P1-10D2): whether a day is needed, the earliest, the advance. */
@@ -46,21 +50,21 @@ export function money(amount?: number | null, currency?: string) {
   }
 }
 
-export function priceLabel(o: PublicOffering): string | null {
+export function priceLabel(o: PublicOffering, t: Words = english): string | null {
   if (o.offering_type === 'cause') return null
   if (o.packs?.length) {
     const first = o.packs.find((p) => p.price_amount !== null)
     return first ? `${money(first.price_amount, o.currency)} / ${first.label}` : null
   }
-  if (o.price_type === 'enquiry') return 'Price on request'
-  if (o.price_type === 'free') return 'Free'
+  if (o.price_type === 'enquiry') return t('Price on request')
+  if (o.price_type === 'free') return t('Free')
   const p = money(o.price_amount, o.currency)
   if (!p) return null
-  return o.price_type === 'starting_from' ? `From ${p}` : p
+  return o.price_type === 'starting_from' ? t('From {price}', { price: p }) : p
 }
 
 /** A kind's own details, labelled in words, e.g. "Fuel: Petrol". */
-export function Specs({ o, skip = [] }: { o: PublicOffering; skip?: string[] }) {
+export function Specs({ o, skip = [], t = english }: { o: PublicOffering; skip?: string[]; t?: Words }) {
   // The kind's own field order (labels arrive in it); the stored attributes
   // come back in the database's key order.
   const attrs = o.attributes ?? {}
@@ -73,11 +77,11 @@ export function Specs({ o, skip = [] }: { o: PublicOffering; skip?: string[] }) 
     <dl className="ls-specs">
       {rows.map(([k, v]) => (
         <div key={k} className="ls-specs__row">
-          <dt>{o.labels?.[k] ?? k}</dt>
+          <dt>{t(o.labels?.[k] ?? k)}</dt>
           <dd>
             {Array.isArray(v) ? (
               <ul>{v.map((x) => <li key={String(x)}>{String(x)}</li>)}</ul>
-            ) : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : `${String(v)}${o.units?.[k] ? ` ${o.units[k]}` : ''}`}
+            ) : typeof v === 'boolean' ? (v ? t('Yes') : t('No')) : `${String(v)}${o.units?.[k] ? ` ${t(o.units[k])}` : ''}`}
           </dd>
         </div>
       ))}

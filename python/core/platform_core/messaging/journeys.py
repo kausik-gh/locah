@@ -113,6 +113,12 @@ class Ctx:
         said: str = tr(self.lang, text, **params)
         return said
 
+    def link(self, url: str) -> str:
+        """A tracking, bill, payment or statement link that opens in the customer's language (P1-10E6)."""
+        if self.lang == "en":
+            return url
+        return f"{url}{'&' if '?' in url else '?'}lang={self.lang}"
+
     @property
     def j(self) -> dict[str, Any]:
         return dict(self.conv.journey or {})
@@ -897,10 +903,10 @@ async def order_place(ctx: Ctx, arg: str) -> bool:
              modes=None, last_address=None, pay=None, cat=None, due=None, last_order=order["order_number"])
     await ctx.say(ctx.tr("Order {number} placed for {amount}. {business} will confirm it here. Follow it: {link}",
                          number=order["order_number"], amount=_inr(order["total_amount"]),
-                         business=ctx.business.display_name, link=track))
+                         business=ctx.business.display_name, link=ctx.link(track)))
     if result.get("advance"):
         await ctx.say(ctx.tr("Please pay the {amount} advance here: {link}", amount=_inr(result["advance"]["amount"]),
-                             link=result["advance"]["url"]))
+                             link=ctx.link(result["advance"]["url"])))
     return True
 
 
@@ -1167,7 +1173,7 @@ async def dues(ctx: Ctx, arg: str) -> bool:
     if acct is not None and Decimal(str(acct.balance)) > 0 and "ledger" in ctx.live:
         share = await LedgerService.share(ctx.session, ctx.business.id, acct.id)
         lines.append(ctx.tr("Your account: {amount} due. Details and pay: {link}", amount=_inr(acct.balance),
-                            link=business_site_url(ctx.business.slug, "/khata/" + share["token"])))
+                            link=ctx.link(business_site_url(ctx.business.slug, "/khata/" + share["token"]))))
     if "invoicing" in ctx.live:
         bills = list((await ctx.session.execute(select(InvoicingDocument).where(
             InvoicingDocument.business_id == ctx.business.id, InvoicingDocument.customer_contact_id == ctx.contact.id,
@@ -1179,7 +1185,8 @@ async def dues(ctx: Ctx, arg: str) -> bool:
             view = await InvoiceService._money_view(ctx.session, b)
             if view["outstanding"] > 0:
                 lines.append(ctx.tr("Bill {number}: {amount} — {link}", number=b.number, amount=_inr(view["outstanding"]),
-                                    link=business_site_url(ctx.business.slug, "/bill/" + share_token(ctx.business.id, b.id))))
+                                    link=ctx.link(business_site_url(ctx.business.slug,
+                                                                    "/bill/" + share_token(ctx.business.id, b.id)))))
     await ctx.say("\n".join(lines) if lines else ctx.tr("Nothing is due. Thank you!"))
     return True
 
@@ -1195,7 +1202,7 @@ async def track(ctx: Ctx, arg: str) -> bool:
     out = []
     for o in orders[:3]:
         job = (await ctx.session.execute(select(FulfilmentJob).where(FulfilmentJob.order_id == o.id))).scalars().first()
-        link = business_site_url(ctx.business.slug, f"/track/{o.id}?token={job.tracking_token}") if job else None
+        link = ctx.link(business_site_url(ctx.business.slug, f"/track/{o.id}?token={job.tracking_token}")) if job else None
         out.append(f"{o.order_number}: {_status(ctx, o.status)}" + (f" — {link}" if link else ""))
     await ctx.say("\n".join(out))
     return True

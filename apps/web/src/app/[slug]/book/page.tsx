@@ -4,13 +4,14 @@ import { RESERVED_SLUGS } from '@/lib/reserved-slugs'
 import { fetchBookingOptions } from '@/lib/booking-api'
 import { fetchPublicWebsite } from '@/lib/public-website'
 import { getAccessToken } from '@/lib/supabase/access-token'
-import { siteThemeVars } from '@/components/website/WebsitePageView'
+import { SiteFrame } from '@/components/website/SiteFrame'
+import { siteLang } from '@/lib/site-lang'
 import BookClient from './BookClient'
 
 export const dynamic = 'force-dynamic'
 
 /** WEB-009 Booking Flow — Doc 11 §4.1 / Doc 09 WEB-009. */
-export default async function BookPage({ params }: { params: { slug: string } }) {
+export default async function BookPage({ params, searchParams }: { params: { slug: string }; searchParams?: { lang?: string } }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
   let options
   try {
@@ -20,7 +21,6 @@ export default async function BookPage({ params }: { params: { slug: string } })
   }
   // The business's own colours (never a stock look), and the signed-in customer, if any.
   const site = await fetchPublicWebsite(params.slug)
-  const theme = site ? siteThemeVars(site) : { styleVars: {}, paletteMode: 'light' }
   const token = await getAccessToken()
   let customer: { name: string; email: string } | null = null
   if (token) {
@@ -31,8 +31,8 @@ export default async function BookPage({ params }: { params: { slug: string } })
     }
   }
   return (
-    <div data-locah-site="" data-palette={theme.paletteMode} style={{ ...theme.styleVars, minHeight: '100vh' }}>
+    <SiteFrame site={site} lang={siteLang(site?.website.languages, searchParams?.lang)}>
       <BookClient slug={params.slug} options={options} customer={customer} authToken={customer ? token : null} />
-    </div>
+    </SiteFrame>
   )
 }
