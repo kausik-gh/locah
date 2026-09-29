@@ -22,7 +22,7 @@ export default async function DocumentRequestPage({
   if (!view) notFound()
   const site = await fetchPublicWebsite(params.slug)
   const lang = siteLang(site?.website.languages, searchParams?.lang, true)
-  const businessName = site?.business.display_name || 'This business'
+  const businessName = site?.business.display_name || view.business_name || 'This business'
   return (
     <SiteFrame site={site} lang={lang} style={{ minHeight: undefined }}>
       <main className="ls-section ls-review-page">

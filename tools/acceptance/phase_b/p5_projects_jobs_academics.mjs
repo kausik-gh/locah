@@ -53,7 +53,7 @@ function cookieFor(id, email) {
 function createIdentity(email) {
   const id = crypto.randomUUID()
   execFileSync(PSQL, [
-    '-h', '127.0.0.1', '-p', '54330', '-U', 'postgres', '-d', 'locah_p5_replay',
+    '-h', '127.0.0.1', '-p', process.env.PGPORT || '54330', '-U', 'postgres', '-d', process.env.LOCAH_ACCEPT_DB || 'locah_p5_replay',
     '-v', 'ON_ERROR_STOP=1', '-c',
     `insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
      values ('${id}', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', '${email}', '', now(), now(), now())`,

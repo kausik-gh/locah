@@ -295,9 +295,13 @@ class DocumentWorkflows:
     @staticmethod
     async def public_view(session: AsyncSession, slug: str, token: str) -> dict[str, Any]:
         business_id, request = await DocumentWorkflows._public(session, slug, token)
+        # The customer should see whose request this is even when the business
+        # has no published website to frame the page.
+        business_name = (await session.execute(text("SELECT display_name FROM businesses WHERE id=:bid"),
+                         {"bid": business_id})).scalar_one_or_none()
         result = {"id": str(request["id"]), "title": request["title"],
                   "request_type": request["request_type"], "status": request["status"],
-                  "expires_at": request["expires_at"].isoformat()}
+                  "expires_at": request["expires_at"].isoformat(), "business_name": business_name}
         if request["request_type"] == "form" and request["status"] == "open":
             version = (await session.execute(text("""SELECT id,version,fields,
                 consent_text,guardian_required FROM document_form_versions

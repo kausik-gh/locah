@@ -4,6 +4,7 @@
 import { createRequire } from 'node:module'
 import { existsSync, readFileSync } from 'node:fs'
 import { recorder, API } from './pw.mjs'
+const WS_URL = process.env.LOCAH_WORKSPACE || 'http://localhost:3101'
 
 const chromeCandidates = [
   process.env.LOCAH_CHROME,
@@ -23,7 +24,7 @@ async function openOwner(who) {
     args: ['--no-sandbox'],
   })
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
-  await context.addCookies([{ name: who.cookie_name, value: who.cookie, url: 'http://localhost:3101' }])
+  await context.addCookies([{ name: who.cookie_name, value: who.cookie, url: WS_URL }])
   const page = await context.newPage()
   page.setDefaultTimeout(60000)
   const errors = []
@@ -68,7 +69,7 @@ try {
     offering_id: product.data.id, location_id: locationId, quantity: 70,
   })
 
-  await page.goto(`http://localhost:3101/b/${id}/buying`, { waitUntil: 'networkidle' })
+  await page.goto(`${WS_URL}/b/${id}/buying`, { waitUntil: 'networkidle' })
   rec.check(page.url().includes('/buying'), 'buying route opened')
   await rec.shot(page, '01-buying.png')
 
@@ -95,11 +96,11 @@ try {
   rec.check(true, 'partial receipt is visible and a purchase order alone did not skip the receipt step')
   await rec.shot(page, '05-received.png')
 
-  await page.goto(`http://localhost:3101/b/${id}/expenses`, { waitUntil: 'networkidle' })
+  await page.goto(`${WS_URL}/b/${id}/expenses`, { waitUntil: 'networkidle' })
   rec.check(await page.getByRole('heading', { name: 'Expenses' }).count(), 'expenses route rendered')
   await rec.shot(page, '06-expenses.png')
 
-  await page.goto(`http://localhost:3101/b/${id}/donations`, { waitUntil: 'networkidle' })
+  await page.goto(`${WS_URL}/b/${id}/donations`, { waitUntil: 'networkidle' })
   rec.check(await page.getByRole('heading', { name: 'Donations' }).count(), 'donations route rendered')
   await rec.shot(page, '07-donations.png')
 

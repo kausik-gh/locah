@@ -18,6 +18,7 @@ export type DocumentRequestView = {
   request_type: 'form' | 'upload'
   status: 'open' | 'fulfilled' | string
   expires_at: string
+  business_name?: string | null
   form?: {
     id: string
     version: number

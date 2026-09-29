@@ -60,7 +60,8 @@ export async function open({ who = null, mobile = false } = {}) {
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
   page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(m.text())
+    // A failed resource names no URL in its text; add where it came from.
+    if (m.type() === 'error') errors.push(m.location()?.url ? `${m.text()} [${m.location().url}]` : m.text())
   })
   page.realErrors = () =>
     errors.filter(

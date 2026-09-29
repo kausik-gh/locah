@@ -1,12 +1,13 @@
 // P2 Documents / Forms browser smoke — local stack only.
 // LOCAH_ACCEPT_SESSION=acceptance-out/session.json node tools/acceptance/phase_b/p2_documents_forms.mjs
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { WEB, WS, api, browser, check, newBusiness, realErrors } from './common.mjs'
 
 const results = []
 const shots = `${process.env.LOCAH_ACCEPT_OUT || 'acceptance-out'}/phase_b/p2_documents`
+mkdirSync(shots, { recursive: true })
 
-const biz = await newBusiness({ name: 'Studio Consent Forms', category: 'personal_services', sub: 'makeup_artist', type: 'service', modules: ['documents'] })
+const biz = await newBusiness({ name: 'Studio Consent Forms', type: 'studio', modules: ['documents'] })
 
 const form = (await api(`/v1/b/${biz.id}/documents/forms`, {
   method: 'POST',
@@ -52,11 +53,14 @@ try {
 
   const formUrl = `${WEB}${formRequest.public_path}`
   await page.goto(formUrl)
-  await page.waitFor('Secure request', { text: true })
+  // The eyebrow is uppercased by CSS (innerText reads SECURE REQUEST); wait for the request itself.
+  await page.waitFor('Please complete your intake', { text: true })
+  check((await page.eval('document.body.innerText')).includes('For Studio Consent Forms.'), 'the customer sees whose request it is', results)
   await page.type('#signer-name', 'Meera Nair')
-  await page.eval(`(() => { const i = document.querySelector('#field-full_name'); i.value = 'Meera Nair'; i.dispatchEvent(new Event('input', { bubbles: true })); return true })()`)
+  // Type into the controlled input; assigning .value directly is ignored by React.
+  await page.type('#field-full_name', 'Meera Nair')
   await page.eval(`document.querySelector('#field-consent').click()`)
-  await page.click('Submit')
+  await page.click('Submit', { byText: true })
   await page.waitFor('Thank you', { text: true, timeout: 15000 })
   check(!(await page.eval('document.body.innerText')).includes('undefined'), 'form success message is honest', results)
 
