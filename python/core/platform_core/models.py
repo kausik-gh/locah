@@ -760,6 +760,7 @@ class SalesOrder(Base):
     )
     order_number: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
+    stage: Mapped[str | None] = mapped_column(Text, nullable=True)  # P2-01 stage engine: a step within status
     payment_method: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'cod'"))
     payment_status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
     currency: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'INR'"))
@@ -1790,6 +1791,7 @@ class Lead(Base):
     )
     offering_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'new'"))
+    stage: Mapped[str | None] = mapped_column(Text, nullable=True)  # P2-01 stage engine: a step within status
     lost_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     assignee_identity_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
@@ -2029,6 +2031,7 @@ class Project(Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     internal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
+    stage: Mapped[str | None] = mapped_column(Text, nullable=True)  # P2-01 stage engine: a step within status
     priority: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'normal'"))
     starts_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
     due_on: Mapped[Any | None] = mapped_column(Date, nullable=True)
@@ -2841,4 +2844,42 @@ class PricingRateValue(Base):
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     entered_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------- stage engine (P2-01, MD §24 #10)
+class StageSet(Base):
+    """A business's own steps inside a module's statuses (orders, leads, projects)."""
+
+    __tablename__ = "platform_stage_sets"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    entity: Mapped[str] = mapped_column(Text, nullable=False)
+    stages: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StageEvent(Base):
+    """One move of a record from one stage to another (history; never changed)."""
+
+    __tablename__ = "platform_stage_events"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    entity: Mapped[str] = mapped_column(Text, nullable=False)
+    record_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    from_stage: Mapped[str | None] = mapped_column(Text, nullable=True)
+    to_stage: Mapped[str] = mapped_column(Text, nullable=False)
+    from_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    to_status: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_identity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

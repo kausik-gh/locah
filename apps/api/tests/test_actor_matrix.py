@@ -23,6 +23,9 @@ Doc 11 §19.2 requires these actors at minimum. Coverage here:
   * invited but not activated user ............ covered
   * suspended/removed member .................. covered
   * attributed Platform Super Admin ........... covered in test_admin_support.py
+  * Assignment-scoped roles (provider, sales
+    executive) × each record type ............. covered — test_assignment_matrix
+                                                (P2-01, MD §7.3 / RL-18)
   * expired/suspended Entitlement ............. NOT covered — no API sets it
   * enabled-but-incomplete module config ...... NOT reachable — no First Launch
                                                 module declares a config schema,
@@ -586,3 +589,89 @@ def test_messaging_surfaces_follow_their_permission(
         assert refused.status_code == 403 and refused.json()["error"]["code"] == "PERMISSION_DENIED"
         _grant(client, headers, bid, membership_id, [permission])
         assert call(member_headers).status_code == 200, f"{permission} should open {method} {path}"
+
+
+# ---------------------------------------------------------------- assignment scope (P2-01, MD §7.3, RL-18)
+# One row per assignment-scoped role × record type: "own" — the list shows only
+# the records assigned to them; "denied" — the role does not hold the permission.
+ASSIGNMENT_MATRIX: dict[str, dict[str, str]] = {
+    "provider": {"bookings": "own", "customers": "own", "leads": "denied", "quotes": "denied", "orders": "denied",
+                 "inventory": "denied", "payments": "denied", "projects": "denied"},
+    "sales_executive": {"bookings": "denied", "customers": "own", "leads": "own", "quotes": "own",
+                        "orders": "denied", "inventory": "denied", "payments": "denied", "projects": "denied"},
+}
+_LISTS = {"bookings": "bookings", "customers": "customers", "leads": "leads", "quotes": "quotes", "orders": "orders",
+          "inventory": "inventory", "payments": "payments", "projects": "projects"}
+
+
+def _ids(body: Any) -> set[str]:
+    data = body["data"]
+    if isinstance(data, dict):
+        data = next(v for v in data.values() if isinstance(v, list))
+    return {str(x["id"]) for x in data}
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+@pytest.mark.parametrize("role", sorted(ASSIGNMENT_MATRIX))
+def test_assignment_matrix(owner: tuple[dict[str, str], uuid.UUID], role: str) -> None:
+    headers, owner_id = owner
+    person_headers, person_id, _ = _actor()
+    with TestClient(app) as client:
+        bid = _create_business(client, headers)
+        for mid in ("workforce", "bookings", "leads", "quotes", "inventory", "payments", "projects"):
+            assert client.post(f"/v1/b/{bid}/modules/{mid}/enable", headers=headers).status_code == 200, mid
+        base = f"/v1/platform/businesses/{bid}"
+        membership_id = _invite_membership(client, headers, bid, person_id, "member")
+        _activate(client, headers, bid, membership_id)
+        given = client.put(f"{base}/members/{membership_id}/role", json={"role": role}, headers=headers)
+        assert given.status_code == 200, given.text
+
+        loc = next(x["id"] for x in client.get(f"{base}/locations", headers=headers).json()["data"] if x["is_primary"])
+        def member(identity: uuid.UUID | None) -> str:
+            body: dict[str, Any] = {"display_name": f"Staff {uuid.uuid4().hex[:4]}", "location_ids": [loc],
+                                    "primary_location_id": loc}
+            if identity:
+                body["identity_id"] = str(identity)
+            return str(client.post(f"{base}/workforce/members", json=body, headers=headers).json()["data"]["id"])
+
+        def customer(name: str) -> str:
+            r = client.post(f"{base}/customers", json={"display_name": name,
+                                                       "phone": f"97{uuid.uuid4().int % 10**8:08d}"}, headers=headers)
+            return str(r.json()["data"]["id"])
+
+        mine_member, other_member = member(person_id), member(None)
+        c_mine_booking, c_other_booking = customer("Booked with them"), customer("Booked with another")
+        start = datetime.now(timezone.utc) + timedelta(days=2)
+        own: dict[str, set[str]] = {k: set() for k in _LISTS}
+        # Assignment follows the person, not the role: an appointment where they are the provider is theirs
+        # (and so is its customer) even for a role that cannot list bookings.
+        for provider, contact, kept in ((mine_member, c_mine_booking, True), (other_member, c_other_booking, False)):
+            r = client.post(f"{base}/bookings", json={
+                "location_id": loc, "provider_id": provider, "customer_contact_id": contact, "title": "Visit",
+                "reservation_mode": "appointment", "starts_at": start.isoformat(),
+                "ends_at": (start + timedelta(minutes=30)).isoformat()}, headers=headers)
+            assert r.status_code == 200, r.text
+            if kept:
+                own["bookings"].add(r.json()["data"]["id"])
+                own["customers"].add(contact)
+        for assignee, kept in ((person_id, role == "sales_executive"), (owner_id, False)):
+            r = client.post(f"{base}/leads", json={"display_name": "Enquiry",
+                                                   "phone": f"98{uuid.uuid4().int % 10**8:08d}",
+                                                   "assignee_identity_id": str(assignee)}, headers=headers)
+            assert r.status_code == 200, r.text
+            if kept:
+                own["leads"].add(r.json()["data"]["id"])
+                if r.json()["data"].get("customer_contact_id"):  # the customer on their enquiry is theirs
+                    own["customers"].add(r.json()["data"]["customer_contact_id"])
+        assert client.post(f"{base}/quotes", json={"title": "Owner's quote", "items": [
+            {"title": "Survey", "unit_price": 500}]}, headers=headers).status_code == 200
+
+        for record, expected in ASSIGNMENT_MATRIX[role].items():
+            seen = client.get(f"{base}/{_LISTS[record]}", headers=person_headers)
+            if expected == "denied":
+                assert seen.status_code == 403, f"{role} × {record}: {seen.status_code} {seen.text[:200]}"
+                continue
+            assert seen.status_code == 200, f"{role} × {record}: {seen.text[:200]}"
+            everything = _ids(client.get(f"{base}/{_LISTS[record]}", headers=headers).json())
+            got = _ids(seen.json())
+            assert got == own[record], f"{role} × {record}: sees {len(got)} of {len(everything)}"

@@ -93,6 +93,7 @@ class OrderResolver:
             "order_number": order.order_number,
             "channel": order.channel,
             "status": order.status,
+            "stage": order.stage,
             "payment_method": order.payment_method,
             "payment_status": order.payment_status,
             "currency": order.currency,

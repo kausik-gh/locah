@@ -40,9 +40,10 @@ from platform_core.services.audit import AuditService
 from platform_core.services.outbox import OutboxService
 from platform_core.services.team import TeamService
 
-# Scopes the platform can enforce today. Assignment scope needs the
-# assigned-record RLS arm (§7.3, P2) before any role may use it.
-ENFORCED_SCOPES = ("business", "location")
+# Scopes the platform can enforce today: assignment since P2-01 (§7.3 — the
+# server filter and the assigned-record RLS arm). "Self" waits for staff
+# self-service (own profile and time).
+ENFORCED_SCOPES = ("business", "location", "assignment")
 
 
 def _operational(states: dict[str, str]) -> set[str]:
@@ -122,6 +123,15 @@ class RoleService:
             raise ValidationError("Unknown role to start from", details={"field": "based_on"})
         RoleService._check_scope(scope)
         clean = RoleService._check_permissions(permissions, actor_permissions, is_owner)
+        if scope == "assignment":
+            from platform_core.authorization.assignment_scope import ASSIGNMENT_PERMISSIONS
+
+            wider = sorted(set(clean) - ASSIGNMENT_PERMISSIONS)
+            if wider:
+                raise ValidationError(
+                    "A role limited to its own assignments can only hold bookings, enquiries, quotes and their "
+                    "customers — not: " + ", ".join(PERMISSION_WORDS.get(x, x) for x in wider),
+                    details={"field": "permissions", "not_assignable": wider})
         if name.lower() in {t.label.lower() for t in ROLE_TEMPLATES.values()} | {"owner"}:
             raise ConflictError("A built-in role already has that name")
         clash = (await session.execute(

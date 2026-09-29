@@ -40,7 +40,7 @@ TRANSLATED = ["components/AppSidebar.tsx", "components/MoneyPanel.tsx", "compone
               "app/b/[businessId]/orders/[orderId]/page.tsx", "app/b/[businessId]/orders/[orderId]/ChangeOrder.tsx",
               "app/b/[businessId]/orders/[orderId]/OrderBill.tsx", "app/b/[businessId]/orders/ItemPicker.tsx",
               "app/b/[businessId]/orders/new/page.tsx", "app/b/[businessId]/orders/new/PhoneOrder.tsx",
-              "app/b/[businessId]/orders/production/page.tsx"]
+              "app/b/[businessId]/orders/production/page.tsx", "components/StageTrack.tsx"]
 
 
 def _said() -> dict[str, str]:

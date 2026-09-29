@@ -4,6 +4,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { DetailShell, GateNotice, PageHeader, Section, StatusPill } from '@/components/ui'
 import { addLeadNote, moveLeadStage } from '../actions'
+import { StageTrack, type StageWhere } from '@/components/StageTrack'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,6 +55,7 @@ export default async function LeadDetailPage({
 
   const lead = res.data.data
   const next = NEXT_STAGE[lead.status] ?? []
+  const stage = await apiTry<{ data: StageWhere }>(`/v1/b/${params.businessId}/stages/leads/${params.leadId}`, token)
 
   return (
     <DetailShell
@@ -86,6 +88,12 @@ export default async function LeadDetailPage({
           </Link>
           .
         </p>
+      ) : null}
+
+      {stage.ok && stage.data.data.has_steps ? (
+        <Section title="Steps">
+          <StageTrack businessId={params.businessId} entity="leads" recordId={params.leadId} where={stage.data.data} />
+        </Section>
       ) : null}
 
       <Section title="Move stage">

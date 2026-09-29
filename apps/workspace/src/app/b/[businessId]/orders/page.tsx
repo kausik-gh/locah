@@ -27,6 +27,7 @@ type Card = {
   id: string
   order_number: string
   status: string
+  stage: string | null
   channel: string | null
   due_words: string
   customer: string | null
@@ -151,6 +152,7 @@ export default async function OrdersPage({
                   </ul>
                   <footer className="bos-ordercard__foot">
                     <StatusPill value={o.status} label={STATUS_WORDS[o.status] || o.status} />
+                    {o.stage ? <span className="bos-state">{o.stage}</span> : null}
                     {o.advance !== null ? (
                       <span className={`bos-state ${o.advance_state === 'paid' ? 'is-ready' : ''}`}>
                         {o.advance_state === 'paid' ? t('Advance paid') : t('Advance {amount} awaited', { amount: money(o.advance, 'INR') })}

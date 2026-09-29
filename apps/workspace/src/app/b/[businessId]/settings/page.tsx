@@ -171,6 +171,13 @@ export default async function SettingsPage({ params }: { params: { businessId: s
       </section>
 
       <section className="ws-settings-section">
+        <div><h2>Stages</h2><p>Your own steps inside orders, enquiries and projects — “Packed”, “Site visit booked”.</p></div>
+        <div>
+          <Link className="btn-quiet" href={`${businessBase}/settings/stages`}>Open stages →</Link>
+        </div>
+      </section>
+
+      <section className="ws-settings-section">
         <div><h2>Usage and limits</h2><p>What you used this month of anything that costs per use, with a limit you set.</p></div>
         <div>
           <Link className="btn-quiet" href={`${businessBase}/settings/usage`}>Open usage →</Link>

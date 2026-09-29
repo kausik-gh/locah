@@ -199,6 +199,8 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "website.generation_failed",
             "website.auto_sections.changed",
             "website.languages.changed",
+            "stage.changed",
+            "stage_set.changed",
         }
     ),
     "marketplace": frozenset(

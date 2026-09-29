@@ -28,6 +28,11 @@ SURFACES = {"workspace": "Workspace", "pos": "Counter billing (POS)", "crew": "C
 # Surfaces that exist today (POS since P1-05); crew and kitchen join in P2.
 BUILT_SURFACES = frozenset({"workspace", "pos"})
 CURRENT_PHASES = frozenset({"P1"})
+# Later-phase roles whose scope, surface and permissions all work today: the
+# provider and the sales executive, since assignment scope is enforced (P2-01).
+# Their later tools (a provider's crew app, a sales executive's site visits)
+# join their permissions as those ship.
+READY_AHEAD = frozenset({"provider", "sales_executive"})
 
 
 @dataclass(frozen=True)
@@ -45,7 +50,7 @@ class RoleTemplate:
 
     def offered(self, operational_modules: set[str] | frozenset[str]) -> bool:
         return (
-            self.phase in CURRENT_PHASES
+            (self.phase in CURRENT_PHASES or self.key in READY_AHEAD)
             and self.surface in BUILT_SURFACES
             and (not self.about or any(m in operational_modules for m in self.about))
         )

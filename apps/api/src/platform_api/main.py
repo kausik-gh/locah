@@ -67,6 +67,7 @@ from platform_api.routers import (
     v1_reviews,
     v1_admin_reviews,
     v1_compliance,
+    v1_stages,
 )
 
 # Database lifecycle state
@@ -260,6 +261,7 @@ app.include_router(v1_reviews.public_router)
 app.include_router(v1_admin_reviews.router)
 app.include_router(v1_compliance.router)
 app.include_router(v1_compliance.public_router)
+app.include_router(v1_stages.router)
 
 app.add_exception_handler(PlatformError, platform_error_handler)
 

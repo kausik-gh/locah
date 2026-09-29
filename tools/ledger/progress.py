@@ -680,3 +680,38 @@ done("P1-gate", {
     "FR-OR-01": dict(status=P, code="website checkout, Marketplace (card → the business's own site), WhatsApp journeys, the counter, reorder and a staff phone order in the Workspace (FR-OR-13, P1-10E5) all place the one Order; AI phone ordering (P3), QR/table ordering (P2) and connector orders (P4) are not built"),
     "OM-09": dict(status=P, code="a portfolio_item kind (client, year, type of work) is sold as an enquiry and renders on the site with its details and 'Enquire' (P1-03); gallery sections and portfolio design families exist. A dedicated 'Our work' section chosen for portfolio-led businesses, and case-study pages, are not built"),
 })
+
+
+# ---------------------------------------------------------------- P2-01 assignment scope + stage engine (MD §7.2–§7.3, §24 #10–#11)
+_AS_TEST = ("✓ test_assignment_scope (5), test_actor_matrix::test_assignment_matrix (2 roles × 8 record types), "
+            "test_roles_and_scope — platform_api RLS role, incl. the RLS-only check with app.current_assignee — + "
+            "browser p2_01_stages_and_assignment (20/20, Playwright Chromium), desktop + 390 px")
+_ST_TEST = ("✓ test_stage_engine (7, platform_api RLS role) + browser p2_01_stages_and_assignment (20/20, Playwright "
+            "Chromium), desktop + 390 px")
+_AS_CODE = ("a member whose role's scope is `assignment` sees and changes only what is assigned to them: bookings where "
+            "they are the provider, enquiries assigned to them, project tasks assigned to them, quotes they wrote or for "
+            "the customer of their enquiry, and of the customer book only the customers on those bookings and "
+            "enquiries. Enforced server-side for every ORM read and write in the request (authorization/"
+            "assignment_scope.py: loader criteria + a flush guard that refuses creating or handing a record to someone "
+            "else), repeated by RESTRICTIVE RLS policies keyed on app.current_assignee; enquiries they add are theirs; "
+            "counts on Home and Insights follow the same rule")
+done("P2-01", {
+    "RL-17": dict(status=P, code=_AS_CODE + ". The arm exists for bookings, enquiries, project tasks and quotes; dispatch jobs, job cards and the Tasks module add theirs when they ship (P2 dispatch, P5 jobs)",
+                  db="✓ assignment_scope_allows_identity/member/quote() + 4 RESTRICTIVE policies", svc="✓ authorization/assignment_scope.py",
+                  perm="✓ scope 'assignment' enforced; custom assignment roles limited to ASSIGNMENT_PERMISSIONS", test=_AS_TEST),
+    "PM-11": dict(status=P, code=_AS_CODE + ". Actor-matrix rows cover provider and sales executive × bookings, customers, enquiries, quotes, orders, stock, payments, projects; delivery partner, technician and housekeeping rows join with their surfaces",
+                  db="✓", svc="✓", perm="✓", test=_AS_TEST),
+    "RL-18": dict(status=P, code="test_actor_matrix has one row per assignment-scoped role × record type for the two roles offered today (provider, sales executive; 8 record types each: own records only, or refused). Delivery partner, technician and housekeeping rows are added with dispatch, job cards and housekeeping, before their crew surfaces ship",
+                  test="✓ test_assignment_matrix (2 × 8)"),
+    "RL-04": dict(status=P, code="Provider is offered wherever Bookings runs: assignment scope; Home 'My day' (today's appointments, the next one marked); Bookings lists only their appointments, which they confirm and move along and add notes to; only the customers on them; the business's booking policy is neither shown nor changeable (PATCH /bookings-policy now needs bookings.manage_availability). Editing their own working hours and the crew app surface are not built",
+                  svc="✓ role_home my_day", perm="✓ bookings.read/update, customers.read — assignment", ws="✓ Home › My day; Bookings",
+                  test=_AS_TEST),
+    "RL-12": dict(status=P, code="Sales executive is offered wherever Enquiries or Quotes run: assignment scope; Home 'Follow-ups due today' (their open enquiries due by tonight, and new ones); enquiries assigned to them (new ones they add are theirs, they cannot hand one to someone else); quotes they wrote or for their enquiries' customers; winning an enquiry makes the customer theirs to quote. Site visits are not built",
+                  svc="✓ role_home follow_ups", perm="✓ leads.*, quotes.read/create/update, customers.read — assignment",
+                  ws="✓ Home › Follow-ups", test=_AS_TEST),
+    "PM-10": dict(status=P, code="a business adds its own steps inside the open statuses of orders, enquiries and projects (up to 20), renames any stage, marks one as needing a note (Settings › Stages); the module's own statuses cannot be removed and no step sits inside an ending. Moving a record to a step of another status runs the module's own service (a cancelled order releases stock, a won enquiry becomes a customer, a project's own transition rules), with the module's permission; each move is kept (platform_stage_events), audited and published (stage.changed). The order, enquiry and project pages show the steps and move along them; the order board card shows the step. Dispatch jobs and job cards join when they are built",
+                  db="✓ platform_stage_sets, platform_stage_events, stage on orders/leads/projects", svc="✓ stages/engine.py; /v1/b/{id}/stages/…",
+                  perm="✓ settings.update to edit; module permission per move", ws="✓ Settings › Stages; order/enquiry/project Steps; board card",
+                  test=_ST_TEST),
+    "FR-OR-23": dict(status=P, code="a business that sells made-to-order items or takes dated orders (bakery, home kitchen, festival boxes) opens Orders on the board by day wanted with its production list, chosen from its own data; others keep the plain list. Any business can now add its own order steps (a kirana's Picking/Packed, a meat shop's Cutting) with the stage engine (P2-01, PM-10). The prebuilt kirana, meat weight-exception, QSR/restaurant KDS and retail shipping/returns workflows are not built"),
+})

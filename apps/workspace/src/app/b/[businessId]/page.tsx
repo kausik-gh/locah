@@ -104,7 +104,7 @@ export default async function WorkspaceHomePage({ params }: { params: { business
               {band.items.map((i) => (
                 <li key={`${i.label}-${i.href}`}>
                   <Link href={i.href.startsWith('~') ? `${i.href.slice(1)}/${params.businessId}` : `${base}${i.href}`} className={`bos-attention__row is-${i.tone}`}>
-                    {band.key === 'business' ? (
+                    {band.key === 'business' || band.key === 'myday' || band.key === 'followups' ? (
                       <span className="bos-attention__dot" aria-hidden />
                     ) : (
                       <span className="bos-attention__count">{i.count}</span>

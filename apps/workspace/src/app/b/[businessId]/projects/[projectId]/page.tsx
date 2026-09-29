@@ -4,6 +4,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { Card, EmptyState, GateNotice, PageHeader, StatusPill } from '@/components/ui'
 import { AddForm } from '../AddForm'
+import { StageTrack, type StageWhere } from '@/components/StageTrack'
 import {
   addPhase,
   addTask,
@@ -76,7 +77,7 @@ export default async function ProjectDetailPage({
   const project = res.data.data
   const open = project.is_open
 
-  const [listRes, customersRes, membersRes] = await Promise.all([
+  const [listRes, customersRes, membersRes, stageRes] = await Promise.all([
     // The list carries the business's vocabulary; the detail page borrows it
     // rather than the API repeating it on every read.
     apiTry<{ data: { semantics: ProjectSemantics } }>(
@@ -91,6 +92,7 @@ export default async function ProjectDetailPage({
       `/v1/platform/businesses/${params.businessId}/workforce/members`,
       token
     ),
+    apiTry<{ data: StageWhere }>(`/v1/b/${params.businessId}/stages/projects/${params.projectId}`, token),
   ])
 
   const semantics = listRes.ok
@@ -120,6 +122,14 @@ export default async function ProjectDetailPage({
       <Overview project={project} customerName={customer?.display_name} memberName={memberName} />
 
       <Lifecycle businessId={params.businessId} project={project} />
+
+      {stageRes.ok && stageRes.data.data.has_steps ? (
+        <Card style={{ marginTop: '1.25rem', display: 'grid', gap: '0.75rem' }}>
+          <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Steps</h2>
+          <StageTrack businessId={params.businessId} entity="projects" recordId={params.projectId}
+            where={stageRes.data.data} />
+        </Card>
+      ) : null}
 
       <Phases
         businessId={params.businessId}

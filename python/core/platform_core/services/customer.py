@@ -192,8 +192,9 @@ class CustomerService:
             (CustomerContact.phone, phone),
         ):
             if value:
+                # Matching looks at the whole book, even for a member limited to their assignments.
                 found = (
-                    await session.execute(base.where(column == value))
+                    await session.execute(base.where(column == value).execution_options(skip_assignment_scope=True))
                 ).scalars().first()
                 if found is not None:
                     return found

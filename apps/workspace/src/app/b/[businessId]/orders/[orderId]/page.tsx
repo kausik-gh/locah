@@ -12,6 +12,7 @@ import { ChangeOrder } from './ChangeOrder'
 import type { CatalogueItem } from '../ItemPicker'
 import { pageWords } from '@/lib/ws-lang'
 import type { Words } from '@/lib/ws-words'
+import { StageTrack, type StageWhere } from '@/components/StageTrack'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,6 +61,7 @@ export default async function OrderDetailPage({
       items?: Array<{ id: string; title: string; quantity: number; line_total: number; basis_words?: string | null }>
     }
   }>(`/v1/platform/businesses/${params.businessId}/orders/${params.orderId}`, token)
+  const stage = await apiTry<{ data: StageWhere }>(`/v1/b/${params.businessId}/stages/orders/${params.orderId}`, token)
   const bills = await apiTry<{ data: Array<{ id: string; number: string | null; kind_label: string; status: string; doc_kind: string }> }>(
     `/v1/platform/businesses/${params.businessId}/invoices?order_id=${params.orderId}&kind=invoices`, token)
   if (!res.ok) {
@@ -126,6 +128,11 @@ export default async function OrderDetailPage({
       ]}
       actions={next.length || cancellable ? actions : undefined}
     >
+      {stage.ok && stage.data.data.has_steps ? (
+        <Section title={t('Steps')}>
+          <StageTrack businessId={params.businessId} entity="orders" recordId={params.orderId} where={stage.data.data} />
+        </Section>
+      ) : null}
       <Section title={t('Items')}>
         <div
           style={{

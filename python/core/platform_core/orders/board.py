@@ -82,6 +82,9 @@ async def board(session: AsyncSession, business_id: uuid.UUID, *, now: datetime 
     modes = {r[0]: r[1] for r in (await session.execute(select(FulfilmentJob.order_id, FulfilmentJob.mode).where(
         FulfilmentJob.business_id == business_id, FulfilmentJob.order_id.in_(ids))))} if ids else {}
     paid = await _paid(session, business_id, ids)
+    from platform_core.stages.engine import StageEngine
+
+    stages = await StageEngine.get(session, business_id, "orders")
     groups: dict[str, list[dict[str, Any]]] = OrderedDict((k, []) for k, _ in BUCKETS)
     for o in orders:
         assert o.due_at is not None
@@ -93,6 +96,8 @@ async def board(session: AsyncSession, business_id: uuid.UUID, *, now: datetime 
         advance = Decimal(str(o.advance_amount)) if o.advance_amount is not None else None
         groups[b].append({
             "id": str(o.id), "order_number": o.order_number, "status": o.status, "channel": o.channel,
+            # The business's own step inside the status ("Packed"), when the order is at one.
+            "stage": step.label if (step := stages.effective(o.stage, o.status)).custom else None,
             "due_at": o.due_at.isoformat(), "due_words": when_words(o.due_at, zone, now.astimezone(zone).date()),
             "customer": contact.display_name if contact else None, "mode": modes.get(o.id),
             "total": float(o.total_amount), "paid": float(got),

@@ -78,6 +78,18 @@ class OutsideLocationScope(PlatformError):
         )
 
 
+class OutsideAssignmentScope(PlatformError):
+    """A member limited to their assignments touched a record that is not assigned to them (P2-01)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status.HTTP_403_FORBIDDEN,
+            "PERMISSION_DENIED",
+            "That is not assigned to you",
+            {"permission": "assignment_scope"},
+        )
+
+
 class EntitlementRequired(PlatformError):
     def __init__(self, module_id: str):
         super().__init__(

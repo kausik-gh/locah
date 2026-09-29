@@ -31,6 +31,7 @@ Branch `main`. Packets done, newest last:
 | P1-10E6a WhatsApp in the customer's language | 8dc8622 | test_customer_language (5); test_journeys + test_messaging re-run green |
 | P1-10E6b website in EN/TA/HI | bcc660b | test_site_words (5) + browser p1_10e_language 23/23 (desktop + 390 px) |
 | P1-10E6c Workspace language | see git log ("feat(p1-10e6c)") | test_workspace_words (6) + browser p1_10e_workspace_language 15/15; p1_10e_phone 17/17 and p1_10d1_payments 83/83 re-run; suite 1110 + worker 16 |
+| P2-01 assignment scope + stage engine | see git log ("feat(p2-01)") | test_assignment_scope (5), test_stage_engine (7), test_actor_matrix assignment rows (2 × 8) + browser p2_01_stages_and_assignment 20/20 (desktop + 390 px); suite 1124 + worker 16 |
 
 P1 gate after P1-10C: **TOTAL 240 · COMPLETE 122 · PARTIAL 90 · NOT_STARTED 12 ·
 ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 763 rows (P1 total grew by the
@@ -68,6 +69,57 @@ permission-registry parity test fixed (TS `CUSTOMERS_ERASE` added).
 P1 gate after P1-10E6 (the P1 gate review): **TOTAL 261 · COMPLETE 143 · PARTIAL 96 ·
 NOT_STARTED 0 · ACTIVATION_REQUIRED 22 · FUTURE 0.** Full API suite 1110 passed
 (`-n 4`), worker 16 passed, ruff + mypy clean, web + workspace typecheck/lint clean.
+
+P2 gate after P2-01: **TOTAL 207 · COMPLETE 3 · PARTIAL 79 · NOT_STARTED 117 ·
+ACTIVATION_REQUIRED 8 · FUTURE 0.** P1 gate unchanged (261 · 143 · 96 · 0 · 22).
+Full API suite 1124 passed (`-n 4`), worker 16, ruff + mypy clean, workspace
+typecheck + lint clean.
+
+### P2-01 — assignment scope + stage engine (DONE, browser-verified; RL-04 / RL-12 / RL-17 / RL-18 / PM-10 / PM-11 PARTIAL)
+
+MD §7.2–§7.3, §24 #10–#11, §26.3 (first P2 packet).
+
+- **Assignment scope** (`python/core/platform_core/authorization/assignment_scope.py`,
+  migration `20260930100000_p2_assignment_scope.sql`). A member whose role's
+  scope is `assignment` sees/changes only: bookings where they are the
+  provider (via their workforce record), enquiries assigned to them, project
+  tasks assigned to them, quotes they wrote or for their enquiries'
+  customers, and only the customers on those bookings/enquiries. Server-side:
+  `do_orm_execute` loader criteria + a `before_flush` guard
+  (`OutsideAssignmentScope`, 403 `assignment_scope`) — bound per request next
+  to location scope in `context_resolver.bind_session_context(…, assignee=)`
+  and `dependencies.py`. Database: GUC `app.current_assignee` (reset in
+  `db.py`), RESTRICTIVE policies on `bookings_bookings`, `leads_leads`,
+  `projects_tasks`, `quotes_quotes` (functions use `NULLIF(…,'')::uuid` — a SQL
+  function's sub-select can be planned before CASE picks a branch). Matching a
+  new enquiry to an existing customer by phone uses `skip_assignment_scope`.
+  New enquiries from an assignment-scoped member default to themselves.
+- **Roles.** Provider and Sales executive are offered (`READY_AHEAD` in
+  `role_templates.py`) where Bookings / Enquiries–Quotes run; the Roles page
+  offers the `assignment` scope; a custom assignment role may hold only
+  `ASSIGNMENT_PERMISSIONS`. Home: provider "My day", sales executive
+  "Follow-ups due today" (`role_home.py`). `PATCH /bookings-policy` now needs
+  `bookings.manage_availability` (a provider's `bookings.update` no longer
+  changes the business-wide deposit/cancel rules); the Bookings page hides the
+  policy form without it.
+- **Stage engine** (`python/core/platform_core/stages/engine.py`, routes
+  `/v1/b/{id}/stages/{orders|leads|projects}[/{record}[/move]]`, migration
+  `20260930110000_p2_stage_engine.sql`: `platform_stage_sets`,
+  `platform_stage_events` (insert/read only), `stage` column on orders, leads,
+  projects). Core statuses stay the module's (renamable, never removable);
+  business steps only inside open statuses (≤20). A move to another status goes
+  through `OrderLifecycleService.transition_status` / `LeadService.move_stage` /
+  `ProjectService.change_status` with the module's permission; `needs_note`,
+  version conflict (409), audit `stage.changed`, outbox. A record's `stage` is
+  trusted only while it belongs to its current status.
+- **Workspace.** Settings › Stages (`settings/stages/`), `components/StageTrack.tsx`
+  (translated) on order, enquiry and project pages when the business has steps,
+  the step on the order board card.
+- **Not done (named in the ledger):** dispatch jobs / job cards / Tasks arms
+  of assignment scope and stage sets (with those modules); delivery partner,
+  technician, housekeeping matrix rows; a provider editing their own working
+  hours; sales-executive site visits; the crew surface. Settings › Stages is
+  English only (the rest of Settings is too).
 
 ### P1 gate review (after P1-10E6)
 
@@ -439,11 +491,19 @@ wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 ## Remaining work snapshot (P1 first)
 
 P1 NOT_STARTED: none. P1 PARTIAL: 96, grouped in "P1 gate review" above.
+P2 (after P2-01): 3 COMPLETE · 79 PARTIAL · 117 NOT_STARTED · 8 ACTIVATION_REQUIRED.
 
-Planned next packets (dependency order):
-1. **P2** per MD §26.2 / ledger sections W–AL (next: read the P2 packet list in
-   `tools/ledger/rows_governance.py` PKT-2x and MD §26.3 P2 before starting).
-2. P3 → P5, then E2E flows (section BG).
+Planned next packets (MD §26.3 P2 headline order):
+1. ~~P2-01 stage engine + assignment scope~~ (done).
+2. **P2-02 ladders + memberships + autopay** — read the founder refinement
+   `Documentations/# FOUNDER REFINEMENT — INVENTORY / BOOKINGS / MEMBERSHIPS /
+   PAYMENTS.txt` (FR-MB-01..08, FR-PY-01..04 in `rows_refinements.py`) and MD
+   memberships/ladder sections first. Cashfree is the payment direction; autopay
+   mandates are ACTIVATION (no live provider calls; fixtures only).
+3. attendance; dispatch + crew app; live tracking; queue + tasks + kitchen
+   display; booking modes (FR-BK); quotes + property listings; native crew
+   wrapper (ACTIVATION).
+4. P3 → P5, then E2E flows (section BG).
 
 ## How to run things locally (Linux / Claude Code cloud) — used since P1-10D1
 
