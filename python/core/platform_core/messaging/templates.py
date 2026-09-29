@@ -26,7 +26,7 @@ META_LANGUAGE = {"en": "en", "ta": "ta", "hi": "hi"}
 class Template:
     key: str
     label: str  # owner words
-    category: str  # utility | marketing (Meta's pricing categories)
+    category: str  # utility | marketing | authentication (Meta's pricing categories)
     audience: str  # customer | staff
     params: tuple[str, ...]  # owner words for each {{n}}, in order
     bodies: dict[str, str]
@@ -94,6 +94,16 @@ LIBRARY: dict[str, Template] = {t.key: t for t in (
             "hi": "याद दिलाना: {{1}} के साथ आपकी बुकिंग {{2}} को है ({{3}})। न आ सकें तो यहाँ जवाब दें।",
         },
         "Before a booking, on the booking reminder schedule",
+    ),
+    Template(
+        "quote_acceptance_code", "Code to accept a quote", "authentication", "customer",
+        ("quote number", "business name", "the 6-digit code"),
+        {
+            "en": "Your code to accept quote {{1}} from {{2}} is {{3}}. It expires in 10 minutes; do not share it.",
+            "ta": "குறியீடு: மேற்கோள் {{1}} ({{2}}) ஏற்க உங்கள் குறியீடு {{3}}. இது 10 நிமிடங்களில் காலாவதியாகும்; பகிர வேண்டாம்.",
+            "hi": "कोटेशन {{1}} ({{2}}) स्वीकार करने के लिए आपका कोड {{3}} है। यह 10 मिनट में समाप्त होगा; किसी से साझा न करें।",
+        },
+        "A customer asks for the code to accept a quote on its page", phase="P2",
     ),
     Template(
         "queue_turn_soon", "Your turn soon", "utility", "customer",

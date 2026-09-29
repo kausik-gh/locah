@@ -22,7 +22,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from test_quotes import _accept_from_share, _business, _quote, _seed, _headers
+from test_quotes import _accept_from_share, _business, _quote, _reachable_customer, _seed, _headers
 
 
 @pytest.fixture
@@ -388,6 +388,7 @@ def test_accept_locks_prices_and_hands_a_contract_not_an_order(owner: dict[str, 
         client,
         owner,
         business_id,
+        customer_contact_id=_reachable_customer(client, owner, business_id),
         deposit_type="amount",
         deposit_value=5000,
         payment_plan=[

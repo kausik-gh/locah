@@ -119,6 +119,22 @@ class MessagingService:
         ))).scalars().first()
 
     @staticmethod
+    async def reachable(session: AsyncSession, business_id: uuid.UUID, contact_id: uuid.UUID | None) -> bool:
+        """Can this business message this customer on WhatsApp right now (module on,
+        a number connected, the customer has a phone)? Other modules ask before
+        promising a customer that something "was sent"."""
+        from platform_core.events.subscribers.automation_triggers import _module_on
+
+        channel = await MessagingService.channel(session, business_id)
+        if channel is None or channel.status != "connected" or not await _module_on(session, business_id, "messaging"):
+            return False
+        if contact_id is None:
+            return False
+        phone = (await session.execute(select(CustomerContact.phone).where(
+            CustomerContact.id == contact_id, CustomerContact.business_id == business_id))).scalar()
+        return normalise_phone(phone or "") is not None
+
+    @staticmethod
     def serialize_channel(c: MessagingChannel | None) -> dict[str, Any] | None:
         if c is None:
             return None

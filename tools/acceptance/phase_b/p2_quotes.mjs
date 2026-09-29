@@ -20,9 +20,13 @@ const created = await as('/v1/platform/businesses', {
 })
 const business = created.data.business
 const bid = business.id
-for (const module of ['quotes', 'leads', 'customer-relationships', 'offerings-catalog']) {
+for (const module of ['quotes', 'leads', 'customer-relationships', 'offerings-catalog', 'messaging']) {
   await as(`/v1/b/${bid}/modules/${module}/enable`, { method: 'POST' })
 }
+// The acceptance code travels only on WhatsApp: the business connects its number
+// (the local sandbox records what would be sent; nothing leaves this machine).
+await as(`/v1/platform/businesses/${bid}/messaging/channel/sandbox`, { method: 'POST',
+  body: { display_phone: '+919840055511', display_name: 'Gate Works' } })
 
 const enquiry = await raw(`/v1/public/websites/${business.slug}/enquiries`, {
   method: 'POST',
@@ -79,12 +83,18 @@ try {
   await customer.goto(`${WEB}/q/${token}`)
   await customer.locator('input[name=name]').fill('Ravi')
   await customer.getByRole('button', { name: 'Send me a code' }).click()
-  await customer.getByText('Enter the code we sent you').waitFor()
+  await customer.getByText('We sent a 6-digit code to your WhatsApp').waitFor()
   const code = sql(
     `select payload->>'code' from platform_outbox_events where event_type = 'quote.acceptance_code_issued' and payload->>'quote_id' = '${revisionId}' order by created_at desc limit 1`
   )
   check(/^\d{6}$/.test(code), 'the acceptance code is issued for messaging, not shown on the page')
   check(!(await customer.content()).includes(code), 'the customer page does not contain the code')
+  let delivered = ''
+  for (let i = 0; i < 40 && !delivered; i++) {
+    delivered = sql(`select status from messaging_messages where business_id = '${bid}' and template_key = 'quote_acceptance_code' and body like '%${code}%'`)
+    if (!delivered) await new Promise((r) => setTimeout(r, 500))
+  }
+  check(delivered === 'sent', `the code went to the customer's WhatsApp, once (live worker; ${delivered || 'nothing'})`)
   await customer.locator('input[name=code]').fill(code)
   await customer.getByRole('button', { name: 'Accept', exact: true }).click()
   await customer.getByText('prices on this version are locked').waitFor()

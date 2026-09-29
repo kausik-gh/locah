@@ -122,11 +122,19 @@ async def decide_quote(
                 f"A {current} quote cannot be accepted",
                 details={"status": current},
             )
-        await QuoteService.issue_acceptance_code(
-            session, quote=quote, name=name, correlation_id=correlation
-        )
-        await session.commit()
-        notice = "Enter the code we sent you, then accept."
+        from platform_core.services.messaging import MessagingService
+
+        # The code only ever travels by WhatsApp. Promise it only when it can
+        # actually reach this customer; otherwise say who confirms instead.
+        if await MessagingService.reachable(session, quote.business_id, quote.customer_contact_id):
+            await QuoteService.issue_acceptance_code(
+                session, quote=quote, name=name, correlation_id=correlation
+            )
+            await session.commit()
+            notice = "We sent a 6-digit code to your WhatsApp. Enter it, then accept."
+        else:
+            notice = (f"{business.display_name} cannot send you a code on WhatsApp yet. "
+                      f"Tell {business.display_name} you accept and they will record it on this quote.")
     elif decision in {"accepted", "rejected"}:
         if current != "issued":
             raise ConflictError(

@@ -263,6 +263,25 @@ async def remind_booking(session: AsyncSession, step: DueStep) -> StepOutcome:
                        f"Reminder for {booking.booking_number} sent on WhatsApp" if said == "sent" else said)
 
 
+# ---------------------------------------------------------------- quotes
+@subscribe(  # type: ignore[untyped-decorator, unused-ignore]
+    "messaging.quote_acceptance_code", "quote.acceptance_code_issued",
+    description="Send the customer the code that accepts their quote — the only place the code goes",
+)
+async def quote_acceptance_code(session: AsyncSession, event: EventContext) -> None:
+    business_id = event.require_business_id()
+    if not await _live(session, business_id):
+        return
+    p = event.payload
+    contact = await _contact(session, p.get("customer_contact_id"))
+    if contact is None:
+        return
+    business = await _business(session, business_id)
+    await _send(session, business_id, to=contact.phone, key="quote_acceptance_code", contact_id=contact.id,
+                params=[str(p.get("quote_number")), business.display_name, str(p.get("code"))],
+                idem=f"quote_code:{event.event_id}")
+
+
 # ---------------------------------------------------------------- walk-in queue
 @subscribe(  # type: ignore[untyped-decorator, unused-ignore]
     "messaging.queue_turn_soon", "queue.turn_soon",
