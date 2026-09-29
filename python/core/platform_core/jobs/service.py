@@ -102,7 +102,7 @@ class JobService:
         return member
 
     @staticmethod
-    async def _scope(session: AsyncSession, job: JobCard) -> None:
+    async def _scope(session: AsyncSession, job: JobCard, *, writing: bool) -> None:
         locations = allowed_locations(session)
         if locations is not None and job.location_id is not None and job.location_id not in locations:
             raise OutsideLocationScope()
@@ -110,7 +110,11 @@ class JobService:
         if identity is not None:
             member = await JobService._member(session, job.business_id, job.assigned_member_id)
             if member is None or member.identity_id != identity:
-                raise OutsideAssignmentScope()
+                # As Tasks does, and as RLS already answers: someone else's job
+                # card does not exist for a read; changing it is refused.
+                if writing:
+                    raise OutsideAssignmentScope()
+                raise ResourceNotFound("Job card")
 
     @staticmethod
     async def resolve(session: AsyncSession, business_id: uuid.UUID, job_id: uuid.UUID, *, lock: bool = False) -> JobCard:
@@ -120,7 +124,7 @@ class JobService:
         job = (await session.execute(query)).scalar_one_or_none()
         if job is None:
             raise ResourceNotFound("Job card")
-        await JobService._scope(session, job)
+        await JobService._scope(session, job, writing=lock)
         return job
 
     @staticmethod

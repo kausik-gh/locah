@@ -68,7 +68,7 @@ async def _event(session: AsyncSession, *, business_id: uuid.UUID, actor_id: uui
 class AcademicsService:
     @staticmethod
     async def _batch(session: AsyncSession, business_id: uuid.UUID, batch_id: uuid.UUID,
-                     *, lock: bool = False) -> dict[str, Any]:
+                     *, writing: bool, lock: bool = False) -> dict[str, Any]:
         row = await _one(session, "SELECT * FROM academics_batches WHERE id=:id AND business_id=:bid" +
                          (" FOR UPDATE" if lock else ""), {"id": batch_id, "bid": business_id}, "Batch")
         locs = allowed_locations(session)
@@ -79,7 +79,11 @@ class AcademicsService:
             member = (await session.execute(text("SELECT identity_id FROM workforce_members WHERE id=:mid AND business_id=:bid"),
                 {"mid": row["teacher_member_id"], "bid": business_id})).scalar_one_or_none()
             if member != identity:
-                raise OutsideAssignmentScope()
+                # As Tasks does, and as RLS already answers: another teacher's
+                # batch does not exist for a read; changing it is refused.
+                if writing:
+                    raise OutsideAssignmentScope()
+                raise ResourceNotFound("Batch")
         return row
 
     @staticmethod
@@ -153,7 +157,7 @@ class AcademicsService:
 
     @staticmethod
     async def sessions(session: AsyncSession, business_id: uuid.UUID, batch_id: uuid.UUID) -> list[dict[str, Any]]:
-        await AcademicsService._batch(session, business_id, batch_id)
+        await AcademicsService._batch(session, business_id, batch_id, writing=False)
         rows = (await session.execute(text("SELECT * FROM academics_sessions WHERE business_id=:bid AND batch_id=:batch ORDER BY starts_at"),
                                       {"bid": business_id, "batch": batch_id})).mappings().all()
         return [_view(row) for row in rows]
@@ -162,7 +166,7 @@ class AcademicsService:
     async def create_session(session: AsyncSession, business_id: uuid.UUID, batch_id: uuid.UUID,
                              actor_id: uuid.UUID, correlation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         await _mutable(session, business_id)
-        batch = await AcademicsService._batch(session, business_id, batch_id)
+        batch = await AcademicsService._batch(session, business_id, batch_id, writing=True)
         if batch["status"] in {"completed", "cancelled"}:
             raise ConflictError("This batch is closed")
         starts = payload["starts_at"]
@@ -205,7 +209,7 @@ class AcademicsService:
     async def enrol(session: AsyncSession, business_id: uuid.UUID, batch_id: uuid.UUID,
                     actor_id: uuid.UUID, correlation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         await _mutable(session, business_id)
-        batch = await AcademicsService._batch(session, business_id, batch_id, lock=True)
+        batch = await AcademicsService._batch(session, business_id, batch_id, writing=True, lock=True)
         if batch["status"] in {"completed", "cancelled"}:
             raise ConflictError("This batch is closed")
         student = await CustomerResolver.resolve(session, business_id=business_id,
@@ -243,7 +247,7 @@ class AcademicsService:
 
     @staticmethod
     async def enrolments(session: AsyncSession, business_id: uuid.UUID, batch_id: uuid.UUID) -> list[dict[str, Any]]:
-        await AcademicsService._batch(session, business_id, batch_id)
+        await AcademicsService._batch(session, business_id, batch_id, writing=False)
         rows = (await session.execute(text("""SELECT e.*, s.display_name AS student_name,
             g.display_name AS guardian_name FROM academics_enrolments e
             JOIN customer_relationships_contacts s ON s.id=e.student_contact_id
@@ -257,7 +261,7 @@ class AcademicsService:
                                 actor_id: uuid.UUID, correlation_id: str,
                                 title: str, maximum: Decimal) -> dict[str, Any]:
         await _mutable(session, business_id)
-        await AcademicsService._batch(session, business_id, batch_id)
+        await AcademicsService._batch(session, business_id, batch_id, writing=True)
         if maximum <= 0:
             raise ValidationError("Maximum marks must be positive")
         row = await _one(session, """INSERT INTO academics_assessments (business_id,batch_id,title,maximum)
@@ -271,7 +275,7 @@ class AcademicsService:
     @staticmethod
     async def assessments(session: AsyncSession, business_id: uuid.UUID,
                           batch_id: uuid.UUID) -> list[dict[str, Any]]:
-        await AcademicsService._batch(session, business_id, batch_id)
+        await AcademicsService._batch(session, business_id, batch_id, writing=False)
         rows = (await session.execute(text("""SELECT a.*, r.id AS result_id,
             r.enrolment_id, r.marks, r.teacher_note FROM academics_assessments a
             LEFT JOIN academics_results r ON r.assessment_id=a.id AND r.business_id=:bid
@@ -282,7 +286,7 @@ class AcademicsService:
     @staticmethod
     async def announcements(session: AsyncSession, business_id: uuid.UUID,
                             batch_id: uuid.UUID) -> list[dict[str, Any]]:
-        await AcademicsService._batch(session, business_id, batch_id)
+        await AcademicsService._batch(session, business_id, batch_id, writing=False)
         rows = (await session.execute(text("""SELECT * FROM academics_announcements
             WHERE business_id=:bid AND batch_id=:batch ORDER BY created_at DESC LIMIT 50"""),
             {"bid": business_id, "batch": batch_id})).mappings().all()
@@ -293,7 +297,7 @@ class AcademicsService:
                        title: str, body: str, actor_id: uuid.UUID,
                        correlation_id: str) -> dict[str, Any]:
         await _mutable(session, business_id)
-        await AcademicsService._batch(session, business_id, batch_id)
+        await AcademicsService._batch(session, business_id, batch_id, writing=True)
         row = await _one(session, """INSERT INTO academics_announcements
             (business_id,batch_id,title,body,created_by)
             VALUES (:bid,:batch,:title,:body,:actor) RETURNING *""",
@@ -311,7 +315,7 @@ class AcademicsService:
         await _mutable(session, business_id)
         assessment = await _one(session, "SELECT * FROM academics_assessments WHERE id=:id AND business_id=:bid",
                                 {"id": assessment_id, "bid": business_id}, "Assessment")
-        await AcademicsService._batch(session, business_id, uuid.UUID(assessment["batch_id"]))
+        await AcademicsService._batch(session, business_id, uuid.UUID(assessment["batch_id"]), writing=True)
         await _one(session, "SELECT id FROM academics_enrolments WHERE id=:id AND business_id=:bid AND batch_id=:batch",
                    {"id": enrolment_id, "bid": business_id, "batch": uuid.UUID(assessment["batch_id"])}, "Enrolment")
         if marks < 0 or marks > Decimal(assessment["maximum"]):

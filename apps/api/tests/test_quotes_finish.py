@@ -155,6 +155,9 @@ def test_a_website_quote_request_opens_a_draft_and_keeps_the_lead(owner: dict[st
     for module in ("leads", "quotes", "customer-relationships"):
         enabled = client.post(f"/v1/b/{business_id}/modules/{module}/enable", headers=owner)
         assert enabled.status_code == 200, enabled.text
+    # A fresh business is private (no public URL); its website form needs it reachable.
+    assert client.post(f"/v1/b/{business_id}/marketplace/visibility", json={"visibility": "unlisted"},
+                       headers=owner).status_code == 200
 
     sent = client.post(
         f"/v1/public/websites/{slug}/enquiries",
@@ -183,6 +186,8 @@ def test_a_quote_request_stays_a_lead_when_quotes_is_off(owner: dict[str, str]) 
     business = created.json()["data"]["business"]
     enabled = client.post(f"/v1/b/{business['id']}/modules/leads/enable", headers=owner)
     assert enabled.status_code == 200, enabled.text
+    assert client.post(f"/v1/b/{business['id']}/marketplace/visibility", json={"visibility": "unlisted"},
+                       headers=owner).status_code == 200
     sent = client.post(
         f"/v1/public/websites/{business['slug']}/enquiries",
         json={"name": "Ravi", "phone": "9840099999", "message": "A gate", "purpose": "quote_request"},

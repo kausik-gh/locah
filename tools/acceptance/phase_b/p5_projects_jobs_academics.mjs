@@ -5,14 +5,16 @@ import crypto from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
-const require = createRequire('C:/Users/KausikGH/AppData/Local/Temp/locah-pw/package.json')
+// Playwright from tools/acceptance/node_modules, or from LOCAH_PW_DIR (a folder with its own install).
+const require = createRequire(process.env.LOCAH_PW_DIR ? `${process.env.LOCAH_PW_DIR}/package.json` : import.meta.url)
 const { chromium } = require('playwright-core')
 
 const API = process.env.LOCAH_API || 'http://127.0.0.1:8010'
 const WS = process.env.LOCAH_WORKSPACE || 'http://127.0.0.1:3101'
 const SECRET = 'local-acceptance-secret-with-at-least-32-characters'
-const PSQL = process.env.PSQL || 'C:/Users/KausikGH/scoop/apps/postgresql/current/bin/psql.exe'
-const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
+const PSQL = process.env.PSQL || 'psql'
+// A browser already on the machine; without it, Playwright's own Chromium.
+const CHROME = process.env.CHROME_PATH || undefined
 const OUT = 'acceptance-out/p5'
 const results = []
 

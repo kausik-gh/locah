@@ -139,8 +139,10 @@ def test_projects_jobs_and_academics_hold_their_boundaries(monkeypatch: Any) -> 
     assert started.status_code == 200, started.text
     assert started.json()["data"]["status"] == "in_progress"
     assert client.get(f"/v1/b/{bid}/jobs/{job['id']}", headers=tech_headers).status_code == 200
+    # Another technician's job card does not exist for them (as bookings and
+    # tasks, and as RLS answers on the API role).
     denied = client.get(f"/v1/b/{bid}/jobs/{job['id']}", headers=other_headers)
-    assert denied.status_code == 403, denied.text
+    assert denied.status_code == 404, denied.text
     assert job["id"] not in [row["id"] for row in client.get(f"/v1/b/{bid}/jobs", headers=other_headers).json()["data"]]
     assert client.post(f"/v1/b/{bid}/jobs/{job['id']}/assign", json={"member_id": tech}, headers=tech_headers).status_code == 403
     manager_view = client.get(f"/v1/b/{bid}/jobs", headers=manager_headers)
@@ -215,8 +217,9 @@ def test_projects_jobs_and_academics_hold_their_boundaries(monkeypatch: Any) -> 
         "topic": "Fractions",
     }, headers=teacher_headers)
     assert session.status_code == 200, session.text
+    # Another teacher's batch does not exist for them (as RLS answers on the API role).
     hidden = client.get(f"/v1/b/{bid}/academics/batches/{batch_id}/sessions", headers=other_teacher_headers)
-    assert hidden.status_code == 403, hidden.text
+    assert hidden.status_code == 404, hidden.text
     assessment = client.post(f"/v1/b/{bid}/academics/batches/{batch_id}/assessments", json={
         "title": "Weekly test", "maximum": 20,
     }, headers=teacher_headers)

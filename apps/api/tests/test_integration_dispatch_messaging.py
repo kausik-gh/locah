@@ -43,6 +43,9 @@ def test_dispatch_state_drives_the_customer_record_and_messages_once(monkeypatch
         "offerings-catalog", "orders", "payments", "fulfilment", "dispatch", "workforce",
         "customer-relationships", "messaging"))
     slug = str(sql("select slug from businesses where id = :b", b=bid)[0][0])
+    # A fresh business is private (no public URL); the website checkout needs it reachable.
+    assert client.post(f"/v1/b/{bid}/marketplace/visibility", json={"visibility": "unlisted"},
+                       headers=owner).status_code == 200
     loc = primary_location(client, owner, bid)
     base = f"/v1/platform/businesses/{bid}"
     assert client.post(f"{base}/messaging/channel/sandbox", json={
