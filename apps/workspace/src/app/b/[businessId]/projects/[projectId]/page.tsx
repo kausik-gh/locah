@@ -7,6 +7,7 @@ import { AddForm } from '../AddForm'
 import { StageTrack, type StageWhere } from '@/components/StageTrack'
 import {
   addPhase,
+  assignPhase,
   addTask,
   changeProjectStatus,
   updatePhase,
@@ -34,6 +35,7 @@ export const dynamic = 'force-dynamic'
 
 type Customer = { id: string; display_name: string }
 type Member = { id: string; display_name: string; status?: string | null }
+type RelatedJob = { id: string; reference: string; title: string; status: string }
 
 /**
  * One project, as a place to work rather than a record to read.
@@ -77,7 +79,7 @@ export default async function ProjectDetailPage({
   const project = res.data.data
   const open = project.is_open
 
-  const [listRes, customersRes, membersRes, stageRes] = await Promise.all([
+  const [listRes, customersRes, membersRes, stageRes, jobsRes] = await Promise.all([
     // The list carries the business's vocabulary; the detail page borrows it
     // rather than the API repeating it on every read.
     apiTry<{ data: { semantics: ProjectSemantics } }>(
@@ -93,6 +95,7 @@ export default async function ProjectDetailPage({
       token
     ),
     apiTry<{ data: StageWhere }>(`/v1/b/${params.businessId}/stages/projects/${params.projectId}`, token),
+    apiTry<{ data: RelatedJob[] }>(`/v1/b/${params.businessId}/jobs?project_id=${params.projectId}`, token),
   ])
 
   const semantics = listRes.ok
@@ -136,8 +139,17 @@ export default async function ProjectDetailPage({
         project={project}
         phases={phases}
         tasks={tasks}
+        members={members}
+        memberName={memberName}
         open={open}
       />
+      {jobsRes.ok ? <Card style={{ marginTop: '1.25rem' }}>
+        <h2 style={{ marginTop: 0 }}>Jobs in this project</h2>
+        {jobsRes.data.data.length ? <ul>{jobsRes.data.data.map((job) => <li key={job.id}>
+          <Link href={`/b/${params.businessId}/jobs/${job.id}`}>{job.reference} · {job.title}</Link> · {job.status.replaceAll('_', ' ')}
+        </li>)}</ul> : <p>No executable jobs linked yet. Keep the project for the overall commitment; create a job card when work needs a technician or parts.</p>}
+        <Link href={`/b/${params.businessId}/jobs`}>Open job cards</Link>
+      </Card> : null}
 
       <Tasks
         businessId={params.businessId}
@@ -293,17 +305,21 @@ function Phases({
   project,
   phases,
   tasks,
+  members,
+  memberName,
   open,
 }: {
   businessId: string
   project: ProjectRow
   phases: ProjectPhase[]
   tasks: ProjectTask[]
+  members: Member[]
+  memberName: Map<string, string>
   open: boolean
 }) {
   return (
     <Card style={{ marginTop: '1.5rem', display: 'grid', gap: '0.9rem' }}>
-      <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Stages</h2>
+      <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Work phases & milestones</h2>
 
       {phases.length === 0 ? (
         <p style={{ color: 'var(--color-muted)', margin: 0 }}>
@@ -339,7 +355,10 @@ function Phases({
                   <span style={{ display: 'block', fontSize: '0.84rem', color: 'var(--color-muted)' }}>
                     {inPhase.length > 0 ? `${done}/${inPhase.length} tasks` : 'No tasks yet'}
                     {phase.due_on ? ` · due ${dayLabel(phase.due_on)}` : ''}
+                    {phase.responsible_member_id ? ` · ${memberName.get(phase.responsible_member_id) || 'Responsible person'}` : ''}
                   </span>
+                  {phase.completion_note ? <span style={{ display: 'block', fontSize: '0.84rem' }}>{phase.completion_note}</span> : null}
+                  {phase.invoice_id ? <span style={{ display: 'block', fontSize: '0.84rem' }}>Linked invoice {phase.invoice_id.slice(0, 8)}…</span> : null}
                 </div>
                 {open ? (
                   <form action={updatePhase} style={{ display: 'flex', gap: '0.4rem' }}>
@@ -362,6 +381,16 @@ function Phases({
                     {PHASE_STATUS_LABEL[phase.status] ?? phase.status}
                   </span>
                 )}
+                {open && phase.is_milestone ? <form action={assignPhase} style={{ display: 'flex', gap: '0.4rem' }}>
+                  <input type="hidden" name="businessId" value={businessId} />
+                  <input type="hidden" name="projectId" value={project.id} />
+                  <input type="hidden" name="phaseId" value={phase.id} />
+                  <select name="responsible_member_id" defaultValue={phase.responsible_member_id || ''} aria-label={`${phase.name} responsible person`}>
+                    <option value="">No owner</option>
+                    {members.map((member) => <option key={member.id} value={member.id}>{member.display_name}</option>)}
+                  </select>
+                  <button type="submit" className="btn btn-ghost">Assign</button>
+                </form> : null}
               </li>
             )
           })}

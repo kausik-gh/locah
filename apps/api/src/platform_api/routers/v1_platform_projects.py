@@ -84,6 +84,13 @@ class PhaseRequest(BaseModel):
     status: str | None = None
     is_milestone: bool | None = None
     due_on: str | None = None
+    invoice_id: UUID | None = None
+    completion_note: str | None = Field(default=None, max_length=2000)
+
+
+class PhaseAssignRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    responsible_member_id: UUID | None = None
 
 
 class TaskRequest(BaseModel):
@@ -296,6 +303,25 @@ async def update_phase(
     detail = await ProjectService.get_detail(
         session, business_id=business_id, project_id=project_id
     )
+    return {"data": detail, "meta": _meta(actor)}
+
+
+@router.post("/{business_id}/projects/{project_id}/phases/{phase_id}/assign")
+async def assign_phase(
+    business_id: UUID,
+    project_id: UUID,
+    phase_id: UUID,
+    body: PhaseAssignRequest,
+    actor: BusinessActorContext = Depends(require_business_actor(PROJECTS_ASSIGN, "projects")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    await ProjectService.update_phase(
+        session, business_id=business_id, project_id=project_id, phase_id=phase_id,
+        actor_id=actor.request.identity_id, correlation_id=actor.request.correlation_id,
+        payload={"responsible_member_id": body.responsible_member_id},
+    )
+    await session.commit()
+    detail = await ProjectService.get_detail(session, business_id=business_id, project_id=project_id)
     return {"data": detail, "meta": _meta(actor)}
 
 

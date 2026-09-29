@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from platform_core.business_type_profiles.registry import BusinessTypeProfileRegistry
 from platform_core.exceptions import ConflictError, ResourceNotFound, ValidationError
 from platform_core.gates import assert_business_mutable
-from platform_core.models import Project, ProjectPhase, ProjectTask, Quote, WorkforceMember
+from platform_core.models import InvoicingDocument, Project, ProjectPhase, ProjectTask, Quote, WorkforceMember
 from platform_core.resolvers.customer_resolver import CustomerResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.business import BusinessService
@@ -153,6 +153,9 @@ class ProjectService:
             "is_milestone": phase.is_milestone,
             "due_on": phase.due_on.isoformat() if phase.due_on else None,
             "completed_at": phase.completed_at.isoformat() if phase.completed_at else None,
+            "responsible_member_id": str(phase.responsible_member_id) if phase.responsible_member_id else None,
+            "invoice_id": str(phase.invoice_id) if phase.invoice_id else None,
+            "completion_note": phase.completion_note,
             "sort_order": phase.sort_order,
         }
 
@@ -798,6 +801,24 @@ class ProjectService:
             phase.due_on = _date(payload.get("due_on"))
         if "is_milestone" in payload:
             phase.is_milestone = bool(payload.get("is_milestone"))
+        if "responsible_member_id" in payload:
+            phase.responsible_member_id = await ProjectService._validate_member(
+                session, business_id=business_id, member_id=payload.get("responsible_member_id")
+            )
+        if "invoice_id" in payload:
+            invoice_id = payload.get("invoice_id")
+            if invoice_id:
+                invoice = (await session.execute(select(InvoicingDocument).where(
+                    InvoicingDocument.id == uuid.UUID(str(invoice_id)),
+                    InvoicingDocument.business_id == business_id,
+                ))).scalar_one_or_none()
+                if invoice is None:
+                    raise ResourceNotFound("Invoice")
+                phase.invoice_id = invoice.id
+            else:
+                phase.invoice_id = None
+        if "completion_note" in payload:
+            phase.completion_note = _text(payload.get("completion_note"), limit=2000, field="completion note")
         if "status" in payload:
             status = str(payload.get("status"))
             if status not in PHASE_STATUSES:

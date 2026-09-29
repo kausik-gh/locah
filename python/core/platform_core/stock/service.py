@@ -581,6 +581,40 @@ class StockService:
                 "on_hand_text": display_quantity(record.quantity_on_hand, offering.stock_unit),
                 "batch_id": str(batch.id) if batch else None, "serials": serials}
 
+    # ------------------------------------------------------------ operational job parts
+    @staticmethod
+    async def consume_for_job(session: AsyncSession, *, business_id: uuid.UUID, job_id: uuid.UUID,
+                              record_id: uuid.UUID, quantity: int, serials: list[str],
+                              customer_contact_id: uuid.UUID, actor_id: uuid.UUID,
+                              allowed: list[uuid.UUID] | None) -> InventoryMovement:
+        """The Inventory-owned consumption contract. Caller supplies a locked, idempotent job.
+
+        A job never edits stock or movements itself. This operation, the job-part
+        provenance row and the job transition commit in one database transaction.
+        """
+        record, offering = await StockService._record_by_id(session, business_id, record_id, allowed)
+        if quantity < 1:
+            raise ValidationError("Part quantity must be positive")
+        if quantity > record.quantity_on_hand - record.quantity_reserved:
+            raise ValidationError(f"Only {display_quantity(max(record.quantity_on_hand - record.quantity_reserved, 0), offering.stock_unit)} of {offering.title} is free")
+        cleaned = ledger.clean_serials(serials)
+        if offering.serial_tracked:
+            await ledger.sell_serials(session, record, offering, cleaned, quantity=quantity,
+                                      strict=True, sold_at=datetime.now(timezone.utc),
+                                      customer_id=customer_contact_id)
+        elif cleaned:
+            raise ValidationError("This part does not track serial numbers")
+        allocations = await ledger.take(session, record, offering, quantity, today=today_ist())
+        value = sum(a.value_paise for a in allocations)
+        return await StockService._write(
+            session, record, offering, delta=-quantity, movement_type="job_consumption",
+            reason=f"Used on job {job_id}", actor_id=actor_id,
+            value_delta=-value, event="inventory.job_part.consumed",
+            source=("job", job_id),
+            batch_id=allocations[0].batch_id if len(allocations) == 1 else None,
+            extra={"job_id": str(job_id), "allocations": [a.as_json() for a in allocations]},
+        )
+
     # ------------------------------------------------------------ wastage
     @staticmethod
     async def record_wastage(session: AsyncSession, business_id: uuid.UUID, actor_id: uuid.UUID,
