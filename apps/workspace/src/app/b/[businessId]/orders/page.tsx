@@ -105,6 +105,7 @@ export default async function OrdersPage({
           subtitle="Orders for a day, by when they are wanted. Tap the next step as you go."
           actions={
             <span className="bos-inv-buttons">
+              <Link className="btn" href={`${base}/orders/new`}>Take a phone order</Link>
               <Link className="btn btn-ghost" href={`${base}/orders/production?date=${board.today}`}>Today’s production</Link>
               <Link className="btn btn-ghost" href={`${base}/orders/production?date=${board.tomorrow}`}>Tomorrow’s production</Link>
             </span>
@@ -190,7 +191,8 @@ export default async function OrdersPage({
 
   return (
     <div>
-      <PageHeader title="Orders" subtitle="Every order, from every channel, in one list. Open one to accept, prepare and complete it." />
+      <PageHeader title="Orders" subtitle="Every order, from every channel, in one list. Open one to accept, prepare and complete it."
+        actions={<Link className="btn" href={`${base}/orders/new`}>Take a phone order</Link>} />
       {viewTabs}
       <FilterTabs
         current={searchParams?.status}

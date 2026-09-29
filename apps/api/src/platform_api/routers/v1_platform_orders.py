@@ -142,6 +142,91 @@ async def production_list(
             "meta": {"correlation_id": actor.request.correlation_id}}
 
 
+# ---------------------------------------------------------------- phone orders and changes (P1-10E5; FR-OR-13, FR-OR-18)
+class PhoneOrderBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    customer: dict[str, Any] = Field(default_factory=dict)
+    items: list[dict[str, Any]]
+    fulfilment_mode: str = "pickup"
+    delivery_address: dict[str, Any] | None = None
+    payment_method: str = "cod"
+    due: dict[str, Any] | None = None
+    location_id: UUID | None = None
+    idempotency_key: str | None = Field(default=None, max_length=120)
+
+
+class PhonePriceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[dict[str, Any]]
+    fulfilment_mode: str | None = None
+    delivery_address: dict[str, Any] | None = None
+    due: dict[str, Any] | None = None
+
+
+class ChangeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lines: list[dict[str, Any]]
+    reason: str | None = Field(default=None, max_length=300)
+    customer_agreed: bool = False
+    version: int | None = Field(default=None, ge=1)
+
+
+@router.post("/{business_id}/orders/phone/price")
+async def price_phone_order(
+    business_id: UUID,
+    body: PhonePriceBody,
+    actor: BusinessActorContext = Depends(require_business_actor(ORDERS_CREATE, "orders")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """What the caller will pay, priced by the server exactly as the website would."""
+    from platform_core.orders.phone import price
+
+    data = await price(session, actor.business, body.model_dump(exclude_none=True))
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/orders/phone")
+async def place_phone_order(
+    business_id: UUID,
+    body: PhoneOrderBody,
+    actor: BusinessActorContext = Depends(require_business_actor(ORDERS_CREATE, "orders")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """A phone order taken by staff: the same order path as the website (FR-OR-13)."""
+    from platform_core.orders.phone import place
+
+    payload = body.model_dump(exclude_none=True)
+    if body.location_id:
+        payload["location_id"] = str(body.location_id)
+    data = await place(session, actor.business, actor_id=actor.request.identity_id,
+                       correlation_id=actor.request.correlation_id, payload=payload)
+    await session.commit()
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/orders/{order_id}/change")
+async def change_order(
+    business_id: UUID,
+    order_id: UUID,
+    body: ChangeBody,
+    preview: bool = Query(default=False),
+    actor: BusinessActorContext = Depends(require_business_actor(ORDERS_CREATE, "orders")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Change an open order's items; ?preview=true shows the result without saving (FR-OR-18)."""
+    from platform_core.orders.edit import change
+
+    data = await change(session, business_id=business_id, order_id=order_id, actor_id=actor.request.identity_id,
+                        correlation_id=actor.request.correlation_id, lines=body.lines, reason=body.reason,
+                        customer_agreed=body.customer_agreed, expected_version=body.version, preview=preview)
+    if not preview:
+        await session.commit()
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
 @router.post("/{business_id}/orders")
 async def create_order(
     business_id: UUID,

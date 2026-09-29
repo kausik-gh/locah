@@ -8,6 +8,8 @@ import { OrderBill } from './OrderBill'
 import { MoneySection } from '@/components/MoneySection'
 import { money, paymentLabel } from '../labels'
 import { LocalTime } from '@/components/LocalTime'
+import { ChangeOrder } from './ChangeOrder'
+import type { CatalogueItem } from '../ItemPicker'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,7 +48,8 @@ export default async function OrderDetailPage({
       advance_amount?: number | null
       preorder_terms?: { cancel_hours?: number | null }
       currency: string
-      items?: Array<{ title: string; quantity: number; line_total: number; basis_words?: string | null }>
+      version: number
+      items?: Array<{ id: string; title: string; quantity: number; line_total: number; basis_words?: string | null }>
     }
   }>(`/v1/platform/businesses/${params.businessId}/orders/${params.orderId}`, token)
   const bills = await apiTry<{ data: Array<{ id: string; number: string | null; kind_label: string; status: string; doc_kind: string }> }>(
@@ -67,6 +70,11 @@ export default async function OrderDetailPage({
     ready: ['completed'],
   }
   const next = nextByStatus[order.status] || []
+  const billed = bills.ok && bills.data.data.some((x) => x.status === 'issued')
+  const changeable = ['pending', 'accepted', 'preparing'].includes(order.status) && !billed
+  const catalogue = changeable
+    ? await apiTry<{ data: (CatalogueItem & { status: string })[] }>(`/v1/platform/businesses/${params.businessId}/products?status=active`, token)
+    : null
   const cancellable = ['pending', 'accepted', 'preparing', 'ready'].includes(order.status)
 
   const actions = (
@@ -149,6 +157,12 @@ export default async function OrderDetailPage({
           ) : null}
         </div>
       </Section>
+
+      {changeable ? (
+        <ChangeOrder businessId={params.businessId} orderId={params.orderId} version={order.version}
+          lines={(order.items || []).filter((i) => i.title !== 'Delivery fee').map((i) => ({ id: i.id, title: i.title, quantity: i.quantity }))}
+          items={catalogue && catalogue.ok ? catalogue.data.data.filter((o) => o.status === 'active' && o.title !== 'Delivery fee') : []} />
+      ) : null}
 
       {order.tax_basis?.engine ? (
         <dl className="bos-inv-ordertax">

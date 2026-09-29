@@ -22,6 +22,7 @@ Branch `main`. Packets done, newest last:
 | P1-10C module-aware website + Marketplace | 366ad71 | test_module_aware_site (11) + browser p1_10c_site 21/21; suite 1059 |
 | P1-10D1 collect what is due (payments) | see git log ("feat(p1-10d1)… browser-verified") | test_payment_collect (15) + browser p1_10d1_payments 83/83 (Playwright Chromium, desktop + 390 px); suite 1073 |
 | P1-10D2a dated pre-orders | see git log ("feat(p1-10d2a)") | test_preorders (10) + browser p1_10d2_preorders 31/31; p1_03, p1_08, p1_10b, p1_10d1 re-run green on the new checkout; suite 1083 |
+| P1-10E5 phone orders + order changes | see git log ("feat(p1-10e5)") | test_order_changes (5) + browser p1_10e_phone 17/17 (desktop + 390 px); order suites re-run |
 | P1-10E4 solo navigation + calendar | see git log ("feat(p1-10e3, p1-10e4)") | test_solo_calendar (2) + browser p1_10e_solo 10/10 (desktop + 390 px) |
 | P1-10E3 DPDP export + erasure | see git log ("feat(p1-10e3, p1-10e4)") | test_customer_privacy (3) + browser p1_10e_privacy 17/17 (desktop + 390 px) |
 | P1-10E2 tags + segments | see git log ("feat(p1-10e2)") | test_customer_segments (5) + browser p1_10e_segments 13/13 (desktop + 390 px) |
@@ -52,6 +53,9 @@ P1 gate after P1-10E2: **TOTAL 261 · COMPLETE 140 · PARTIAL 94 · NOT_STARTED 
 ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 P1 gate after P1-10E3: **TOTAL 261 · COMPLETE 141 · PARTIAL 95 · NOT_STARTED 3 ·
+ACTIVATION_REQUIRED 22 · FUTURE 0.**
+
+P1 gate after P1-10E5: **TOTAL 261 · COMPLETE 143 · PARTIAL 95 · NOT_STARTED 1 ·
 ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 P1 gate after P1-10E4: **TOTAL 261 · COMPLETE 141 · PARTIAL 96 · NOT_STARTED 2 ·
@@ -89,6 +93,27 @@ MD §11.2 closes the AI Receptionist's tool list ("Nothing else") and §11.3
 sends restaurant phone orders to a WhatsApp link; the Orders refinement
 authorises AI phone ordering for simple orders where enabled. The founder
 wins; the WhatsApp-link/human path remains for long, custom or risky orders.
+
+### P1-10E5 — phone orders and order changes (DONE, browser-verified)
+
+- `platform_core/orders/phone.py`: `price` (→ `CheckoutService.price_cart` by
+  the business's slug) and `place` (caller matched/created by normalised
+  phone → `CheckoutService.place_for_contact(..., actor_id=staff)`, channel
+  `phone`). `place_for_contact` gained an optional `actor_id` (defaults to the
+  owner, as before). Routes `/orders/phone/price`, `/orders/phone` (orders.create).
+- `platform_core/orders/edit.py`: `change(..., preview)` — editable while
+  pending/accepted/preparing and not billed; agreed lines keep their price,
+  added lines priced now; stock reserve/release for the difference; tax/total
+  via `price_order`; delivery charge rechecked (`_recheck_delivery`); dated
+  orders re-checked with `_apply_preorder`; money difference (to collect /
+  refund due → attention flag; cod attempt amount follows the balance);
+  history + audit; preview = same code in a savepoint rolled back via `_Preview`.
+  Route `/orders/{id}/change?preview=` (orders.create).
+- Workspace: `orders/new` (PhoneOrder) and the order page's ChangeOrder, both
+  using `orders/ItemPicker.tsx` (packs, variants via server action, choices,
+  written messages). "Take a phone order" on the Orders page.
+- Note: Workspace times use the viewer's clock (`LocalTime`); the headless
+  browser runs in UTC, so a 5 pm IST order reads 11:30 AM in screenshots.
 
 ### P1-10E4 — solo businesses: no team menus, one calendar (DONE, browser-verified; OM-21 PARTIAL)
 
@@ -335,17 +360,15 @@ wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 
 ## Remaining work snapshot (P1 first)
 
-P1 NOT_STARTED (2): FR-OR-18 (order edits that revalidate), PKT-10 (P1-10
-packet — languages remain).
+P1 NOT_STARTED (1): PKT-10 (P1-10 packet — English/Tamil/Hindi strings remain).
 P1 PARTIAL groups: FD-02 (portal items with Academics), FD-03 (strategy
 placement of tool sections), OM-09 (portfolio kind), OM-18 (digital delivery),
 GP-22 + PR-10 (English/Tamil/Hindi), payments provider (Cashfree =
 ACTIVATION), playbook rows waiting on P2–P5 modules.
 
 Planned next packets (dependency order):
-1. **P1-10E** (E1 insights, E2 tags + segments, E3 DPDP, E4 solo done) → E5 order edits that revalidate + phone-order screen
-   (FR-OR-18, FR-OR-13) → E6 English/Tamil/Hindi strings (PKT-10, PR-10);
-   then the P1 gate.
+1. **P1-10E** (E1–E5 done) → E6 English/Tamil/Hindi strings (PKT-10, PR-10,
+   GP-22 P1 part); then the P1 gate.
 2. P2 → P5 per MD §26.2 / ledger sections W–AL, then E2E flows (section BG).
 
 ## How to run things locally (Linux / Claude Code cloud) — used since P1-10D1

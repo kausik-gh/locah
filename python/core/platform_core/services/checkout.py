@@ -415,10 +415,13 @@ class CheckoutService:
         correlation_id: str,
         payload: dict[str, Any],
         actor_context: str = "guest_checkout",
+        actor_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
-        """One order path for every channel (website, WhatsApp): priced from the
-        catalogue, fulfilment job, payment attempt (Capability Universe §12)."""
-        actor_id = business.primary_owner_identity_id
+        """One order path for every channel (website, WhatsApp, a phone order taken
+        by staff): priced from the catalogue, fulfilment job, payment attempt
+        (Capability Universe §12). The actor is the staff member when one took
+        it, otherwise the business's owner acting for the customer."""
+        actor_id = actor_id or business.primary_owner_identity_id
         if not await CheckoutService._orders_active(session, business.id):
             # Auto-enable is not allowed; require module. For First Launch retail types
             # orders is on the plan — Business must enable. Fallback: if entitled core

@@ -633,3 +633,17 @@ done("P1-10E", {
                   svc="✓ /me/context solo; GET /calendar (services/one_calendar.py)", ws="✓ solo navigation; Home › Calendar",
                   test="✓ test_solo_calendar (2) + browser p1_10e_solo (10/10, Playwright Chromium), desktop + 390 px"),
 })
+
+
+# ---------------------------------------------------------------- P1-10E5 phone orders and order changes (Founder: Orders)
+_OC_TEST = ("✓ test_order_changes (5, platform_api RLS role) + browser p1_10e_phone (17/17, Playwright Chromium), "
+            "desktop + 390 px")
+done("P1-10E", {
+    "FR-OR-13": dict(status=C, code="Orders › Take a phone order: the caller's name and number (matched to their customer record by number), items with their pack, option, choices and written message, pickup or delivery with the address, the day a made-to-order item can be ready — priced by the server exactly as the website prices it (/orders/phone/price → price_cart) and placed through the website's own path (place_for_contact: stock reservation, delivery zone and charge, pay-on-delivery rule, pre-order day and advance link, fulfilment job, payment attempt) with channel 'phone' and the staff member as the actor; the advance link can be sent on WhatsApp or read out",
+                     svc="✓ orders/phone.py; /orders/phone, /orders/phone/price", perm="✓ orders.create",
+                     ws="✓ Orders › Take a phone order", test=_OC_TEST),
+    "FR-OR-18": dict(status=C, code="Change order on an open, unbilled order: quantities, lines removed, items added (with their choices); the server re-prices added lines from today's catalogue (agreed lines keep their price), reserves or releases stock for the difference (refusing more than is in stock), re-works tax and total with the billing engine, re-checks a delivered order's charge under today's zones and a dated order's day/limit/advance, and compares the money already taken with the new total (still to collect, or a refund due flagged in Payments; the cash expected on delivery follows the balance); a preview runs the same code in a rolled-back savepoint; saving needs the customer's agreement and records before/after in the order's history and the audit. A billed order is changed with a credit note instead. Changing the address or pickup/delivery is not part of the edit, and the customer confirms by phone/in person (recorded by staff) — no self-confirm link",
+                     svc="✓ orders/edit.py; /orders/{id}/change?preview=", perm="✓ orders.create",
+                     ws="✓ Order › Change order", test=_OC_TEST),
+    "FR-OR-27": dict(status=P, code="website checkout (p1_03, p1_04, p1_10d2), WhatsApp ordering (p1_08), POS sale (p1_05, p1_10d1 split), meat by weight (p1_03, p1_10a), bakery pre-order (p1_10d2), reorder (p1_10b), human phone order and an order changed after the call (p1_10e_phone) exist as browser flows; the AI phone order fixture (P3), restaurant table order and kitchen (P2), partial availability on the website, return/exchange and the combined owner view are not yet flows"),
+})
