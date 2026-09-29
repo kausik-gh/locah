@@ -103,6 +103,11 @@ VISUALS_QUEUED = {
     "ta_en": "Website-ku draft visuals ready pannaren — appuram unga real photos podalaam.",
     "ta": "வெப்சைட்டுக்கு மாதிரி படங்கள் ரெடி பண்றேன் — பிறகு உங்க படங்களை மாற்றலாம்.",
 }
+DOCUMENT_UPLOAD = {
+    "en": "Perfect — attach it with the 📎 button (a PDF or a photo works). I'll read it and list the items for you to check.",
+    "ta_en": "Super — 📎 button-la attach pannunga (PDF illa photo). Naan padichu items list panren, neenga check pannunga.",
+    "ta": "சரி — 📎 பட்டன்ல இணைச்சிடுங்க (PDF அல்லது போட்டோ). நான் படிச்சு பொருட்களைப் பட்டியலிடுறேன், நீங்க சரிபாருங்க.",
+}
 LOGO_UPLOAD = {
     "en": "Sure — attach it here with the 📎 button whenever you're ready.",
     "ta_en": "Seri — 📎 button-la attach pannunga.",

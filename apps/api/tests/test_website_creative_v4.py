@@ -182,6 +182,17 @@ def test_owner_changes_during_personalization_are_kept_and_pictures_are_drawn(
         hero = of(after, "hero")
         assert hero["content"]["headline"] == "Fresh cuts, closer to home."  # untouched: personalized
         assert hero["content"].get("image_asset_id")  # drawn, in the site's world
+        # Provenance: a LOCAH draft says so, and records its slot, job and prompt version.
+        asset_id = hero["content"]["image_asset_id"]
+        source, slot, gen_job, version, approval = sql(
+            "select source_type, generated_for, generation_job_id, prompt_version, approval_state "
+            "from media_assets where id = :a", a=asset_id)[0]
+        assert (source, slot, str(gen_job), approval) == ("gemini_generated", "hero", job_id, "draft")
+        assert version.startswith("media-v4")
+        assert hero["assets"]["image_asset_id"]["draft"] is True
+        kept = talk.client.post(f"/v1/b/{talk.id}/media/{asset_id}/approve", headers=talk.headers)
+        assert kept.status_code == 200, kept.text
+        assert of(talk.site(), "hero")["assets"]["image_asset_id"]["draft"] is False
         assert after["theme"]["palette_key"] == mine["theme"]["palette_key"]  # the owner's "warmer" stands
         assert "Prawns" in str(after)
         # Model first, then pictures — every prompt from one shoot brief.

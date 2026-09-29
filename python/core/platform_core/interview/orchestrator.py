@@ -27,6 +27,7 @@ from platform_core.interview import reader as rd
 from platform_core.interview.conversation import (
     LOGO_QUEUED,
     LOGO_UNAVAILABLE,
+    DOCUMENT_UPLOAD,
     LOGO_UPLOAD,
     REDIRECT,
     REDUNDANT,
@@ -969,6 +970,11 @@ _YES = re.compile(r"^\s*(yes|yeah|yep|sure|ok(?:ay)?|please|go ahead|do it|seri|
 _OWN_PHOTOS = re.compile(
     r"\b(i (?:have|'ll|will) (?:upload|send|share|add)|i have (?:photos|pictures|pics)|will upload)\b",
     re.I)
+# "I have a menu / our price list / a brochure" — attach it, don't retype it.
+_OWN_DOCUMENT = re.compile(
+    r"\b(?:i|we)\s+(?:have|'ve got|got|can send|will send|can share)\s+(?:a|an|our|my|the)?\s*"
+    r"(?:printed\s+|pdf\s+|full\s+)?(?:menu|menu card|catalogue|catalog|brochure|price ?list|rate ?card|rate list)\b",
+    re.I)
 # An explicit wish for a site WITHOUT generated pictures. "I don't have photos"
 # is not this: an owner with no photos is exactly who draft visuals are for.
 _TEXT_LED = re.compile(
@@ -992,6 +998,9 @@ def _contextual_signals(bp: BusinessBlueprint, ti: TurnIntelligence, text: str) 
     if text_led and ti.media_intent == "none":
         # An explicit "text only, no pictures" counts whenever it is said.
         ti.media_intent = "no_visuals"
+    if ti.media_intent == "none" and _OWN_DOCUMENT.search(text) and not any(
+            d.status in {"reading", "ready", "applied"} for d in bp.documents):
+        ti.media_intent = "will_upload_catalogue"
     if "media.photos" in asked and ti.media_intent == "none":
         if _OWN_PHOTOS.search(text):
             ti.media_intent = "will_upload_photos"
@@ -1070,6 +1079,8 @@ def _record_media_intent(bp: BusinessBlueprint, intent: str, image_available: bo
     if intent == "no_logo":
         logo.status = "declined"
         return ""
+    if intent == "will_upload_catalogue":
+        return str(DOCUMENT_UPLOAD[lang])
     if intent in {"generate_visuals", "will_upload_photos", "no_visuals"}:
         photos = bp.discovery.setdefault("media.photos", TargetState())
         photos.status = "answered" if intent != "no_visuals" else "declined"

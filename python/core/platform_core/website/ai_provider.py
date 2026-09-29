@@ -69,6 +69,12 @@ class UnavailableAIProvider:
             "AI provider not configured (no key for AI_PROVIDER); use deterministic fallback"
         )
 
+    async def generate_structured_from_file(
+        self, prompt: str, data: bytes, mime_type: str, schema: dict[str, Any],
+        model_config: dict[str, Any], timeout_seconds: int,
+    ) -> dict[str, Any]:
+        raise RuntimeError("AI provider not configured (no key for AI_PROVIDER)")
+
 
 # ---------------------------------------------------------------- Gemini
 
@@ -81,6 +87,9 @@ GEMINI_DEFAULT_MODEL = "gemini-3.8-flash"
 # the one place where a little more deliberation visibly changes the result.
 _GEMINI_THINKING = {
     "business.interview": "low",
+    # Reading a menu or catalogue is transcription with judgement about what is
+    # a heading and what is an item; a little thinking, not much.
+    "document.extract": "low",
     "website.design_strategy": "medium",
     "website.personalization": "medium",
     "website.generate": "medium",
@@ -253,9 +262,14 @@ class GeminiProvider:
             return os.getenv("GEMINI_INTERVIEW_MODEL", "").strip() or self._model
         if key.startswith("website."):
             return os.getenv("GEMINI_WEBSITE_MODEL", "").strip() or self._model
+        if key.startswith("document."):
+            return os.getenv("GEMINI_DOCUMENT_MODEL", "").strip() or self._model
         return self._model
 
-    def build_body(self, prompt: str, schema: dict[str, Any], model_config: dict[str, Any]) -> dict[str, Any]:
+    def build_body(
+        self, prompt: str, schema: dict[str, Any], model_config: dict[str, Any],
+        file: tuple[bytes, str] | None = None,
+    ) -> dict[str, Any]:
         purpose = model_config.get("purpose")
         generation: dict[str, Any] = {
             "responseMimeType": "application/json",
@@ -267,8 +281,15 @@ class GeminiProvider:
         thinking = model_config.get("thinking_level") or _GEMINI_THINKING.get(str(purpose or ""))
         if thinking:
             generation["thinkingConfig"] = {"thinkingLevel": thinking}
+        parts: list[dict[str, Any]] = []
+        if file is not None:
+            import base64
+
+            # The owner's own document, inline: a menu photo or a catalogue PDF.
+            parts.append({"inlineData": {"mimeType": file[1], "data": base64.b64encode(file[0]).decode()}})
+        parts.append({"text": prompt})
         body: dict[str, Any] = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "contents": [{"role": "user", "parts": parts}],
             "generationConfig": generation,
         }
         system_prompt = model_config.get("system_prompt")
@@ -292,12 +313,25 @@ class GeminiProvider:
         at no second provider.
         Only a credential failure skips it: another model cannot fix a bad key.
         """
+        return await self._structured(prompt, schema, model_config, timeout_seconds)
+
+    async def generate_structured_from_file(
+        self, prompt: str, data: bytes, mime_type: str, schema: dict[str, Any],
+        model_config: dict[str, Any], timeout_seconds: int,
+    ) -> dict[str, Any]:
+        """One structured answer about one file the owner gave (a menu, a catalogue)."""
+        return await self._structured(prompt, schema, model_config, timeout_seconds, file=(data, mime_type))
+
+    async def _structured(
+        self, prompt: str, schema: dict[str, Any], model_config: dict[str, Any], timeout_seconds: int,
+        file: tuple[bytes, str] | None = None,
+    ) -> dict[str, Any]:
         purpose = model_config.get("purpose")
         guard_external_ai("text", self.provider_name, str(purpose or ""))
         primary = str(model_config.get("model") or self.model_for(purpose))
         fallbacks = (os.getenv("GEMINI_FALLBACK_MODEL") or GEMINI_FALLBACK_MODEL).split(",")
         models = [primary] + [m.strip() for m in fallbacks if m.strip() and m.strip() != primary]
-        body = self.build_body(prompt, schema, model_config)
+        body = self.build_body(prompt, schema, model_config, file)
         started = time.monotonic()
         failure: Exception | None = None
         for attempt, model in enumerate(models):

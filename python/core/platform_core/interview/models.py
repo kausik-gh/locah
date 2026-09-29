@@ -62,6 +62,8 @@ MediaIntent = Literal[
     # Product/category imagery: the owner has none and agrees to draft visuals,
     # will upload their own, or wants none.
     "generate_visuals", "will_upload_photos", "no_visuals",
+    # "I have a menu / catalogue / brochure": ask them to attach it.
+    "will_upload_catalogue",
 ]
 # What the owner said about pictures for the site. Draft visuals fill any gap
 # unless the owner explicitly asked for a text-led site ("none"): an owner with
@@ -177,7 +179,11 @@ class CatalogueItem(StrictModel):
     price: str = Field(default="", max_length=40)
     unit: str = Field(default="", max_length=40)
     description: str = Field(default="", max_length=240)
-    source: Literal["owner", "owner_edited"] = "owner"
+    # "document": read from the owner's own menu/catalogue and accepted by them.
+    source: Literal["owner", "owner_edited", "document"] = "owner"
+    # Attributes the owner's document states explicitly ("veg", "250 g jar",
+    # "2 HP, 1440 rpm") — never inferred.
+    attributes: str = Field(default="", max_length=160)
 
 
 class CatalogueGroup(StrictModel):
@@ -198,6 +204,37 @@ class CatalogueGroup(StrictModel):
     # when Locah grouped owner-named items under a label ("Fish & Seafood").
     label_source: Literal["owner", "ai_suggestion"] = "owner"
     description: str = Field(default="", max_length=240)
+
+
+class ExtractedItem(StrictModel):
+    """One line read from the owner's menu or catalogue, waiting for their yes."""
+
+    name: str = Field(max_length=80)
+    description: str = Field(default="", max_length=240)
+    price: str = Field(default="", max_length=40)
+    unit: str = Field(default="", max_length=40)
+    variant: str = Field(default="", max_length=60)
+    attributes: str = Field(default="", max_length=160)
+    # "low": the reading was unsure (a smudged price, a cut-off line). Shown to
+    # the owner unticked, to check — never applied without their click.
+    confidence: Literal["high", "low"] = "high"
+
+
+class ExtractedGroup(StrictModel):
+    name: str = Field(max_length=80)
+    items: list[ExtractedItem] = Field(default_factory=list, max_length=40)
+
+
+class DocumentRead(StrictModel):
+    """A menu, catalogue, price list or brochure the owner attached, as read."""
+
+    asset_id: UUID
+    kind: Literal["menu", "catalogue", "price_list", "brochure", "other"] = "other"
+    status: Literal["reading", "ready", "failed", "applied", "dismissed"] = "reading"
+    reason: str = Field(default="", max_length=200)
+    groups: list[ExtractedGroup] = Field(default_factory=list, max_length=12)
+    # Facts the document states (a phone, hours) — shown to confirm, never applied silently.
+    facts: dict[str, str] = Field(default_factory=dict)
 
 
 class OfferingTaxonomy(StrictModel):
@@ -467,6 +504,8 @@ class BusinessBlueprint(StrictModel):
     # The pictures this website needs, slot by slot, with where each comes from
     # and how far it may stand in for the real thing (see TruthClass).
     media_plan: list[PlannedMedia] = Field(default_factory=list, max_length=24)
+    # Menus, catalogues and brochures the owner attached, and what was read.
+    documents: list[DocumentRead] = Field(default_factory=list, max_length=6)
     # Owner-approved draft catalogue items created from the interview. Never
     # infer this from website copy or create sellable items automatically.
     applied_setup_offerings: list[str] = Field(default_factory=list, max_length=12)
@@ -606,6 +645,10 @@ class InterviewCommand(StrictModel):
         "correct",
         # "Keep recommended": approve every recommended tool the business may use.
         "keep_tools",
+        # A menu/catalogue/brochure was uploaded: read it (document_id).
+        "document",
+        # The owner accepted lines read from it (document_id, accept).
+        "document_apply",
     ]
     text: str = Field(default="", max_length=4000)
     # A spoken turn arrives as its transcript, through this same command.
@@ -627,3 +670,7 @@ class InterviewCommand(StrictModel):
     draft: DraftCommand | None = None
     # For action="catalogue": prices, units and varieties typed by the owner.
     catalogue: list[CatalogueEdit] = Field(default_factory=list, max_length=24)
+    # For action="document" / "document_apply": which upload, and which lines
+    # ("Group::Item") the owner accepted.
+    document_id: UUID | None = None
+    accept: list[str] = Field(default_factory=list, max_length=120)

@@ -10,7 +10,8 @@ import {
   reloadInterview,
   startInterviewUpload,
 } from './actions'
-import { ROLE_LABELS, ROLE_ORDER, roleFromText, type MediaRole } from './attachment'
+import { ROLE_LABELS, ROLE_ORDER, isDocument, roleFromText, type MediaRole } from './attachment'
+import { DocumentReview } from './DocumentReview'
 import { BuildOverlay, ConfirmSheet } from './ConfirmSheet'
 import { Progress, UnderstandingPanel, type Correct } from './UnderstandingPanel'
 import { useVoice } from './voice/useVoice'
@@ -66,6 +67,20 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
     latest.current = next
     setData(next)
   }, [])
+
+  // A menu or catalogue is read in the background: look again until it is.
+  const openDocs = (bp.documents ?? []).filter((d) => d.status === 'reading' || d.status === 'ready' || d.status === 'failed')
+  const reading = openDocs.some((d) => d.status === 'reading')
+  useEffect(() => {
+    if (!reading) return
+    const timer = setInterval(() => {
+      if (busyRef.current) return
+      void reloadInterview(latest.current.blueprint.business_id).then((r) => {
+        if (r.ok && !busyRef.current) apply(r.data)
+      })
+    }, 4000)
+    return () => clearInterval(timer)
+  }, [reading, apply])
 
   async function send(change: Change): Promise<boolean> {
     setBusy(true)
@@ -177,9 +192,11 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
     setUploading(true)
     setError('')
     try {
-      if (file.size > 10 * 1024 * 1024) throw new Error('Choose an image smaller than 10 MB.')
+      const readable = isDocument(file, text)
+      if (readable && file.size > 20 * 1024 * 1024) throw new Error('Choose a file smaller than 20 MB.')
+      if (!readable && file.size > 10 * 1024 * 1024) throw new Error('Choose an image smaller than 10 MB.')
       const guess = roleFromText(text)
-      const start = await startInterviewUpload(bp.business_id, guess ?? 'business', file.type, file.size, file.name)
+      const start = await startInterviewUpload(bp.business_id, readable ? 'document' : guess ?? 'business', file.type, file.size, file.name)
       if (!start.ok) throw new Error(start.error)
       // Supabase's signed upload expects the multipart body its own client sends.
       const body = new FormData()
@@ -189,7 +206,8 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
       if (!uploaded.ok) throw new Error('The image didn’t upload. Please try again.')
       const complete = await finishInterviewUpload(bp.business_id, start.assetId)
       if (!complete.ok) throw new Error(complete.error)
-      if (guess) await saveAttachment(start.assetId, file.name, guess)
+      if (readable) await send({ action: 'document', document_id: start.assetId })
+      else if (guess) await saveAttachment(start.assetId, file.name, guess)
       else setStaged({ assetId: start.assetId, filename: file.name })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Image upload failed.')
@@ -295,6 +313,15 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
             </p>
           ) : null}
 
+          {openDocs.map((doc) => (
+            <DocumentReview
+              key={`${doc.asset_id}:${doc.status}`}
+              doc={doc}
+              busy={busy}
+              onApply={(accept) => void send({ action: 'document_apply', document_id: doc.asset_id, accept })}
+            />
+          ))}
+
           {staged ? (
             <div className="ti-staged" role="group" aria-label="What is this image?">
               <p>
@@ -391,12 +418,12 @@ export function BusinessInterview({ initial }: { initial: BusinessInterviewData 
                 }}
               />
               <div className="ti-compose__tools">
-                <label className="ti-icon" title="Attach a photo or logo">
+                <label className="ti-icon" title="Attach a photo, logo, menu or catalogue">
                   <ClipIcon />
-                  <span className="lc-sr">{uploading ? 'Uploading…' : 'Attach a photo or logo'}</span>
+                  <span className="lc-sr">{uploading ? 'Uploading…' : 'Attach a photo, logo, menu or catalogue'}</span>
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
                     disabled={busy || uploading}
                     onChange={(e) => {
                       const file = e.target.files?.[0]

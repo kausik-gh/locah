@@ -16,6 +16,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  approveDraftImage,
   completeImageUpload,
   generateSectionImage,
   refreshPreviewToken,
@@ -35,7 +36,7 @@ export type EditorSection = {
   section_type_id: string
   layout_variant?: string | null
   content: Record<string, unknown>
-  assets?: Record<string, { url: string; alt_text?: string | null }>
+  assets?: Record<string, { url: string; alt_text?: string | null; draft?: boolean }>
   is_visible: boolean
 }
 
@@ -291,17 +292,26 @@ function ImageField({
   businessId,
   sectionId,
   currentUrl,
+  currentAssetId,
+  draft,
   onUploaded,
+  onRemove,
 }: {
   businessId: string
   sectionId: string
   currentUrl?: string
+  currentAssetId?: string
+  /** A picture LOCAH drew that the owner has not approved yet. */
+  draft?: boolean
   onUploaded: (assetId: string) => void | Promise<void>
+  onRemove: () => void | Promise<void>
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [justUploaded, setJustUploaded] = useState<string | null>(null)
+  const [kept, setKept] = useState(false)
   const shown = justUploaded || currentUrl
+  const isDraft = Boolean(draft && !justUploaded && !kept)
 
   const pick = async (file: File) => {
     setError(null)
@@ -350,8 +360,14 @@ function ImageField({
           No picture yet. A good photo of your space or your work makes the biggest difference.
         </p>
       )}
+      {isDraft ? (
+        <p className="ed-help" style={{ marginTop: 0 }}>
+          <strong>Draft picture by LOCAH</strong> — it illustrates the mood, it is not a photo of your
+          business. Replace it with your own photo, keep it, or remove it.
+        </p>
+      ) : null}
       <label className={`btn btn-ghost ed-upload${busy ? ' is-busy' : ''}`}>
-        {busy ? 'Working…' : shown ? 'Replace picture' : 'Add a picture'}
+        {busy ? 'Working…' : shown ? 'Replace with my photo' : 'Add a picture'}
         <input
           type="file"
           accept={ACCEPTED_IMAGE_TYPES}
@@ -387,6 +403,36 @@ function ImageField({
       >
         {shown ? 'Generate a new picture' : 'Generate a picture'}
       </button>
+      {isDraft && currentAssetId ? (
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={busy}
+          onClick={async () => {
+            setError(null)
+            setBusy(true)
+            const result = await approveDraftImage(businessId, currentAssetId)
+            setBusy(false)
+            if (result.ok) setKept(true)
+            else setError(result.error)
+          }}
+        >
+          Keep this picture
+        </button>
+      ) : null}
+      {shown ? (
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={busy}
+          onClick={async () => {
+            setJustUploaded(null)
+            await onRemove()
+          }}
+        >
+          Remove picture
+        </button>
+      ) : null}
       {error ? <p className="ed-error">{error}</p> : null}
     </div>
   )
@@ -562,7 +608,10 @@ export function SiteEditor({
                         businessId={businessId}
                         sectionId={section.id}
                         currentUrl={section.assets?.image_asset_id?.url}
+                        currentAssetId={typeof current.image_asset_id === 'string' ? current.image_asset_id : undefined}
+                        draft={section.assets?.image_asset_id?.draft}
                         onUploaded={(assetId) => commit(section, 'image_asset_id', assetId)}
+                        onRemove={() => commit(section, 'image_asset_id', null)}
                       />
                     ) : null}
 

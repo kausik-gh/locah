@@ -638,6 +638,33 @@ class BusinessInterviewService:
                 raise ValidationError(str(exc)) from exc
             if touched and bp.completion_state.status == "built":
                 await _sync_catalogue_into_draft(session, business.id, bp)
+        elif command.action == "document":
+            # The owner attached their menu / catalogue / price list. It is read
+            # in the background; nothing reaches the catalogue until they accept it.
+            from platform_core.interview import documents
+
+            if command.document_id is None:
+                raise ValidationError("Choose the file to read")
+            asset = await MediaService.get(session, business_id=business_id, asset_id=command.document_id)
+            if asset["purpose"] != "document" or asset["status"] != "ready":
+                raise ValidationError("Finish uploading this file first")
+            if documents.begin(bp, command.document_id):
+                await AsyncJobService.enqueue(
+                    session, job_type="interview.read_document", business_id=business_id,
+                    payload={"business_id": str(business_id), "asset_id": str(command.document_id)},
+                    max_attempts=1,
+                )
+        elif command.action == "document_apply":
+            from platform_core.interview import documents
+
+            if command.document_id is None:
+                raise ValidationError("Choose the file to use")
+            try:
+                touched = documents.apply(bp, command.document_id, command.accept)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+            if touched and bp.completion_state.status == "built":
+                await _sync_catalogue_into_draft(session, business.id, bp)
         if initial.completion_state.status == "built" and command.action in {"turn", "media", "correct",
                                                                                "catalogue"}:
             await BusinessInterviewService.talk_to_website(
@@ -1101,6 +1128,7 @@ class BusinessInterviewService:
         )
         from platform_core.interview.site_composer import compose_site
         from platform_core.services.usage_meter import CapReached, UsageMeterService
+        from platform_core.website.media_prompts import PROMPT_VERSION
 
         ai_capped = await UsageMeterService.over_cap(session, job.business_id, "model_tokens")
         await session.commit()  # no transaction held open across the provider calls
@@ -1133,6 +1161,7 @@ class BusinessInterviewService:
                 purpose="website", mime_type=image.mime_type, body=image.bytes,
                 alt_text=f"Illustrative picture: {slot.subject or 'cover'}"[:200],
                 original_filename=f"draft-{slug(slot.key)}.png",
+                generated_for=slot.key, generation_job_id=job.id, prompt_version=PROMPT_VERSION,
             )
             record(bp, slot, UUID(asset["id"]))
             drawn_ok += 1

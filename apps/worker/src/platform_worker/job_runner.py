@@ -120,6 +120,12 @@ async def _execute_job(session: AsyncSession, job: dict[str, Any]) -> None:
         from platform_core.interview.media import generate_interview_logo
         await generate_interview_logo(session, business_id=UUID(payload["business_id"]),
                                       actor_id=UUID(payload["actor_id"]))
+    elif job_type == "interview.read_document":
+        # The owner's menu / catalogue / price list, read while they carry on.
+        from uuid import UUID
+        from platform_core.interview.documents import read_owner_document
+        await read_owner_document(session, business_id=UUID(payload["business_id"]),
+                                  asset_id=UUID(payload["asset_id"]))
     elif job_type in {"interview.generate_media", "interview.generate_hero"}:
         # generate_hero is the name jobs queued before logos existed still carry.
         from uuid import UUID

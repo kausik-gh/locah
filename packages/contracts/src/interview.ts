@@ -8,7 +8,32 @@ export type InterviewFact = {
 }
 export type InterviewMedia = {
   asset_id: string; role: 'logo' | 'hero' | 'business' | 'offering' | 'gallery'
-  label: string; source: 'USER_UPLOAD' | 'AI_GENERATED'
+  label: string; source: 'USER_UPLOAD' | 'AI_GENERATED' | 'CATALOGUE_EXTRACTED'
+}
+/** One line read from the owner's menu / catalogue. `low`: shown unticked to check. */
+export type ExtractedItem = {
+  name: string; description: string; price: string; unit: string; variant: string; attributes: string
+  confidence: 'high' | 'low'
+}
+/** A menu, catalogue, price list or brochure the owner attached, as LOCAH read it. */
+export type DocumentRead = {
+  asset_id: string
+  kind: 'menu' | 'catalogue' | 'price_list' | 'brochure' | 'other'
+  status: 'reading' | 'ready' | 'failed' | 'applied' | 'dismissed'
+  reason: string
+  groups: { name: string; items: ExtractedItem[] }[]
+  facts: Record<string, string>
+}
+/** A picture the website plans to show, and whether it is the owner's or a draft. */
+export type PlannedMedia = {
+  key: string; purpose: 'hero' | 'category' | 'item' | 'story' | 'cta' | 'background'
+  section: string; subject: string
+  truth_class: 'factual' | 'representative' | 'mood' | 'graphic'
+  source: 'owner_uploaded' | 'catalogue_extracted' | 'existing_business_asset' | 'gemini_generated'
+    | 'graphic_generated' | null
+  aspect: string; crop: string; style: string; prompt_version: string
+  status: 'planned' | 'ready' | 'failed' | 'skipped'; asset_id: string | null
+  approval: 'draft' | 'approved' | 'removed'; reason: string
 }
 export type InterviewModule = {
   module_id: string; label: string; reason: string; capability_ids: string[]; dependencies: string[]
@@ -188,6 +213,8 @@ export type BusinessBlueprint = {
   content_wishes?: string[]
   /** Started by talking, before the business had a name: the name is asked once. */
   name_pending?: boolean
+  documents?: DocumentRead[]
+  media_plan?: PlannedMedia[]
 }
 export type BusinessInterviewData = {
   blueprint: BusinessBlueprint; classification_seed: string
@@ -203,7 +230,7 @@ export type BusinessInterviewData = {
 export type InterviewCommand = {
   revision: number; request_id: string
   action: 'turn' | 'confirm' | 'choices' | 'template' | 'media' | 'image' | 'build' | 'draft' | 'setup' | 'catalogue'
-    | 'refine' | 'review' | 'correct' | 'keep_tools'
+    | 'refine' | 'review' | 'correct' | 'keep_tools' | 'document' | 'document_apply'
   text?: string; field?: InterviewFactKey; choices?: Record<string, 'approved' | 'declined'>
   /** For action 'correct': which part of the understanding, and its typed new value. */
   slot?: 'offerings' | 'actions' | 'fulfilment' | 'area' | 'payment' | 'location' | 'phone' | 'hours'
@@ -218,6 +245,9 @@ export type InterviewCommand = {
   draft?: DraftCommand
   /** For action 'catalogue': prices, units and varieties the owner typed. */
   catalogue?: CatalogueEdit[]
+  /** For 'document' / 'document_apply': the uploaded file, and the lines ("Group::Item") accepted. */
+  document_id?: string
+  accept?: string[]
 }
 
 /** POST /v1/platform/businesses/start — a Business to talk to LOCAH about. */

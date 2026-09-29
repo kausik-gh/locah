@@ -119,6 +119,23 @@ export async function completeImageUpload(
   return { ok: true, url: body.data.url }
 }
 
+/** The owner keeps a draft picture LOCAH drew. It stays marked as generated. */
+export async function approveDraftImage(
+  businessId: string,
+  assetId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const token = await getAccessToken()
+  if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
+  const res = await fetch(`${platformUrl('api')}/v1/b/${businessId}/media/${assetId}/approve`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  if (!res.ok) return { ok: false, error: `That picture could not be kept (${res.status}).` }
+  revalidatePath(`/b/${businessId}/website/preview`)
+  return { ok: true }
+}
+
 export async function generateSectionImage(
   businessId: string,
   sectionId: string
