@@ -815,7 +815,7 @@ def _unshown_picture(bp: BusinessBlueprint, shown: set[str | None]) -> str | Non
     for group in bp.taxonomy.groups:
         picture = picture_for(bp, "category:" + slug(group.name))
         if picture and picture not in shown:
-            return picture
+            return str(picture)
     return None
 
 WHATSAPP = "whatsapp:"
