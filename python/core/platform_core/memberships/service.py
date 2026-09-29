@@ -720,7 +720,13 @@ class MembershipCore:
         history = (await session.execute(select(MembershipEnrolmentStatusHistory).where(
             MembershipEnrolmentStatusHistory.enrolment_id == enrolment.id)
             .order_by(MembershipEnrolmentStatusHistory.created_at.desc()).limit(30))).scalars()
+        # The business's calendar day, so the desk's "today"/"tomorrow" defaults
+        # never follow the viewer's (or the server's) UTC clock.
+        from zoneinfo import ZoneInfo
+
+        zone = await MembershipCore.tz(session, enrolment.business_id, enrolment.location_id)
         return {
+            "today": str(_now().astimezone(ZoneInfo(zone)).date()),
             "id": str(enrolment.id), "plan": {"id": str(plan.id), "name": plan.name, "kind": plan.plan_kind,
                                               "price_amount": float(plan.price_amount),
                                               "duration_days": plan.duration_days, "grace_days": plan.grace_days,

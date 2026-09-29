@@ -230,6 +230,20 @@ def test_gym_payment_replay_freeze_and_early_renewal(monkeypatch: Any) -> None:
     assert {r[0] for r in live} == {datetime.fromisoformat(d["valid_until"]).strftime("%Y%m%d%H%M")}
 
 
+@DB
+def test_the_member_page_day_is_the_business_calendar_day_not_utc(monkeypatch: Any) -> None:
+    # 00:30 IST on 1 Oct is still 30 Sep in UTC. The member page's "today" (the
+    # skip-a-day and freeze forms default from it) is the business's own day.
+    import platform_core.memberships.service as membership_service
+
+    owner, bid, base = _gym(monkeypatch)
+    e = _enrol(owner, base, _plan(owner, base)["id"], _customer(owner, base))
+    monkeypatch.setattr(membership_service, "_now", lambda: datetime(2026, 9, 30, 19, 0, tzinfo=UTC))
+    assert _detail(owner, base, e["id"])["today"] == "2026-10-01"
+    sql("update business_locations set timezone = 'America/New_York' where business_id = :b", b=bid)
+    assert _detail(owner, base, e["id"])["today"] == "2026-09-30"
+
+
 # ---------------------------------------------------------------- front desk
 @DB
 def test_checkin_is_green_amber_or_red_from_the_membership(monkeypatch: Any) -> None:

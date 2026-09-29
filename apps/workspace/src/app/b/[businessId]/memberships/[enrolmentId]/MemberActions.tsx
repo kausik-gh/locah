@@ -13,6 +13,8 @@ import {
 } from '../member-actions'
 
 export type Detail = {
+  /** The business's calendar day (its own time zone), from the server. */
+  today: string
   id: string
   plan: { id: string; name: string; kind: string; price_amount: number; duration_days: number | null; grace_days: number; freeze_allowed: boolean; max_freeze_days: number | null; billing_timing: string }
   words: Record<string, string>
@@ -42,8 +44,12 @@ export type Detail = {
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const today = () => new Date().toISOString().slice(0, 10)
-const tomorrow = () => new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+/** A calendar day plus whole days: date arithmetic only, no clock and no time zone. */
+const addDays = (day: string, n: number) => {
+  const t = new Date(`${day}T00:00:00Z`)
+  t.setUTCDate(t.getUTCDate() + n)
+  return t.toISOString().slice(0, 10)
+}
 
 /** The few things the desk does with one relationship; the server decides every rule. */
 export function MemberActions({ businessId, detail: d }: { businessId: string; detail: Detail }) {
@@ -52,9 +58,11 @@ export function MemberActions({ businessId, detail: d }: { businessId: string; d
   const [done, setDone] = useState<string | null>(null)
   const [open, setOpen] = useState<'none' | 'freeze' | 'cancel' | 'future'>('none')
   const kind = d.plan.kind
+  const today = d.today
+  const tomorrow = addDays(d.today, 1)
   const running = !['cancelled', 'completed'].includes(d.status)
   const renews = ['access', 'session_pack', 'service_contract', 'member_dues'].includes(kind) || (kind === 'recurring_delivery' && d.plan.billing_timing === 'prepaid')
-  const scheduled = d.freezes.filter((f) => f.status === 'confirmed' && f.starts_on > today())
+  const scheduled = d.freezes.filter((f) => f.status === 'confirmed' && f.starts_on > today)
 
   function run(fn: () => Promise<{ ok: boolean; message?: string }>, after: string) {
     setError(null)
@@ -114,7 +122,7 @@ export function MemberActions({ businessId, detail: d }: { businessId: string; d
         >
           <label>
             <span>From</span>
-            <input name="starts_on" type="date" required defaultValue={kind === 'recurring_delivery' ? tomorrow() : today()} />
+            <input name="starts_on" type="date" required defaultValue={kind === 'recurring_delivery' ? tomorrow : today} />
           </label>
           <label>
             <span>Days</span>
@@ -184,7 +192,7 @@ export function MemberActions({ businessId, detail: d }: { businessId: string; d
           >
             <label>
               <span>Day</span>
-              <input name="on_date" type="date" required defaultValue={tomorrow()} />
+              <input name="on_date" type="date" required defaultValue={tomorrow} />
             </label>
             <label>
               <span>Change</span>

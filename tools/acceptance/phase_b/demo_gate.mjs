@@ -20,7 +20,7 @@ const shots = `${OUT}/phase_b/demo_gate`
 mkdirSync(shots, { recursive: true })
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 const tag = Math.random().toString(36).slice(2, 6)
-const PSQL = process.env.PSQL || 'C:/Users/KausikGH/scoop/apps/postgresql/current/bin/psql.exe'
+const PSQL = process.env.PSQL || 'psql'
 const DB = process.env.LOCAH_ACCEPT_DB || 'locah_accept'
 const sql = (q) => execFileSync(PSQL, ['-h', '127.0.0.1', '-p', process.env.PGPORT || '54329', '-U', 'postgres',
   '-d', DB, '-At', '-c', q], { encoding: 'utf8' }).trim()

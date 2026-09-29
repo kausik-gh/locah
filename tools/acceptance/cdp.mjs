@@ -7,15 +7,20 @@
 
 import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 const CHROME =
-  process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe'
+  process.env.CHROME_PATH ||
+  ({
+    win32: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    darwin: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  }[process.platform] ?? 'google-chrome')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 export async function launch({ width = 1440, height = 900, mobile = false } = {}) {
   const port = 9300 + Math.floor(Math.random() * 500)
-  const userDir = path.join(process.env.TEMP || '.', `locah-accept-${port}`)
+  const userDir = path.join(process.env.TEMP || os.tmpdir(), `locah-accept-${port}`)
   mkdirSync(userDir, { recursive: true })
   const proc = spawn(
     CHROME,
