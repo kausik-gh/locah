@@ -129,8 +129,21 @@ export async function updatePhase(formData: FormData): Promise<void> {
   await send(
     `/v1/platform/businesses/${businessId}/projects/${projectId}/phases/${phaseId}`,
     'PATCH',
-    { status: String(formData.get('status')) }
+    {
+      status: String(formData.get('status')),
+      ...(formData.has('completion_note') ? { completion_note: optional(formData, 'completion_note') } : {}),
+    }
   )
+  refresh(businessId, projectId)
+}
+
+export async function assignPhase(formData: FormData): Promise<void> {
+  const businessId = String(formData.get('businessId'))
+  const projectId = String(formData.get('projectId'))
+  const phaseId = String(formData.get('phaseId'))
+  await send(`/v1/platform/businesses/${businessId}/projects/${projectId}/phases/${phaseId}/assign`, 'POST', {
+    responsible_member_id: optional(formData, 'responsible_member_id'),
+  })
   refresh(businessId, projectId)
 }
 

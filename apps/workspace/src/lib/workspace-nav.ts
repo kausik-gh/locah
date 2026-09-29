@@ -52,6 +52,8 @@ export const AREAS: NavArea[] = [
       { href: '/memberships', label: 'Memberships', perm: 'memberships.read', module: 'memberships' },
       { href: '/quotes', label: 'Quotes', perm: 'quotes.read', module: 'quotes' },
       { href: '/projects', label: 'Projects', perm: 'projects.read', module: 'projects' },
+      { href: '/jobs', label: 'Job cards', perm: 'jobs.read', module: 'jobs' },
+      { href: '/academics', label: 'Courses & batches', perm: 'academics.read', module: 'academics' },
     ],
   },
   {

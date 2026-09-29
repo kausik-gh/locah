@@ -129,8 +129,9 @@ class RoleService:
             wider = sorted(set(clean) - ASSIGNMENT_PERMISSIONS)
             if wider:
                 raise ValidationError(
-                    "A role limited to its own assignments can only hold bookings, enquiries, quotes and their "
-                    "customers — not: " + ", ".join(PERMISSION_WORDS.get(x, x) for x in wider),
+                    "A role limited to its own assignments can only hold its own bookings, enquiries, "
+                    "quotes, job cards, classes and the customers on those records — not: "
+                    + ", ".join(PERMISSION_WORDS.get(x, x) for x in wider),
                     details={"field": "permissions", "not_assignable": wider})
         if name.lower() in {t.label.lower() for t in ROLE_TEMPLATES.values()} | {"owner"}:
             raise ConflictError("A built-in role already has that name")

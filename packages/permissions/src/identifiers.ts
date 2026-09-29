@@ -135,6 +135,18 @@ export const PERMISSIONS = {
   // who schedules but does not scope.
   PROJECTS_ASSIGN: 'projects.assign',
 
+  // Module: executable job cards (separate from project coordination)
+  JOBS_READ: 'jobs.read',
+  JOBS_CREATE: 'jobs.create',
+  JOBS_ASSIGN: 'jobs.assign',
+  JOBS_COMPLETE: 'jobs.complete',
+  JOBS_USE_PARTS: 'jobs.use_parts',
+
+  // Module: courses, batches and academic outcomes (not fees or attendance)
+  ACADEMICS_READ: 'academics.read',
+  ACADEMICS_MANAGE: 'academics.manage',
+  ACADEMICS_TEACH: 'academics.teach',
+
   // Module: payments
   PAYMENTS_READ: 'payments.read',
   PAYMENTS_REFUND: 'payments.refund',

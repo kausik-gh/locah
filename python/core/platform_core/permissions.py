@@ -188,6 +188,16 @@ PROJECTS_MANAGE_LIFECYCLE = "projects.manage_lifecycle"
 # it is grantable on its own to someone who schedules but does not scope.
 PROJECTS_ASSIGN = "projects.assign"
 
+JOBS_READ = "jobs.read"
+JOBS_CREATE = "jobs.create"
+JOBS_ASSIGN = "jobs.assign"
+JOBS_COMPLETE = "jobs.complete"
+JOBS_USE_PARTS = "jobs.use_parts"
+
+ACADEMICS_READ = "academics.read"
+ACADEMICS_MANAGE = "academics.manage"
+ACADEMICS_TEACH = "academics.teach"
+
 ALL_PERMISSIONS: frozenset[str] = frozenset(
     str(v) for k, v in globals().items() if k.isupper() and isinstance(v, str) and "." in v
 )

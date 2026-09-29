@@ -21,6 +21,9 @@ export type ProjectPhase = {
   is_milestone: boolean
   due_on: string | null
   completed_at: string | null
+  responsible_member_id: string | null
+  invoice_id: string | null
+  completion_note: string | null
   sort_order: number
 }
 
