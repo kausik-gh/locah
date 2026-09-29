@@ -835,6 +835,7 @@ class SupplyService:
                 """
                 INSERT INTO recipe_boms (business_id, offering_id, name)
                 VALUES (:business_id, :offering, :name)
+                ON CONFLICT (business_id, offering_id) DO UPDATE SET name = EXCLUDED.name
                 RETURNING id, name
                 """
             ),
@@ -845,6 +846,12 @@ class SupplyService:
             },
         ))
         assert bom is not None
+        # One recipe per dish: saving again replaces its lines. Past consumptions
+        # keep what they used (their event carries the exploded components).
+        await session.execute(
+            text("DELETE FROM recipe_bom_lines WHERE business_id = :business_id AND bom_id = :bom"),
+            {"business_id": business_id, "bom": bom["id"]},
+        )
         for line in payload.get("lines") or []:
             await session.execute(
                 text(
@@ -865,6 +872,44 @@ class SupplyService:
                 },
             )
         return bom
+
+    @staticmethod
+    async def list_boms(
+        session: AsyncSession,
+        business_id: uuid.UUID,
+        permissions: set[str] | None,
+    ) -> list[dict[str, Any]]:
+        _need(permissions, "procurement.read")
+        await _as(session, business_id)
+        rows = _rows(await session.execute(
+            text(
+                """
+                SELECT b.id AS bom_id, b.name, b.offering_id, o.title AS dish,
+                       l.component_offering_id, c.title AS component, c.stock_unit,
+                       l.quantity_per, l.yield_ratio
+                FROM recipe_boms b
+                JOIN offerings_catalog_offerings o ON o.id = b.offering_id
+                LEFT JOIN recipe_bom_lines l ON l.bom_id = b.id AND l.business_id = b.business_id
+                LEFT JOIN offerings_catalog_offerings c ON c.id = l.component_offering_id
+                WHERE b.business_id = :business_id
+                ORDER BY o.title, c.title
+                """
+            ),
+            {"business_id": business_id},
+        ))
+        out: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            bom = out.setdefault(str(row["bom_id"]), {
+                "id": str(row["bom_id"]), "name": row["name"], "offering_id": str(row["offering_id"]),
+                "dish": row["dish"], "lines": [],
+            })
+            if row["component_offering_id"] is not None:
+                bom["lines"].append({
+                    "component_offering_id": str(row["component_offering_id"]), "component": row["component"],
+                    "unit": row["stock_unit"], "quantity_per": float(row["quantity_per"]),
+                    "yield_ratio": float(row["yield_ratio"]),
+                })
+        return list(out.values())
 
     @staticmethod
     async def consume_for_sale(

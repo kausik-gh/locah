@@ -8,9 +8,6 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 from urllib.parse import urlparse
 
-# The request-context binder uses API_DATABASE_URL to enable platform_api RLS.
-os.environ.setdefault("API_DATABASE_URL", os.environ.get("DATABASE_URL", ""))
-
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -18,6 +15,17 @@ from sqlalchemy.pool import NullPool
 
 from platform_core.exceptions import ConflictError, ResourceNotFound, ValidationError
 from platform_core.services.document_workflows import DocumentWorkflows
+
+
+@pytest.fixture(autouse=True)
+def _rls_enforcing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The context binder decides once, at import, whether RLS is enforced
+    (API_DATABASE_URL present). In a full run another module imports it first,
+    so set the flag for each case here rather than relying on import order."""
+    import platform_core.context_resolver as resolver
+
+    monkeypatch.setenv("API_DATABASE_URL", os.environ.get("DATABASE_URL", ""))
+    monkeypatch.setattr(resolver, "_RLS_ENFORCING", True)
 
 
 def _url() -> str:

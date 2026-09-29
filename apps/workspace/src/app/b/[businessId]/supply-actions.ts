@@ -77,3 +77,20 @@ export async function addGift(form: FormData) {
     amount_paise: Math.round(rupees * 100),
   }, 'donations')
 }
+
+export async function saveRecipe(form: FormData) {
+  const businessId = String(form.get('businessId'))
+  const token = await getAccessToken()
+  if (!token) throw new Error('Sign in to continue')
+  const lines = [0, 1, 2, 3, 4]
+    .map((i) => ({
+      component_offering_id: String(form.get(`component_${i}`) || ''),
+      quantity_per: Number(form.get(`quantity_${i}`) || 0),
+    }))
+    .filter((line) => line.component_offering_id && line.quantity_per > 0)
+  await apiSend(`/v1/platform/businesses/${businessId}/recipes`, token, 'PUT', {
+    offering_id: String(form.get('offering_id')),
+    lines,
+  })
+  revalidatePath(`/b/${businessId}/recipes`)
+}

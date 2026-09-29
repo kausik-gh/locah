@@ -280,9 +280,9 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
     ),
     ModuleInfo(
         "recipes", "Recipes & BOM", "P4",
-        "What each item is made of, so sales use up stock and demand turns into what to buy.",
-        staff_can=("Define recipes and yields", "See material requirements"),
-        packs=("food_service", "trade"), depends_on=("inventory",),
+        "What each item is made of, so cooked orders use up stock and demand turns into what to buy.",
+        staff_can=("Define recipes and yields", "See ingredients used when the kitchen finishes"),
+        packs=("food_service", "trade"), depends_on=("inventory",), built=True,
     ),
     ModuleInfo(
         "trade-network", "Supplier network (ChitBridge)", "P4",

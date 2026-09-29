@@ -81,6 +81,22 @@ class ExpenseBody(BaseModel):
     petty_cash: bool = False
 
 
+class RecipeLineBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    component_offering_id: UUID
+    quantity_per: float = Field(gt=0, le=100000)
+    yield_ratio: float = Field(default=1, gt=0, le=100)
+
+
+class RecipeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    offering_id: UUID
+    name: str | None = Field(default=None, max_length=120)
+    lines: list[RecipeLineBody] = Field(min_length=1, max_length=60)
+
+
 class CauseBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=160)
@@ -186,6 +202,31 @@ async def create_supplier(
     data = await SupplyService.create_supplier(
         session, business_id, actor.request.identity_id, body.model_dump(), None,
     )
+    await session.commit()
+    return {"data": _plain(data), "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.get("/{business_id}/recipes")
+async def list_recipes(
+    business_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(PROCUREMENT_READ, "recipes")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await SupplyService.list_boms(session, business_id, None)
+    return {"data": _plain(data), "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.put("/{business_id}/recipes")
+async def save_recipe(
+    business_id: UUID,
+    body: RecipeBody,
+    actor: BusinessActorContext = Depends(require_business_actor(PROCUREMENT_CREATE, "recipes")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """One recipe per dish; saving again replaces its ingredients. The kitchen's
+    finished preparations use it (kitchen.preparation.completed → stock, once)."""
+    payload = body.model_dump(mode="json")
+    data = await SupplyService.save_bom(session, business_id, payload, None)
     await session.commit()
     return {"data": _plain(data), "meta": {"correlation_id": actor.request.correlation_id}}
 
