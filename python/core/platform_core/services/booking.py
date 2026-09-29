@@ -87,6 +87,7 @@ class BookingService:
         payload: dict[str, Any],
         allow_capacity_override: bool = True,
         assign_free_resource: bool = False,
+        enforce_opening_hours: bool = False,
     ) -> Booking:
         """Create a booking and claim whatever it consumes.
 
@@ -101,6 +102,9 @@ class BookingService:
         table or chair (website, WhatsApp): if the business allocates resources
         and none was named, a free one is held under lock, or the booking is
         refused - the check and the claim commit together.
+
+        `enforce_opening_hours` holds guest bookings to the location's saved
+        opening hours; the desk may still book outside them.
         """
         business = await BusinessService.get_by_id(session, business_id)
         assert_business_mutable(business.state, action="create booking")
@@ -228,6 +232,26 @@ class BookingService:
         # that has not configured any still gets provider exclusivity and the
         # offering-level pool it has always had. Where resources exist they are
         # the authority, and allocating them below is what enforces supply.
+        if enforce_opening_hours:
+            await AvailabilityService.assert_open(
+                session,
+                location_id=validated["location_id"],
+                reservation_mode=validated["reservation_mode"],
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
+            )
+        if resources and validated["provider_id"]:
+            # The legacy check below does this for bookings without resources;
+            # a chair plus a stylist must still get a stylist who is on duty.
+            await AvailabilityService.assert_provider_can_take(
+                session,
+                business_id=business_id,
+                provider_id=validated["provider_id"],
+                location_id=validated["location_id"],
+                offering_id=validated["offering_id"],
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
+            )
         if not resources:
             await AvailabilityService.assert_available(
                 session,

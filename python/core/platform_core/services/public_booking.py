@@ -195,6 +195,11 @@ class PublicBookingService:
                 "reason": "Location is closed or inactive",
                 "code": "location_closed",
             }
+        closed = AvailabilityService.closed_reason(
+            location, params["reservation_mode"], params["starts_at"], params["ends_at"]
+        )
+        if closed:
+            return {"available": False, "reason": closed, "code": "closed", "resources": []}
         result = await AvailabilityService.check_availability(
             session, business_id=business.id, params=params
         )
@@ -316,6 +321,7 @@ class PublicBookingService:
             },
             allow_capacity_override=False,
             assign_free_resource=True,
+            enforce_opening_hours=True,
         )
         data = BookingResolver.serialize_booking(booking)
         data["management_token"] = booking.management_token
@@ -472,5 +478,6 @@ class PublicBookingService:
             actor_id=actor_id,
             correlation_id=correlation_id,
             payload={"starts_at": starts_at, "ends_at": ends_at, "reason": reason},
+            enforce_opening_hours=True,
         )
         return dict(BookingResolver.serialize_booking(updated))

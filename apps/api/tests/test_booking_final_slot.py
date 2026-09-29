@@ -62,6 +62,11 @@ def _sql(query: str, **params: Any) -> list[Any]:
 
 @pytest.fixture
 def owner(monkeypatch: Any) -> dict[str, str]:
+    return owner_headers(monkeypatch)
+
+
+def owner_headers(monkeypatch: Any) -> dict[str, str]:
+    """A signed-in owner with no business yet (shared with test_booking_schedules)."""
     monkeypatch.setenv("SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
     user_id = uuid.uuid4()
     email = f"{user_id}@example.com"
