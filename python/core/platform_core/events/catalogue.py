@@ -1,4 +1,4 @@
-"""The domain event catalogue â€” every event type the platform may publish.
+"""The domain event catalogue — every event type the platform may publish.
 
 This list used to live in the worker as `KNOWN_HANDLERS`, where it did two
 unrelated jobs badly: it was named for handlers but contained no handlers, and
@@ -7,7 +7,7 @@ dead letter attributed to the worker rather than to the code that emitted it.
 
 It is now checked at publish time, in the emitting transaction, where the
 mistake is attributable. Membership here says only "this is a real event type"
-â€” not that anything consumes it. Who consumes what lives in
+— not that anything consumes it. Who consumes what lives in
 `platform_core.events.registry`, and most of these have no subscriber at all.
 
 Adding an event type is deliberately a one-line edit here. That is the only
@@ -126,7 +126,7 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "inventory.stock.replenished",
             "inventory.adjusted",
             "inventory.opening_stock.set",
-            # P1-10A stock depth (Â§15.1)
+            # P1-10A stock depth (§15.1)
             "inventory.received",
             "inventory.wastage.recorded",
             "inventory.converted",
@@ -249,8 +249,8 @@ _CATALOGUE: dict[str, frozenset[str]] = {
         }
     ),
     # Projects and work orders. `project.completed` is the one anything
-    # downstream is likely to care about â€” invoicing, a review request, a
-    # follow-up â€” so it is distinct from the generic status change rather than
+    # downstream is likely to care about — invoicing, a review request, a
+    # follow-up — so it is distinct from the generic status change rather than
     # something a subscriber has to infer from a payload.
     "project": frozenset(
         {
@@ -278,7 +278,7 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "membership.enrolment.completed",
         }
     ),
-    # Capability Universe Â§14 â€” the one billing engine.
+    # Capability Universe §14 — the one billing engine.
     "invoicing": frozenset(
         {
             "invoicing.settings.updated",
@@ -289,14 +289,14 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "invoice.paid",
         }
     ),
-    # Capability Universe Â§6.2 `ledger`, Â§14.5 â€” the khata.
+    # Capability Universe §6.2 `ledger`, §14.5 — the khata.
     "ledger": frozenset(
         {
             "ledger.entry.posted",
             "ledger.limit.overridden",
         }
     ),
-    # Capability Universe Â§17 â€” verified reviews and their moderation.
+    # Capability Universe §17 — verified reviews and their moderation.
     "reviews": frozenset(
         {
             "review.invited",
@@ -310,7 +310,7 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "review.redacted",
         }
     ),
-    # Capability Universe Â§6.2 `compliance` â€” licences and filings.
+    # Capability Universe §6.2 `compliance` — licences and filings.
     "compliance": frozenset(
         {
             "compliance.item.created",
@@ -345,7 +345,7 @@ EVENT_OWNERS: dict[str, str] = {
 
 
 class UnknownEventType(ValueError):
-    """An event type that is not in the catalogue â€” almost always a typo."""
+    """An event type that is not in the catalogue — almost always a typo."""
 
 
 def is_known_event_type(event_type: str) -> bool:

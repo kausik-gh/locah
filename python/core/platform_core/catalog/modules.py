@@ -1,13 +1,13 @@
-"""The Business OS module catalogue (Capability Universe Â§5, Â§6; Business OS Guide Â§4).
+"""The Business OS module catalogue (Capability Universe §5, §6; Business OS Guide §4).
 
 One entry per entitlement key. It says, in the owner's words, what a module
 does, what it lets customers do, what it lets staff do, and which setup steps
-must be true before any surface may present it as working (Guide Â§4: "A
+must be true before any surface may present it as working (Guide §4: "A
 module should never be presented to a business as working until its data,
 API, permissions and real UI are complete").
 
 Keys follow the Capability Universe except where the First Launch registry
-already had the key (MD Â§1: "the registry key wins"): the MD's `queue` is the
+already had the key (MD §1: "the registry key wins"): the MD's `queue` is the
 registry's `queue-operations`, and the MD's `insights` is the registry's
 `analytics`. `trade-network` (ChitBridge link) is distinct from the registry's
 `b2b-network` (supplier discovery, P6).
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# MD key -> registry key (MD Â§1 reconciliation; ledger OD-01).
+# MD key -> registry key (MD §1 reconciliation; ledger OD-01).
 KEY_ALIASES: dict[str, str] = {
     "queue": "queue-operations",
     "insights": "analytics",
@@ -31,7 +31,7 @@ KEY_ALIASES: dict[str, str] = {
     "marketplace": "core-marketplace-presence",
 }
 
-# Storefront (Â§5): always on for every business, never a choice.
+# Storefront (§5): always on for every business, never a choice.
 STOREFRONT = ("core-website", "core-marketplace-presence", "customer-relationships", "reviews",
               "messaging", "analytics", "compliance")
 
@@ -111,7 +111,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
     ),
     ModuleInfo(
         "bookings", "Bookings", "P0",
-        "Appointments, tables, rooms, classes, rentals, site visits and event dates â€” each with its own rules.",
+        "Appointments, tables, rooms, classes, rentals, site visits and event dates — each with its own rules.",
         customer_can=("Pick a date and time and book", "Manage or cancel their booking"),
         staff_can=("See the calendar", "Confirm, check in, complete, cancel"),
         setup=(_s("bookable_offering", "Add a service, room, table or class people can book"),),
@@ -142,7 +142,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
     ),
     ModuleInfo(
         "leads", "Enquiries", "P0",
-        "Every enquiry â€” website, Marketplace, WhatsApp â€” becomes a lead someone follows up.",
+        "Every enquiry — website, Marketplace, WhatsApp — becomes a lead someone follows up.",
         customer_can=("Send an enquiry",),
         staff_can=("Assign and follow up", "Mark won or lost"),
         packs=("sales",), site=("enquire",), marketplace_actions=("enquire",), built=True,
@@ -206,7 +206,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
     ),
     ModuleInfo(
         "analytics", "Insights", "P1",
-        "Numbers computed from your real orders, bookings and payments â€” never estimates.",
+        "Numbers computed from your real orders, bookings and payments — never estimates.",
         staff_can=("See sales, bookings and collections",),
         packs=("storefront",),
     ),
@@ -258,7 +258,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
     ),
     ModuleInfo(
         "ai-employees", "AI staff", "P3",
-        "AI employees that work inside your limits with a full audit trail â€” they never act beyond what you allow.",
+        "AI employees that work inside your limits with a full audit trail — they never act beyond what you allow.",
         staff_can=("Install, limit, pause and review AI staff",),
     ),
     ModuleInfo(
@@ -319,7 +319,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
         staff_can=("Run causes", "Issue receipts", "See donor history"),
         packs=("community",), site=("donate",), marketplace_actions=("donate",),
     ),
-    # ---------------------------------------------------------- FUTURE (MD Â§6.2)
+    # ---------------------------------------------------------- FUTURE (MD §6.2)
     ModuleInfo("payroll", "Payroll", "FUTURE", "Salary runs from attendance and commissions.", future=True),
     ModuleInfo("channel-manager", "OTA sync", "FUTURE", "Room availability sync with travel sites.", future=True),
     ModuleInfo("ticketing", "Event tickets", "FUTURE", "Tickets for events.", future=True),
@@ -344,8 +344,8 @@ def is_built(key: str) -> bool:
 
 
 def storefront_modules() -> tuple[str, ...]:
-    """Built Storefront modules outside Platform Core â€” on for every business
-    (Â§6.1 "Storefront is always on"); an owner cannot switch them off."""
+    """Built Storefront modules outside Platform Core — on for every business
+    (§6.1 "Storefront is always on"); an owner cannot switch them off."""
     return tuple(k for k in STOREFRONT if not k.startswith("core-") and is_built(k))
 
 

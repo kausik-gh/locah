@@ -86,41 +86,41 @@ export const PERMISSIONS = {
   // Issuing binds the business to a price, so it is separate from editing.
   QUOTES_ISSUE: 'quotes.issue',
 
-  // Module: invoicing (Capability Universe Â§14)
+  // Module: invoicing (Capability Universe §14)
   INVOICES_READ: 'invoices.read',
   INVOICES_ISSUE: 'invoices.issue',
   INVOICES_CANCEL: 'invoices.cancel',
   INVOICES_RECORD_PAYMENT: 'invoices.record_payment',
   INVOICES_EXPORT: 'invoices.export',
-  // Tax profile, GST registrations, registers and rates â€” owner / CA data.
+  // Tax profile, GST registrations, registers and rates — owner / CA data.
   INVOICES_CONFIGURE: 'invoices.configure',
 
-  // Module: pos â€” counter billing (Capability Universe Â§14.1)
+  // Module: pos — counter billing (Capability Universe §14.1)
   POS_USE: 'pos.use',
   // Approves, with a PIN, a discount above the cap, a void or a late return.
   POS_APPROVE: 'pos.approve',
   POS_CONFIGURE: 'pos.configure',
 
-  // Module: ledger â€” khata / credit book (Capability Universe Â§14.5)
+  // Module: ledger — khata / credit book (Capability Universe §14.5)
   LEDGER_READ: 'ledger.read',
   LEDGER_RECORD: 'ledger.record',
   // Credit limits, supplier accounts, opening balances and corrections.
   LEDGER_MANAGE: 'ledger.manage',
 
-  // Module: messaging â€” WhatsApp & messages (Capability Universe Â§12.5)
+  // Module: messaging — WhatsApp & messages (Capability Universe §12.5)
   MESSAGING_READ: 'messaging.read',
   // Replies to customers from the business's WhatsApp number.
   MESSAGING_REPLY: 'messaging.reply',
   // Connects the number, submits templates, chooses automatic updates.
   MESSAGING_CONFIGURE: 'messaging.configure',
 
-  // Module: reviews â€” verified reviews (Capability Universe Â§17.2). No
+  // Module: reviews — verified reviews (Capability Universe §17.2). No
   // permission deletes or edits a review.
   REVIEWS_READ: 'reviews.read',
   REVIEWS_REPLY: 'reviews.reply',
   REVIEWS_MANAGE: 'reviews.manage',
 
-  // Module: compliance â€” licences & deadlines (Capability Universe Â§6.2)
+  // Module: compliance — licences & deadlines (Capability Universe §6.2)
   COMPLIANCE_READ: 'compliance.read',
   COMPLIANCE_MANAGE: 'compliance.manage',
 
@@ -139,7 +139,7 @@ export const PERMISSIONS = {
   PROJECTS_CREATE: 'projects.create',
   PROJECTS_UPDATE: 'projects.update',
   // Committing to the work, and declaring it finished, are decisions a
-  // coordinator may not own â€” so they are separate from editing the contents.
+  // coordinator may not own — so they are separate from editing the contents.
   PROJECTS_MANAGE_LIFECYCLE: 'projects.manage_lifecycle',
   // Putting a named person against a task is grantable on its own, to someone
   // who schedules but does not scope.

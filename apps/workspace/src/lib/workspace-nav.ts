@@ -1,14 +1,14 @@
 /**
- * Workspace navigation (Business OS Guide Â§3 "Recommended Workspace navigation
+ * Workspace navigation (Business OS Guide §3 "Recommended Workspace navigation
  * model"). Twelve areas in a fixed order; what sits inside each depends on the
  * tools this business runs and what this person may do. An area with nothing
- * inside for this person is not shown â€” "the Workspace expands only as
+ * inside for this person is not shown — "the Workspace expands only as
  * relevant capabilities become active". This only decides what is shown; the
  * API decides what anyone may actually do.
  */
 
-/** `href` is relative to the business (`/orders` â†’ /b/{id}/orders); a leading `~`
- *  names another full-screen surface (`~/pos` â†’ /pos/{id}). */
+/** `href` is relative to the business (`/orders` → /b/{id}/orders); a leading `~`
+ *  names another full-screen surface (`~/pos` → /pos/{id}). */
 export type NavChild = {
   href: string
   label: string
@@ -26,7 +26,7 @@ export const AREAS: NavArea[] = [
     label: 'Home',
     children: [
       { href: '', label: 'Home' },
-      // One person, one calendar (MD Â§22 "Solo professionals â€¦ one calendar").
+      // One person, one calendar (MD §22 "Solo professionals … one calendar").
       { href: '/calendar', label: 'Calendar', shape: 'solo' },
     ],
   },

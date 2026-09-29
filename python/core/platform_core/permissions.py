@@ -1,4 +1,4 @@
-# Canonical permission identifiers â€” must match packages/permissions/src/identifiers.ts
+# Canonical permission identifiers — must match packages/permissions/src/identifiers.ts
 
 BUSINESS_READ = "business.read"
 BUSINESS_UPDATE = "business.update"
@@ -71,7 +71,7 @@ QUOTES_UPDATE = "quotes.update"
 # Issuing binds the business to a price, so it is separate from editing a draft.
 QUOTES_ISSUE = "quotes.issue"
 
-# Invoices & GST (Capability Universe Â§14). Issuing a numbered tax document,
+# Invoices & GST (Capability Universe §14). Issuing a numbered tax document,
 # cancelling one and setting the rates it charges are separate authorities:
 # a cashier bills, an accountant or owner sets up tax.
 INVOICES_READ = "invoices.read"
@@ -81,34 +81,34 @@ INVOICES_RECORD_PAYMENT = "invoices.record_payment"
 INVOICES_EXPORT = "invoices.export"
 INVOICES_CONFIGURE = "invoices.configure"
 
-# Counter billing (Capability Universe Â§14.1): ringing up sales and running a
+# Counter billing (Capability Universe §14.1): ringing up sales and running a
 # cash shift; approving what is above a cashier's limit with a PIN; setting
 # the counter's rules.
 POS_USE = "pos.use"
 POS_APPROVE = "pos.approve"
 POS_CONFIGURE = "pos.configure"
 
-# Khata / credit book (Capability Universe Â§6.2, Â§14.5): seeing who owes what,
+# Khata / credit book (Capability Universe §6.2, §14.5): seeing who owes what,
 # recording credit and money received, and setting limits / correcting.
 LEDGER_READ = "ledger.read"
 LEDGER_RECORD = "ledger.record"
 LEDGER_MANAGE = "ledger.manage"
 
-# WhatsApp & messages (Capability Universe Â§6.2 `messaging`, Â§12.5): reading
+# WhatsApp & messages (Capability Universe §6.2 `messaging`, §12.5): reading
 # the business inbox, replying to customers from the business number, and
 # connecting the number / choosing what is sent automatically.
 MESSAGING_READ = "messaging.read"
 MESSAGING_REPLY = "messaging.reply"
 MESSAGING_CONFIGURE = "messaging.configure"
 
-# Reviews (Capability Universe Â§17.2): seeing them, replying publicly, and
+# Reviews (Capability Universe §17.2): seeing them, replying publicly, and
 # choosing what the website features / reporting a violation to LOCAH.
-# No permission deletes or edits a review â€” there is no such action.
+# No permission deletes or edits a review — there is no such action.
 REVIEWS_READ = "reviews.read"
 REVIEWS_REPLY = "reviews.reply"
 REVIEWS_MANAGE = "reviews.manage"
 
-# Licences & deadlines (Capability Universe Â§6.2 `compliance`).
+# Licences & deadlines (Capability Universe §6.2 `compliance`).
 COMPLIANCE_READ = "compliance.read"
 COMPLIANCE_MANAGE = "compliance.manage"
 
@@ -154,9 +154,9 @@ INVENTORY_READ = "inventory.read"
 INVENTORY_ADJUST = "inventory.adjust"
 INVENTORY_EXPORT = "inventory.export"
 # Stock counts: variances change stock only when someone with this approves
-# them (Â§15.1 "variances need approval"); the counter need not hold it.
+# them (§15.1 "variances need approval"); the counter need not hold it.
 INVENTORY_APPROVE = "inventory.approve"
-# What stock cost and is worth â€” owner, manager and accountant, not the counter.
+# What stock cost and is worth — owner, manager and accountant, not the counter.
 INVENTORY_COST = "inventory.cost"
 
 FULFILMENT_READ = "fulfilment.read"
@@ -190,7 +190,7 @@ ROLE_PRIMARY_OWNER = "primary_owner"
 ROLE_MANAGER = "manager"
 ROLE_MEMBER = "member"
 
-# Built-in permission templates (Doc 12 Â§8.3)
+# Built-in permission templates (Doc 12 §8.3)
 TEMPLATES: dict[str, frozenset[str]] = {
     "tmpl_store_manager": frozenset(
         {

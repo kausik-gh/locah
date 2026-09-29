@@ -104,7 +104,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[Any]:
 
     if os.getenv("DATABASE_URL"):
         try:
-            # role="user" â†’ the NOBYPASSRLS platform_api connection. The API
+            # role="user" → the NOBYPASSRLS platform_api connection. The API
             # request path is subject to row-level policies (AUD-02).
             db_engine, db_session_factory = create_worker_session_factory(role="user")
         except Exception as e:
@@ -118,7 +118,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[Any]:
     # so an in-request commit() can't silently swap the physical connection
     # under the session and strip the RLS GUCs bind_session_context set. See
     # the comment on get_db_session for the full mechanism. db_session_factory
-    # stays published too â€” /health/ready and /health/worker only ever run one
+    # stays published too — /health/ready and /health/worker only ever run one
     # transaction per call, so the swap risk doesn't apply to them.
     app.state.db_engine = db_engine
 
@@ -126,7 +126,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[Any]:
 
     # Clear the advertised factory/engine before disposing. Leaving a disposed
     # engine on app.state makes get_db_session hand out sessions bound to a
-    # closed event loop and suppresses its NullPool fallback â€” which breaks
+    # closed event loop and suppresses its NullPool fallback — which breaks
     # every later bare-TestClient(app) test in the same process once any
     # `with TestClient(app)` test has run lifespan.
     app.state.db_session_factory = None
@@ -145,17 +145,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Rate limiting (Doc 11 Â§21.1 gate 8). Added BEFORE CORS so CORS ends up the
+# Rate limiting (Doc 11 §21.1 gate 8). Added BEFORE CORS so CORS ends up the
 # outer layer (Starlette wraps last-added first): a 429 short-circuited here
 # still travels back out through CORS and gets its headers, so a browser sees
 # the 429 rather than an opaque network error. Opt out per-process with
-# RATE_LIMIT_ENABLED=0 â€” the test suite does, so parallel workers hammering
+# RATE_LIMIT_ENABLED=0 — the test suite does, so parallel workers hammering
 # shared buckets don't trip each other.
 if os.getenv("RATE_LIMIT_ENABLED", "1") != "0":
     app.add_middleware(RateLimitMiddleware)
 
 # AUD-11: request-line logging + correlation-id propagation. Added after the
-# rate limiter so it stays inside CORS but wraps the limiter â€” a 429 still gets
+# rate limiter so it stays inside CORS but wraps the limiter — a 429 still gets
 # a log line and an X-Correlation-Id.
 app.add_middleware(RequestLogMiddleware)
 
@@ -304,7 +304,7 @@ async def readiness_check(request: Request, response: Response) -> dict[str, Any
 
 @app.get("/health/worker")
 async def worker_health_check(request: Request, response: Response) -> dict[str, Any]:
-    """Worker/outbox lag health gate (Doc 12 Â§22.2)."""
+    """Worker/outbox lag health gate (Doc 12 §22.2)."""
     session_factory = getattr(request.app.state, "db_session_factory", None)
     if not session_factory:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE

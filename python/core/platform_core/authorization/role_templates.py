@@ -1,13 +1,13 @@
-"""Role templates (Capability Universe Â§7.2â€“Â§7.3; Business OS Guide Â§5).
+"""Role templates (Capability Universe §7.2–§7.3; Business OS Guide §5).
 
 "A role is not just a sidebar label. It is permissions + scope + default
-surface." Each template below is one row of the Â§7.2 table: what the person
+surface." Each template below is one row of the §7.2 table: what the person
 sees and does (as permissions that exist today), their scope, the surface they
 work on and the question their home screen answers.
 
 A template is only offered to an owner when its phase is current, its surface
-exists and the business runs a module it is about â€” the rest stay in the
-registry, invisible, until they ship (Guide Â§4: never present something as
+exists and the business runs a module it is about — the rest stay in the
+registry, invisible, until they ship (Guide §4: never present something as
 working before its data, API, permissions and UI are complete).
 """
 
@@ -39,10 +39,10 @@ READY_AHEAD = frozenset({"provider", "sales_executive"})
 class RoleTemplate:
     key: str
     label: str
-    does: str  # Â§7.2 "Sees and does", owner words
+    does: str  # §7.2 "Sees and does", owner words
     scope: str
     surface: str
-    home: str  # Â§7.2 "Home screen answers"
+    home: str  # §7.2 "Home screen answers"
     permissions: frozenset[str]
     about: tuple[str, ...]  # modules that make this role relevant (any one); () = always
     phase: str
@@ -109,7 +109,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
                         p.LEDGER_READ, p.LEDGER_RECORD},
         ("pos",), "P1",
     ),
-    # ---- later phases: kept here so the registry mirrors Â§7.2, never offered yet.
+    # ---- later phases: kept here so the registry mirrors §7.2, never offered yet.
     RoleTemplate(
         "front_desk", "Front desk", "Bookings, queue, check-ins, customers and collecting payments",
         "location", "workspace", "Who is here, who is next, who owes?",
@@ -170,7 +170,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
 
 OWNER = RoleTemplate(
     "owner", "Owner", "Everything, approvals, billing and AI limits", "business", "workspace",
-    "Needs you now Â· Today Â· Your business", frozenset(p.ALL_PERMISSIONS), (), "P1",
+    "Needs you now · Today · Your business", frozenset(p.ALL_PERMISSIONS), (), "P1",
     system_role=p.ROLE_PRIMARY_OWNER,
 )
 

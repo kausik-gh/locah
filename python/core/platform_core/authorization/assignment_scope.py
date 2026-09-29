@@ -1,14 +1,14 @@
-"""Assignment scope (Capability Universe Â§7.2â€“Â§7.3, Â§24 #11; P2-01).
+"""Assignment scope (Capability Universe §7.2–§7.3, §24 #11; P2-01).
 
 "Assignment is the new security primitive." A member whose role's scope is
 `assignment` (a provider, a sales executive, later a delivery partner,
 technician or housekeeper) sees and changes only the records assigned to them:
 
-  * bookings where they are the provider (`provider_id` â†’ their workforce
+  * bookings where they are the provider (`provider_id` → their workforce
     record),
   * enquiries (leads) assigned to them (`assignee_identity_id`),
   * quotes they wrote, or for the customer of an enquiry assigned to them,
-  * project tasks assigned to them (`assignee_member_id` â†’ their workforce
+  * project tasks assigned to them (`assignee_member_id` → their workforce
     record),
   * and, of the customer book, only the customers on those bookings and
     enquiries (server-side only: matching a new enquiry to an existing customer
@@ -36,7 +36,7 @@ _INFO_KEY = "locah_assignment_scope"
 
 # What a member limited to their assignments may be given: only permissions over
 # records this scope actually narrows (plus reading the business itself). A
-# permission over records nobody is assigned to â€” orders, stock, money â€” would
+# permission over records nobody is assigned to — orders, stock, money — would
 # show the whole book, so it cannot sit on an assignment-scoped role.
 ASSIGNMENT_PERMISSIONS = frozenset({
     "business.read", "locations.read", "notifications.read",
@@ -90,7 +90,7 @@ def _filter_reads(state: ORMExecuteState) -> None:
     from platform_core.models import Booking, CustomerContact, Lead, ProjectTask, QueueEntry, QueueLane, Quote, WorkTask
 
     mine = _member_ids(identity)
-    # Their customers are the ones on their bookings and enquiries â€” not the whole book.
+    # Their customers are the ones on their bookings and enquiries — not the whole book.
     theirs = select(Booking.customer_contact_id).where(Booking.provider_id.in_(_member_ids(identity))).union(
         select(Lead.customer_contact_id).where(Lead.assignee_identity_id == identity))
     state.statement = state.statement.options(

@@ -2971,7 +2971,7 @@ class QueueTurnNotice(Base):
     booking_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-# ---------------------------------------------------------------- shared tasks (Guide Â§6.2 tasks)
+# ---------------------------------------------------------------- shared tasks (Guide §6.2 tasks)
 class WorkTask(Base):
     """One task. related_type / related_id point at the record it belongs to."""
 
