@@ -83,6 +83,13 @@ def test_the_door_asks_memberships_and_attendance_records_the_visit_once(monkeyp
 
     again = _checkin(owner, bid, e["checkin_code"], "door-0002")
     assert again.status_code == 200 and again.json()["data"]["id"] == visit["id"], "the same scan is one visit"
+
+    # The front desk's day view: today's visits by name, and today's classes (none here).
+    today = client.get(f"/v1/b/{bid}/attendance/events", params={"today": "true"}, headers=owner)
+    assert today.status_code == 200, today.text
+    assert [(v["id"], v["subject_name"]) for v in today.json()["data"]] == [(visit["id"], "Meera")]
+    classes = client.get(f"/v1/b/{bid}/attendance/sessions/today", headers=owner)
+    assert classes.status_code == 200 and classes.json()["data"] == [], classes.text
     assert _count("select count(*) from attendance_events where business_id = :b", b=bid) == 1
 
 

@@ -136,7 +136,8 @@ class AttendanceService:
             return []
         clauses = ["s.business_id=:bid", "s.status='scheduled'",
                    "(s.starts_at AT TIME ZONE 'Asia/Kolkata')::date=CAST(:day AS date)"]
-        values: dict[str, Any] = {"bid": business_id, "day": datetime.now(IST).date().isoformat()}
+        # A date object: asyncpg types CAST(:day AS date) as date and refuses a string.
+        values: dict[str, Any] = {"bid": business_id, "day": datetime.now(IST).date()}
         scoped = assigned_identity(session)
         if scoped is not None:
             clauses.append("COALESCE(s.teacher_member_id,b.teacher_member_id) IN "
@@ -382,7 +383,7 @@ class AttendanceService:
             clauses.append("context=:context")
             values["context"] = context
         if today:
-            start = datetime.now(IST).date().isoformat()
+            start = datetime.now(IST).date()
             clauses.append("(recorded_at AT TIME ZONE 'Asia/Kolkata')::date = CAST(:day AS date)")
             values["day"] = start
         scoped = assigned_identity(session)
@@ -395,7 +396,25 @@ class AttendanceService:
             values["locations"] = list(locs)
         rows = (await session.execute(text("SELECT * FROM attendance_events WHERE " +
             " AND ".join(clauses) + " ORDER BY recorded_at DESC LIMIT 100"), values)).mappings().all()
-        return [_view(row) for row in rows]
+        # Names for the visits this person may already see (the rows above are
+        # scoped); a teacher sees their own students' names, as on the roster.
+        contacts = {r["subject_contact_id"] for r in rows if r["subject_contact_id"]}
+        members = {r["subject_member_id"] for r in rows if r["subject_member_id"]}
+        names: dict[Any, str] = {}
+        if contacts:
+            names.update((await session.execute(select(CustomerContact.id, CustomerContact.display_name).where(
+                CustomerContact.business_id == business_id, CustomerContact.id.in_(contacts))
+                .execution_options(skip_assignment_scope=True))).tuples().all())
+        if members:
+            names.update((await session.execute(select(WorkforceMember.id, WorkforceMember.display_name).where(
+                WorkforceMember.business_id == business_id, WorkforceMember.id.in_(members))
+                .execution_options(skip_assignment_scope=True))).tuples().all())
+        out = []
+        for row in rows:
+            view = _view(row)
+            view["subject_name"] = names.get(row["subject_member_id"] or row["subject_contact_id"])
+            out.append(view)
+        return out
 
     @staticmethod
     async def checkout(session: AsyncSession, *, business_id: uuid.UUID,

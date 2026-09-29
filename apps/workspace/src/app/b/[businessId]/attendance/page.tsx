@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 
 type Event = {
   id: string; context: string; status: string; source_id: string
-  subject_member_id: string | null; subject_contact_id: string | null
+  subject_member_id: string | null; subject_contact_id: string | null; subject_name?: string | null
   location_id: string | null; recorded_at: string; version: number
 }
 type ClassSession = { id: string; batch_name: string; topic: string | null; starts_at: string }
@@ -71,11 +71,11 @@ export default async function AttendancePage({ params, searchParams }: {
     </section> : null}
     {view === 'members' && showMemberships ? <section style={{ maxWidth: 640 }}>
       <h2>Member check-in</h2>
-      <p style={{ color: 'var(--color-muted)' }}>Scan a membership QR or enter its enrolment ID. Memberships decides whether the visit is allowed; a red result never records presence.</p>
+      <p style={{ color: 'var(--color-muted)' }}>Scan the member&apos;s card or type their code. Memberships decides whether the visit is allowed; a refused visit is never recorded.</p>
       <Card><form action={checkInMember} style={{ display: 'grid', gap: '.8rem' }}>
         <input type="hidden" name="businessId" value={businessId} />
         <input type="hidden" name="requestKey" value={randomUUID()} />
-        <label>Membership QR / ID<input name="enrolmentId" required autoComplete="off" placeholder="Scan or paste ID" /></label>
+        <label>Member code<input name="enrolmentId" required autoComplete="off" placeholder="Scan or type the code" /></label>
         <label>Location<select name="locationId"><option value="">Business-wide</option>{options.locations.map(location =>
           <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
         <label>Method<select name="channel"><option value="qr">QR scan</option><option value="manual">Manual</option></select></label>
@@ -100,7 +100,7 @@ export default async function AttendancePage({ params, searchParams }: {
       {events.length ? <div style={{ display: 'grid', gap: '.65rem' }}>{events.map(event =>
         <Card key={event.id} style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
           <div><strong>{event.context.replace(/_/g, ' ')}</strong><div style={{ color: 'var(--color-muted)', fontSize: '.85rem' }}>
-            {time(event.recorded_at)} IST · {event.subject_member_id || event.subject_contact_id}
+            {time(event.recorded_at)} IST · {event.subject_name || event.subject_member_id || event.subject_contact_id}
           </div></div>
           <div style={{ display: 'flex', gap: '.65rem', alignItems: 'center' }}><StatusPill value={event.status} />
             {event.status === 'checked_in' && (event.context !== 'staff_site' || event.subject_member_id === options.member?.id) ?

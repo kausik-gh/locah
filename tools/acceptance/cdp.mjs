@@ -36,7 +36,7 @@ export async function launch({ width = 1440, height = 900, mobile = false } = {}
     { stdio: 'ignore' }
   )
   let targets = []
-  for (let i = 0; i < 80; i++) {
+  for (let i = 0; i < 160; i++) {  // up to 40 s: a cold Chrome on a busy machine
     try {
       targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
       if (targets.find((t) => t.type === 'page')) break
@@ -195,7 +195,9 @@ export async function launch({ width = 1440, height = 900, mobile = false } = {}
       try {
         ws.close()
       } catch {}
-      proc.kill()
+      // On Windows killing chrome.exe leaves its renderers running; end the tree.
+      if (process.platform === 'win32') spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' })
+      else proc.kill()
     },
   }
   await page.viewport(width, height, mobile)

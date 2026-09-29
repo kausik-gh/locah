@@ -31,11 +31,12 @@ function finish(businessId: string, error: string | null, path = ''): never {
 
 export async function checkInMember(formData: FormData): Promise<void> {
   const businessId = String(formData.get('businessId'))
-  const scanned = String(formData.get('enrolmentId') || '').trim()
-  const enrolmentId = scanned.replace(/^locah:member:/i, '')
+  const scanned = String(formData.get('enrolmentId') || '').trim().replace(/^locah:member:/i, '')
+  // A membership card carries a short code; Memberships resolves it. A full ID still works.
+  const isId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(scanned)
   const locationId = String(formData.get('locationId') || '')
   const error = await submit(businessId, '/member-checkins', {
-    enrolment_id: enrolmentId,
+    ...(isId ? { enrolment_id: scanned } : { code: scanned }),
     location_id: locationId || null,
     channel: String(formData.get('channel') || 'manual'),
     idempotency_key: String(formData.get('requestKey') || randomUUID()),
