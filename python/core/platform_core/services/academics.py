@@ -181,11 +181,14 @@ class AcademicsService:
         for key in sorted(keys):
             await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key), 5200)"), {"key": key})
         clash = (await session.execute(text("""SELECT id FROM academics_sessions
-            WHERE business_id=:bid AND status='scheduled' AND starts_at<:ends AND ends_at>:starts
-              AND (batch_id=:batch OR (:teacher IS NOT NULL AND teacher_member_id=:teacher)
-                OR (:room IS NOT NULL AND room=:room AND location_id IS NOT DISTINCT FROM :location))
-            LIMIT 1"""), {"bid": business_id, "starts": starts, "ends": ends,
-                           "batch": batch_id, "teacher": teacher, "room": room, "location": batch["location_id"]})).first()
+            WHERE business_id=CAST(:bid AS uuid) AND status='scheduled' AND starts_at<:ends AND ends_at>:starts
+              AND (batch_id=CAST(:batch AS uuid)
+                OR (CAST(:teacher AS uuid) IS NOT NULL AND teacher_member_id=CAST(:teacher AS uuid))
+                OR (CAST(:room AS text) IS NOT NULL AND room=CAST(:room AS text)
+                    AND location_id IS NOT DISTINCT FROM CAST(:location AS uuid)))
+            LIMIT 1"""), {"bid": str(business_id), "starts": starts, "ends": ends,
+                           "batch": str(batch_id), "teacher": str(teacher) if teacher else None,
+                           "room": room, "location": batch["location_id"]})).first()
         if clash:
             raise ConflictError("Teacher or room already has a class at that time")
         row = await _one(session, """INSERT INTO academics_sessions

@@ -13,6 +13,7 @@ import {
   updatePhase,
   updateTask,
 } from '../actions'
+import { createJob } from '../../jobs/actions'
 import {
   dayLabel,
   daysUntil,
@@ -149,6 +150,17 @@ export default async function ProjectDetailPage({
           <Link href={`/b/${params.businessId}/jobs/${job.id}`}>{job.reference} · {job.title}</Link> · {job.status.replaceAll('_', ' ')}
         </li>)}</ul> : <p>No executable jobs linked yet. Keep the project for the overall commitment; create a job card when work needs a technician or parts.</p>}
         <Link href={`/b/${params.businessId}/jobs`}>Open job cards</Link>
+        {open && project.customer_contact_id ? (
+          <form action={createJob} style={{ display: 'grid', gap: '0.6rem', marginTop: '0.8rem', maxWidth: '28rem' }}>
+            <input type="hidden" name="businessId" value={params.businessId} />
+            <input type="hidden" name="customer_contact_id" value={project.customer_contact_id} />
+            <input type="hidden" name="project_id" value={project.id} />
+            <input type="hidden" name="location_id" value={project.location_id || ''} />
+            <label>Work for this project<input name="title" required maxLength={200} placeholder="Site visit, install, or repair" /></label>
+            <label>What needs doing<textarea name="problem" rows={2} /></label>
+            <button type="submit" className="btn">Start a job card</button>
+          </form>
+        ) : null}
       </Card> : null}
 
       <Tasks

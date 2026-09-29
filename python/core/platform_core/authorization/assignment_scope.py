@@ -44,6 +44,12 @@ ASSIGNMENT_PERMISSIONS = frozenset({
     "leads.read", "leads.create", "leads.update_status",
     "quotes.read", "quotes.create", "quotes.update",
     "customers.read",
+    # Job cards and teaching are assignment-scoped work. They do not open the
+    # customer book, exports, stock, or the right to create jobs and enrol
+    # students. Recording a part calls Inventory; it does not grant inventory.read,
+    # which would show the whole stock book.
+    "jobs.read", "jobs.complete", "jobs.use_parts",
+    "academics.read", "academics.teach",
 })
 
 
