@@ -200,7 +200,8 @@ class DocumentWorkflows:
     @staticmethod
     async def list_forms(session: AsyncSession, business_id: uuid.UUID) -> list[dict[str, Any]]:
         rows = (await session.execute(text("""SELECT f.id,f.title,f.kind,f.current_version,
-            v.id AS version_id,v.fields,v.created_at FROM document_forms f
+            v.id AS version_id,v.fields,v.consent_text,v.guardian_required,v.created_at
+            FROM document_forms f
             JOIN document_form_versions v ON v.business_id=f.business_id AND v.form_id=f.id
               AND v.version=f.current_version WHERE f.business_id=:bid
             ORDER BY f.created_at DESC LIMIT 100"""), {"bid": business_id})).mappings().all()
