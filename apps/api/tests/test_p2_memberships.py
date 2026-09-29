@@ -414,6 +414,36 @@ def test_milk_tomorrow_skip_one_day_change_and_pause_become_real_orders_once(mon
 
 
 @DB
+def test_a_tiffin_day_reaches_the_kitchen_as_one_ticket_per_delivery(monkeypatch: Any) -> None:
+    # Subscription orders are ordinary accepted orders: Kitchen acts on them like any other.
+    owner, bid, base = _gym(monkeypatch, "orders", "fulfilment", "inventory", "kitchen")
+    # A prepared dish (menu item) goes to the kitchen; packaged goods like milk do not.
+    thali = client.post(f"{base}/products", json={"title": "Veg thali", "offering_type": "menu_item",
+                                                  "status": "active", "price_amount": 120}, headers=owner).json()["data"]
+    client.patch(f"/v1/b/{bid}/fulfilment/settings", json={"pickup_enabled": True, "delivery_enabled": True},
+                 headers=owner)
+    plan = _plan(owner, base, plan_kind="recurring_delivery", billing_timing="prepaid", price_amount=3000,
+                 delivery={"offering_id": thali["id"], "quantity": 2, "slot": "Lunch", "window": "12:00-13:00",
+                           "cutoff": "21:00", "mode": "pickup"})
+    e = _enrol(owner, base, plan["id"], _customer(owner, base, "Suresh"),
+               starts_at=datetime.combine(date.today(), time(0, 0), IST).isoformat())
+    _pay(owner, base, e["id"], 3000)
+    made = svc(lambda s: _generate(s, bid, _tomorrow()))
+    assert made["orders"] == 1
+    drain_events(bid)
+    drain_events(bid)
+    tickets = sql("select t.order_id::text from kitchen_tickets t join orders_orders o on o.id = t.order_id "
+                  "where t.business_id = :b and o.channel = 'subscription'", b=bid)
+    assert len(tickets) == 1, "one kitchen ticket for the day's delivery"
+    items = sql("select sum(i.quantity)::int from kitchen_ticket_lines i where i.ticket_id in "
+                "(select id from kitchen_tickets where business_id = :b)", b=bid)
+    assert items == [(2,)], "the ticket carries the subscribed quantity"
+    assert svc(lambda s: _generate(s, bid, _tomorrow()))["orders"] == 0
+    drain_events(bid)
+    assert int(sql("select count(*) from kitchen_tickets where business_id = :b", b=bid)[0][0]) == 1
+
+
+@DB
 def test_postpaid_deliveries_are_billed_on_the_khata_once_and_skips_cost_nothing(monkeypatch: Any) -> None:
     owner, bid, base, plan, milk = _milk(monkeypatch, "postpaid")
     contact = _customer(owner, base, "Rafiq")
@@ -452,14 +482,32 @@ def test_postpaid_deliveries_are_billed_on_the_khata_once_and_skips_cost_nothing
 # ---------------------------------------------------------------- coaching fees, AMC, club dues
 @DB
 def test_fee_plan_instalments_paid_outstanding_next_due_and_guardian_payer(monkeypatch: Any) -> None:
-    owner, bid, base = _gym(monkeypatch)
+    owner, bid, base = _gym(monkeypatch, "academics")
     plan = _plan(owner, base, plan_kind="fee_plan", price_amount=0, duration_days=120, instalment_template=[
         {"label": "Admission", "amount": 10000, "due_after_days": 0},
         {"label": "Second term", "amount": 10000, "due_after_days": 30},
         {"label": "Third term", "amount": 10000, "due_after_days": 60}])
     student, guardian = _customer(owner, base, "Asha"), _customer(owner, base, "Meera (mother)")
+    # The fee plan follows the student's academic enrolment — Academics' own record.
+    course = client.post(f"/v1/b/{bid}/academics/courses", json={"title": "Class 10 maths"}, headers=owner)
+    assert course.status_code == 200, course.text
+    batch = client.post(f"/v1/b/{bid}/academics/batches", json={
+        "course_id": course.json()["data"]["id"], "name": "Evening 2026"}, headers=owner)
+    assert batch.status_code == 200, batch.text
+    enrolled = client.post(f"/v1/b/{bid}/academics/batches/{batch.json()['data']['id']}/enrolments", json={
+        "student_contact_id": student, "guardian_contact_id": guardian, "is_minor": True}, headers=owner)
+    assert enrolled.status_code == 200, enrolled.text
+    academic = enrolled.json()["data"]["id"]
+    body = {"plan_id": plan["id"], "payment_method": "pay_at_business", "source_ref_type": "academic_enrolment"}
+    made_up = client.post(f"{base}/membership-enrolments", json={
+        **body, "customer_contact_id": student, "source_ref_id": str(uuid.uuid4())}, headers=owner)
+    assert made_up.status_code == 404, "a reference to no academic enrolment is refused"
+    not_the_student = client.post(f"{base}/membership-enrolments", json={
+        **body, "customer_contact_id": guardian, "source_ref_id": academic}, headers=owner)
+    assert not_the_student.status_code == 422, "the fee plan is for the enrolled student; the guardian pays"
     e = _enrol(owner, base, plan["id"], student, payer_contact_id=guardian,
-               source_ref_type="academic_enrolment", source_ref_id=str(uuid.uuid4()))
+               source_ref_type="academic_enrolment", source_ref_id=academic)
+    assert _detail(owner, base, e["id"])["source_ref"] == {"type": "academic_enrolment", "id": academic}
     assert e["status"] == "pending"
     due = client.get(f"{base}/collect/due", params={"source_type": "membership", "source_id": e["id"]},
                      headers=owner).json()["data"]
@@ -487,8 +535,26 @@ def test_fee_plan_instalments_paid_outstanding_next_due_and_guardian_payer(monke
 def test_amc_visits_are_asked_of_jobs_once_and_dues_decide_good_standing(monkeypatch: Any) -> None:
     owner, bid, base = _gym(monkeypatch)
     amc = _plan(owner, base, plan_kind="service_contract", price_amount=4000, duration_days=365, visits_included=2)
-    e = _enrol(owner, base, amc["id"], _customer(owner, base, "Kannan"), source_ref_type="customer_asset",
-               source_ref_id=str(uuid.uuid4()))
+    kannan, someone_else = _customer(owner, base, "Kannan"), _customer(owner, base, "Latha")
+
+    def asset(customer: str, label: str) -> str:
+        made = client.post(f"{base}/customer-assets", json={
+            "customer_id": customer, "asset_kind": "ac_unit", "label": label,
+            "idempotency_key": f"asset-{uuid.uuid4().hex[:12]}"}, headers=owner)
+        assert made.status_code == 200, made.text
+        return str(made.json()["data"]["id"])
+
+    hall_ac, latha_ac = asset(kannan, "Hall AC"), asset(someone_else, "Bedroom AC")
+    body = {"plan_id": amc["id"], "customer_contact_id": kannan, "payment_method": "pay_at_business",
+            "source_ref_type": "customer_asset"}
+    assert client.post(f"{base}/membership-enrolments", json={**body, "source_ref_id": latha_ac},
+                       headers=owner).status_code == 422, "an AMC covers the customer's own asset"
+    assert client.post(f"{base}/membership-enrolments", json={**body, "source_ref_id": str(uuid.uuid4())},
+                       headers=owner).status_code == 404
+    gym = _plan(owner, base, price_amount=1000, duration_days=30)
+    assert client.post(f"{base}/membership-enrolments", json={**body, "plan_id": gym["id"], "source_ref_id": hall_ac},
+                       headers=owner).status_code == 422, "only a service contract covers an asset"
+    e = _enrol(owner, base, amc["id"], kannan, source_ref_type="customer_asset", source_ref_id=hall_ac)
     _pay(owner, base, e["id"], 4000)
     d = _detail(owner, base, e["id"])
     assert len(d["visits"]) == 2 and d["words"]["customer_title"] == "My Service Plan"
@@ -506,7 +572,7 @@ def test_amc_visits_are_asked_of_jobs_once_and_dues_decide_good_standing(monkeyp
     assert svc(lambda s: sweep(s, when + timedelta(hours=1)))["visits_due"] == 0, "asked once"
     events = sql("select payload->>'asset_ref' from platform_outbox_events where business_id = :b "
                  "and event_type = 'membership.service_visit_due'", b=bid)
-    assert len(events) == 1 and events[0][0] is not None
+    assert events == [(hall_ac,)], "the visit names the covered asset"
 
     club = _plan(owner, base, plan_kind="member_dues", price_amount=2400, duration_days=365)
     m = _enrol(owner, base, club["id"], _customer(owner, base, "Raman"))

@@ -16,7 +16,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from platform_core.exceptions import ConflictError, ResourceNotFound
+from platform_core.exceptions import ConflictError, ResourceNotFound, ValidationError
 from platform_core.gates import assert_business_accepts_commerce, assert_business_mutable
 from platform_core.memberships.service import MembershipCore
 from platform_core.models import MembershipEnrolment, MembershipEnrolmentStatusHistory
@@ -62,6 +62,42 @@ class MembershipEnrolmentService:
         )
 
     @staticmethod
+    async def _check_source_ref(session: AsyncSession, business_id: uuid.UUID, plan_kind: str,
+                                contact_id: uuid.UUID, ref_type: str | None, ref_id: uuid.UUID | None) -> None:
+        """A fee plan follows the student's academic enrolment; a service contract
+        covers the customer's own asset. Each is a record of this business, about
+        this customer, checked with the module that owns it."""
+        if ref_type is None and ref_id is None:
+            return
+        if ref_type is None or ref_id is None:
+            raise ValidationError("Say both what the plan follows and which record",
+                                  details={"field": "source_ref_id"})
+        if ref_type == "academic_enrolment":
+            if plan_kind != "fee_plan":
+                raise ValidationError("Only a fee plan follows an academic enrolment",
+                                      details={"field": "source_ref_type"})
+            from platform_core.services.academics import AcademicsService
+
+            parties = await AcademicsService.enrolment_parties(session, business_id, ref_id)
+            if parties is None:
+                raise ResourceNotFound("Academic enrolment")
+            if parties["student_contact_id"] != contact_id:
+                raise ValidationError("The fee plan is for the student on that enrolment",
+                                      details={"field": "customer_contact_id"})
+            return
+        if plan_kind != "service_contract":
+            raise ValidationError("Only a service contract covers a customer's asset",
+                                  details={"field": "source_ref_type"})
+        from platform_core.services.inventory_field import InventoryFieldService
+
+        owner = await InventoryFieldService.asset_customer(session, business_id, ref_id)
+        if owner is None:
+            raise ResourceNotFound("Customer asset")
+        if owner != contact_id:
+            raise ValidationError("A service contract covers the customer's own asset",
+                                  details={"field": "customer_contact_id"})
+
+    @staticmethod
     async def enrol(
         session: AsyncSession, *, business_id: uuid.UUID, actor_id: uuid.UUID, correlation_id: str,
         payload: dict[str, Any], actor_context: str = "business",
@@ -94,6 +130,8 @@ class MembershipEnrolmentService:
             from platform_core.resolvers.location_resolver import LocationResolver
 
             await LocationResolver.resolve(session, business_id=business_id, location_id=validated["location_id"])
+        await MembershipEnrolmentService._check_source_ref(
+            session, business_id, plan.plan_kind, contact.id, validated["source_ref_type"], validated["source_ref_id"])
 
         starts_at = validated["starts_at"] or datetime.now(timezone.utc)
         ends_at = starts_at + timedelta(days=plan.duration_days) if plan.duration_days else None

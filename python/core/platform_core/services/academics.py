@@ -87,6 +87,18 @@ class AcademicsService:
         return row
 
     @staticmethod
+    async def enrolment_parties(session: AsyncSession, business_id: uuid.UUID,
+                                enrolment_id: uuid.UUID) -> dict[str, uuid.UUID | None] | None:
+        """Who an academic enrolment is for (a stable reference other modules may
+        check — a fee plan follows it); None when it is not this business's."""
+        row = (await session.execute(text(
+            "SELECT student_contact_id, guardian_contact_id FROM academics_enrolments WHERE id=:id AND business_id=:bid"),
+            {"id": enrolment_id, "bid": business_id})).first()
+        if row is None:
+            return None
+        return {"student_contact_id": row[0], "guardian_contact_id": row[1]}
+
+    @staticmethod
     async def courses(session: AsyncSession, business_id: uuid.UUID) -> list[dict[str, Any]]:
         rows = (await session.execute(text("SELECT * FROM academics_courses WHERE business_id=:bid ORDER BY created_at DESC"),
                                       {"bid": business_id})).mappings().all()
