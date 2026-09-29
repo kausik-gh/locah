@@ -59,7 +59,7 @@ def _line(rules: dict[str, Any], price: str = "1000", qty: int = 1) -> po.Line:
 def _plan(rules: dict[str, Any], now_local: datetime, **kw: Any) -> po.Plan:
     import asyncio
 
-    return asyncio.run(po.plan(None, business_id=None, location=None, lines=[_line(rules)],  # type: ignore[arg-type]
+    return asyncio.run(po.plan(None, business_id=None, location=None, lines=[_line(rules)],
                                now=now_local.astimezone(timezone.utc), **kw))
 
 

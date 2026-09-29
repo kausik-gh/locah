@@ -235,5 +235,5 @@ def test_booked_and_membership_ended_rules(monkeypatch: Any) -> None:
         sql("insert into memberships_enrolments (business_id, plan_id, customer_contact_id, starts_at, ends_at, status) "
             "values (:b, :p, :c, now() - interval '60 days', now() - make_interval(days => :e), :s)",
             b=bid, p=plan, c=who, e=ended, s=status)
-    ended = _preview(base, owner, [{"kind": "membership_ended", "from_days": 15, "to_days": 60}])
-    assert _names(ended) == ["Arun"], "Lakshmi renewed, so she is not in it"
+    lapsed = _preview(base, owner, [{"kind": "membership_ended", "from_days": 15, "to_days": 60}])
+    assert _names(lapsed) == ["Arun"], "Lakshmi renewed, so she is not in it"

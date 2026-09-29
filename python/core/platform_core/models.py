@@ -511,6 +511,9 @@ class CustomerContact(Base):
     preferred_location_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("business_locations.id"), nullable=True
     )
+    # P1-10E6: 'en' | 'ta' | 'hi' — set from what they write ('detected') or pick ('chosen').
+    language: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language_source: Mapped[str | None] = mapped_column(Text, nullable=True)
     customer_since: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

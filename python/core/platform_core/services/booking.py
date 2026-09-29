@@ -433,7 +433,7 @@ class BookingService:
         if price is None:
             return None
         if validated["reservation_mode"] == "accommodation":
-            nights = max((validated["ends_at"].date() - validated["starts_at"].date()).days, 1)
+            nights: int = max((validated["ends_at"].date() - validated["starts_at"].date()).days, 1)
             return price * nights
         if validated["reservation_mode"] == "class_session":
             return price * max(int(validated.get("party_size") or 1), 1)

@@ -92,7 +92,7 @@ async def export(session: AsyncSession, business_id: uuid.UUID, contact_ids: lis
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "about": "Everything this business keeps about you in LOCAH.",
         "records": await rows(
-            "SELECT id, display_name, phone, email, status, tags, customer_since, last_interaction_at "
+            "SELECT id, display_name, phone, email, status, tags, language, customer_since, last_interaction_at "
             f"FROM customer_relationships_contacts WHERE business_id = {b} AND id = {ids} AND deleted_at IS NULL"),
         "consents": await rows(
             "SELECT purpose, channel, source, granted_at, withdrawn_at, withdrawn_source FROM customer_consents "
@@ -224,7 +224,8 @@ async def erase(session: AsyncSession, business_id: uuid.UUID, contact_id: uuid.
                                     "AND withdrawn_at IS NULL")
     await session.execute(text(
         f"UPDATE customer_relationships_contacts SET display_name = '{ERASED_NAME}', phone = NULL, email = NULL, "
-        "tags = '{}', identity_id = NULL, preferred_location_id = NULL, status = 'archived', erased_at = :now, "
+        "tags = '{}', language = NULL, language_source = NULL, identity_id = NULL, preferred_location_id = NULL, "
+        "status = 'archived', erased_at = :now, "
         "updated_at = :now, version = version + 1 WHERE business_id = CAST(:b AS uuid) AND id = CAST(:c AS uuid)"), p)
     await session.execute(text(
         "UPDATE customer_relationships_privacy_requests SET status = 'done', resolved_at = :now, resolved_by = "

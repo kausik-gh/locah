@@ -101,7 +101,6 @@ def test_changing_an_order_revalidates_price_stock_tax_and_money(monkeypatch: An
         "items": [{"offering_id": rice["id"], "quantity": 2}, {"offering_id": oil["id"], "quantity": 1}]}, headers=owner)
     order = placed.json()["data"]["order"]
     rice_line = next(i for i in order["items"] if i["offering_id"] == rice["id"])
-    oil_line = next(i for i in order["items"] if i["offering_id"] == oil["id"])
     assert _reserved(rice["id"]) == 2
     client.post(f"{base}/collect/record", json={"source_type": "order", "source_id": order["id"], "amount": 500,
                                                 "method": "cash"}, headers=owner)

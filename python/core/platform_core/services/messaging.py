@@ -437,14 +437,16 @@ class MessagingService:
         approved = {r.language: r.category for r in (await session.execute(select(MessagingTemplate).where(
             MessagingTemplate.business_id == business_id, MessagingTemplate.template_key == key,
             MessagingTemplate.status == "approved"))).scalars()}
-        language = s.language if s.language in approved else "en" if "en" in approved else None
+        contact = await session.get(CustomerContact, contact_id) if contact_id else None
+        if contact is None and audience == "customer":
+            contact = await MessagingService.find_contact(session, business_id, wa_id)
+        # The customer's own language when that version is approved (P1-10E6), else the business's, else English.
+        wanted = contact.language if contact is not None and audience == "customer" else None
+        language = next((x for x in (wanted, s.language, "en") if x and x in approved), None)
         if language is None:
             raise NotSent(f"The “{template.label}” message is not approved by WhatsApp yet")
         # What Meta decided at approval wins over what LOCAH asked for.
         category = approved.get(language) or template.category
-        contact = await session.get(CustomerContact, contact_id) if contact_id else None
-        if contact is None and audience == "customer":
-            contact = await MessagingService.find_contact(session, business_id, wa_id)
         conv = await MessagingService.conversation_for(session, channel, wa_id, contact=contact,
                                                        kind="staff" if audience == "staff" else "customer")
         msg = MessagingMessage(
@@ -648,14 +650,25 @@ class MessagingService:
         """§12.1 router, cheapest branch first: STOP → opt-out; 'talk to a person' →
         the inbox; a button or menu word → the structured journey (P1-08); free
         text → the AI WhatsApp Manager (P3, not built) — so, for now, a person."""
+        from platform_core.messaging.journeys import language_for
+        from platform_core.messaging.words import detect, tr
         from platform_core.services.consent import ConsentService
+
+        async def lang() -> str:
+            """The language they wrote in, else the one they chose or the business's (P1-10E6)."""
+            contact = await session.get(CustomerContact, conv.contact_id) if conv.contact_id else None
+            if contact is not None and contact.language_source == "chosen":
+                return str(contact.language)
+            found: str = detect(body) or await language_for(session, conv.business_id, contact)
+            return found
 
         said = body.strip().lower()
         if said in STOP_WORDS and conv.contact_id:
             await ConsentService.withdraw(session, conv.business_id, conv.contact_id, purpose="marketing",
                                           channel="whatsapp", source="whatsapp_stop")
-            await MessagingService.bot_text(session, conv, "You will not get offers from us on WhatsApp any more. "
-                                                           "Order and booking updates still come here.", via="journey")
+            await MessagingService.bot_text(session, conv, tr(await lang(), "You will not get offers from us on "
+                                                              "WhatsApp any more. Order and booking updates still "
+                                                              "come here."), via="journey")
             return "opted_out"
         wants_person = extra.get("id") == "talk_to_person" or any(w in said for w in PERSON_WORDS)
         if not wants_person:
@@ -671,11 +684,12 @@ class MessagingService:
             from platform_core.messaging.entry import whatsapp_entry
 
             business = await session.get(Business, conv.business_id)
-            menu = " Or send menu to see what you can do here." if not wants_person and await whatsapp_entry(
-                session, conv.business_id) else ""
+            words = await lang()
+            menu = " " + tr(words, "Or send menu to see what you can do here.") if not wants_person and \
+                await whatsapp_entry(session, conv.business_id) else ""
             await MessagingService.bot_text(
-                session, conv, f"Thanks — someone from {business.display_name if business else 'us'} will reply "
-                               f"here soon.{menu}", via="journey")
+                session, conv, tr(words, "Thanks — someone from {business} will reply here soon.",
+                                  business=business.display_name if business else "us") + menu, via="journey")
             await MessagingService._schedule_waiting(session, conv)
         return "person"
 
