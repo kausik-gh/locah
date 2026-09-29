@@ -25,12 +25,41 @@ P1 gate after P1-10C: **TOTAL 240 · COMPLETE 122 · PARTIAL 90 · NOT_STARTED 1
 ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 763 rows (P1 total grew by the
 founder-refinement rows in section A2).
 
+P1 gate after the Orders & Customer Transactions refinement was added (no code
+change, P1-10D1 rows not yet reconciled): **TOTAL 261 · COMPLETE 126 · PARTIAL
+102 · NOT_STARTED 15 · ACTIVATION_REQUIRED 18 · FUTURE 0.** Whole ledger: 793 rows.
+
 ### Founder refinements (authority 1) — read before touching these modules
 
 `Documentations/# FOUNDER REFINEMENT — INVENTORY / BOOKINGS / MEMBERSHIPS /
-PAYMENTS.txt` and `Documentations/B2B.txt` (added 2026-09-28/29). Ledger section
-A2 (`tools/ledger/rows_refinements.py`) lists each requirement with its status;
-each document ends with a browser acceptance list that the module's flow must mirror.
+PAYMENTS.txt`, `Documentations/B2B.txt` (B2B / ChitBridge) and
+`Documentations/# FOUNDER REFINEMENT — ORDERS & CUSTOMER TRANSACTIONS.txt`
+(added 2026-09-28/29). Ledger section A2 (`tools/ledger/rows_refinements.py`)
+lists each requirement with its status (FR-IN, FR-BK, FR-MB, FR-PY, FR-OR,
+FR-B2B); each document ends with a browser acceptance list that the module's
+flow must mirror.
+
+Orders & Customer Transactions (FR-OR-01..30, baseline after P1-10D1 was
+committed): one Orders service for every channel (no per-channel order
+copies), routing that sends bookings/plans/bills/RFQs/site visits/donations/
+repairs to their own modules, a real website checkout with the server
+authoritative for price/tax/stock/availability/charges, only the relevant
+owner order settings, POS/WhatsApp/human-phone/AI-phone (P3, when enabled)
+on the same service, pre-orders with today/tomorrow/future/overdue views,
+partial availability and edits that reconfirm, cancellation/returns through
+Payments/Inventory/Invoicing, reorder at today's truth, and an Orders
+Workspace whose workflow adapts to the business (channel is a filter, never a
+tab; never one generic CRUD table). B2B stays its own experience. Baseline:
+5 COMPLETE · 15 PARTIAL · 8 NOT_STARTED · 2 ACTIVATION_REQUIRED (21 of the 30
+are P1). Pre-orders (FR-OR-16) are part of P1-10D2 and must follow this
+document; FR-OR-18 (order edits) and FR-OR-23 (adaptive Orders workspace) are
+new P1 NOT_STARTED rows.
+
+SOURCE_CONFLICT SC-01 (resolved by authority order, ledger decisions table):
+MD §11.2 closes the AI Receptionist's tool list ("Nothing else") and §11.3
+sends restaurant phone orders to a WhatsApp link; the Orders refinement
+authorises AI phone ordering for simple orders where enabled. The founder
+wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 
 ### P1-10D1 — collect what is due (IN PROGRESS, committed, not browser-verified)
 
@@ -130,8 +159,9 @@ each document ends with a browser acceptance list that the module's flow must mi
 
 ## Remaining work snapshot (P1 first)
 
-P1 NOT_STARTED (12): OK-15 (formula-priced jewellery), OR-04 (dated
-pre-orders), PY-02 + FR-PY-03 (payment links), PY-05/PY-06 (split tender /
+P1 NOT_STARTED (15): OK-15 (formula-priced jewellery), OR-04 + FR-OR-16 (dated
+pre-orders), FR-OR-18 (order edits that revalidate), FR-OR-23 (Orders workflow
+adapted per business), PY-02 + FR-PY-03 (payment links), PY-05/PY-06 (split tender /
 cash-card records as payment domain — POS already does both; audit and close),
 CR-04 (segments), CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation),
 IS-01 (basic insights), PKT-10 (P1-10 packet).
