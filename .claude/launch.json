@@ -80,6 +80,30 @@
         "tools/acceptance/stack/web.sh"
       ],
       "port": 3100
+    },
+    {
+      "name": "accept-api-posix",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "tools/acceptance/stack/api.sh"
+      ],
+      "port": 8010
+    },
+    {
+      "name": "accept-workspace-posix",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "tools/acceptance/stack/workspace.sh"
+      ],
+      "port": 3101
+    },
+    {
+      "name": "accept-web-posix",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "tools/acceptance/stack/web.sh"
+      ],
+      "port": 3100
     }
   ]
 }

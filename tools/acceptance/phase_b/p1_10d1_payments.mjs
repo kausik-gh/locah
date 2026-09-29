@@ -443,9 +443,16 @@ try {
   const body = await g.page.locator('main').innerText()
   check(body.includes('Already paid') && body.includes('₹500') && body.includes('Balance — paying now') && body.includes('₹1,000'), 'membership link: already paid ₹500, paying now ₹1,000')
   await g.context.close()
+  // The members board (P2-02) has no plan table: a fee not yet paid in full
+  // puts the member under "Needs you" with the plan and what is still due.
   await p.goto(`${WS}/b/${bid}/memberships`)
-  const row = await p.locator('tr', { hasText: 'Cake club — monthly box' }).last().innerText()
-  check(row.includes('Part paid'), `memberships list says "Part paid" (${row.replace(/\s+/g, ' ')})`)
+  const needs = p.locator('section[aria-labelledby=mem-needs] li', { hasText: 'Kavya' })
+  await needs.first().waitFor()
+  const row = (await needs.first().innerText()).replace(/\s+/g, ' ')
+  check((await needs.count()) === 1 && row.includes('Cake club — monthly box') && row.includes('₹1,000 due') && row.toLowerCase().includes('payment pending') && !/·\s*·/.test(row),
+    `members board: Kavya needs you — Cake club, ₹1,000 due, payment pending (${row})`)
+  const pending = (await p.locator('dl.bos-money__sum > div', { hasText: /payment pending/i }).innerText()).replace(/\s+/g, ' ')
+  check(/payment pending 1$/i.test(pending), `members board counts one payment pending (${pending})`)
   check(p.realErrors().length === 0, `membership pages: no console errors (${p.realErrors().join(' | ').slice(0, 200)})`)
   await ctx.context.close()
   void enrolment

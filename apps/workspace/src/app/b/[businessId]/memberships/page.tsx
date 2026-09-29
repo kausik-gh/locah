@@ -63,21 +63,21 @@ const STAT_LABELS: Record<string, [string, string][]> = {
 }
 
 function MemberRow({ r, href }: { r: Row; href: string }) {
-  const until = r.valid_until ? `until ${day(r.valid_until)}` : ''
-  const left = r.days_remaining !== null && r.status === 'active' ? ` · ${r.days_remaining} days left` : ''
-  const sessions = r.sessions_remaining !== null ? ` · ${r.sessions_remaining} sessions left` : ''
+  // Only what is known: a member still waiting for payment has no "until".
+  const facts = [
+    r.plan,
+    r.valid_until ? `until ${day(r.valid_until)}` : '',
+    r.days_remaining !== null && r.status === 'active' ? `${r.days_remaining} days left` : '',
+    r.sessions_remaining !== null ? `${r.sessions_remaining} sessions left` : '',
+    r.outstanding > 0 ? `${rupees(r.outstanding)} due` : '',
+  ].filter(Boolean)
   return (
     <li>
       <div>
         <strong>
           <Link href={href}>{r.member || 'Member'}</Link>
         </strong>
-        <p>
-          {r.plan} · {until}
-          {left}
-          {sessions}
-          {r.outstanding > 0 ? ` · ${rupees(r.outstanding)} due` : ''}
-        </p>
+        <p>{facts.join(' · ')}</p>
       </div>
       <span className={`bos-state ${r.status === 'active' ? 'is-ready' : ''}`}>{r.expiring_soon ? 'Ending soon' : r.status_words}</span>
     </li>
