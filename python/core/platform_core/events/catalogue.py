@@ -246,6 +246,12 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "quote.cancelled",
             "quote.revised",
             "quote.converted",
+            "quote.viewed",
+            "quote.rfq_received",
+            "quote.acceptance_code_issued",
+            "quote.discount_decided",
+            "quote.payment_handoff",
+            "quote.conversion_requested",
         }
     ),
     # Projects and work orders. `project.completed` is the one anything

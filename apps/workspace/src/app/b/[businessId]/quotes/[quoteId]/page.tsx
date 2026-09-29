@@ -9,7 +9,9 @@ import { QuoteEditor } from '../QuoteEditor'
 import { convertQuoteToProject } from '../../projects/actions'
 import { ShareLink as ShareLinkPanel } from './ShareLink'
 import {
+  approveQuoteDiscount,
   cancelQuote,
+  handOffQuote,
   issueQuote,
   recordQuoteDecision,
   reviseQuote,
@@ -111,6 +113,25 @@ export default async function QuoteDetailPage({
 
       <Summary quote={quote} customer={customer} />
 
+      {quote.approval_status === 'pending' ? (
+        <Card style={{ marginTop: '1rem', display: 'grid', gap: '0.6rem' }}>
+          <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Discount needs the owner</h2>
+          <p style={{ margin: 0, color: 'var(--color-muted)' }}>
+            This discount is above the executive&apos;s limit. It cannot be sent until you approve it.
+          </p>
+          <form action={approveQuoteDiscount} style={{ display: 'flex', gap: '0.5rem' }}>
+            <input type="hidden" name="businessId" value={params.businessId} />
+            <input type="hidden" name="quoteId" value={quote.id} />
+            <button className="btn" name="decision" value="approved" type="submit">
+              Approve the discount
+            </button>
+            <button className="btn btn-ghost" name="decision" value="rejected" type="submit">
+              Refuse it
+            </button>
+          </form>
+        </Card>
+      ) : null}
+
       {actions.canEdit ? (
         <>
           <IssuePanel businessId={params.businessId} quote={quote} />
@@ -138,6 +159,15 @@ export default async function QuoteDetailPage({
           </p>
           <ShareLinkPanel url={shareUrl} expiresAt={shareRes.ok ? shareRes.data.data?.expires_at : null} />
         </Card>
+      ) : null}
+
+      {quote.status === 'accepted' ? (
+        <HandoffPanel
+          businessId={params.businessId}
+          quoteId={quote.id}
+          target={quote.conversion_target || null}
+          locked={Boolean(quote.prices_locked)}
+        />
       ) : null}
 
       {quote.status === 'accepted' ? (
@@ -184,6 +214,30 @@ function Summary({ quote, customer }: { quote: QuoteRow; customer?: Customer }) 
     ],
     ['Sent', quote.issued_at ? <LocalTime value={quote.issued_at} /> : 'Not yet'],
   ]
+  if (quote.open_count) {
+    facts.push([
+      'Opened',
+      <>
+        {quote.open_count} {quote.open_count === 1 ? 'time' : 'times'}
+        {quote.opened_at ? (
+          <>
+            {' '}
+            · first <LocalTime value={quote.opened_at} />
+          </>
+        ) : null}
+        {quote.last_opened_at ? (
+          <>
+            {' '}
+            · last <LocalTime value={quote.last_opened_at} />
+          </>
+        ) : null}
+      </>,
+    ])
+  }
+  if (quote.source && quote.source !== 'manual') {
+    facts.push(['Came in as', quote.source === 'whatsapp' ? 'WhatsApp request' : 'Website request'])
+  }
+  if (quote.prices_locked) facts.push(['Prices', 'Locked on the accepted version'])
   if (quote.accepted_at) facts.push(['Accepted', <LocalTime key="a" value={quote.accepted_at} />])
   if (quote.rejected_at) facts.push(['Declined', <LocalTime key="r" value={quote.rejected_at} />])
   if (quote.cancelled_at) facts.push(['Cancelled', <LocalTime key="c" value={quote.cancelled_at} />])
@@ -364,7 +418,7 @@ function IssuePanel({ businessId, quote }: { businessId: string; quote: QuoteRow
             name="valid_days"
             min="1"
             max="365"
-            placeholder={quote.valid_until ? 'Keep the date above' : '30'}
+            placeholder={quote.valid_until ? 'Keep the date above' : '7'}
             style={{ width: '10rem' }}
           />
         </label>
@@ -450,6 +504,44 @@ function LifecyclePanel({ businessId, quote }: { businessId: string; quote: Quot
  * project that already exists — but once one exists the panel links to it
  * instead of offering the button again.
  */
+function HandoffPanel({
+  businessId,
+  quoteId,
+  target,
+  locked,
+}: {
+  businessId: string
+  quoteId: string
+  target: string | null
+  locked: boolean
+}) {
+  return (
+    <Card style={{ marginTop: '1.5rem', display: 'grid', gap: '0.6rem' }}>
+      <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Hand this quote on</h2>
+      <p style={{ color: 'var(--color-muted)', margin: 0 }}>
+        {locked
+          ? 'The accepted prices stay here. Orders, Projects or Invoicing receive the locked version. This does not create that record.'
+          : 'Accept the quote before handing it on.'}
+      </p>
+      {target ? <p style={{ margin: 0 }}>Handed to {target}.</p> : null}
+      {!target && locked ? (
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {(['order', 'project', 'invoice'] as const).map((choice) => (
+            <form key={choice} action={handOffQuote}>
+              <input type="hidden" name="businessId" value={businessId} />
+              <input type="hidden" name="quoteId" value={quoteId} />
+              <input type="hidden" name="target" value={choice} />
+              <button type="submit" className="btn">
+                Hand to {choice}
+              </button>
+            </form>
+          ))}
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
 function ConvertPanel({
   businessId,
   quoteId,

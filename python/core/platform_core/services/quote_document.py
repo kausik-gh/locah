@@ -80,12 +80,39 @@ def _status_chip(status: str) -> str:
     )
 
 
+def _line_notes(item: dict[str, Any]) -> str:
+    bits: list[str] = []
+    if item.get("boq_section"):
+        bits.append(f"BOQ · {item['boq_section']}")
+    if item.get("moq"):
+        bits.append(f"Minimum {item['moq']}")
+    if item.get("lead_time_days") is not None:
+        bits.append(f"Lead time {item['lead_time_days']} days")
+    sizes = item.get("size_matrix") or []
+    if sizes:
+        bits.append(", ".join(f"{row.get('size')} {row.get('quantity')}" for row in sizes))
+    breaks = item.get("quantity_breaks") or []
+    if breaks:
+        bits.append(
+            "Breaks "
+            + ", ".join(f"{row.get('min_qty')}+ at {row.get('unit_price')}" for row in breaks)
+        )
+    if not bits:
+        return ""
+    return (
+        f'<div style="color:{MUTED};font-size:12px;margin-top:4px;">'
+        f"{escape(' · '.join(bits))}</div>"
+    )
+
+
 def render_quote_document(
     *,
     quote: dict[str, Any],
     business_name: str,
     business_tagline: str | None = None,
     can_decide: bool = False,
+    notice: str = "",
+    name: str = "",
 ) -> str:
     currency = str(quote.get("currency") or "INR")
     status = str(quote.get("status") or "draft")
@@ -111,7 +138,7 @@ def render_quote_document(
         rows.append(
             f"""<tr>
   <td style="padding:14px 0;border-bottom:1px solid {RULE};vertical-align:top;">
-    <div style="font-weight:600;color:{INK};">{escape(str(item.get("title") or ""))}</div>{desc}
+    <div style="font-weight:600;color:{INK};">{escape(str(item.get("title") or ""))}</div>{desc}{_line_notes(item)}
   </td>
   <td style="padding:14px 0;border-bottom:1px solid {RULE};text-align:right;
              white-space:nowrap;font-variant-numeric:tabular-nums;">{escape(qty)}{unit}</td>
@@ -160,7 +187,32 @@ def render_quote_document(
     )
     totals.append(total_row("Total", quote.get("total"), strong=True))
     if float(quote.get("deposit_amount") or 0) > 0:
-        totals.append(total_row("Deposit due now", quote.get("deposit_amount")))
+        totals.append(total_row("Token due on acceptance", quote.get("deposit_amount")))
+
+    plan_block = ""
+    plan = quote.get("payment_plan") or []
+    if plan:
+        rows_html = []
+        for stage in plan:
+            when = {
+                "on_acceptance": "On acceptance",
+                "net_days": f"In {stage.get('due_days') or 0} days",
+                "milestone": "At the milestone",
+            }.get(str(stage.get("due_rule")), str(stage.get("due_rule") or ""))
+            amount = (
+                f"{stage.get('amount_value')}%"
+                if stage.get("amount_type") == "percent"
+                else _fmt(stage.get("amount_value"), currency)
+            )
+            rows_html.append(
+                f"<li>{escape(str(stage.get('label') or ''))}: {escape(amount)} · {escape(when)}</li>"
+            )
+        plan_block = (
+            f'<section style="margin-top:28px;"><h2 style="font-size:13px;letter-spacing:.08em;'
+            f'text-transform:uppercase;color:{MUTED};margin:0 0 8px;">Payment plan</h2>'
+            f'<ul style="margin:0;padding-left:18px;color:{INK};font-size:14px;line-height:1.6;">'
+            f"{''.join(rows_html)}</ul></section>"
+        )
 
     validity = ""
     if quote.get("valid_until"):
@@ -195,28 +247,55 @@ def render_quote_document(
     # expired or already-answered quote invites a click that cannot work.
     actions = ""
     if can_decide and status == "issued":
+        notice_html = (
+            f'<p style="margin:0 0 12px;color:{INK};font-size:14px;">{escape(notice)}</p>'
+            if notice
+            else ""
+        )
         actions = f"""
 <section class="no-print" style="margin-top:32px;padding-top:24px;border-top:1px solid {RULE};">
   <p style="margin:0 0 14px;color:{MUTED};font-size:14px;">
-    Let {escape(business_name)} know how you would like to proceed.</p>
-  <form method="post" style="display:flex;gap:10px;flex-wrap:wrap;">
-    <button name="decision" value="accepted" type="submit"
-      style="background:{ACCENT};color:#fff;border:0;border-radius:8px;padding:13px 26px;
-             font-size:15px;font-weight:600;cursor:pointer;">Accept this quote</button>
-    <button name="decision" value="rejected" type="submit"
-      style="background:#fff;color:{INK};border:1px solid {RULE};border-radius:8px;
-             padding:13px 26px;font-size:15px;font-weight:600;cursor:pointer;">Decline</button>
+    Accept with your name and a code. Decline needs only your name.</p>
+  {notice_html}
+  <form method="post" style="display:grid;gap:10px;max-width:420px;">
+    <label style="display:grid;gap:4px;font-size:13px;color:{MUTED};">Your name
+      <input name="name" required maxlength="80" value="{escape(name)}"
+        style="padding:10px 12px;border:1px solid {RULE};border-radius:8px;font-size:15px;color:{INK};">
+    </label>
+    <label style="display:grid;gap:4px;font-size:13px;color:{MUTED};">Code
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+        style="padding:10px 12px;border:1px solid {RULE};border-radius:8px;font-size:15px;color:{INK};">
+    </label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button name="decision" value="request_code" type="submit"
+        style="background:#fff;color:{INK};border:1px solid {RULE};border-radius:8px;
+               padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;">Send me a code</button>
+      <button name="decision" value="accepted" type="submit"
+        style="background:{ACCENT};color:#fff;border:0;border-radius:8px;padding:12px 18px;
+               font-size:15px;font-weight:600;cursor:pointer;">Accept</button>
+      <button name="decision" value="rejected" type="submit"
+        style="background:#fff;color:{INK};border:1px solid {RULE};border-radius:8px;
+               padding:12px 16px;font-size:15px;font-weight:600;cursor:pointer;">Decline</button>
+    </div>
   </form>
 </section>"""
 
     decided = ""
-    if status in {"accepted", "rejected"}:
-        when = _date(quote.get("accepted_at") or quote.get("rejected_at"))
-        word = "accepted" if status == "accepted" else "declined"
+    if status == "accepted":
+        when = _date(quote.get("accepted_at"))
+        who = escape(str(quote.get("decided_by_name") or "You"))
+        decided = (
+            f'<section style="margin-top:28px;padding:16px 18px;border-radius:10px;'
+            f'background:#f0fdf4;color:{INK};font-size:14px;">'
+            f"Accepted by {who} on {escape(when)}. "
+            f"The prices on this version are locked.</section>"
+        )
+    elif status == "rejected":
+        when = _date(quote.get("rejected_at"))
         decided = (
             f'<section style="margin-top:28px;padding:16px 18px;border-radius:10px;'
             f'background:{CREAM};color:{INK};font-size:14px;">'
-            f"You {escape(word)} this quote on {escape(when)}.</section>"
+            f"You declined this quote on {escape(when)}.</section>"
         )
 
     title = escape(str(quote.get("title") or "Quotation"))
@@ -286,7 +365,7 @@ def render_quote_document(
     <table style="margin-top:22px;margin-left:auto;max-width:330px;">
       {"".join(totals)}
     </table>
-    {notes_block}{terms_block}{decided}{actions}
+    {plan_block}{notes_block}{terms_block}{decided}{actions}
   </div>
 
   <p style="text-align:center;color:{MUTED};font-size:12px;margin-top:22px;">

@@ -93,6 +93,49 @@ def _business(client: TestClient, headers: dict[str, str]) -> str:
     return business_id
 
 
+def _acceptance_code(quote_id: str) -> str:
+    """The code is only on the outbox event, never on the customer's page."""
+
+    async def _run() -> str:
+        url = get_database_url()
+        assert url
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        engine = create_async_engine(url, echo=False, poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as session:
+            code = (
+                await session.execute(
+                    text(
+                        "select payload->>'code' from platform_outbox_events "
+                        "where event_type = 'quote.acceptance_code_issued' "
+                        "and payload->>'quote_id' = :id "
+                        "order by created_at desc limit 1"
+                    ),
+                    {"id": quote_id},
+                )
+            ).scalar_one()
+        await engine.dispose()
+        return str(code)
+
+    return asyncio.run(_run())
+
+
+def _accept_from_share(client: TestClient, token: str, quote_id: str, name: str = "Ravi") -> Any:
+    asked = client.post(
+        f"/v1/public/quotes/{token}",
+        data={"decision": "request_code", "name": name},
+    )
+    assert asked.status_code == 200, asked.text
+    assert "Enter the code" in asked.text
+    code = _acceptance_code(quote_id)
+    assert len(code) == 6 and code not in asked.text
+    return client.post(
+        f"/v1/public/quotes/{token}",
+        data={"decision": "accepted", "name": name, "code": code},
+    )
+
+
 def _quote(
     client: TestClient, headers: dict[str, str], business_id: str, **over: Any
 ) -> dict[str, Any]:
@@ -245,8 +288,9 @@ def test_customer_accepts_from_the_share_link(owner: dict[str, str]) -> None:
         headers=owner,
     ).json()["data"]["share_token"]
 
-    resp = client.post(f"/v1/public/quotes/{token}", data={"decision": "accepted"})
+    resp = _accept_from_share(client, token, quote["id"])
     assert resp.status_code == 200, resp.text
+    assert "Prices on this version are locked" in resp.text or "locked" in resp.text.lower()
 
     detail = client.get(
         f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}", headers=owner
@@ -265,7 +309,8 @@ def test_a_decided_quote_cannot_be_decided_again(owner: dict[str, str]) -> None:
         headers=owner,
     ).json()["data"]["share_token"]
 
-    client.post(f"/v1/public/quotes/{token}", data={"decision": "accepted"})
+    accepted = _accept_from_share(client, token, quote["id"])
+    assert accepted.status_code == 200, accepted.text
     again = client.post(
         f"/v1/platform/businesses/{business_id}/quotes/{quote['id']}/decision",
         json={"decision": "rejected"},
