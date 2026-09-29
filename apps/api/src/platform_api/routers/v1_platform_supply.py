@@ -22,8 +22,10 @@ from platform_core.permissions import (
     DONATIONS_WRITE,
     EXPENSES_READ,
     EXPENSES_WRITE,
+    PROCUREMENT_APPROVE,
     PROCUREMENT_CREATE,
     PROCUREMENT_READ,
+    PROCUREMENT_RECEIVE,
 )
 from platform_core.procurement.service import SupplyService
 
@@ -40,6 +42,24 @@ def _plain(value: Any) -> Any:
     if isinstance(value, list):
         return [_plain(item) for item in value]
     return value
+
+
+class PrepareBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    supplier_id: UUID
+    offering_id: UUID
+    demand: int = Field(gt=0, le=1_000_000)
+    location_id: UUID | None = None
+    pack_size: int = Field(default=1, ge=1, le=10_000)
+    moq: int = Field(default=1, ge=1, le=1_000_000)
+
+
+class ReceiveBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    location_id: UUID
+    received_quantity: int = Field(ge=0, le=1_000_000)
+    damaged_quantity: int = Field(default=0, ge=0, le=1_000_000)
+    idempotency_key: str = Field(min_length=4, max_length=80)
 
 
 class SupplierBody(BaseModel):
@@ -91,6 +111,68 @@ async def incoming_demand(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     data = await SupplyService.incoming_demand(session, business_id, None)
+    return {"data": _plain(data), "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/buying/prepare")
+async def prepare_order(
+    business_id: UUID,
+    body: PrepareBody,
+    actor: BusinessActorContext = Depends(require_business_actor(PROCUREMENT_CREATE, "procurement")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await SupplyService.prepare_order(
+        session, business_id, actor.request.identity_id, body.model_dump(), None,
+    )
+    await session.commit()
+    return {"data": _plain(data), "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/buying/requisitions/{requisition_id}/approve")
+async def approve_requisition(
+    business_id: UUID,
+    requisition_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(PROCUREMENT_APPROVE, "procurement")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await SupplyService.approve_requisition(
+        session, business_id, actor.request.identity_id, requisition_id,
+        buyer_label="This business", item_label="Item", permissions=None,
+    )
+    await session.commit()
+    return {"data": _plain(data), "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/buying/purchase-orders/{purchase_order_id}/approve")
+async def approve_order(
+    business_id: UUID,
+    purchase_order_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(PROCUREMENT_APPROVE, "procurement")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await SupplyService.approve_purchase_order(
+        session, business_id, actor.request.identity_id, purchase_order_id, None,
+    )
+    await SupplyService.send_purchase_order(
+        session, business_id, actor.request.identity_id, purchase_order_id,
+        buyer_label="This business", item_label="Item", permissions=None,
+    )
+    await session.commit()
+    return {"data": _plain(data), "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/buying/purchase-orders/{purchase_order_id}/receive")
+async def receive_order(
+    business_id: UUID,
+    purchase_order_id: UUID,
+    body: ReceiveBody,
+    actor: BusinessActorContext = Depends(require_business_actor(PROCUREMENT_RECEIVE, "procurement")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await SupplyService.receive_goods(
+        session, business_id, actor.request.identity_id, purchase_order_id, body.model_dump(), None, None,
+    )
+    await session.commit()
     return {"data": _plain(data), "meta": {"correlation_id": actor.request.correlation_id}}
 
 

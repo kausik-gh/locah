@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.exceptions import ConflictError, PermissionDenied, ValidationError
 from platform_core.procurement.demand import explain, explode_recipe, net_requirement, round_to_supplier
+from platform_core.procurement.payable import ledger_posting_intent
 from platform_core.services.inventory import InventoryService
 from platform_core.services.outbox import OutboxService
 from platform_core.stock.service import StockService
@@ -799,7 +800,26 @@ class SupplyService:
             session, event_type="supplier.bill.created", business_id=business_id,
             payload={"bill_id": str(row["id"]), "amount_paise": int(row["amount_paise"])},
         )
+        row["supplier_id"] = payload["supplier_id"]
+        row["ledger_intent"] = ledger_posting_intent(row)
+        if row["status"] == "paid":
+            raise ConflictError("A supplier bill is not paid until the shared ledger records the payment")
         return row
+
+    @staticmethod
+    async def settle_bill(
+        session: AsyncSession,
+        business_id: uuid.UUID,
+        bill_id: uuid.UUID,
+        permissions: set[str] | None,
+    ) -> dict[str, Any]:
+        """Refuse a local paid flag. Settlement belongs to the shared ledger."""
+        _need(permissions, "procurement.cost")
+        await _as(session, business_id)
+        raise ConflictError(
+            "Record the payment on the shared ledger as payment_made. Buying does not mark a bill paid.",
+            details={"bill_id": str(bill_id), "ledger_kind": "payment_made"},
+        )
 
     @staticmethod
     async def save_bom(
@@ -904,7 +924,7 @@ class SupplyService:
                 session,
                 business_id=business_id,
                 actor_id=actor_id,
-                correlation_id=key,
+                correlation_id=str(uuid.uuid5(uuid.NAMESPACE_OID, key)),
                 expected_version=int(record["version"]) if record else None,
                 payload={
                     "offering_id": component["component_offering_id"],
@@ -1380,10 +1400,162 @@ class SupplyService:
             ),
             {"business_id": business_id},
         ))
+        needs = _row(await session.execute(
+            text(
+                """
+                SELECT COUNT(*) AS n FROM procurement_requisitions
+                WHERE business_id = :business_id AND status = 'draft'
+                """
+            ),
+            {"business_id": business_id},
+        ))
+        orders = _rows(await session.execute(
+            text(
+                """
+                SELECT p.id, p.reference, p.status, COALESCE(r.explanation, '') AS explanation,
+                       l.quantity AS ordered_quantity,
+                       COALESCE(SUM(gl.received_quantity), 0)::int AS received_quantity
+                FROM procurement_purchase_orders p
+                JOIN procurement_purchase_order_lines l ON l.purchase_order_id = p.id
+                LEFT JOIN procurement_requisitions r ON r.id = p.requisition_id
+                LEFT JOIN procurement_goods_receipts g ON g.purchase_order_id = p.id
+                LEFT JOIN procurement_goods_receipt_lines gl ON gl.receipt_id = g.id
+                WHERE p.business_id = :business_id
+                  AND p.status IN ('draft', 'sent', 'acknowledged', 'dispatched', 'countered')
+                GROUP BY p.id, p.reference, p.status, r.explanation, l.quantity, p.created_at
+                ORDER BY p.created_at DESC
+                """
+            ),
+            {"business_id": business_id},
+        ))
+        requisitions = _rows(await session.execute(
+            text(
+                """
+                SELECT r.id, r.explanation, l.quantity, l.offering_id, l.demand_quantity,
+                       l.usable_on_hand, l.confirmed_inbound, l.safety_stock
+                FROM procurement_requisitions r
+                JOIN procurement_requisition_lines l ON l.requisition_id = r.id
+                WHERE r.business_id = :business_id AND r.status = 'draft'
+                ORDER BY r.created_at DESC
+                """
+            ),
+            {"business_id": business_id},
+        ))
+        suppliers = _rows(await session.execute(
+            text(
+                """
+                SELECT id, name FROM procurement_suppliers
+                WHERE business_id = :business_id AND status = 'active'
+                ORDER BY name
+                """
+            ),
+            {"business_id": business_id},
+        ))
         return {
             "purchase_orders": {row["status"]: int(row["n"]) for row in counts},
             "bills_due": int(bills["n"] if bills else 0),
+            "needs_buying": int(needs["n"] if needs else 0),
+            "orders": orders,
+            "requisitions": requisitions,
+            "suppliers": suppliers,
         }
+
+    @staticmethod
+    async def prepare_order(
+        session: AsyncSession,
+        business_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        payload: dict[str, Any],
+        permissions: set[str] | None,
+    ) -> dict[str, Any]:
+        """Plan the requirement, keep the explanation, and leave a draft purchase order."""
+        _need(permissions, "procurement.create")
+        supplier_id = uuid.UUID(str(payload["supplier_id"]))
+        offering_id = uuid.UUID(str(payload["offering_id"]))
+        item = _row(await session.execute(
+            text(
+                """
+                SELECT id FROM procurement_supplier_items
+                WHERE business_id = :business_id AND supplier_id = :supplier AND offering_id = :offering
+                """
+            ),
+            {"business_id": business_id, "supplier": supplier_id, "offering": offering_id},
+        ))
+        if item is None:
+            item = await SupplyService.map_item(
+                session, business_id, actor_id,
+                {
+                    "supplier_id": supplier_id,
+                    "offering_id": offering_id,
+                    "pack_size": int(payload.get("pack_size") or 1),
+                    "moq": int(payload.get("moq") or 1),
+                    "unit_price_paise": int(payload.get("unit_price_paise") or 0),
+                },
+                None,
+            )
+        requisition = await SupplyService.create_requisition(
+            session, business_id, actor_id,
+            {
+                "offering_id": offering_id,
+                "supplier_id": supplier_id,
+                "supplier_item_id": item["id"],
+                "demand": int(payload["demand"]),
+                "location_id": payload.get("location_id"),
+                "source": "demand",
+            },
+            None,
+        )
+        return {
+            "requisition_id": requisition["id"],
+            "explanation": requisition["explanation"],
+            "plan": requisition["plan"],
+        }
+
+    @staticmethod
+    async def approve_requisition(
+        session: AsyncSession,
+        business_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        requisition_id: uuid.UUID,
+        *,
+        buyer_label: str,
+        item_label: str,
+        permissions: set[str] | None,
+    ) -> dict[str, Any]:
+        _need(permissions, "procurement.approve")
+        line = _row(await session.execute(
+            text(
+                """
+                SELECT l.offering_id, l.supplier_id
+                FROM procurement_requisition_lines l
+                JOIN procurement_requisitions r ON r.id = l.requisition_id
+                WHERE r.business_id = :business_id AND r.id = :requisition AND r.status = 'draft'
+                """
+            ),
+            {"business_id": business_id, "requisition": requisition_id},
+        ))
+        if line is None:
+            raise ConflictError("That requirement is not waiting for approval")
+        item = _row(await session.execute(
+            text(
+                """
+                SELECT id FROM procurement_supplier_items
+                WHERE business_id = :business_id AND supplier_id = :supplier AND offering_id = :offering
+                """
+            ),
+            {"business_id": business_id, "supplier": line["supplier_id"], "offering": line["offering_id"]},
+        ))
+        po = await SupplyService.create_purchase_order(
+            session, business_id, actor_id,
+            {"requisition_id": requisition_id, "supplier_item_id": item["id"] if item else None},
+            None,
+        )
+        await SupplyService.approve_purchase_order(session, business_id, actor_id, po["id"], None)
+        await SupplyService.send_purchase_order(
+            session, business_id, actor_id, po["id"],
+            buyer_label=buyer_label, item_label=item_label, permissions=None,
+        )
+        return {"purchase_order_id": po["id"], "status": "sent"}
 
     @staticmethod
     async def _po(session: AsyncSession, business_id: uuid.UUID, purchase_order_id: uuid.UUID) -> dict[str, Any]:

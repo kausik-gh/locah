@@ -11,6 +11,35 @@ async function post(businessId: string, path: string, body: unknown, refresh: st
   revalidatePath(`/b/${businessId}/${refresh}`)
 }
 
+export async function prepareRequirement(form: FormData) {
+  const businessId = String(form.get('businessId'))
+  await post(businessId, '/buying/prepare', {
+    supplier_id: String(form.get('supplier_id')),
+    offering_id: String(form.get('offering_id')),
+    demand: Number(form.get('demand') || 0),
+    location_id: String(form.get('location_id') || '') || null,
+    pack_size: Number(form.get('pack_size') || 1),
+    moq: Number(form.get('moq') || 1),
+  }, 'buying')
+}
+
+export async function approveRequirement(form: FormData) {
+  const businessId = String(form.get('businessId'))
+  const requisitionId = String(form.get('requisitionId'))
+  await post(businessId, `/buying/requisitions/${requisitionId}/approve`, {}, 'buying')
+}
+
+export async function receiveGoods(form: FormData) {
+  const businessId = String(form.get('businessId'))
+  const purchaseOrderId = String(form.get('purchaseOrderId'))
+  await post(businessId, `/buying/purchase-orders/${purchaseOrderId}/receive`, {
+    location_id: String(form.get('location_id')),
+    received_quantity: Number(form.get('received_quantity') || 0),
+    damaged_quantity: Number(form.get('damaged_quantity') || 0),
+    idempotency_key: `ui-${purchaseOrderId}-${Date.now()}`,
+  }, 'buying')
+}
+
 export async function addSupplier(form: FormData) {
   const businessId = String(form.get('businessId'))
   await post(businessId, '/suppliers', {

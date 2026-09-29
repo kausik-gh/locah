@@ -149,8 +149,9 @@ INVENTORY_APPROVE = "inventory.approve"
 # What stock cost and is worth — owner, manager and accountant, not the counter.
 INVENTORY_COST = "inventory.cost"
 
-# Buying. Primary owner receives these through ALL_PERMISSIONS. Assignment-scoped
-# grants for store keeper / accountant wait on the shared role-scope engine.
+# Buying. The primary owner receives these through ALL_PERMISSIONS.
+# Manager, store keeper and accountant receive the slices in role_templates.py.
+# Approval is not given to every employee.
 PROCUREMENT_READ = "procurement.read"
 PROCUREMENT_CREATE = "procurement.create"
 PROCUREMENT_APPROVE = "procurement.approve"
@@ -232,6 +233,12 @@ TEMPLATES: dict[str, frozenset[str]] = {
             INVENTORY_READ,
             INVENTORY_ADJUST,
             INVENTORY_EXPORT,
+            PROCUREMENT_READ,
+            PROCUREMENT_CREATE,
+            PROCUREMENT_APPROVE,
+            PROCUREMENT_RECEIVE,
+            PROCUREMENT_COST,
+            SUPPLIER_READ,
             FULFILMENT_READ,
             FULFILMENT_UPDATE_STATUS,
             FULFILMENT_MANAGE_CONFIG,
@@ -254,7 +261,16 @@ TEMPLATES: dict[str, frozenset[str]] = {
         }
     ),
     "tmpl_inventory_manager": frozenset(
-        {INVENTORY_READ, INVENTORY_ADJUST, INVENTORY_EXPORT, OFFERINGS_READ}
+        {
+            INVENTORY_READ,
+            INVENTORY_ADJUST,
+            INVENTORY_EXPORT,
+            OFFERINGS_READ,
+            PROCUREMENT_READ,
+            PROCUREMENT_CREATE,
+            PROCUREMENT_RECEIVE,
+            SUPPLIER_READ,
+        }
     ),
     "tmpl_booking_coordinator": frozenset(
         {

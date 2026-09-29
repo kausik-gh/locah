@@ -56,6 +56,34 @@ def test_recipe_turns_finished_demand_into_components() -> None:
     assert lines[1]["demand"] == 20
 
 
+def test_roles_keep_approval_with_the_manager() -> None:
+    from platform_core.authorization.role_templates import ROLE_TEMPLATES
+
+    keeper = ROLE_TEMPLATES["store_keeper"].permissions
+    assert "procurement.receive" in keeper
+    assert "procurement.create" in keeper
+    assert "procurement.approve" not in keeper
+    assert "procurement.cost" not in keeper
+    cashier = ROLE_TEMPLATES["cashier"].permissions
+    assert "procurement.approve" not in cashier
+    assert "procurement.read" not in cashier
+    assert "procurement.approve" in ROLE_TEMPLATES["manager"].permissions
+    accountant = ROLE_TEMPLATES["accountant"].permissions
+    assert "expenses.write" in accountant
+    assert "procurement.cost" in accountant
+    assert "procurement.approve" not in accountant
+    assert "procurement.receive" not in accountant
+
+
+def test_supplier_bill_is_not_a_payment() -> None:
+    from platform_core.procurement.payable import ledger_posting_intent
+
+    intent = ledger_posting_intent({"id": "bill-1", "supplier_id": "sup-1", "amount_paise": 500, "invoice_reference": "INV"})
+    assert intent["kind"] == "purchase"
+    assert intent["settlement_kind"] == "payment_made"
+    assert intent["status_until_settled"] == "open"
+
+
 def test_aggregate_keeps_each_buyer() -> None:
     buyers = {"A": 40, "B": 35, "C": 25}
     total = sum(buyers.values())
@@ -194,6 +222,27 @@ def test_buy_receive_and_replay(monkeypatch: pytest.MonkeyPatch) -> None:
                     session, uuid.UUID(buyer), actor, countered["counter"]["id"],
                     accept=False, permissions=None,
                 )
+
+                async def on_hand() -> int:
+                    value = (await session.execute(
+                        text("SELECT quantity_on_hand FROM inventory_records WHERE offering_id = :o"),
+                        {"o": offering},
+                    )).scalar()
+                    return int(value or 0)
+
+                async def receipt_moves() -> int:
+                    value = (await session.execute(
+                        text(
+                            """
+                            SELECT COUNT(*) FROM inventory_movements
+                            WHERE offering_id = :o AND movement_type = 'receipt'
+                            """
+                        ),
+                        {"o": offering},
+                    )).scalar()
+                    return int(value or 0)
+
+                stock_before_receipt = await on_hand()
                 first = await SupplyService.receive_goods(
                     session, uuid.UUID(buyer), actor, po["id"],
                     {
@@ -209,6 +258,8 @@ def test_buy_receive_and_replay(monkeypatch: pytest.MonkeyPatch) -> None:
                     {"location_id": location, "received_quantity": 10, "idempotency_key": "grn-1"},
                     None, None,
                 )
+                stock_after_first = await on_hand()
+                moves_after_replay = await receipt_moves()
                 bill = await SupplyService.create_bill(
                     session, uuid.UUID(buyer),
                     {
@@ -220,6 +271,16 @@ def test_buy_receive_and_replay(monkeypatch: pytest.MonkeyPatch) -> None:
                     },
                     None,
                 )
+                with pytest.raises(ConflictError):
+                    await SupplyService.settle_bill(session, uuid.UUID(buyer), bill["id"], None)
+                stock_after_bill = await on_hand()
+                second = await SupplyService.receive_goods(
+                    session, uuid.UUID(buyer), actor, po["id"],
+                    {"location_id": location, "received_quantity": 20, "idempotency_key": "grn-2"},
+                    None, None,
+                )
+                stock_after_second = await on_hand()
+                moves_after_second = await receipt_moves()
                 card = await SupplyService.supplier_scorecard(session, uuid.UUID(buyer), supplier["id"], None)
                 expense = await SupplyService.record_expense(
                     session, uuid.UUID(buyer), actor,
@@ -269,6 +330,13 @@ def test_buy_receive_and_replay(monkeypatch: pytest.MonkeyPatch) -> None:
                     "incoming": incoming,
                     "counter_line": countered["line"],
                     "declined": declined,
+                    "stock_before_receipt": stock_before_receipt,
+                    "stock_after_first": stock_after_first,
+                    "moves_after_replay": moves_after_replay,
+                    "stock_after_bill": stock_after_bill,
+                    "second": second,
+                    "stock_after_second": stock_after_second,
+                    "moves_after_second": moves_after_second,
                     "first": first,
                     "replay": replay,
                     "bill": bill,
@@ -301,23 +369,109 @@ def test_buy_receive_and_replay(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["counter_line"]["quantity"] == 30
     assert result["counter_line"]["unit_price_paise"] == 1000
     assert result["declined"]["decision"] == "declined"
+    assert result["stock_before_receipt"] == 70
     assert result["first"]["replayed"] is False
     assert result["first"]["stocked"] == 10
+    assert result["stock_after_first"] == 80
     assert result["replay"]["replayed"] is True
+    assert result["moves_after_replay"] == 2
+    assert result["bill"]["status"] == "open"
+    assert result["bill"]["ledger_intent"]["kind"] == "purchase"
+    assert result["stock_after_bill"] == 80
+    assert result["second"]["stocked"] == 20
+    assert result["second"]["complete"] is True
+    assert result["stock_after_second"] == 100
+    assert result["moves_after_second"] == 3
     on_hand = sql(
         "SELECT quantity_on_hand FROM inventory_records WHERE offering_id = :o",
         o=result["offering"],
     )
-    assert on_hand[0][0] == 80
+    assert on_hand[0][0] == 100
     assert result["bill"]["amount_paise"] == 10000
     assert result["card"]["ordered_quantity"] == 30
-    assert result["card"]["received_quantity"] == 10
+    assert result["card"]["received_quantity"] == 30
     assert result["totals"]["cash_paise"] == 5000
     assert result["other"]["total_paise"] == 0
     assert result["gift"]["payment_id"] == result["payment"]
     assert result["sync"]["replayed"] is False
     assert result["sync_again"]["replayed"] is True
     assert result["home"]["bills_due"] == 1
+
+
+@DB
+def test_supplier_sees_only_the_sealed_demand(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Buyer A owns the purchase order. Supplier B receives a copy and cannot read A's tables."""
+    owner, headers = new_identity(monkeypatch)
+    buyer = create_business(client, headers, name=f"Buyer {uuid.uuid4().hex[:6]}", modules=("offerings-catalog", "inventory"))
+    supplier_biz = create_business(client, headers, name=f"Mill {uuid.uuid4().hex[:6]}", modules=("offerings-catalog",))
+    item = client.post(
+        f"/v1/platform/businesses/{buyer}/products",
+        json={"title": "Atta", "status": "active", "offering_type": "product", "track_inventory": True, "price_amount": 1000},
+        headers=headers,
+    )
+    assert item.status_code == 200, item.text
+    offering = item.json()["data"]["id"]
+
+    async def _run() -> None:
+        engine = create_async_engine(db_url(), poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            async with factory() as session:
+                supplier = await SupplyService.create_supplier(
+                    session, uuid.UUID(buyer), owner,
+                    {"name": "Mill", "connection": "locah", "linked_business_id": supplier_biz},
+                    None,
+                )
+                mapped = await SupplyService.map_item(
+                    session, uuid.UUID(buyer), owner,
+                    {"supplier_id": supplier["id"], "offering_id": offering, "unit_price_paise": 400},
+                    None,
+                )
+                requisition = await SupplyService.create_requisition(
+                    session, uuid.UUID(buyer), owner,
+                    {"offering_id": offering, "supplier_id": supplier["id"], "supplier_item_id": mapped["id"], "demand": 10, "source": "demand"},
+                    None,
+                )
+                po = await SupplyService.create_purchase_order(
+                    session, uuid.UUID(buyer), owner,
+                    {"requisition_id": requisition["id"], "supplier_item_id": mapped["id"]},
+                    None,
+                )
+                await SupplyService.approve_purchase_order(session, uuid.UUID(buyer), owner, po["id"], None)
+                await SupplyService.send_purchase_order(
+                    session, uuid.UUID(buyer), owner, po["id"],
+                    buyer_label="Buyer shop", item_label="Atta", permissions=None,
+                )
+                await SupplyService.record_expense(
+                    session, uuid.UUID(supplier_biz), owner,
+                    {"category": "Rent", "amount_paise": 900, "method": "bank", "payee": "Landlord"},
+                    None,
+                )
+                await session.commit()
+            async with factory() as session:
+                await session.execute(text("set local role platform_api"))
+                await session.execute(text("select set_config('app.current_business_id', :b, true)"), {"b": supplier_biz})
+                buyer_orders = (await session.execute(text("select id from procurement_purchase_orders"))).all()
+                assert buyer_orders == []
+                incoming = (await session.execute(text(
+                    "select buyer_label, item_label, quantity, unit_price_paise from procurement_incoming_demands"
+                ))).mappings().all()
+                assert len(incoming) == 1
+                assert dict(incoming[0])["buyer_label"] == "Buyer shop"
+                assert "customer" not in dict(incoming[0])
+                payload = (await session.execute(text("select payload::text from procurement_trade_messages"))).scalar()
+                assert payload is not None
+                assert "customer" not in payload
+                await session.execute(text("select set_config('app.current_business_id', :a, true)"), {"a": buyer})
+                foreign_demand = (await session.execute(text("select id from procurement_incoming_demands"))).all()
+                assert foreign_demand == []
+                foreign_expense = (await session.execute(text("select id from expenses_records"))).all()
+                assert foreign_expense == []
+                await session.rollback()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_run())
 
 
 @DB
