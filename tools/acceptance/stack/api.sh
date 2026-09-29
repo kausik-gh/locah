@@ -12,6 +12,8 @@ export API_DATABASE_URL=$DATABASE_URL
 export SUPABASE_JWT_SECRET=local-acceptance-secret-with-at-least-32-characters
 export SUPABASE_URL=http://127.0.0.1:54321
 export WEBSITE_PREVIEW_SECRET=local-preview-secret-with-at-least-32-characters
+# The provider-webhook signing secret the payments flow (p1_10d1) signs with.
+export PAYMENT_WEBHOOK_SECRET=${PAYMENT_WEBHOOK_SECRET:-local-acceptance-webhook-secret}
 export LOCAH_TEST_NO_EXTERNAL_AI=1
 export AI_PROVIDER=replay
 export LOCAH_AI_REPLAY_FILE=${LOCAH_AI_REPLAY_FILE:-$OUT/replay_ai.json}

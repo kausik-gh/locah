@@ -70,7 +70,7 @@ export function MemberActions({ businessId, detail: d }: { businessId: string; d
   }
 
   return (
-    <div className="bos-money">
+    <div className="bos-member-actions">
       {running ? (
         <div className="bos-money__row">
           {renews ? (

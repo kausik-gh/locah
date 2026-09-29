@@ -419,8 +419,9 @@ try {
   const enrolment = (await as(`${base}/membership-enrolments`, { method: 'POST', body: { plan_id: plan.id, customer_contact_id: kavyaId, payment_method: 'pay_at_business' } })).data
   const ctx = await open({ who: owner })
   const p = ctx.page
-  await p.goto(`${WS}/b/${bid}/memberships`)
-  await p.getByRole('link', { name: 'Cake club — monthly box' }).click()
+  // Since P2-02 the Memberships home is a members board; the fee's Money panel
+  // is on the member's page.
+  await p.goto(`${WS}/b/${bid}/memberships/${enrolment.id}`)
   await money(p).waitFor()
   let sum = await sumOf(p)
   check(sum.includes('total ₹1,500') && sum.includes('balance ₹1,500'), `membership Money panel: fee ₹1,500 due (${sum})`)

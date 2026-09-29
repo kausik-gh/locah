@@ -110,7 +110,8 @@ try {
   await page.goto(`${WS}/b/${biz.id}/inbox?view=open&c=${chat.id}`)
   await page.waitFor('.bos-bubble__options button')
   const menu = await page.eval(`[...document.querySelectorAll('.bos-bubble__options button')].map(b => b.innerText.trim())`)
-  check(menu.join('|') === 'Order|Book|Ask a question|Talk to a person', `the menu offers what works now (${menu.join(', ')})`, results)
+  // P1-10E6a added the language choice to the menu.
+  check(menu.join('|') === 'Order|Book|Ask a question|Talk to a person|Language · மொழி · भाषा', `the menu offers what works now (${menu.join(', ')})`, results)
   check(!chat.needs_person, 'LOCAH is handling the chat — nobody is waiting', results)
   await page.shot(`${shots}/03-menu.png`, { full: true })
 

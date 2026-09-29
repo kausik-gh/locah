@@ -757,6 +757,8 @@ ul.bos-pills { list-style: none; margin: 0; padding: 0; }
 
 /* ---------------------------------------------------------------- money on a transaction (P1-10D) */
 .bos-money { display: grid; gap: .9rem; max-width: 760px; }
+/* Member actions share the Money panel's layout, not its name (tests and tools find money by it). */
+.bos-member-actions { display: grid; gap: .9rem; max-width: 760px; }
 .bos-money__sum {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: .6rem; margin: 0;
   padding: .9rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface);

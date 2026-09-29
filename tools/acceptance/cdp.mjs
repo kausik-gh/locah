@@ -44,8 +44,17 @@ export async function launch({ width = 1440, height = 900, mobile = false } = {}
     await sleep(250)
   }
   const target = targets.find((t) => t.type === 'page')
+  if (!target) {
+    proc.kill()
+    throw new Error(`Chrome did not offer a page on port ${port}`)
+  }
   const ws = new WebSocket(target.webSocketDebuggerUrl)
-  await new Promise((r) => ws.addEventListener('open', r))
+  // Never wait forever on the DevTools socket; a stuck launch should fail loudly.
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('DevTools socket did not open within 15 s')), 15000)
+    ws.addEventListener('open', () => { clearTimeout(timer); resolve() })
+    ws.addEventListener('error', () => { clearTimeout(timer); reject(new Error('DevTools socket error')) })
+  })
   let id = 0
   const pending = new Map()
   const events = []
