@@ -175,6 +175,33 @@ def _step(client: TestClient, headers: dict[str, str], business_id: str, ticket_
     return cast(dict[str, Any], resp.json()["data"])
 
 
+def _step_status(
+    client: TestClient,
+    headers: dict[str, str],
+    business_id: str,
+    ticket_id: str,
+    step: str,
+    version: int,
+    *,
+    status: int,
+) -> None:
+    resp = client.post(
+        f"/v1/platform/businesses/{business_id}/kitchen/tickets/{ticket_id}/{step}",
+        json={"version": version},
+        headers=headers,
+    )
+    assert resp.status_code == status, resp.text
+
+
+def _preparation_completed_count(business_id: str) -> int:
+    return int(
+        sql(
+            "select count(*) from platform_outbox_events where business_id = :b and event_type = 'kitchen.preparation.completed'",
+            b=business_id,
+        )[0][0]
+    )
+
+
 def _replay_same_event(business_id: str, order_id: str) -> None:
     """Deliver the original accept event again. The intake row makes it a no-op."""
     rows = sql(
@@ -345,6 +372,74 @@ def test_start_ready_serve_publishes_completion_and_leaves_stock(owner: tuple[di
     still = client.get(f"/v1/platform/businesses/{business_id}/orders/{order['id']}", headers=headers)
     assert still.status_code == 200, still.text
     assert still.json()["data"]["status"] == "accepted"
+
+
+def test_serve_and_worker_replay_publish_preparation_completed_once(
+    owner: tuple[dict[str, str], uuid.UUID],
+) -> None:
+    """Served once: one outbox row. A second serve and a worker replay do not add another."""
+    headers, _ = owner
+    client = TestClient(app)
+    business_id = _business(client, headers, "offerings-catalog", "orders", "inventory", "kitchen")
+    location_id = _location(client, headers, business_id)
+    dish = _offering(client, headers, business_id, title="Idempotent wrap", kind="menu_item", track=True)
+    stocked = client.post(
+        f"/v1/platform/businesses/{business_id}/inventory/opening-stock",
+        json={"offering_id": dish, "location_id": location_id, "quantity": 5, "reason": "Opening"},
+        headers=headers,
+    )
+    assert stocked.status_code == 200, stocked.text
+    order = _accept(client, headers, business_id, location_id, [{"offering_id": dish, "quantity": 1}])
+    ticket = _tickets(_board(client, headers, business_id))[0]
+    started = _step(client, headers, business_id, ticket["id"], "start", ticket["version"])
+    ready = _step(client, headers, business_id, ticket["id"], "ready", started["version"])
+    stock_before = sql(
+        "select count(*) from platform_outbox_events where business_id = :b and event_type = 'inventory.stock.updated'",
+        b=business_id,
+    )[0][0]
+    served = _step(client, headers, business_id, ticket["id"], "serve", ready["version"])
+    assert served["status"] == "completed"
+    assert _preparation_completed_count(business_id) == 1
+    published = sql(
+        "select consumption_published from kitchen_tickets where id = :id",
+        id=ticket["id"],
+    )[0][0]
+    assert published is True
+
+    drain_events(business_id)
+    assert _preparation_completed_count(business_id) == 1
+    assert sql(
+        "select count(*) from platform_outbox_events where business_id = :b and event_type = 'inventory.stock.updated'",
+        b=business_id,
+    )[0][0] == stock_before
+
+    _step_status(
+        client, headers, business_id, ticket["id"], "serve", served["version"], status=409
+    )
+    assert _preparation_completed_count(business_id) == 1
+
+    async def _publish_again() -> None:
+        from platform_core.kitchen.models import KitchenTicket
+        from platform_core.kitchen.service import KitchenService
+
+        url = get_database_url() or ""
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        engine = create_async_engine(url, echo=False, poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as session:
+            row = await session.get(KitchenTicket, uuid.UUID(ticket["id"]))
+            assert row is not None
+            lines = await KitchenService.lines_of(session, row.id)
+            await KitchenService.publish_preparation_completed(session, ticket=row, lines=lines)
+            await session.commit()
+        await engine.dispose()
+
+    asyncio.run(_publish_again())
+    assert _preparation_completed_count(business_id) == 1
+    _replay_same_event(business_id, order["id"])
+    drain_events(business_id)
+    assert _preparation_completed_count(business_id) == 1
 
 
 def test_cancel_before_start_and_change_after_start(owner: tuple[dict[str, str], uuid.UUID]) -> None:

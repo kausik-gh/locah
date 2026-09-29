@@ -1,42 +1,141 @@
 # Cursor handoff — Kitchen, KOT, KDS
 
-Branch: `parallel/cursor-kitchen` (from `origin/main`). Main was not updated.
+## BRANCH
 
-This lane owns preparation. The sales order stays the commercial record. Kitchen does not write order status, does not decrement stock, and does not read or write recipe or BOM tables.
+`parallel/cursor-kitchen`
 
-## What the pass is
+## HEAD SHA
 
-An accepted or confirmed order that has something to cook becomes one kitchen ticket. The ticket number is `KOT-0001` for that business. It is not an order number.
+977f09c7ef7ba1b81a5daee7613dd5b18d067cd6
 
-A line is a preparation snapshot: title, quantity, station, and the choices and notes. Prices, phone numbers, and the customer name are not on the ticket and not on the board.
+## MAIN BASE SHA
 
-Stations are whatever the business turns on. The suggested keys are grill, fryer, beverages, bakery, and general. A business can name its own. Nothing is created for every restaurant. An item can go to more than one station; that is more than one line on the same ticket, not a second ticket.
+`1cb02e1449815ecf365a976d1694c9bd6681b2c2`
 
-An unrouted menu item lands on General, which is created the first time it is needed. An unrouted retail product does not. A delivery-fee line never does.
+## COMMITS
 
-Flow on the pass: New, Preparing, Ready. Served leaves the board. The ticket then is completed.
+1. `feat(kitchen): keep preparation on its own ticket` — domain, migration, API module, KDS UI, stations setup, intake subscriber module, tests, browser script, product handoff body.
+2. `chore(integration): wire kitchen` — router import, nav links, permissions, catalogue events, module `built`, role templates, subscriber registration.
+3. Close-out commit — idempotency test, TSC fix, handoff verification block (this file).
 
-## When the order changes
+## MIGRATIONS
 
-Before anyone starts the ticket, a still-new line follows the order. Nothing has been cooked.
+Lane-owned:
 
-After start, title, quantity, modifiers, and timestamps stay. The pass shows an event instead:
+- `infra/supabase/migrations/20260930190000_kitchen_preparation.sql`
 
-- A larger quantity arrives as its own new line (`line_added`).
-- A smaller quantity is `quantity_changed`. The kitchen quantity stays.
-- A choice change is `modifier_changed`. The snapshot stays.
-- A cancel before start takes the ticket off the pass.
-- A cancel after start leaves the ticket up with attention `cancel`. Started lines keep their facts. "Taken off" clears those lines without rewriting them.
+Fresh local replay (disposable DB on `127.0.0.1:54329`, no hosted Supabase):
 
-Replaying the same order event does not open a second ticket. `kitchen_intakes` is keyed by the outbox event id, and `(business_id, order_id)` is unique.
+- Full chain: **73** migration files under `infra/supabase/migrations/` plus `infra/supabase/seed/00_platform.sql`
+- Kitchen migration applied in order with the rest
+- Exit code **0**
 
-## Cursor Supply — call this after the branches combine
+## DATABASE TESTS
 
-Subscribe to `kitchen.preparation.completed`.
+Command (local only):
 
-Kitchen publishes it once, when the ticket becomes completed (served). `consumption_published` stops a second publish. Kitchen does not emit `inventory.stock.updated` and does not call inventory.
+```text
+TEST_DATABASE_URL=postgresql+asyncpg://postgres@localhost:54329/locah_growth_scratch
+pytest apps/api/tests/test_kitchen.py
+```
 
-Payload:
+Coverage:
+
+- Accept → one KOT; replay of `order.accepted` does not duplicate
+- Station routing (multi-station lines, one ticket; retail excluded; General fallback)
+- Start → ready → serve; **one** `kitchen.preparation.completed`; stock unchanged; order status untouched
+- **Serve + worker replay + second serve + direct `publish_preparation_completed` + order replay → still one `kitchen.preparation.completed`**
+- Cancel before start; qty/modifier/cancel after start with visible events
+- Tenant API isolation + `platform_api` RLS on `kitchen_tickets`
+
+Result at close-out: **6 passed** (kitchen file only).
+
+## PLAYWRIGHT RESULT
+
+Browser proof is **not Playwright**; it uses the repo CDP harness `tools/acceptance/phase_b/p2_kitchen_kds.mjs`.
+
+Close-out run (2026-09-29, local stack: mock auth `54321`, API `8010`, workspace `3101`, DB `locah_growth_scratch` on `54329`; use **`http://localhost`** for API and workspace URLs so CORS matches):
+
+| Check | Result |
+| --- | --- |
+| One KOT after accept + worker drain | PASS |
+| Table / service context on card | PASS |
+| Modifier visible | PASS |
+| Elapsed time visible | PASS |
+| No price, no customer phone | PASS |
+| New → Preparing → Ready → Served | PASS |
+| Workspace nav “Kitchen display” link | FAIL (link not on shell in this run; pass flow is authoritative) |
+
+Screenshots: `acceptance-out/phase_b/p2_kitchen/01-new.png` … `04-served.png` (when the script completes the pass steps).
+
+Re-run: mint session with `owner.py locah_growth_scratch acceptance-out/session.json`, then `node tools/acceptance/phase_b/p2_kitchen_kds.mjs` with `LOCAH_API=http://localhost:8010` and `LOCAH_WORKSPACE=http://localhost:3101`.
+
+## RUFF
+
+```text
+ruff check python/core/platform_core/kitchen \
+  python/core/platform_core/events/subscribers/kitchen_intake.py \
+  apps/api/src/platform_api/routers/v1_platform_kitchen.py \
+  apps/api/tests/test_kitchen.py
+```
+
+Result at close-out: **All checks passed.**
+
+## TSC
+
+```text
+pnpm --dir apps/workspace exec tsc --noEmit
+```
+
+Kitchen/KDS paths: **clean** after exporting shared `Board` type from `KdsBoard.tsx`.
+
+## LINT
+
+```text
+pnpm --dir apps/workspace exec next lint --dir src/app/kds --dir src/app/b/[businessId]/kitchen
+```
+
+Result at close-out: **No ESLint warnings or errors** on those routes.
+
+## RLS
+
+Defense in depth on kitchen tables (`kitchen_tickets`, lines, events, stations, routes): tenant `business_id = current_business_id()` and restrictive `location_scope_allows(location_id)`.
+
+Proved in `test_tenant_and_location_isolation` via `SET LOCAL ROLE platform_api` and location scope GUC (same pattern as `test_rls_isolation.py`).
+
+## EVENTS
+
+Published by kitchen (catalogue group `kitchen`, notifications skipped except where noted):
+
+| Event | When |
+| --- | --- |
+| `kitchen.ticket.created` | Ticket opened from order |
+| `kitchen.ticket.started` | Ticket leaves `new` |
+| `kitchen.ticket.ready` | Ticket becomes ready |
+| `kitchen.ticket.cancelled` | Cancel before/after start (`after_start` in payload) |
+| `kitchen.preparation.completed` | Ticket **completed** (served), **once** per ticket (`consumption_published`) |
+
+Subscribed (does not modify orders):
+
+| Subscriber | Events |
+| --- | --- |
+| `kitchen.order_intake` | `order.accepted`, `order.updated`, `order.cancelled`, `order.rejected` |
+
+Intake idempotency: `kitchen_intakes.event_id` unique; one ticket per `(business_id, order_id)`.
+
+## ORDER INTEGRATION HOOK
+
+Kitchen **reads** orders through `OrderResolver` and fulfilment mode on `FulfilmentJob`. It does **not** call `OrderLifecycleService` or change order status.
+
+Orders lane may later subscribe to `kitchen.ticket.ready` or `kitchen.preparation.completed` for fulfilment sync; that is out of scope here.
+
+## SUPPLY/RECIPE INTEGRATION HOOK
+
+After branches combine, **Cursor Supply / Inventory** should subscribe to:
+
+**`kitchen.preparation.completed`**
+
+Payload (stable):
 
 ```json
 {
@@ -52,35 +151,47 @@ Payload:
       "offering_id": "uuid",
       "variant_id": "uuid or null",
       "quantity": 1,
-      "modifiers": { "choices": { "Spice": ["Mild"] }, "notes": { "Note": "no onion" } }
+      "modifiers": { "choices": {}, "notes": {} }
     }
   ]
 }
 ```
 
-`quantity` is what the kitchen cooked, including a line added after the order grew. Lines the kitchen was told to cancel are omitted. `modifiers` is the preparation snapshot, not a price.
+Kitchen does **not** emit `inventory.stock.updated` and does **not** decrement stock. Recipe/BOM consumption is entirely on the subscriber.
 
-Recipe and BOM consumption belongs on the subscriber. Decrement stock from that payload. Do not read `kitchen_ticket_lines` to decide the deduction.
+## SHARED FILES TOUCHED
 
-Also published, with notifications skipped: `kitchen.ticket.created`, `kitchen.ticket.started`, `kitchen.ticket.ready`, `kitchen.ticket.cancelled` (`after_start` true or false).
+Integration commit only (minimal hunks):
 
-Orders may later subscribe to `kitchen.ticket.ready` or `kitchen.preparation.completed` if fulfilment should move when the pass does. Kitchen must not transition the order.
+- `apps/api/src/platform_api/main.py`
+- `apps/workspace/src/lib/workspace-nav.ts`
+- `python/core/platform_core/events/subscribers/__init__.py`
+- `python/core/platform_core/catalog/modules.py` (`kitchen` `built=True`)
+- `python/core/platform_core/authorization/role_templates.py`
+- `python/core/platform_core/permissions.py`
+- `packages/permissions/src/identifiers.ts`
+- `python/core/platform_core/events/catalogue.py`
 
-## What this lane does not do
+## CLAUDE INTEGRATION REQUIRED
 
-- No stock decrement and no recipe explosion.
-- No write to order status, totals, or line prices.
-- No printer fallback (KT-03). The pass is the screen: bump, elapsed time, rush.
-- No QR order type. A table is `internal_reference` that says table. Pickup and delivery come from the fulfilment job's mode. The delivery label is city or area only.
+- Merge `parallel/cursor-kitchen` after other lanes; resolve only if the same shared files diverged.
+- Apply migration `20260930190000_kitchen_preparation.sql` on each environment (local/staging/prod pipeline).
+- Wire Supply subscriber to `kitchen.preparation.completed` (do not read kitchen tables for deductions).
+- Optional later: Orders subscriber to `kitchen.ticket.ready` / `kitchen.preparation.completed` for customer-facing status (kitchen must not write order state).
 
-## Routes
+## KNOWN LIMITATIONS
 
-- `GET /v1/platform/businesses/{id}/kitchen/board?station_id=`
-- `GET/POST /v1/platform/businesses/{id}/kitchen/stations`
-- `PUT /v1/platform/businesses/{id}/kitchen/routes`
-- `POST /v1/platform/businesses/{id}/kitchen/tickets/{ticket_id}/start|ready|serve|clear`
-- `POST /v1/platform/businesses/{id}/kitchen/tickets/{ticket_id}/priority`
+- KT-03 printer fallback not implemented; screen pass only.
+- KDS polls ~8s; no websocket push.
+- Kitchen role template uses `kitchen.read` / `kitchen.advance` only (no `orders.read`, no prices/phones on pass).
+- Browser nav link check in `p2_kitchen_kds.mjs` needs workspace shell + mock auth; pass flow itself is the primary proof.
 
-Permissions: `kitchen.read`, `kitchen.advance`, `kitchen.configure`. The Kitchen role sees the pass and does not get `orders.read`.
+## READY_TO_INTEGRATE
 
-Screens: `/kds/{businessId}` is the full-screen pass. `/b/{businessId}/kitchen` is stations and routes.
+**YES** — domain, migration replay, Postgres tests (including preparation-completed idempotency), Ruff, kitchen-route lint, and TSC for KDS types are green at close-out. Run the CDP browser script once against your local stack before production merge if you want a fresh screenshot set.
+
+---
+
+## Product reference (unchanged)
+
+One order → one kitchen ticket. Preparation snapshots only. Stations configurable. Cancel/adjust after start keeps cooked facts and shows events. Routes and permissions as in the original lane brief.

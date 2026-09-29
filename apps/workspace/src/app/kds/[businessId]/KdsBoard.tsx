@@ -31,7 +31,7 @@ type Ticket = {
   events: Notice[]
 }
 
-type Board = {
+export type Board = {
   now: string
   station_id: string | null
   stations: { id: string; key: string; name: string }[]

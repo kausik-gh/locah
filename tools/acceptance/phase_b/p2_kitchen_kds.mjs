@@ -76,21 +76,34 @@ try {
   check(!card.includes('180') && !card.includes('₹') && !card.includes('9876543210'), 'no price and no phone', results)
   await page.shot(`${shots}/01-new.png`)
 
-  await clickUntil(page, 'Start', '[data-testid=kds-column-preparing] [data-testid=kds-ticket]')
+  await page.waitFor('[data-testid=kds-start]')
+  await clickUntil(page, 'Start', '[data-testid=kds-column-preparing] [data-testid=kds-ticket]', 16)
   const preparing = await page.eval(`document.querySelector('[data-testid=kds-column-preparing] [data-testid=kds-ticket]')?.innerText || ''`)
   check(preparing.includes('KOT-'), 'start moves the ticket to preparing', results)
   check((await page.eval(`document.querySelector('[data-testid=kds-elapsed]')?.innerText || ''`)).length > 0, 'elapsed time is showing', results)
   await page.shot(`${shots}/02-preparing.png`)
 
-  await clickUntil(page, 'Ready', '[data-testid=kds-column-ready] [data-testid=kds-ticket]')
+  await page.waitFor('[data-testid=kds-ready]')
+  await clickUntil(page, 'Ready', '[data-testid=kds-column-ready] [data-testid=kds-ticket]', 16)
   const ready = await page.eval(`document.querySelector('[data-testid=kds-column-ready] [data-testid=kds-ticket]')?.innerText || ''`)
   check(ready.includes('KOT-'), 'ready moves the ticket to the pass', results)
   await page.shot(`${shots}/03-ready.png`)
 
+  await page.waitFor('[data-testid=kds-serve]')
+  await page.eval(`document.querySelector('[data-testid=kds-serve]')?.click()`)
+  await page.waitGone('[data-testid=kds-ticket]')
+  check(true, 'served clears the ticket from the pass', results)
+  await page.shot(`${shots}/04-served.png`)
+
   await page.goto(`${WS}/b/${biz.id}`)
-  await page.waitFor('Kitchen display', { text: true })
-  const href = await page.eval(`[...document.querySelectorAll('a')].find(a => a.innerText.trim() === 'Kitchen display')?.getAttribute('href')`)
-  check(href === `/kds/${biz.id}`, `nav opens the pass (${href})`, results)
+  let navHref = ''
+  try {
+    await page.waitFor('Kitchen display', { text: true, timeout: 12000 })
+    navHref = await page.eval(`[...document.querySelectorAll('a')].find(a => a.innerText.trim() === 'Kitchen display')?.getAttribute('href') || ''`)
+  } catch {
+    navHref = ''
+  }
+  check(navHref === `/kds/${biz.id}`, `nav opens the pass (${navHref || 'link not on shell'})`, results)
 } finally {
   await page.close().catch(() => undefined)
   console.log(JSON.stringify(results, null, 2))

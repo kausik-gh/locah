@@ -3,17 +3,10 @@ import { redirect } from 'next/navigation'
 import { platformUrl } from '@platform/config'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
-import { KdsBoard } from './KdsBoard'
+import { KdsBoard, type Board } from './KdsBoard'
 import '../kds.css'
 
 export const dynamic = 'force-dynamic'
-
-type Board = {
-  now: string
-  station_id: string | null
-  stations: { id: string; key: string; name: string }[]
-  columns: { new: unknown[]; preparing: unknown[]; ready: unknown[] }
-}
 
 /**
  * Kitchen display (Capability Universe §7.1). Full screen, outside the
