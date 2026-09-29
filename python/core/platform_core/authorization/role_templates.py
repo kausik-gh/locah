@@ -150,7 +150,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
         "sales_executive", "Sales executive", "Assigned leads, quotes and site visits",
         "assignment", "workspace", "Follow-ups due today",
         _READ_BASICS | {p.LEADS_READ, p.LEADS_CREATE, p.LEADS_UPDATE_STATUS, p.QUOTES_READ, p.QUOTES_CREATE,
-                        p.QUOTES_UPDATE, p.CUSTOMERS_READ},
+                        p.QUOTES_UPDATE, p.QUOTES_ISSUE, p.CUSTOMERS_READ},
         ("leads", "quotes"), "P2",
     ),
     RoleTemplate(
@@ -220,7 +220,7 @@ PERMISSION_WORDS: dict[str, str] = {
     "projects.read": "See projects", "projects.create": "Start projects", "projects.update": "Edit projects",
     "projects.manage_lifecycle": "Open and close projects", "projects.assign": "Assign project work",
     "quotes.read": "See quotes", "quotes.create": "Write quotes", "quotes.update": "Edit quotes",
-    "quotes.issue": "Send quotes",
+    "quotes.issue": "Send quotes", "quotes.approve": "Approve a discount above the executive's limit",
     "settings.read": "See settings", "settings.update": "Change settings",
     "team.read": "See the team", "team.invite": "Add people", "team.update_role": "Change people's roles",
     "team.remove": "Remove people", "team.manage_templates": "Create custom roles",

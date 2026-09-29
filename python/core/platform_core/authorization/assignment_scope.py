@@ -42,7 +42,7 @@ ASSIGNMENT_PERMISSIONS = frozenset({
     "business.read", "locations.read", "notifications.read",
     "bookings.read", "bookings.update",
     "leads.read", "leads.create", "leads.update_status",
-    "quotes.read", "quotes.create", "quotes.update",
+    "quotes.read", "quotes.create", "quotes.update", "quotes.issue",
     "customers.read",
 })
 
