@@ -77,7 +77,7 @@ def validate_tags(tags: Any) -> list[str]:
                 "Invalid tag",
                 details={"errors": [_field_error(f"tags[{index}]", "Must be a string")]},
             )
-        tag = raw.strip().lower()
+        tag = " ".join(raw.split()).lower()
         if not tag:
             continue
         if len(tag) > TAG_MAX:

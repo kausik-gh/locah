@@ -22,6 +22,7 @@ Branch `main`. Packets done, newest last:
 | P1-10C module-aware website + Marketplace | 366ad71 | test_module_aware_site (11) + browser p1_10c_site 21/21; suite 1059 |
 | P1-10D1 collect what is due (payments) | see git log ("feat(p1-10d1)… browser-verified") | test_payment_collect (15) + browser p1_10d1_payments 83/83 (Playwright Chromium, desktop + 390 px); suite 1073 |
 | P1-10D2a dated pre-orders | see git log ("feat(p1-10d2a)") | test_preorders (10) + browser p1_10d2_preorders 31/31; p1_03, p1_08, p1_10b, p1_10d1 re-run green on the new checkout; suite 1083 |
+| P1-10E2 tags + segments | see git log ("feat(p1-10e2)") | test_customer_segments (5) + browser p1_10e_segments 13/13 (desktop + 390 px) |
 | P1-10E1 basic insights | see git log ("feat(p1-10e1)") | test_basic_insights (5) + browser p1_10e_insights 14/14 (desktop + 390 px); payments-collect, role-home tests re-run |
 | P1-10D2b formula pricing | see git log ("feat(p1-10d2b)") | test_formula_pricing (7) + browser p1_10d2_formula 28/28 (Playwright Chromium, desktop + 390 px); suite 1090 |
 
@@ -43,6 +44,9 @@ P1 gate after P1-10D2b: **TOTAL 261 · COMPLETE 137 · PARTIAL 95 · NOT_STARTED
 ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 P1 gate after P1-10E1: **TOTAL 261 · COMPLETE 138 · PARTIAL 95 · NOT_STARTED 6 ·
+ACTIVATION_REQUIRED 22 · FUTURE 0.**
+
+P1 gate after P1-10E2: **TOTAL 261 · COMPLETE 140 · PARTIAL 94 · NOT_STARTED 5 ·
 ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 ### Founder refinements (authority 1) — read before touching these modules
@@ -76,6 +80,25 @@ MD §11.2 closes the AI Receptionist's tool list ("Nothing else") and §11.3
 sends restaurant phone orders to a WhatsApp link; the Orders refinement
 authorises AI phone ordering for simple orders where enabled. The founder
 wins; the WhatsApp-link/human path remains for long, custom or risky orders.
+
+### P1-10E2 — customer tags and rule-built segments (DONE, browser-verified)
+
+- Migration `20260929140000_p1_customer_segments.sql`: `customer_relationships_segments`
+  (rules only, RLS, no DELETE for the API role — archive instead) and a GIN
+  index on contact tags. Applied to local DBs only.
+- `platform_core/customers/segments.py`: `available(live)`, `clean_rules`,
+  `words`, `evaluate` (ORM selects → location scope applies inside the
+  union subqueries; consent count from `customer_consents`), `SegmentService`
+  (all/create/update/archive/tags). Routes in `v1_platform_customers.py`
+  are declared before `/customers/{customer_id}` (that path is UUID-typed —
+  FastAPI would otherwise answer 422 for `/customers/tags`).
+- Workspace: customer page Tags editor; Customers list tag bar + Tags column +
+  "Segments"; `/customers/segments` (builder with "See who is in it", saved
+  list) and `/customers/segments/{id}` (members, remove).
+- Not offered (honest): "within 5 km" and "birthday this month" (no customer
+  location/birthday on the record); sending to a segment is MK-01 (P3).
+- New flow check worth reusing: at 390 px compare every input/select/button's
+  right edge with the viewport — `fits()` alone missed a clipped field.
 
 ### P1-10E1 — basic insights from real data (DONE, browser-verified)
 
@@ -269,17 +292,16 @@ wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 
 ## Remaining work snapshot (P1 first)
 
-P1 NOT_STARTED (6): FR-OR-18 (order edits that revalidate), CR-04 (segments),
-CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation), PKT-10 (P1-10
-packet — languages remain).
+P1 NOT_STARTED (5): FR-OR-18 (order edits that revalidate), CR-08 + CO-01
+(DPDP export/erase), OM-21 (solo navigation), PKT-10 (P1-10 packet —
+languages remain).
 P1 PARTIAL groups: FD-02 (portal items with Academics), FD-03 (strategy
 placement of tool sections), OM-09 (portfolio kind), OM-18 (digital delivery),
 GP-22 + PR-10 (English/Tamil/Hindi), payments provider (Cashfree =
 ACTIVATION), playbook rows waiting on P2–P5 modules.
 
 Planned next packets (dependency order):
-1. **P1-10E** (E1 insights done) → E2 tags + rule-built segments (CR-03,
-   CR-04) → E3 DPDP per-customer export/erase (CR-08, CO-01) → E4 solo
+1. **P1-10E** (E1 insights, E2 tags + segments done) → E3 DPDP per-customer export/erase (CR-08, CO-01) → E4 solo
    navigation (OM-21) → E5 order edits that revalidate + phone-order screen
    (FR-OR-18, FR-OR-13) → E6 English/Tamil/Hindi strings (PKT-10, PR-10);
    then the P1 gate.

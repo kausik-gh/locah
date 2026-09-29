@@ -70,6 +70,7 @@ async def list_customers(
     status: str | None = Query(default=None),
     search: str | None = Query(default=None, min_length=1, max_length=120),
     location_id: UUID | None = Query(default=None),
+    tag: str | None = Query(default=None, min_length=1, max_length=64),
     actor: BusinessActorContext = Depends(require_business_actor(CUSTOMERS_READ, "customer-relationships")),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
@@ -79,6 +80,7 @@ async def list_customers(
         status=status,
         search=search,
         location_id=location_id,
+        tag=tag,
     )
     return {
         "data": [CustomerResolver.serialize_contact(c) for c in customers],
@@ -98,6 +100,134 @@ async def export_customers(
         "data": data,
         "meta": {"correlation_id": actor.request.correlation_id, "count": len(data)},
     }
+
+
+# ---------------------------------------------------------------- tags and segments (P1-10E2; CR-03, CR-04)
+class SegmentBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=80)
+    rules: list[dict[str, Any]]
+
+
+class SegmentPatch(VersionedBody):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    rules: list[dict[str, Any]] | None = None
+
+
+class PreviewBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rules: list[dict[str, Any]]
+
+
+async def _live(session: AsyncSession, business_id: UUID) -> set[str]:
+    from platform_core.services.module_readiness import module_states
+
+    return {k for k, v in (await module_states(session, business_id)).items() if v in ("enabled", "ready", "active")}
+
+
+@router.get("/{business_id}/customers/tags")
+async def customer_tags(
+    business_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(CUSTOMERS_READ, "customer-relationships")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.customers.segments import SegmentService
+
+    return {"data": await SegmentService.tags(session, business_id),
+            "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.get("/{business_id}/customers/segments")
+async def list_segments(
+    business_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(CUSTOMERS_READ, "customer-relationships")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.customers.segments import SegmentService, available
+
+    return {"data": await SegmentService.all(session, business_id),
+            "meta": {"correlation_id": actor.request.correlation_id, "rules": available(await _live(session, business_id))}}
+
+
+@router.post("/{business_id}/customers/segments/preview")
+async def preview_segment(
+    business_id: UUID,
+    body: PreviewBody,
+    actor: BusinessActorContext = Depends(require_business_actor(CUSTOMERS_READ, "customer-relationships")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.customers.segments import clean_rules, evaluate, titles, words
+
+    rules = clean_rules(body.rules, await _live(session, business_id))
+    found = await evaluate(session, business_id, rules, limit=20)
+    names = await titles(session, business_id, rules)
+    return {"data": {**found, "rule_words": [words(r, names) for r in rules]},
+            "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/customers/segments")
+async def create_segment(
+    business_id: UUID,
+    body: SegmentBody,
+    actor: BusinessActorContext = Depends(require_business_actor(CUSTOMERS_UPDATE, "customer-relationships")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.customers.segments import SegmentService
+
+    seg = await SegmentService.create(session, business_id, actor.request.identity_id, name=body.name,
+                                      rules=body.rules, live=await _live(session, business_id))
+    data = await SegmentService.serialize(session, business_id, seg)
+    await session.commit()
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.get("/{business_id}/customers/segments/{segment_id}")
+async def get_segment(
+    business_id: UUID,
+    segment_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(CUSTOMERS_READ, "customer-relationships")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.customers.segments import SegmentService, available
+
+    seg = await SegmentService._get(session, business_id, segment_id)
+    return {"data": await SegmentService.serialize(session, business_id, seg, members=True, limit=500),
+            "meta": {"correlation_id": actor.request.correlation_id, "rules": available(await _live(session, business_id))}}
+
+
+@router.patch("/{business_id}/customers/segments/{segment_id}")
+async def update_segment(
+    business_id: UUID,
+    segment_id: UUID,
+    body: SegmentPatch,
+    actor: BusinessActorContext = Depends(require_business_actor(CUSTOMERS_UPDATE, "customer-relationships")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.customers.segments import SegmentService
+
+    seg = await SegmentService.update(session, business_id, actor.request.identity_id, segment_id,
+                                      name=body.name, rules=body.rules, version=body.version,
+                                      live=await _live(session, business_id))
+    data = await SegmentService.serialize(session, business_id, seg)
+    await session.commit()
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/customers/segments/{segment_id}/archive")
+async def archive_segment(
+    business_id: UUID,
+    segment_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(CUSTOMERS_UPDATE, "customer-relationships")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.customers.segments import SegmentService
+
+    await SegmentService.update(session, business_id, actor.request.identity_id, segment_id, archive=True,
+                                live=await _live(session, business_id))
+    await session.commit()
+    return {"data": {"archived": True}, "meta": {"correlation_id": actor.request.correlation_id}}
 
 
 @router.post("/{business_id}/customers")

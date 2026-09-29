@@ -523,6 +523,24 @@ class CustomerContact(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 
+class CustomerSegment(Base):
+    """A rule-built segment (P1-10E2): the rules only; members are worked out each time."""
+
+    __tablename__ = "customer_relationships_segments"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    rules: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
 class CustomerNote(Base):
     __tablename__ = "customer_relationships_notes"
 

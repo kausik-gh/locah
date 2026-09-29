@@ -830,3 +830,20 @@ ul.bos-pills { list-style: none; margin: 0; padding: 0; }
 .bos-insight__go { margin-top: auto; padding-top: .5rem; font-size: .88rem; }
 .bos-insights__off { margin-top: 1rem; }
 .bos-band__more { margin: .6rem 0 0; font-size: .9rem; }
+
+/* Customer tags and segments (P1-10E2). */
+.bos-tags { margin-top: 1.5rem; max-width: 40rem; }
+.bos-tags__list { list-style: none; padding: 0; margin: 0 0 .6rem; display: flex; flex-wrap: wrap; gap: .4rem; }
+.bos-tag { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .6rem; border-radius: 999px; background: var(--color-surface-2, #f1f5f9); border: 1px solid var(--color-border); font-size: .85rem; }
+.bos-tag button { border: 0; background: transparent; padding: 0 .1rem; min-height: 0; cursor: pointer; color: var(--color-muted); font-size: 1rem; line-height: 1; }
+.bos-tags__add { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.bos-tags__add input { max-width: 16rem; }
+.bos-tagbar { display: flex; flex-wrap: wrap; gap: .4rem; margin: .8rem 0; }
+.bos-tagbar a { text-decoration: none; }
+.bos-tagbar a[aria-current="page"] .bos-tag { background: var(--color-primary); color: var(--color-primary-fg); border-color: var(--color-primary); }
+.bos-seg-rule { display: grid; grid-template-columns: minmax(10rem, 1.2fr) repeat(3, minmax(6rem, 1fr)) auto; gap: .5rem; align-items: end; margin-bottom: .5rem; }
+.bos-seg-count { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: .6rem 0 .2rem; }
+.bos-seg-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .4rem .8rem; }
+@media (max-width: 700px) { .bos-seg-rule { grid-template-columns: 1fr 1fr; } }
+.bos-seg-rule > * { min-width: 0; }
+.bos-seg-rule input, .bos-seg-rule select { width: 100%; min-width: 0; box-sizing: border-box; }

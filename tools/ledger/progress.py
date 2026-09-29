@@ -598,3 +598,16 @@ done("P1-10E", {
                   ws="✓ Insights › Your numbers; Home › Today link",
                   test="✓ test_basic_insights (5, platform_api RLS role) + browser p1_10e_insights (14/14, Playwright Chromium), desktop + 390 px"),
 })
+
+
+# ---------------------------------------------------------------- P1-10E2 tags and rule-built segments (MD §6.1, §18.2)
+_SEG_TEST = ("✓ test_customer_segments (5, platform_api RLS role: rules, counts, consent, tags, branch scope, "
+             "isolation) + browser p1_10e_segments (13/13, Playwright Chromium), desktop + 390 px")
+done("P1-10E", {
+    "CR-03": dict(status=C, code="tags on a customer are added (from the business's existing tags or new) and removed on the customer page; stored cleaned (spaces collapsed, lower case, no duplicates, at most 20); the customer list shows tags, a tag bar with counts, and filters by a tag",
+                  svc="✓ GET /customers/tags, /customers?tag=", ws="✓ Customer › Tags; Customers › tag bar", test=_SEG_TEST),
+    "CR-04": dict(status=C, code="rule-built segments: bought an item N+ times in D days (orders and counter bills, an order's bill never counted twice, cancelled orders excluded), spent ₹X+ in D days, no purchase or visit for D days, became a customer in D days, booked N+ times, membership ended A–B days ago and not renewed, owes on khata, has a tag — all must hold; a rule is offered only when its tool is on; members are worked out from the records every time (never a stale list); each segment shows its count, its rules in words and how many said yes to WhatsApp offers (consent store); the viewer's location scope applies to the orders, bills and bookings read. §18.2's 'within 5 km' and 'birthday this month' need a customer location and birthday the record does not keep; broadcasting to a segment is MK-01/P3",
+                  db="✓ customer_relationships_segments (RLS)", svc="✓ customers/segments.py; /customers/segments(/preview)",
+                  perm="✓ customers.read to view, customers.update to save", ws="✓ Customers › Segments (builder, list, members)",
+                  test=_SEG_TEST),
+})

@@ -29,14 +29,14 @@ Cells: ✓ built and exercised by a test here · ◐ partly built · ✗ not bui
 | Phase | Total | COMPLETE | PARTIAL | NOT_STARTED | ACTIVATION_REQUIRED | FUTURE |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | 21 | 17 | 4 | 0 | 0 | 0 |
-| P1 | 261 | 138 | 95 | 6 | 22 | 0 |
+| P1 | 261 | 140 | 94 | 5 | 22 | 0 |
 | P2 | 207 | 3 | 73 | 123 | 8 | 0 |
 | P3 | 74 | 0 | 2 | 57 | 15 | 0 |
 | P4 | 84 | 0 | 10 | 66 | 8 | 0 |
 | P5 | 97 | 0 | 41 | 55 | 1 | 0 |
 | P6 | 13 | 0 | 0 | 0 | 0 | 13 |
 | X | 36 | 18 | 14 | 2 | 2 | 0 |
-| **All** | **793** | **176** | **239** | **309** | **56** | **13** |
+| **All** | **793** | **178** | **238** | **308** | **56** | **13** |
 
 Open decisions: 11 of 13 · Verify-at-build items: 23
 
@@ -505,8 +505,8 @@ Tax rates are data the owner/CA sets; LOCAH computes, it does not advise.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | CR-01 | P0 | MD §6.1 | Customer contacts, notes, timeline entries | customer-relationships | EXISTING | contacts/notes/timeline | ✓ | ✓ | — | ✓ /customers | — | — | — | — | — | ✓ test_customer_kernel | **COMPLETE** |
 | CR-02 | P1 | MD §6.1 | Unified timeline across orders, bookings, memberships, invoices, messages, reviews, jobs | customer-relationships | EXTEND | [P1-10D1] the customer page timeline reads as sentences and now includes each verified payment ('Paid ₹800 (advance) by UPI · Order …') beside orders, bookings and memberships; counter bills, messages, reviews and jobs join as those modules write to it | — | — | — | ✓ Customer › Activity | — | — | — | — | — | ✓ test_payment_collect (15, platform_api RLS role) + browser p1_10d1_payments (83/83, Playwright Chromium), desktop + 390 px, local worker, sandbox WhatsApp number, fixture provider webhooks | **PARTIAL** |
-| CR-03 | P1 | MD §6.1 | Tags | customer-relationships | EXISTING | tags array on contacts; no tag management UI | ✓ | — | — | — | — | — | — | — | — | — | **PARTIAL** |
-| CR-04 | P1 | MD §6.1 · §18.2 | Segments (rule-built) | customer-relationships | NEW | absent | — | — | — | — | — | — | — | — | — | — | **NOT_STARTED** |
+| CR-03 | P1 | MD §6.1 | Tags | customer-relationships | EXISTING | [P1-10E] tags on a customer are added (from the business's existing tags or new) and removed on the customer page; stored cleaned (spaces collapsed, lower case, no duplicates, at most 20); the customer list shows tags, a tag bar with counts, and filters by a tag | ✓ | ✓ GET /customers/tags, /customers?tag= | — | ✓ Customer › Tags; Customers › tag bar | — | — | — | — | — | ✓ test_customer_segments (5, platform_api RLS role: rules, counts, consent, tags, branch scope, isolation) + browser p1_10e_segments (13/13, Playwright Chromium), desktop + 390 px | **COMPLETE** |
+| CR-04 | P1 | MD §6.1 · §18.2 | Segments (rule-built) | customer-relationships | NEW | [P1-10E] rule-built segments: bought an item N+ times in D days (orders and counter bills, an order's bill never counted twice, cancelled orders excluded), spent ₹X+ in D days, no purchase or visit for D days, became a customer in D days, booked N+ times, membership ended A–B days ago and not renewed, owes on khata, has a tag — all must hold; a rule is offered only when its tool is on; members are worked out from the records every time (never a stale list); each segment shows its count, its rules in words and how many said yes to WhatsApp offers (consent store); the viewer's location scope applies to the orders, bills and bookings read. §18.2's 'within 5 km' and 'birthday this month' need a customer location and birthday the record does not keep; broadcasting to a segment is MK-01/P3 | ✓ customer_relationships_segments (RLS) | ✓ customers/segments.py; /customers/segments(/preview) | ✓ customers.read to view, customers.update to save | ✓ Customers › Segments (builder, list, members) | — | — | — | — | — | ✓ test_customer_segments (5, platform_api RLS role: rules, counts, consent, tags, branch scope, isolation) + browser p1_10e_segments (13/13, Playwright Chromium), desktop + 390 px | **COMPLETE** |
 | CR-05 | P1 | MD §6.1 · §24 #8 | Consent flags (see PM-08) with timestamp and source | customer-relationships | NEW | [P1-02] consent per purpose/channel with timestamp, source and evidence on the customer page (see PM-08) | ✓ | ✓ | — | ✓ | — | — | — | — | — | ✓ | **COMPLETE** |
 | CR-06 | P5 | MD §6.1 · §20.4 | Guardians (guardian is contact of record for minors; one guardian, many children) | customer-relationships | NEW | absent | — | — | — | — | — | — | — | — | — | — | **NOT_STARTED** |
 | CR-07 | P2 | MD §6.1 · §24 | Customer assets: vehicle, pet, AC unit, device, policy, property, installed machine | customer-relationships | NEW | absent | — | — | — | — | — | — | — | — | — | — | **NOT_STARTED** |

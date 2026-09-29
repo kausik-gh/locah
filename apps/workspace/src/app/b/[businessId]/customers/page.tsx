@@ -13,6 +13,7 @@ type CustomerRow = {
   email: string | null
   phone: string | null
   status: string
+  tags?: string[]
 }
 
 /**
@@ -24,16 +25,20 @@ export default async function CustomersPage({
   searchParams,
 }: {
   params: { businessId: string }
-  searchParams?: { status?: string }
+  searchParams?: { status?: string; tag?: string }
 }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
   const base = `/b/${params.businessId}`
-  const qs = searchParams?.status ? `?status=${encodeURIComponent(searchParams.status)}` : ''
-  const res = await apiTry<{ data: CustomerRow[] }>(
-    `/v1/platform/businesses/${params.businessId}/customers${qs}`,
-    token
-  )
+  const q = new URLSearchParams()
+  if (searchParams?.status) q.set('status', searchParams.status)
+  if (searchParams?.tag) q.set('tag', searchParams.tag)
+  const qs = q.toString() ? `?${q.toString()}` : ''
+  const [res, tagsRes] = await Promise.all([
+    apiTry<{ data: CustomerRow[] }>(`/v1/platform/businesses/${params.businessId}/customers${qs}`, token),
+    apiTry<{ data: { tag: string; count: number }[] }>(`/v1/platform/businesses/${params.businessId}/customers/tags`, token),
+  ])
+  const tags = tagsRes.ok ? tagsRes.data.data : []
   if (!res.ok) {
     return (
       <div>
@@ -49,10 +54,24 @@ export default async function CustomersPage({
       <PageHeader
         title="Customers"
         subtitle="This business's own customer records — separate from platform accounts."
+        actions={<Link className="btn-ghost" href={`${base}/customers/segments`}>Segments</Link>}
       />
+      {tags.length ? (
+        <nav className="bos-tagbar" aria-label="Tags">
+          <Link href={`${base}/customers`} aria-current={!searchParams?.tag ? 'page' : undefined}>
+            <span className="bos-tag">All</span>
+          </Link>
+          {tags.map((t) => (
+            <Link key={t.tag} href={`${base}/customers?tag=${encodeURIComponent(t.tag)}`}
+              aria-current={searchParams?.tag === t.tag ? 'page' : undefined}>
+              <span className="bos-tag">{t.tag} · {t.count}</span>
+            </Link>
+          ))}
+        </nav>
+      ) : null}
       <FilterTabs
         current={searchParams?.status}
-        hrefFor={(v) => `${base}/customers${v ? `?status=${v}` : ''}`}
+        hrefFor={(v) => `${base}/customers${v ? `?status=${v}` : ''}${searchParams?.tag ? `${v ? '&' : '?'}tag=${encodeURIComponent(searchParams.tag)}` : ''}`}
         options={[
           { value: '', label: 'All' },
           { value: 'active', label: 'Active' },
@@ -71,6 +90,7 @@ export default async function CustomersPage({
           },
           { key: 'email', header: 'Email', render: (c) => c.email || '—' },
           { key: 'phone', header: 'Phone', render: (c) => c.phone || '—' },
+          { key: 'tags', header: 'Tags', render: (c) => (c.tags?.length ? c.tags.join(', ') : '—') },
           { key: 'status', header: 'Status', render: (c) => <StatusPill value={c.status} /> },
         ]}
         empty={

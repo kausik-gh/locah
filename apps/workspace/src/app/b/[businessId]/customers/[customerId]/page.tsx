@@ -8,6 +8,7 @@ import { ConsentPanel, type ConsentRow } from './ConsentPanel'
 import { owes, rupees, type Account } from '../../khata/types'
 import { timelineText, type TimelineSummary } from './timeline-text'
 import { LocalTime } from '@/components/LocalTime'
+import { TagsEditor } from './TagsEditor'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +19,7 @@ type CustomerDetail = {
   phone: string | null
   status: string
   tags?: string[]
+  version: number
 }
 
 type TimelineEntry = {
@@ -50,7 +52,7 @@ export default async function CustomerDetailPage({
   }
   const customer = res.data.data
 
-  const [timelineRes, notesRes, consentRes, contextRes, khataRes] = await Promise.all([
+  const [timelineRes, notesRes, consentRes, contextRes, khataRes, tagsRes] = await Promise.all([
     apiTry<{ data: TimelineEntry[] }>(`${base}/timeline`, token),
     apiTry<{ data: Note[] }>(`${base}/notes`, token),
     apiTry<{ data: { history: ConsentRow[] } }>(`${base}/consents`, token),
@@ -58,6 +60,7 @@ export default async function CustomerDetailPage({
     // Their khata, when the credit book is on and the viewer may see it (§14.5).
     apiTry<{ data: { account: Account | null } }>(
       `/v1/platform/businesses/${params.businessId}/ledger/lookup?contact_id=${params.customerId}`, token),
+    apiTry<{ data: { tag: string }[] }>(`/v1/platform/businesses/${params.businessId}/customers/tags`, token),
   ])
   const khata = khataRes.ok ? khataRes.data.data.account : undefined
   const timeline = timelineRes.ok ? timelineRes.data.data || [] : []
@@ -96,6 +99,9 @@ export default async function CustomerDetailPage({
           </form>
         ))}
       </section>
+
+      <TagsEditor businessId={params.businessId} customerId={params.customerId} tags={customer.tags ?? []}
+        version={customer.version} known={tagsRes.ok ? tagsRes.data.data.map((t) => t.tag) : []} canChange={canUpdate} />
 
       {consentRes.ok ? (
         <ConsentPanel
