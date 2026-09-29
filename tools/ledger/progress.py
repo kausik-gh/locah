@@ -715,3 +715,316 @@ done("P2-01", {
                   test=_ST_TEST),
     "FR-OR-23": dict(status=P, code="a business that sells made-to-order items or takes dated orders (bakery, home kitchen, festival boxes) opens Orders on the board by day wanted with its production list, chosen from its own data; others keep the plain list. Any business can now add its own order steps (a kirana's Picking/Packed, a meat shop's Cutting) with the stage engine (P2-01, PM-10). The prebuilt kirana, meat weight-exception, QSR/restaurant KDS and retail shipping/returns workflows are not built"),
 })
+
+
+# ================================================================ Phase B (packets A–K merged on
+# claude/phase-b-final-integration, then integrated). Audited 2026-09-30 against code + tests on a
+# fresh local stack: full API/worker suite on the RLS role, browser suites named per row.
+_MB_TEST = "✓ test_p2_memberships (17) + browser p2_02_memberships 24/24"
+done("P2-02", {
+    "MB-01": dict(status=C, code="plans + enrolments; money through Payment Collect (collect/due, links, recorded)",
+                  db="✓", svc="✓", perm="✓", ws="✓", test=_MB_TEST),
+    "MB-02": dict(status=C, code="plan_kind access: valid until the last paid period ends; front-desk check-in", db="✓", svc="✓",
+                  ws="✓", test=_MB_TEST),
+    "MB-03": dict(status=C, code="session_pack: sessions left within validity; counted when a class is booked, used once, "
+                                 "given back on cancel", db="✓", svc="✓", ws="✓", integ="✓ Bookings", test=_MB_TEST),
+    "MB-04": dict(status=C, code="recurring_delivery: cutoff turns tomorrow into real orders (channel subscription) once",
+                  db="✓", svc="✓", ws="✓", integ="✓ Orders, Kitchen, Fulfilment", test=_MB_TEST),
+    "MB-05": dict(status=C, code="service_contract: covered visits spread over the period, each asked of Jobs once; covers a "
+                                 "real customer asset of this customer", db="✓", svc="✓", integ="✓ Jobs", test=_MB_TEST),
+    "MB-06": dict(status=P, code="fee_plan: instalments, paid/outstanding/next due, guardian payer, never auto-removed, "
+                                 "follows a real academic enrolment of the student. Late fee is not built",
+                  db="✓", svc="✓", ws="✓", integ="✓ Academics reference", test=_MB_TEST),
+    "MB-07": dict(status=C, code="member_dues: good standing from paid dues", db="✓", svc="✓", ws="✓", test=_MB_TEST),
+    "MB-08": dict(status=C, code="pending/active/paused/grace/expired/cancelled/completed computed from what happened "
+                                 "(memberships/lifecycle.py); expiring soon derived; a freeze moves the end by exactly its days",
+                  svc="✓", test=_MB_TEST),
+    "MB-09": dict(status=P, code="periods (one per paid period, never overlapping), freezes, session uses, instalments, "
+                                 "payment applications, delivery overrides, generated deliveries, service visits. The plan "
+                                 "has grace days and freeze allowance; a joining fee is not built",
+                  db="✓ 20260930120000_p2_memberships", test=_MB_TEST),
+    "MB-10": dict(status=C, code="ladder T−7, T−2, T0, T+1 grace, grace end → expired, T+15 win-back only with marketing "
+                                 "consent, through the automation engine and Messaging. The T0 autopay attempt waits for MB-21",
+                  auto="✓", test="✓ test_renewal_ladder_sends_once_waits_for_quiet_hours_and_stops_on_payment, "
+                                  "test_unrenewed_goes_to_grace_then_expires_and_winback_needs_marketing_consent"),
+    "MB-11": dict(status=P, code="a payment applies its period exactly once (payment applications, replay-safe) and the "
+                                 "pending ladder steps for the old end are cancelled, in one transaction. A membership "
+                                 "invoice and a receipt message are not issued", svc="✓", test=_MB_TEST),
+    "MB-12": dict(status=C, code="quiet hours respected; steps anchored to the business timezone (location zone, else "
+                                 "primary, else Asia/Kolkata); the member page's today/tomorrow too", auto="✓", test=_MB_TEST),
+    "MB-13": dict(status=P, code="mode-aware Members board: counts per state (active, ending this week, grace, payment "
+                                 "pending, expired, frozen, renewed today), Needs you / running / frozen-ended lists; "
+                                 "send link, record cash, freeze and renew on the member page. No per-state tab filter",
+                  ws="✓ /b/…/memberships", test="✓ browser p2_02 + p1_10d1 (board)"),
+    "MB-14": dict(status=S, code="no renewal calendar (renewals due per day with amounts)"),
+    "MB-15": dict(status=P, code="member page: periods, freezes, instalments, visits, session uses, history, Money panel. "
+                                 "Period bars / check-in dots are not drawn", ws="✓"),
+    "MB-16": dict(status=C, code="front desk: card code or QR → green / amber (grace if the plan allows) / red with the "
+                                 "reason; Attendance records the visit under the member's name; unpaid refused, nothing kept",
+                  ws="✓ memberships/checkin", integ="✓ Attendance", test="✓ test_integration_membership_attendance + demo gate 17/17"),
+    "MB-17": dict(status=P, code="the customer's 'My …' card on the business's own site: plan, state, renew, pay, skip / "
+                                 "restore tomorrow before cutoff. No check-in QR on the card and no freeze request",
+                  cust="✓ [slug]/account", test="✓ browser p2_02 (skip/restore)"),
+    "MB-18": dict(status=P, code="cutoff generates tomorrow's orders and fulfilment jobs once; skip/pause/one-day quantity "
+                                 "by owner and customer site; postpaid billed on the khata at month end once. Skip/pause "
+                                 "by WhatsApp buttons is not built", svc="✓", integ="✓ Orders, Kitchen, Fulfilment, Ledger",
+                  test=_MB_TEST),
+    "MB-19": dict(status=P, code="preventive visits become Jobs job cards once (membership keeps job_ref). Parts covered vs "
+                                 "chargeable under the contract are not modelled", integ="✓ Jobs", test=_MB_TEST),
+    "MB-20": dict(status=C, code="replayed payment never extends twice; 10-day freeze = exactly 10 days; no reminder after "
+                                 "renewal or in quiet hours; ladder steps once", test=_MB_TEST),
+    "OM-03": dict(status=P, code="all six plan kinds exist and the board follows the business's plans; a default plan "
+                                 "kind per subcategory is not proposed"),
+    "GP-04": dict(status=P, code="renewal ladder live (MB-10); autopay is activation-required (MB-21)"),
+    "FR-MB-01": dict(status=C, code="one engine, six kinds, per-kind words (Membership, Subscription, Fees & Enrolment, "
+                                    "Service plan, Dues); periods never overlap", test=_MB_TEST),
+    "FR-MB-02": dict(status=C, code="state recalculated from rows on every read and by the business-timezone sweep; the "
+                                    "ladder stops on payment", test=_MB_TEST),
+    "FR-MB-03": dict(status=C, code="gym: members board, check-in green/amber/red, freeze with history, session packs",
+                     test=_MB_TEST),
+    "FR-MB-04": dict(status=P, code="subscriptions: item, quantity, days, slot, window, address, prepaid/postpaid; cutoff "
+                                    "makes tomorrow's orders; skip/restore/one-day change/pause. WhatsApp buttons not built",
+                     test=_MB_TEST),
+    "FR-MB-05": dict(status=P, code="fee plans (instalments, guardian payer, no auto-removal), AMC visits via Jobs, club "
+                                    "dues with good standing. Late fee not built", test=_MB_TEST),
+    "FR-MB-06": dict(status=A, code="early renewal queues the next period (built, tested); autopay needs Cashfree mandates"),
+    "FR-MB-07": dict(status=P, code="owner homes per kind and the customer 'My …' card per kind are built; WhatsApp "
+                                    "renew/skip/pause buttons are not", ws="✓", cust="✓"),
+    "FR-MB-08": dict(status=P, code="browser covers gym (enrol, pay, freeze, early renew, check-in), milk (tomorrow, skip, "
+                                    "customer skip/restore), coaching (fee plan). Not yet: tiffin counts, postpaid bill, AMC, "
+                                    "club, autopay failure", test="✓ p2_02_memberships 24/24"),
+})
+
+# ---------------------------------------------------------------- G · Kitchen (parallel/cursor-kitchen, 839b465)
+_KT_TEST = "✓ test_kitchen 6/6, test_integration_restaurant; browser p2_kitchen_kds 10/10 (integrated stack)"
+done("P2-kitchen", {
+    "SF-04": dict(status=C, code="kitchen display surface /kds: one pass per location, station filter", ws="✓ /kds",
+                  test=_KT_TEST),
+    "KT-01": dict(status=C, code="order.accepted → exactly one KOT, lines routed to stations (General fallback for menu "
+                                 "items; packaged goods skipped); replay-safe via kitchen_intakes; subscription orders too",
+                  db="✓", svc="✓", perm="✓ kitchen.read/advance", integ="✓ Orders, Recipes", test=_KT_TEST),
+    "KT-02": dict(status=C, code="bump new → preparing → ready → served with elapsed time on each card; changes after "
+                                 "start stay visible", ws="✓", test=_KT_TEST),
+    "KT-03": dict(status=S, code="printer fallback not built (screen pass only)"),
+    "KT-04": dict(status=C, code="the kitchen role sees preparation only: no price, no customer phone",
+                  perm="✓ kitchen template has no orders.read", test=_KT_TEST),
+})
+
+# ---------------------------------------------------------------- F · Queue + Tasks (parallel/cursor-queue-tasks, 472a0ea)
+done("P2-queue-tasks", {
+    "QU-01": dict(status=C, code="tokens waiting / called / serving / served / missed; priority then arrival; requeue when "
+                                 "the lane allows", db="✓", svc="✓", ws="✓ /b/…/queue", test="✓ test_queue; browser p2_queue_board 5/5"),
+    "QU-02": dict(status=P, code="board columns Waiting / Called / Serving / Done-Missed with estimated wait; refreshed on "
+                                 "each action, no self-updating TV display", ws="✓", test="✓ browser p2_queue_board 5/5"),
+    "QU-03": dict(status=C, code="queue.turn_soon → one notice per visit and one WhatsApp to the customer on the token "
+                                 "(queue_turn_soon template, idempotent, owner switch); a walk-in without a number is "
+                                 "called at the desk", auto="✓", integ="✓ Messaging",
+                  test="✓ test_your_turn_soon_goes_out_on_whatsapp_once_per_visit"),
+    "QU-04": dict(status=C, code="a booking joins the provider/department lane by booking_id — no second booking",
+                  integ="✓ Bookings", test="✓ test_booking_joins_the_queue_without_a_second_booking"),
+    "OM-12": dict(status=P, code="POS sells products; queue tokens serve walk-ins; they are separate screens"),
+    "TK-01": dict(status=C, code="one Tasks domain (tasks_tasks) for housekeeping, maintenance, prep, checklists, "
+                                 "compliance; related_type/related_id; views mine/due today/overdue/unassigned",
+                  db="✓", svc="✓", ws="✓ /b/…/tasks", test="✓ test_tasks; browser p2_tasks_board 4/4"),
+    "TK-02": dict(status=C, code="templates spawn once per occurrence key; required steps; a step can require a photo",
+                  test="✓ test_tasks"),
+    "TK-03": dict(status=S, code="no stay-checkout → housekeeping task hook (stays are not built as a mode)"),
+    "TK-04": dict(status=S, code="no rental handover/return checklist flow"),
+})
+
+# ---------------------------------------------------------------- H · Dispatch (parallel/cursor-dispatch, c111ce6)
+_DP_TEST = "✓ test_dispatch, test_integration_dispatch_messaging; browser p2_dispatch 9/9 (integrated stack)"
+done("P2-dispatch", {
+    "DP-01": dict(status=P, code="dispatch_jobs: unassigned → assigned → picked_up → out_for_delivery → delivered | failed; "
+                                 "a delivery cannot skip out-for-delivery; delivered needs proof note, failed a reason. "
+                                 "No READY or RETURNED state", db="✓", svc="✓", test=_DP_TEST),
+    "DP-02": dict(status=P, code="the tracking page carries the dispatch state; the five-step stepper follows fulfilment "
+                                 "statuses", web="✓"),
+    "DP-03": dict(status=P, code="dispatch_job + append-only dispatch_events built; crew_shift, location_ping, "
+                                 "proof_of_delivery rows and cod_settlement are not", db="✓"),
+    "DP-04": dict(status=P, code="crew /b/…/crew: next stop, pickup, drop-off, customer phone only while the job is "
+                                 "active, status actions, Maps search link. No duty toggle or location sharing",
+                  ws="✓ crew", test=_DP_TEST),
+    "DP-09": dict(status=P, code="board Unassigned / Assigned / Out now / Delivered / Failed; assign by action. No drag, "
+                                 "no auto-assign", ws="✓", test=_DP_TEST),
+    "DP-12": dict(status=P, code="tracking shows the dispatch state with live_location null and location_mode "
+                                 "status_only until a real fix exists — never a fabricated dot", web="✓", test=_DP_TEST),
+    "DP-15": dict(status=P, code="partner reads only assigned jobs (ORM filter + RLS) is tested; ping/COD tests wait for "
+                                 "those features", test=_DP_TEST),
+    "SF-02": dict(status=P, code="crew route for delivery partners (dispatch); technicians use the Workspace job card; "
+                                 "housekeeping/provider crew screens not built", ws="✓ /b/…/crew"),
+    "GP-12": dict(status=P, code="tracking page + dispatch state + messages that follow the real delivery state once "
+                                 "(952f9c2)", integ="✓ Messaging"),
+})
+
+# ---------------------------------------------------------------- J · Attendance (parallel/codex-attendance, 8ff25d7) + integration
+done("P2-attendance", {
+    "AT-01": dict(status=C, code="front desk by card code or QR/enrolment id: Memberships decides, Attendance records "
+                                 "once under the member's name; denied visits keep nothing", db="✓", svc="✓", ws="✓",
+                  integ="✓ Memberships (1fc8684, 145c75f)", test="✓ test_integration_membership_attendance; demo gate 17/17"),
+    "AT-02": dict(status=C, code="teacher roster per session, default present, one save, explicit exceptions, owner "
+                                 "correction with reason; on the real P5 schema", integ="✓ Academics",
+                  test="✓ test_attendance_postgres 5/5"),
+    "AT-03": dict(status=P, code="staff self check-in / check-out at an assigned location. Not geo-verified "
+                                 "(geo_verified can never be true without a real verifier); no shifts", test="✓ test_attendance_postgres"),
+    "AT-05": dict(status=S, code="no authorised pick-up list"),
+    "GP-11": dict(status=P, code="attendance events, assignment scope and task photo proof exist; no single 'who "
+                                 "worked' view"),
+})
+
+# ---------------------------------------------------------------- E · Quotes (parallel/cursor-quotes, d7ed1a2) + integration
+_QT_TEST = "✓ test_quotes, test_quotes_finish, test_integration_quote_conversion; browser p2_quotes 15/15"
+done("P2-quotes", {
+    "QT-02": dict(status=P, code="website quote request opens one draft (lead kept); POST …/quotes/intake is idempotent "
+                                 "per channel key. WhatsApp inbound is not wired to the intake", test=_QT_TEST),
+    "QT-03": dict(status=C, code="discount above the business limit stays pending until quotes.approve (owner); a sales "
+                                 "executive sends within the limit", perm="✓", test=_QT_TEST),
+    "QT-04": dict(status=C, code="each open of an issued version is recorded (quotes_views, open_count, quote.viewed) "
+                                 "and shown to the owner", ws="✓", test=_QT_TEST),
+    "QT-05": dict(status=C, code="accept with name + 6-digit code delivered on WhatsApp (quote_acceptance_code); no code "
+                                 "is promised when WhatsApp cannot reach the customer; accepting locks every money "
+                                 "column by trigger", integ="✓ Messaging", test=_QT_TEST),
+    "QT-06": dict(status=P, code="order (one order at accepted prices; token = advance) and project (one per quote) "
+                                 "consumers exist; target invoice has no consumer", integ="✓ Orders, Projects",
+                  test=_QT_TEST),
+    "QT-07": dict(status=P, code="payment plan resolved against the locked total; the token is collected on the "
+                                 "converted order through Payment Collect. Plan stages are not scheduled as reminders; "
+                                 "project/invoice targets have no collectable transaction yet", integ="✓ Payments (order)"),
+    "QT-08": dict(status=C, code="lines carry quantity breaks, MOQ, lead time, BOQ section and a size matrix; under-MOQ "
+                                 "refused", test=_QT_TEST),
+    "GP-13": dict(status=P, code="validity + view tracking live; follow-up nudges (QT-09) not built"),
+})
+
+# ---------------------------------------------------------------- I · Growth (parallel/cursor-growth-hardening, 7550111) + 06ef456
+_GR_TEST = "✓ test_growth_db, test_loyalty_lane, test_marketing_lane; browser p3 growth 14/14 (integrated stack)"
+done("P3-growth", {
+    "LY-01": dict(status=P, code="points per ₹ with a points ledger, redeem with discount calculation; a completed sale "
+                                 "earns once (06ef456). Expiry sweep and the website loyalty card are not built",
+                  db="✓", svc="✓", ws="✓", integ="✓ Orders", test=_GR_TEST),
+    "LY-02": dict(status=C, code="stamp cards and rewards; idempotent stamp awards", db="✓", svc="✓", ws="✓", test=_GR_TEST),
+    "LY-03": dict(status=C, code="referral codes; the friend's first eligible purchase qualifies once (06ef456)",
+                  integ="✓ Orders", test=_GR_TEST),
+    "LY-04": dict(status=P, code="gift vouchers with validation; Payments does not fund a voucher yet", svc="✓", test=_GR_TEST),
+    "MK-01": dict(status=C, code="rule-built segments shown as counts; only marketing-consented contacts for WhatsApp; "
+                                 "no export", perm="✓", test=_GR_TEST),
+    "MK-02": dict(status=P, code="offers (codes, first-order, win-back, limits, expiry, per-customer caps) evaluated by "
+                                 "OfferService; website checkout does not apply them yet", svc="✓", test=_GR_TEST),
+    "MK-03": dict(status=P, code="broadcast to opted-in customers with cost before approval; delivery goes to the fixture "
+                                 "transport, not through Messaging — live send is activation-required", test=_GR_TEST),
+    "MK-07": dict(status=P, code="attribution labelled 'Approximate · last touch' from real conversions; UTM/CTWA intake "
+                                 "partial", test=_GR_TEST),
+    "MK-08": dict(status=P, code="campaign goal → audience → offer → approve → results in the Workspace; Meta channels "
+                                 "activation-required", ws="✓", test=_GR_TEST),
+    "MK-09": dict(status=C, code="no marketing template without consent; over-cap spend blocked before any provider call; "
+                                 "results never estimated", test=_GR_TEST),
+    "MK-10": dict(status=C, code="lawyers: marketing off; finance restricted; minors: prohibited — by taxonomy key / trait",
+                  test=_GR_TEST),
+    "CO-08": dict(status=C, code="lawyer subcategory: marketing off by default, no owner bypass", test=_GR_TEST),
+    "MS-26": dict(status=P, code="consented audience, approved templates, owner approves; live WhatsApp send is "
+                                 "activation-required and replies/frequency are local defaults"),
+})
+
+# ---------------------------------------------------------------- B · Supply / B2B / recipes (parallel/cursor-supply-b2b, 229a396)
+_SP_TEST = "✓ test_supply_lane 11/11; browser supply_buying 6/6 (integrated stack)"
+done("P4-supply", {
+    "PC-01": dict(status=C, code="suppliers and supplier items (code, unit, pack, MOQ, lead time)", db="✓", svc="✓",
+                  ws="✓ Buying", test=_SP_TEST),
+    "PC-02": dict(status=C, code="price agreements; a historical PO keeps its pinned price", test=_SP_TEST),
+    "PC-03": dict(status=P, code="requisitions from demand with the arithmetic on the row; from BOM / reorder point not "
+                                 "automatic (low stock alerts only)", test=_SP_TEST),
+    "PC-04": dict(status=P, code="PO approve → send → counter → receive → bill; a bill is not marked paid by Buying "
+                                 "(ledger posting pending)", test=_SP_TEST),
+    "PC-05": dict(status=C, code="goods receipt raises stock by the good quantity only (damaged kept out), partial and "
+                                 "idempotent", integ="✓ Inventory", test=_SP_TEST),
+    "PC-06": dict(status=P, code="supplier bills stay open with a ledger posting intent; payables not posted to the "
+                                 "shared ledger", test=_SP_TEST),
+    "PC-08": dict(status=C, code="a counter-offer is its own row until the buyer accepts", test=_SP_TEST),
+    "RC-01": dict(status=P, code="BOM components with quantity and yield ratio (Recipes page); wastage and unit "
+                                 "conversion not modelled", ws="✓ /b/…/recipes", test="✓ demo gate (recipe from the Workspace)"),
+    "RC-03": dict(status=P, code="ingredients leave stock once when the kitchen completes preparation (9ea0d73: 1000 g → "
+                                 "700 g); a counter sale without the kitchen does not consume", integ="✓ Kitchen, Inventory",
+                  test="✓ test_integration_restaurant; demo gate 17/17"),
+    "RC-04": dict(status=P, code="net = demand + safety − usable − inbound, rounded to pack and minimum (explained on the "
+                                 "row); the biryani fixture is not reproduced", test=_SP_TEST),
+    "RC-05": dict(status=P, code="incoming B2B demand as a sealed copy; bookings/subscriptions/forecast as demand "
+                                 "sources not wired"),
+    "FR-IN-05": dict(status=P, code="through Kitchen → Recipe/BOM (restaurant); direct sale path not wired"),
+    "FR-OR-30": dict(status=C, code="restaurant: recipe saved in the Workspace → order → one KOT → cooked → 1000 g → "
+                                    "700 g once, 0.7 kg on the stock page", test="✓ demo gate 17/17 (live worker)"),
+    "EX-01": dict(status=C, code="expenses with totals", db="✓", svc="✓", ws="✓ /b/…/expenses", test=_SP_TEST),
+    "DN-01": dict(status=P, code="causes (open, list) and gifts on the Donations page; campaigns/updates not built",
+                  ws="✓ /b/…/donations", test=_SP_TEST),
+    "DN-02": dict(status=P, code="one-off gift linked to a payment id (money stays in Payments); recurring gifts not built"),
+    "PM-15": dict(status=P, code="connector pairing, mapping, fixture sync; bidirectional sync refused without a conflict "
+                                 "policy. Module not marked built; no production connector", test=_SP_TEST),
+    "CN-01": dict(status=P, code="connector families/direction with a refusal for two-way sync without a conflict policy"),
+    "CN-04": dict(status=P, code="external id mapping for fixture sync"),
+    "GP-06": dict(status=P, code="recipes, yields, wastage, counts: recipes + kitchen consumption live; wastage in BOM "
+                                 "not modelled"),
+})
+
+# ---------------------------------------------------------------- C · Inventory field (parallel/cursor-inventory-field, 2c4bfc9) + 8fc4e76
+_IF_TEST = "✓ test_inventory_field, test_p5_operations (job parts)"
+done("P4-inventory-field", {
+    "IN-07": dict(status=C, code="transfers requested → approved where required → in transit → received; transit stock "
+                                 "free at neither end; replay-safe", db="✓", svc="✓", ws="✓ transfers board", test=_IF_TEST),
+    "FR-IN-03": dict(status=C, code="as IN-07", test=_IF_TEST),
+    "IN-11": dict(status=C, code="a van is a location (stock_role van); van board; loaded by transfer", ws="✓", test=_IF_TEST),
+    "FR-IN-04": dict(status=C, code="central → van by transfer; a technician uses parts from the job's location and their "
+                                    "own vans through Jobs (one Inventory contract); unused parts go back, never more than "
+                                    "the job has out", integ="✓ Jobs",
+                     test="✓ test_job_parts_come_from_the_job_and_the_technicians_van_and_go_back_once; browser P5 13/13"),
+    "IN-14": dict(status=P, code="client-owned stock on its own records (never in the business balance), moves logged; "
+                                 "no Workspace client-stock view", svc="✓", test=_IF_TEST),
+    "FR-IN-13": dict(status=P, code="technician sees only the job's location and their vans (no stock book); store keeper "
+                                    "receive/count/transfer; kitchen and pharmacy views not specialised"),
+})
+
+# ---------------------------------------------------------------- D · Projects / Jobs / Academics (parallel/codex-projects-jobs-academics, c40f853)
+_P5_TEST = "✓ test_p5_operations, test_p5_domain_guards; browser p5_projects_jobs_academics 13/13"
+done("P5-projects-jobs-academics", {
+    "JB-01": dict(status=P, code="job card new → assigned → inspecting → awaiting approval → approved → in progress → "
+                                 "waiting parts → quality check → completed; parts from stock/van; completion needs work "
+                                 "performed. Invoicing from the job is not built (invoice_id only)", db="✓", svc="✓",
+                  perm="✓ technician assignment scope", ws="✓", integ="✓ Inventory, Memberships (AMC)", test=_P5_TEST),
+    "JB-02": dict(status=P, code="asset described on the job (text + serial); not linked to the customer-asset record",
+                  test=_P5_TEST),
+    "JB-03": dict(status=P, code="approval recorded by staff with how the customer approved; no customer approval link"),
+    "JB-04": dict(status=P, code="parts from the job's location and the technician's vans, returns bounded; inspection "
+                                 "photos not built", test=_P5_TEST),
+    "PJ-02": dict(status=P, code="phases can be payment milestones; a payment schedule with reminders is not built"),
+    "OM-08": dict(status=P, code="projects with phases and milestones; payment schedules not built"),
+    "AC-01": dict(status=C, code="course → batch (teacher, schedule, capacity, room/link) → session → enrolment "
+                                 "(student, guardian); a fee plan follows the enrolment (Memberships)",
+                  db="✓", svc="✓", ws="✓", integ="✓ Memberships, Attendance", test=_P5_TEST),
+    "AC-02": dict(status=P, code="enquiry, bookings, forms, fee plan and batch exist as separate steps; no connected "
+                                 "admissions flow"),
+    "AC-03": dict(status=P, code="daily session attendance (AT-02); the guardian absence note is not sent"),
+    "AC-04": dict(status=P, code="fee plan instalments with reminders (Memberships ladder); concessions/sibling discounts "
+                                 "with approval not built"),
+    "AC-05": dict(status=P, code="assessments and marks shown to the guardian; report card PDF not built", test=_P5_TEST),
+    "AC-07": dict(status=P, code="announcements on the guardian portal; not sent on WhatsApp"),
+    "AC-08": dict(status=P, code="session scheduling checks teacher and room clashes; no timetable grid"),
+    "AC-09": dict(status=P, code="meeting link on the batch (https only); not per session"),
+    "AC-11": dict(status=P, code="My Academics: each child's classes, marks and announcements, guardian-scoped, 390 px; "
+                                 "attendance %, fees + Pay and homework not on it", cust="✓", test=_P5_TEST),
+    "AC-12": dict(status=P, code="guardian is contact of record under 18; teachers cannot open the customer book; no "
+                                 "marketing to minors (Growth); photo consent and DPDP child consent not built"),
+    "AC-14": dict(status=P, code="guardian sees only own children and another teacher's batch is not found (tested); "
+                                 "absence-note-once not built", test=_P5_TEST),
+    "SF-06": dict(status=P, code="phone-web My Academics for guardian/adult student (as AC-11)", cust="✓"),
+})
+
+# ---------------------------------------------------------------- K · Documents / forms / signatures (parallel/codex-documents-forms, 74d7b26)
+_DC_TEST = "✓ test_document_workflows_postgres (3/3); browser p2_documents_forms 6/6 (integrated stack)"
+done("P5-documents", {
+    "DC-01": dict(status=C, code="document templates (agreement, consent, intake, certificate, report, generic)",
+                  db="✓", svc="✓", ws="✓ /b/…/documents", test=_DC_TEST),
+    "DC-02": dict(status=C, code="versioned intake/consent forms pinned per request; consent text and guardian required "
+                                 "where set", cust="✓ document-request page", test=_DC_TEST),
+    "DC-03": dict(status=C, code="private document files (never public), short-lived access links, immutability triggers, "
+                                 "RLS", perm="✓", test=_DC_TEST),
+    "DC-04": dict(status=C, code="typed and drawn signatures", test=_DC_TEST),
+    "DC-05": dict(status=P, code="one-time upload/form link created and shown to share ('Share this private link once'); "
+                                 "not sent on WhatsApp"),
+})
