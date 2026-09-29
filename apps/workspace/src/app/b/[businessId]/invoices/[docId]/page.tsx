@@ -166,7 +166,13 @@ export default async function BillPage({ params }: { params: { businessId: strin
                 </ul>
               </section>
             ) : null}
-            {d.paid_via_order ? <p className="bos-hint">Paid online with the order.</p> : null}
+            {d.order_id && d.paid_via_order ? <p className="bos-hint">Paid in full with the order.</p> : null}
+            {d.order_id && !d.paid_via_order && (d.paid_on_order ?? 0) > 0 ? (
+              <p className="bos-hint">
+                {rupees(d.paid_on_order ?? 0)} already paid on the order · {rupees(d.outstanding)} still due —{' '}
+                <Link href={`/b/${b}/orders/${d.order_id}`}>collect it on the order</Link>.
+              </p>
+            ) : null}
             {d.status === 'issued' && !d.doc_kind.endsWith('note') && !d.on_account && !d.order_id ? (
               <MoneySection businessId={b} token={token} sourceType="invoice" sourceId={d.id}
                 path={`${base}/${d.id}`} title="Ask for payment" />

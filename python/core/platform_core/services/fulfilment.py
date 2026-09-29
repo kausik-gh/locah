@@ -30,6 +30,7 @@ from platform_core.validation.fulfilment import (
     FULFILMENT_MODES,
     haversine_km,
     validate_job_status_payload,
+    validate_payment_rules,
     validate_settings_payload,
     validate_zone_payload,
 )
@@ -50,6 +51,9 @@ class FulfilmentService:
                 if settings.delivery_fee_offering_id
                 else None
             ),
+            "cod_allowed": settings.cod_allowed,
+            "first_order_cod_cap": float(settings.first_order_cod_cap)
+            if settings.first_order_cod_cap is not None else None,
             "version": settings.version,
         }
 
@@ -134,6 +138,38 @@ class FulfilmentService:
         return settings
 
     @staticmethod
+    async def payment_rules(session: AsyncSession, business_id: uuid.UUID) -> dict[str, Any]:
+        """Paying on delivery / at pickup as the owner set it — read by the website
+        checkout and WhatsApp journeys alike. A visitor never creates the row."""
+        row = (await session.execute(select(FulfilmentSettings).where(
+            FulfilmentSettings.business_id == business_id))).scalars().first()
+        return {"on_delivery": True if row is None else bool(row.cod_allowed),
+                "first_order_cap": float(row.first_order_cod_cap)
+                if row is not None and row.first_order_cod_cap is not None else None}
+
+    @staticmethod
+    async def set_payment_rules(session: AsyncSession, *, business_id: uuid.UUID, actor_id: uuid.UUID,
+                                payload: dict[str, Any]) -> FulfilmentSettings:
+        """Change only the paying-on-delivery rules (the WhatsApp page and the
+        Deliveries & pickup page both land here)."""
+        settings = await FulfilmentService.ensure_settings(session, business_id)
+        validated = validate_payment_rules(payload)
+        if not validated:
+            return settings
+        before = FulfilmentService.serialize_settings(settings)
+        for key, value in validated.items():
+            setattr(settings, key, value)
+        settings.version += 1
+        settings.updated_at = datetime.now(timezone.utc)
+        await session.flush()
+        await AuditService.record(
+            session, event_type="fulfilment.payment_rules_updated", actor_identity_id=actor_id,
+            actor_context="business", business_id=business_id, resource_type="fulfilment_settings",
+            resource_id=business_id, action="settings_updated", before_state=before,
+            after_state=FulfilmentService.serialize_settings(settings))
+        return settings
+
+    @staticmethod
     async def update_settings(
         session: AsyncSession,
         *,
@@ -144,11 +180,11 @@ class FulfilmentService:
         await FulfilmentService.assert_module_active(session, business_id)
         business = await BusinessService.get_by_id(session, business_id)
         assert_business_mutable(business.state, action="configure_fulfilment")
-        validated = validate_settings_payload(payload)
         settings = await FulfilmentService.ensure_settings(session, business_id)
+        validated = validate_settings_payload(payload, current=settings)
         before = FulfilmentService.serialize_settings(settings)
-        settings.pickup_enabled = validated["pickup_enabled"]
-        settings.delivery_enabled = validated["delivery_enabled"]
+        for key, value in validated.items():
+            setattr(settings, key, value)
         settings.version += 1
         settings.updated_at = datetime.now(timezone.utc)
         await session.flush()

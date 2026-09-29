@@ -6,6 +6,7 @@ import { DetailShell, GateNotice, PageHeader, Section, StatusPill } from '@/comp
 import { advanceOrderStatus, cancelOrder } from '../actions'
 import { OrderBill } from './OrderBill'
 import { MoneySection } from '@/components/MoneySection'
+import { money, paymentLabel } from '../labels'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,8 +94,8 @@ export default async function OrderDetailPage({
       title={order.order_number}
       status={<StatusPill value={order.status} />}
       meta={[
-        ['Payment', `${order.payment_method} · ${order.payment_status}`],
-        ['Total', `${order.currency} ${order.total_amount}`],
+        ['Payment', paymentLabel(order)],
+        ['Total', money(Number(order.total_amount) || 0, order.currency)],
       ]}
       actions={next.length || cancellable ? actions : undefined}
     >
@@ -121,9 +122,7 @@ export default async function OrderDetailPage({
                   <tr key={idx}>
                     <td>{item.title}</td>
                     <td data-num>{item.quantity}</td>
-                    <td data-num>
-                      {order.currency} {item.line_total}
-                    </td>
+                    <td data-num>{money(Number(item.line_total) || 0, order.currency)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -139,12 +138,12 @@ export default async function OrderDetailPage({
 
       {order.tax_basis?.engine ? (
         <dl className="bos-inv-ordertax">
-          <dt>Before tax</dt><dd>{order.currency} {order.subtotal}</dd>
-          {order.discount_amount ? (<><dt>Discount</dt><dd>− {order.currency} {order.discount_amount}</dd></>) : null}
+          <dt>Before tax</dt><dd>{money(Number(order.subtotal) || 0, order.currency)}</dd>
+          {order.discount_amount ? (<><dt>Discount</dt><dd>− {money(Number(order.discount_amount) || 0, order.currency)}</dd></>) : null}
           <dt>{order.tax_basis.scheme !== 'regular' ? 'Tax' : order.tax_basis.intra_state ? 'CGST + SGST' : 'IGST'}</dt>
-          <dd>{order.currency} {order.tax_amount}{order.tax_basis.inclusive ? ' (included in prices)' : ''}</dd>
-          {order.round_off ? (<><dt>Round-off</dt><dd>{order.currency} {order.round_off}</dd></>) : null}
-          <dt>Total</dt><dd>{order.currency} {order.total_amount}</dd>
+          <dd>{money(Number(order.tax_amount) || 0, order.currency)}{order.tax_basis.inclusive ? ' (included in prices)' : ''}</dd>
+          {order.round_off ? (<><dt>Round-off</dt><dd>{money(Number(order.round_off) || 0, order.currency)}</dd></>) : null}
+          <dt>Total</dt><dd>{money(Number(order.total_amount) || 0, order.currency)}</dd>
         </dl>
       ) : null}
       {order.tax_basis?.rates_missing?.length ? (

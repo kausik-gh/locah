@@ -59,6 +59,7 @@ from platform_core.models import (
     Offering,
     OfferingVariant,
     OrderLineItem,
+    PaymentAttempt,
     SalesOrder,
 )
 from platform_core.secrets import resolve_signing_secret
@@ -937,6 +938,10 @@ class InvoiceService:
         doc = await InvoiceService.get(session, business_id, document_id, lock=True)
         if doc.status != "issued" or doc.doc_kind == "credit_note":
             raise ConflictError("Money is recorded against an issued bill or debit note")
+        if doc.order_id and not payload.get("_via"):
+            # One money book per sale: a bill issued from an order is paid on the
+            # order (its Money panel), so the two can never disagree.
+            raise ConflictError("This bill belongs to an order — record the money on the order")
         summary = await InvoiceService._money_view(session, doc)
         amount = money(dec(payload.get("amount") or 0))
         if amount <= 0:
@@ -997,23 +1002,45 @@ class InvoiceService:
                 InvoicingDocument.original_document_id == doc.id, InvoicingDocument.doc_kind == "credit_note",
                 InvoicingDocument.status == "issued"))).scalar())
         order_paid = False
+        on_order = ZERO
         if doc.order_id:
             status = (await session.execute(select(SalesOrder.payment_status).where(
                 SalesOrder.id == doc.order_id))).scalar()
             order_paid = status == "paid"
-        return InvoiceService._payment_state(doc, credits, order_paid)
+            on_order = (await InvoiceService._paid_on_orders(session, doc.business_id, [doc.order_id])).get(
+                doc.order_id, ZERO)
+        return InvoiceService._payment_state(doc, credits, order_paid, on_order)
 
     @staticmethod
-    def _payment_state(doc: InvoicingDocument, credits: Decimal, order_paid: bool) -> dict[str, Any]:
+    async def _paid_on_orders(session: AsyncSession, business_id: uuid.UUID,
+                              order_ids: list[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
+        """Verified money taken on each order (an advance by link, cash at
+        pickup), net of refunds — what a bill issued from the order has
+        already received through the order (Founder refinement — Payments §12)."""
+        if not order_ids:
+            return {}
+        rows = (await session.execute(select(
+            PaymentAttempt.source_id,
+            func.coalesce(func.sum(PaymentAttempt.amount - func.coalesce(PaymentAttempt.refunded_amount, 0)), 0),
+        ).where(PaymentAttempt.business_id == business_id, PaymentAttempt.source_type == "order",
+                PaymentAttempt.source_id.in_(order_ids), PaymentAttempt.deleted_at.is_(None),
+                PaymentAttempt.status.in_(("succeeded", "partially_refunded", "refunded")))
+            .group_by(PaymentAttempt.source_id))).all()
+        return {row[0]: max(dec(row[1]), ZERO) for row in rows}
+
+    @staticmethod
+    def _payment_state(doc: InvoicingDocument, credits: Decimal, order_paid: bool,
+                       on_order: Decimal = ZERO) -> dict[str, Any]:
         due = dec(doc.amount_due)
         if doc.doc_kind == "credit_note" or doc.status != "issued":
             return {"payment_status": "not_applicable", "outstanding": 0.0, "credited": _f(credits),
-                    "paid_via_order": False}
-        outstanding = ZERO if order_paid else max(ZERO, due - dec(doc.amount_paid) - credits)
+                    "paid_via_order": False, "paid_on_order": 0.0}
+        outstanding = ZERO if order_paid else max(ZERO, due - dec(doc.amount_paid) - credits - on_order)
         paid = order_paid or outstanding <= 0
-        state = "paid" if paid else ("part_paid" if dec(doc.amount_paid) > 0 or credits > 0 else "unpaid")
+        part = dec(doc.amount_paid) > 0 or credits > 0 or on_order > 0
+        state = "paid" if paid else ("part_paid" if part else "unpaid")
         return {"payment_status": state, "outstanding": _f(outstanding), "credited": _f(credits),
-                "paid_via_order": order_paid}
+                "paid_via_order": order_paid, "paid_on_order": _f(min(on_order, due))}
 
     @staticmethod
     def serialize(doc: InvoicingDocument, money_view: dict[str, Any], *, order_number: str | None = None,
@@ -1096,8 +1123,12 @@ class InvoiceService:
                                InvoicingDocument.created_at.desc()).limit(limit).offset(offset)
         today = local_today()
         out = []
-        for doc, order_number, order_payment, credited in (await session.execute(query)).all():
-            view = InvoiceService._payment_state(doc, dec(credited), order_payment == "paid")
+        found = (await session.execute(query)).all()
+        on_orders = await InvoiceService._paid_on_orders(
+            session, business_id, [doc.order_id for doc, *_ in found if doc.order_id])
+        for doc, order_number, order_payment, credited in found:
+            view = InvoiceService._payment_state(doc, dec(credited), order_payment == "paid",
+                                                 on_orders.get(doc.order_id, ZERO) if doc.order_id else ZERO)
             out.append(InvoiceService.serialize(doc, view, order_number=order_number, today=today))
         return out
 
@@ -1342,7 +1373,8 @@ async def public_bill(session: AsyncSession, slug: str, token: str) -> dict[str,
             original = {"id": str(o.id), "kind_label": KIND_LABEL[o.doc_kind], "number": o.number,
                         "status": o.status, "amount_due": _f(o.amount_due),
                         "issue_date": o.issue_date.isoformat() if o.issue_date else None}
-    view = {"payment_status": "not_applicable", "outstanding": 0.0, "credited": 0.0, "paid_via_order": False}
+    view = {"payment_status": "not_applicable", "outstanding": 0.0, "credited": 0.0, "paid_via_order": False,
+            "paid_on_order": 0.0}
     data = InvoiceService.serialize(doc, view)
     for private in ("customer_contact_id", "register_id", "location_id", "order_id", "version", "created_at"):
         data.pop(private, None)

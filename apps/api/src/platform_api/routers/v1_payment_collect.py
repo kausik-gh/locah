@@ -22,7 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from platform_api.db import get_db_session
 from platform_api.dependencies import BusinessActorContext, require_business_actor
 from platform_core.models import Business, CustomerContact
-from platform_core.permissions import PAYMENTS_COLLECT, PAYMENTS_READ
+from platform_core.exceptions import PermissionDenied
+from platform_core.permissions import MESSAGING_REPLY, PAYMENTS_COLLECT, PAYMENTS_READ
 from platform_core.services.payment_collect import PURPOSES, PaymentCollectService, share_text, wa_share
 from platform_core.site_urls import business_site_url
 
@@ -111,13 +112,41 @@ async def create_request(
     url = business_site_url(business.slug, f"/pay/{token}")
     what = f"{money['label']} ({PURPOSES[body.purpose].lower()})"
     message = share_text(business.display_name, what, Decimal(str(req.amount)), url)
+    from platform_core.services.messaging import MessagingService
+
+    channel = await MessagingService.channel(session, business_id)
     await session.commit()
     # The token is shown here once; only its hash is stored.
     return {"data": PaymentCollectService._request_row(req) | {
         "url": url, "path": f"/{business.slug}/pay/{token}", "message": message,
         "whatsapp": wa_share(contact.phone if contact else None, message),
         "customer_phone": contact.phone if contact else None,
+        # the business's own number can send it (Payments §7), when connected
+        "from_number": bool(channel is not None and channel.status == "connected" and contact and contact.phone
+                            and MESSAGING_REPLY in actor.request.effective_permissions),
     }, "meta": _meta(actor)}
+
+
+class SendBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # The link's token, which only the person who made it holds (its hash is stored).
+    token: str = Field(min_length=16, max_length=64)
+
+
+@router.post("/{business_id}/collect/requests/{request_id}/whatsapp")
+async def send_request(
+    business_id: UUID, request_id: UUID, body: SendBody,
+    actor: BusinessActorContext = Depends(require_business_actor(PAYMENTS_COLLECT)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """The payment link to the customer from the business's WhatsApp number."""
+    if MESSAGING_REPLY not in actor.request.effective_permissions:
+        raise PermissionDenied(MESSAGING_REPLY)
+    msg = await PaymentCollectService.send_on_whatsapp(session, business_id, actor.request.identity_id, request_id,
+                                                       body.token)
+    await session.commit()
+    return {"data": {"status": msg.status, "body": msg.body}, "meta": _meta(actor)}
 
 
 @router.post("/{business_id}/collect/requests/{request_id}/cancel")

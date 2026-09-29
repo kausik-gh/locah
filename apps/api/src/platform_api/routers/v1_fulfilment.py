@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_api.db import get_db_session
@@ -38,10 +38,15 @@ class ZoneCreateRequest(BaseModel):
 
 
 class SettingsUpdateRequest(BaseModel):
+    """A PATCH: only the fields sent change."""
+
     model_config = ConfigDict(extra="forbid")
 
-    pickup_enabled: bool = True
-    delivery_enabled: bool = False
+    pickup_enabled: bool | None = None
+    delivery_enabled: bool | None = None
+    # Paying on delivery / at pickup, for the website and WhatsApp alike.
+    cod_allowed: bool | None = None
+    first_order_cod_cap: float | None = Field(default=None, ge=0)
 
 
 class JobStatusRequest(BaseModel):
@@ -79,7 +84,7 @@ async def update_settings(
         session,
         business_id=business_id,
         actor_id=actor.request.identity_id,
-        payload=body.model_dump(),
+        payload=body.model_dump(exclude_unset=True),
     )
     await session.commit()
     return {

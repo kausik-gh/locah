@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
@@ -12,6 +13,7 @@ import {
   TH,
 } from '@/components/ModuleState'
 import { archivePlan, createPlan, transitionEnrolment } from './actions'
+import { paidWords } from '../orders/labels'
 
 export const dynamic = 'force-dynamic'
 
@@ -140,11 +142,13 @@ export default async function MembershipsPage({ params }: { params: { businessId
             <tbody>
               {enrolments.map((enrolment) => (
                 <tr key={enrolment.id} style={ROW}>
-                  <td style={TD}>{planName.get(enrolment.plan_id) || enrolment.plan_id}</td>
+                  <td style={TD}>
+                    <Link href={`/b/${params.businessId}/memberships/${enrolment.id}`}>{planName.get(enrolment.plan_id) || 'Membership'}</Link>
+                  </td>
                   <td style={TD}>
                     <StatusPill value={enrolment.status} />
                   </td>
-                  <td style={TD}>{enrolment.payment_status || '—'}</td>
+                  <td style={TD}>{paidWords(enrolment.payment_status)}</td>
                   <td style={TD}>
                     {enrolment.ends_at ? new Date(enrolment.ends_at).toLocaleDateString() : '—'}
                   </td>

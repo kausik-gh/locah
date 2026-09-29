@@ -20,6 +20,7 @@ Branch `main`. Packets done, newest last:
 | P1-10A stock depth | cb8ecc3 | test_stock_depth (19) + browser p1_10a_stock 20/20, p1_10a_counter_serials 8/8 |
 | P1-10B one customer identity | 4eea4b4 | test_customer_identity (3) + browser p1_10b_identity 14/14; suite 1048 |
 | P1-10C module-aware website + Marketplace | 366ad71 | test_module_aware_site (11) + browser p1_10c_site 21/21; suite 1059 |
+| P1-10D1 collect what is due (payments) | see git log ("feat(p1-10d1)… browser-verified") | test_payment_collect (15) + browser p1_10d1_payments 83/83 (Playwright Chromium, desktop + 390 px); suite 1073 |
 
 P1 gate after P1-10C: **TOTAL 240 · COMPLETE 122 · PARTIAL 90 · NOT_STARTED 12 ·
 ACTIVATION_REQUIRED 16 · FUTURE 0.** Whole ledger: 763 rows (P1 total grew by the
@@ -28,6 +29,9 @@ founder-refinement rows in section A2).
 P1 gate after the Orders & Customer Transactions refinement was added (no code
 change, P1-10D1 rows not yet reconciled): **TOTAL 261 · COMPLETE 126 · PARTIAL
 102 · NOT_STARTED 15 · ACTIVATION_REQUIRED 18 · FUTURE 0.** Whole ledger: 793 rows.
+
+P1 gate after P1-10D1: **TOTAL 261 · COMPLETE 131 · PARTIAL 97 · NOT_STARTED 11 ·
+ACTIVATION_REQUIRED 22 · FUTURE 0.**
 
 ### Founder refinements (authority 1) — read before touching these modules
 
@@ -61,28 +65,43 @@ sends restaurant phone orders to a WhatsApp link; the Orders refinement
 authorises AI phone ordering for simple orders where enabled. The founder
 wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 
-### P1-10D1 — collect what is due (IN PROGRESS, committed, not browser-verified)
+### P1-10D1 — collect what is due (DONE, browser-verified in the cloud session)
 
-- Migration `20260929100000_p1_payment_requests.sql` (applied to local
-  locah_test/locah_accept only): `payments_requests` (links; token stored as
-  hash; RLS), `payment_request_business()` token→business, attempts gain
-  request_id/purpose/reference/verified_at/verified_by/attention + statuses
-  cancelled/expired + methods upi_direct/cash/upi/card/bank_transfer + sources
-  invoice/khata; `partially_paid` on orders/bookings/memberships;
-  `bookings.total_amount`; `invoicing_payments.via/payment_attempt_id`.
-- `services/payment_collect.py` (money view, links, customer "I have paid" =
+- Migrations `20260929100000_p1_payment_requests.sql` (links, attempt purposes,
+  part-paid states) and `20260929110000_p1_cod_rules_with_fulfilment.sql`
+  (paying on delivery / first-order cap moved from messaging_settings to
+  fulfilment_settings — one rule for website and WhatsApp; the WhatsApp page
+  edits it through `FulfilmentService.set_payment_rules`). Applied to local DBs
+  only.
+- `services/payment_collect.py`: money view, links, customer "I have paid" =
   claim until the business confirms, withdraw, confirm/not received, record
-  cash/UPI/card/bank, settle into bill/khata exactly once, paid-twice flag,
-  owner overview counting each rupee once). `payment_attempt.apply_status` is
-  idempotent and allows late online success; web checkout honours the COD
-  first-order cap. Permission `payments.collect`.
-- API `v1_payment_collect.py`; web `/{slug}/pay/{token}`; Workspace
-  MoneyPanel on order/booking/bill/khata pages; Payments page rebuilt.
-- Tested: `test_payment_collect` (10) + full suite 1069 on local Postgres.
-- NOT done yet: browser flow (cake advance → UPI claim → confirm → balance,
-  390 px), ledger rows (PY-02/04/05/06/07, FR-PY-01..04), then P1-10D2
-  (dated pre-orders OR-04, formula pricing OK-15). Online payment on links is
-  ACTIVATION_REQUIRED (`ONLINE_LINKS_ACTIVE = False`).
+  cash/UPI/card/bank, settle exactly once, paid-twice flag, owner overview,
+  `send_on_whatsapp` (token proven by hash, `payment_due` template),
+  `close_intents` (a pay-on-delivery/at-pickup choice closes "Paid another way"
+  once the transaction is paid in full), `net_paid`.
+- Fixes the browser run found (all now tested): a bill issued from an order
+  shows what was paid on the order and refuses its own payments (one money
+  book); a failed or withdrawn try no longer resets a part-paid order/booking/
+  membership to "pending"; a part refund keeps the paid state and never
+  reopens a balance; cash settled on a COD attempt takes only the remaining
+  balance; verified payments write the owner's customer timeline; order,
+  bill, tracking and membership pages show words, never stored states
+  (`orders/labels.ts`); whole-rupee amounts without paise outside bills;
+  counter UPI tab hides "Paid ₹0" once nothing is left; new membership detail
+  page `/b/{id}/memberships/{enrolmentId}` with the Money panel.
+- Browser flow `tools/acceptance/phase_b/p1_10d1_payments.mjs` (Playwright,
+  helper `pw.mjs`): custom-cake advance → UPI claim → owner confirms from
+  Payments → part paid → bill agrees → balance: not received → retry →
+  withdraw → paid; recorded cash/UPI/card/bank; refund; fixture provider
+  replay + late success ("paid twice"); full link at 390 px; membership part
+  paid; counter split ₹400 cash + ₹600 UPI; COD first-order cap from Zones &
+  charges; store keeper 403, other business 403/404, wrong slug 404.
+- Honest remainder: online payment on links / provider status checks =
+  ACTIVATION_REQUIRED (`ONLINE_LINKS_ACTIVE = False`, Cashfree); a
+  business-set advance rule at checkout (fixed/% for cakes and pre-orders,
+  FR-PY-02) is part of P1-10D2; booking Money panel is covered by backend
+  tests, not by this browser flow; the website checkout page is still plain
+  (raw "INR", lower-case mode names) — rebuild with P1-10D2 (FR-OR-04).
 
 ### P1-10C — the site and the Marketplace follow the tools (Founder §14–16; Guide §4)
 
@@ -159,11 +178,9 @@ wins; the WhatsApp-link/human path remains for long, custom or risky orders.
 
 ## Remaining work snapshot (P1 first)
 
-P1 NOT_STARTED (15): OK-15 (formula-priced jewellery), OR-04 + FR-OR-16 (dated
+P1 NOT_STARTED (11): OK-15 (formula-priced jewellery), OR-04 + FR-OR-16 (dated
 pre-orders), FR-OR-18 (order edits that revalidate), FR-OR-23 (Orders workflow
-adapted per business), PY-02 + FR-PY-03 (payment links), PY-05/PY-06 (split tender /
-cash-card records as payment domain — POS already does both; audit and close),
-CR-04 (segments), CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation),
+adapted per business), CR-04 (segments), CR-08 + CO-01 (DPDP export/erase), OM-21 (solo navigation),
 IS-01 (basic insights), PKT-10 (P1-10 packet).
 P1 PARTIAL groups: FD-02 (portal items with Academics), FD-03 (strategy
 placement of tool sections), OM-09 (portfolio kind), OM-18 (digital delivery),
@@ -171,11 +188,41 @@ GP-22 + PR-10 (English/Tamil/Hindi), payments provider (Cashfree =
 ACTIVATION), playbook rows waiting on P2–P5 modules.
 
 Planned next packets (dependency order):
-1. **P1-10D** payment links (provider-neutral; Cashfree edge ACTIVATION),
-   COD first-order cap, dated pre-orders, formula pricing, PY-05/06 audit.
+1. **P1-10D2** dated pre-orders (OR-04/FR-OR-16, with the Orders refinement:
+   date/cutoff/lead time, advance rule at checkout, today/tomorrow/future/
+   overdue views, a real checkout page) and formula pricing (OK-15).
 2. **P1-10E** EN/TA/HI UI strings, basic insights from real data, solo
    navigation, tags/segments, DPDP export/erase; then the P1 gate.
 3. P2 → P5 per MD §26.2 / ledger sections W–AL, then E2E flows (section BG).
+
+## How to run things locally (Linux / Claude Code cloud) — used since P1-10D1
+
+- Python: `uv sync --all-packages` (needs Python 3.12; uv fetches it).
+  Node: `pnpm install --frozen-lockfile`, then build the shared packages once:
+  `for p in config contracts validation permissions observability auth api-client ui; do (cd packages/$p && pnpm run build); done`
+  (the Next apps import their `dist/`).
+- Postgres 16 (Ubuntu package, runs as the `postgres` user, not root):
+  `initdb -D /var/tmp/locah-pg/data -U postgres --auth=trust`, then
+  `pg_ctl -D /var/tmp/locah-pg/data -o '-p 54329 -c max_connections=300' start`.
+  Fresh DBs: `PGPORT=54329 bash tools/acceptance/stack/db.sh locah_test` (and
+  `locah_accept`) — every migration + seed in ~3 s. A new migration on an
+  existing DB: `psql -h localhost -p 54329 -U postgres -d <db> -f <file>`.
+- Backend suite from `apps/api` (as on Windows, with `../../.venv/bin/python`
+  and `-n 3` on a 4-core box).
+- Stack: `node tools/acceptance/stack/mock-auth.mjs`, `bash tools/acceptance/stack/api.sh`
+  (set `PAYMENT_WEBHOOK_SECRET=local-acceptance-webhook-secret` for the fixture
+  webhook steps), `web.sh`, `workspace.sh`, `worker.sh` — each backgrounded with
+  `setsid nohup … &`. `uv run --no-env-file python tools/acceptance/stack/recordings.py acceptance-out`
+  once; sessions: `owner.py locah_accept acceptance-out/owner2.json` (owner) and
+  `… acceptance-out/session.json` (customer). Exactly one worker.
+- The image has no `ss`: find a port's process through `/proc` (or `lsof -i :8010`)
+  and restart by PID. Never `pkill -f <pattern>` from a shell whose own
+  command line contains the pattern — it kills that shell.
+- Browser flows: new flows use Playwright with the global install and
+  `/opt/pw-browsers` Chromium (`tools/acceptance/phase_b/pw.mjs`):
+  `node tools/acceptance/phase_b/p1_10d1_payments.mjs`. Older CDP flows run with
+  `CHROME_PATH=/opt/pw-browsers/chromium CHROME_NO_SANDBOX=1`. Screenshots in
+  `acceptance-out/phase_b/<flow>/` (git-ignored) — look at them.
 
 ## How to run things locally (Windows)
 

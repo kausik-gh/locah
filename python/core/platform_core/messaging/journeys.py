@@ -615,18 +615,19 @@ async def _is_first_order(ctx: Ctx) -> bool:
 
 
 async def _payment(ctx: Ctx) -> bool:
-    from platform_core.services.messaging import MessagingService
+    from platform_core.services.fulfilment import FulfilmentService
 
-    s = await MessagingService.settings(ctx.session, ctx.business.id)
+    rules = await FulfilmentService.payment_rules(ctx.session, ctx.business.id)
+    cap = rules["first_order_cap"]
     priced = await _price_cart(ctx, list(ctx.j.get("cart") or []))
     charge = Decimal(str(ctx.j.get("charge") or 0)) if ctx.j.get("mode") == "delivery" else Decimal(0)
     total = priced["subtotal"] + charge
-    if not s.cod_allowed:
+    if not rules["on_delivery"]:
         await ctx.ask(buttons("Paying online on WhatsApp is not available yet. A person will help you finish this order.",
                               [("talk_to_person", "Talk to a person"), ("menu", "Menu")]))
         return True
-    if s.first_order_cod_cap is not None and await _is_first_order(ctx) and total > Decimal(str(s.first_order_cod_cap)):
-        await ctx.ask(buttons(f"For a first order, cash on delivery is up to {_inr(s.first_order_cod_cap)}. "
+    if cap is not None and await _is_first_order(ctx) and total > Decimal(str(cap)):
+        await ctx.ask(buttons(f"For a first order, cash on delivery is up to {_inr(Decimal(str(cap)))}. "
                               "A person will help you pay for this one.",
                               [("talk_to_person", "Talk to a person"), ("o:start", "Change the cart")]))
         return True

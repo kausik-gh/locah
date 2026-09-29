@@ -23,7 +23,7 @@ export type PayView = {
 }
 
 const rupees = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(v)
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: Number.isInteger(v) ? 0 : 2 }).format(v)
 
 /** The customer's side of a payment link: pay, say so, check again, or take it back. */
 export function PayActions({

@@ -508,3 +508,37 @@ done("P1-10C", {
     "OM-19": dict(status=C, code="a business with no online selling gets an information site whose main button is Call or WhatsApp, WhatsApp journeys and the counter (P1-04, P1-07/08); switching ordering on later adds the shop, basket and Order button without a rebuild",
                   test=_MA_TEST),
 })
+
+
+# ---------------------------------------------------------------- P1-10D1 collect what is due (Founder refinement — Payments)
+_PY_TEST = ("✓ test_payment_collect (15, platform_api RLS role) + browser p1_10d1_payments (83/83, Playwright Chromium), "
+            "desktop + 390 px, local worker, sandbox WhatsApp number, fixture provider webhooks")
+_PY_ONLINE = "online payment on a link needs the provider adapter (Cashfree, PY-10) — not offered, never a button that cannot work"
+done("P1-10D1", {
+    "PY-02": dict(status=A, code="a payment link for all or part of what is due on an order, booking, membership, bill or khata balance (7 days; the token is stored only as a hash): shared from the owner's phone or sent from the business's own WhatsApp number (payment_due template; sandbox-verified, a live number needs Meta activation MS-07); the customer pays by UPI straight to the business and says so, the business confirms it arrived; retry, withdraw, cancel and expiry on the same transaction. " + _PY_ONLINE + "; renewal reminders that carry a link come with the Memberships lifecycle (FR-MB-02, P2)",
+                  db="✓ payments_requests + RLS", svc="✓ /collect/requests, /whatsapp, public /pay/{token}", perm="✓ payments.collect; store keeper 403; other business 404",
+                  ws="✓ Money panel on order, booking, membership, bill, khata", cust="✓ /{slug}/pay/{token} in the business's colours", test=_PY_TEST),
+    "PY-04": dict(status=C, code="advances and deposits on orders, bookings and memberships by link or recorded at the desk; total, paid and balance always shown; booking deposits as before; a quote's deposit is collected on the order it converts into (project milestone payments are P5, OM-08)",
+                  ws="✓", test=_PY_TEST),
+    "PY-05": dict(status=C, code="split tender at the counter — cash, UPI, card on the business's terminal and khata in one bill that sees the combined settlement (₹400 cash + ₹600 UPI in the browser); several recorded payments settle one order, booking or membership",
+                  ws="✓ counter + Money panel", test=_PY_TEST + "; test_pos"),
+    "PY-06": dict(status=C, code="cash, UPI, card on the business's own terminal and bank transfer recorded with a reference against counter bills, orders, bookings and memberships — never more than is due; cash collected on delivery settles only the balance left after an advance",
+                  ws="✓", test=_PY_TEST),
+    "PY-07": dict(status=C, code="paying on delivery or at pickup on/off with a cap for a customer's first order: one rule for the website and WhatsApp, kept with pickup and delivery (Deliveries & pickup › Zones & charges, and the WhatsApp page edits the same rule); the checkout states the cap and refuses a first COD order above it; pay at pickup is not COD",
+                  db="✓ fulfilment_settings.cod_allowed / first_order_cod_cap (moved from messaging_settings)", ws="✓ Zones & charges", web="✓ checkout", test=_PY_TEST),
+    "PS-03": dict(status=A, code="cash with change, UPI QR for the exact amount (cashier confirms, or 'UPI to verify'), card with reference, khata with limit and manager's PIN, split tenders (browser-verified); change only from cash. Automatic UPI confirmation by a payment webhook needs the provider (Cashfree, activation required)",
+                  ws="✓", test="✓ test_pos + test_khata + browser p1_05, p1_06, p1_10d1"),
+    "FR-PY-01": dict(status=A, code="payment state is separate from the transaction's own state (unpaid, being confirmed, paid, failed, part paid, refunded, part refunded, cancelled, expired); a failed try never undoes money already taken; retry is a new attempt on the same transaction — never a new order; nothing new is offered while a try is being confirmed; a replayed success pays once and a late success on an older try is kept and flagged 'paid twice' (fixture webhooks). Checking a pending online payment with the provider before another try needs the provider adapter (Cashfree)",
+                     svc="✓", test=_PY_TEST),
+    "FR-PY-02": dict(status=P, code="full, advance, deposit, balance and pay-later collection chosen by the owner per transaction; total, paid and balance on every surface; the balance collected later by link, at the counter, in cash or by UPI. A business-set rule that asks for an advance at checkout (fixed or % — custom cakes, pre-orders) arrives with dated pre-orders (P1-10D2)",
+                     test=_PY_TEST),
+    "FR-PY-03": dict(status=A, code="the link is tied to the real order, booking, membership, bill or khata balance and can go on WhatsApp from the business's number or the owner's phone; UPI to the business is confirmed by the business, and a verified provider webhook would mark the same record paid exactly once (fixture). " + _PY_ONLINE,
+                     test=_PY_TEST),
+    "FR-PY-04": dict(status=C, code="refunds link to a prior payment (full or part) and keep the original and the net; a refund never reopens a balance to chase; a bill issued from an order shows what was paid on the order and takes money only through the order (one money book); owner Payments: paid today (verified money only, each rupee once), waiting for you to confirm, needs attention (failed, paid twice), still owed, refunds",
+                     ws="✓ Payments", test=_PY_TEST),
+    "CR-02": dict(status=P, code="the customer page timeline reads as sentences and now includes each verified payment ('Paid ₹800 (advance) by UPI · Order …') beside orders, bookings and memberships; counter bills, messages, reviews and jobs join as those modules write to it",
+                  ws="✓ Customer › Activity", test=_PY_TEST),
+    "FR-OR-10": dict(status=P, code="the counter does the whole workflow (P1-05/06, serials and batches P1-10A, split tender browser-verified in P1-10D1); a counter bill for a named customer reaches their My Activity and khata, but counter bills do not yet write the owner's customer timeline (CR-02)",
+                     test="✓ test_pos + browser p1_05_pos, p1_10a_counter_serials, p1_10d1_payments"),
+    "FR-OR-07": dict(status=P, code="pickup, delivery zones with charges, paying on delivery on/off with a first-order cap (now one rule for website and WhatsApp, P1-10D1), GST treatment and readiness-driven channels exist; minimum order, free-delivery threshold, preorder rules, cutoff, lead time, cancellation/return policy, packing charge, auto-accept and dine-in are absent, shipping needs an aggregator (FU-02), and settings are not yet filtered to what the business uses"),
+})

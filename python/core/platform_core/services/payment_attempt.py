@@ -76,12 +76,17 @@ class PaymentAttemptService:
 
                 order.payment_status = await PaymentCollectService.paid_status(
                     session, payment, Decimal(str(order.total_amount))) or "paid"
+                if order.payment_status == "paid":
+                    await PaymentCollectService.close_intents(session, payment)
             elif payment.status == "pending_offline" and order.payment_status not in {"paid", "partially_paid"}:
                 order.payment_status = "pending_offline"
             elif payment.status in {"refunded", "partially_refunded"}:
-                order.payment_status = "refunded"
-            elif payment.status == "failed":
-                order.payment_status = "pending"
+                order.payment_status = await PaymentAttemptService._after_refund(session, payment,
+                                                                                 order.payment_status)
+            elif payment.status in {"failed", "cancelled"}:
+                # A failed try never undoes money already taken (an advance stays paid).
+                order.payment_status = await PaymentAttemptService._after_failure(
+                    session, payment, Decimal(str(order.total_amount)))
             order.version += 1
         elif payment.source_type == "booking":
             booking = await BookingResolver.resolve(
@@ -93,6 +98,8 @@ class PaymentAttemptService:
                 state = await PaymentCollectService.paid_status(session, payment, Decimal(str(booking.total_amount)))
                 booking.payment_status = ("deposit_paid" if state == "partially_paid" and payment.purpose == "deposit"
                                           else state or booking.payment_status)
+                if booking.payment_status == "paid":
+                    await PaymentCollectService.close_intents(session, payment)
             elif payment.status == "succeeded":
                 # Deposit attempts mark deposit_paid; full/remaining mark paid.
                 meta = payment.provider_metadata or {}
@@ -108,9 +115,13 @@ class PaymentAttemptService:
                     "paid", "partially_paid", "deposit_paid"}:
                 booking.payment_status = "pending_offline"
             elif payment.status in {"refunded", "partially_refunded"}:
-                booking.payment_status = "refunded"
-            elif payment.status == "failed":
-                booking.payment_status = "pending"
+                booking.payment_status = await PaymentAttemptService._after_refund(session, payment,
+                                                                                   booking.payment_status)
+            elif payment.status in {"failed", "cancelled"}:
+                if booking.payment_status not in {"paid", "partially_paid", "deposit_paid"}:
+                    booking.payment_status = await PaymentAttemptService._after_failure(
+                        session, payment,
+                        Decimal(str(booking.total_amount)) if booking.total_amount is not None else None)
             booking.version += 1
         elif payment.source_type == "membership":
             from platform_core.resolvers.membership_resolver import MembershipResolver
@@ -125,13 +136,56 @@ class PaymentAttemptService:
                 plan = await session.get(MembershipPlan, enrolment.plan_id)
                 price = Decimal(str(plan.price_amount)) if plan is not None and plan.price_amount else None
                 enrolment.payment_status = await PaymentCollectService.paid_status(session, payment, price) or "paid"
+                if enrolment.payment_status == "paid":
+                    await PaymentCollectService.close_intents(session, payment)
             elif payment.status == "pending_offline" and enrolment.payment_status not in {"paid", "partially_paid"}:
                 enrolment.payment_status = "pending_offline"
             elif payment.status in {"refunded", "partially_refunded"}:
-                enrolment.payment_status = "refunded"
-            elif payment.status == "failed":
-                enrolment.payment_status = "pending"
+                enrolment.payment_status = await PaymentAttemptService._after_refund(session, payment,
+                                                                                     enrolment.payment_status)
+            elif payment.status in {"failed", "cancelled"}:
+                from platform_core.models import MembershipPlan
+
+                plan = await session.get(MembershipPlan, enrolment.plan_id)
+                price = Decimal(str(plan.price_amount)) if plan is not None and plan.price_amount else None
+                enrolment.payment_status = await PaymentAttemptService._after_failure(session, payment, price)
             enrolment.version += 1
+
+    @staticmethod
+    async def _timeline(session: AsyncSession, payment: PaymentAttempt) -> None:
+        """Verified money on the customer's page, next to the order it paid for."""
+        if payment.customer_contact_id is None or payment.source_type not in ("order", "booking", "membership"):
+            return
+        from platform_core.services.customer_timeline import CustomerTimelineService
+        from platform_core.services.payment_collect import PURPOSES, PaymentCollectService
+
+        try:
+            label = (await PaymentCollectService.source(session, payment.business_id, payment.source_type,
+                                                        payment.source_id)).label
+        except Exception:  # noqa: BLE001 - the label is decoration only
+            label = payment.source_type
+        await CustomerTimelineService.record_entry(
+            session, business_id=payment.business_id, contact_id=payment.customer_contact_id,
+            activity_type="payment.received", resource_type=payment.source_type, resource_id=payment.source_id,
+            summary={"amount": float(payment.amount), "for": label,
+                     "purpose_label": PURPOSES.get(str(payment.purpose or ""), None),
+                     "method_label": PaymentCollectService._attempt_row(payment)["method_label"]})
+
+    @staticmethod
+    async def _after_failure(session: AsyncSession, payment: PaymentAttempt, total: Decimal | None) -> str:
+        from platform_core.services.payment_collect import PaymentCollectService
+
+        return await PaymentCollectService.paid_status(session, payment, total) or "pending"
+
+    @staticmethod
+    async def _after_refund(session: AsyncSession, payment: PaymentAttempt, current: str) -> str:
+        """Refunded only when nothing is left after refunds; a part refund keeps
+        the transaction's paid state (the money view shows "Part refunded")."""
+        from platform_core.services.payment_collect import PaymentCollectService
+
+        net = await PaymentCollectService.net_paid(session, payment.business_id, payment.source_type,
+                                                   payment.source_id)
+        return "refunded" if net <= 0 else current
 
     @staticmethod
     async def _publish_status(
@@ -375,6 +429,7 @@ class PaymentAttemptService:
             from platform_core.services.payment_collect import PaymentCollectService
 
             await PaymentCollectService.settle(session, payment, actor_id)
+            await PaymentAttemptService._timeline(session, payment)
         after = PaymentAttemptService.serialize(payment)
         event_map = {
             "succeeded": "payment.completed",
@@ -423,6 +478,25 @@ class PaymentAttemptService:
                 "Only offline payments awaiting settlement can be recorded",
                 details={"status": payment.status},
             )
+        if payment.source_type in ("order", "booking", "membership"):
+            # Cash collected on delivery or at the counter settles what is still
+            # due — an advance already paid by link is not taken twice (§10).
+            from platform_core.services.payment_collect import PaymentCollectService
+
+            view = await PaymentCollectService.money(session, business_id, payment.source_type, payment.source_id)
+            if view["balance"] is not None:
+                balance = Decimal(str(view["balance"]))
+                if balance <= 0:
+                    raise ValidationError("Nothing is left to collect — this is already paid",
+                                          details={"code": "nothing_due"})
+                if Decimal(str(payment.amount)) > balance:
+                    await AuditService.record(
+                        session, event_type="payment.amount_adjusted", actor_identity_id=actor_id,
+                        actor_context="business", action="adjust", business_id=business_id,
+                        resource_type="payment_attempt", resource_id=payment.id,
+                        before_state={"amount": float(payment.amount)},
+                        after_state={"amount": float(balance), "reason": "part already paid"})
+                    payment.amount = float(balance)
         return await PaymentAttemptService.apply_status(
             session,
             payment=payment,

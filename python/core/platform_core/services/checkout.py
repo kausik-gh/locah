@@ -58,12 +58,8 @@ class CheckoutService:
     async def cod_rules(session: AsyncSession, business_id: uuid.UUID) -> dict[str, Any]:
         """Cash on delivery as the business set it (read-only; no settings row
         is created by a visitor)."""
-        from platform_core.models import MessagingSettings
-
-        row = await session.get(MessagingSettings, business_id)
-        return {"on_delivery": True if row is None else bool(row.cod_allowed),
-                "first_order_cap": float(row.first_order_cod_cap) if row is not None
-                and row.first_order_cod_cap is not None else None}
+        rules: dict[str, Any] = await FulfilmentService.payment_rules(session, business_id)
+        return rules
 
     @staticmethod
     async def _assert_cod(session: AsyncSession, business_id: uuid.UUID, contact_id: uuid.UUID,

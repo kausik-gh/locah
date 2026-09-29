@@ -5,6 +5,17 @@ import { fetchTracking } from '@/lib/checkout-api'
 
 export const dynamic = 'force-dynamic'
 
+/** The customer reads plain words, never stored states (Founder refinement — Payments §13). */
+const PAYMENT_WORDS: Record<string, string> = {
+  pending: 'Not paid yet',
+  pending_offline: 'To pay when you collect it',
+  partially_paid: 'Part paid',
+  paid: 'Payment received',
+  refunded: 'Refunded',
+  partially_refunded: 'Part refunded',
+  failed: 'Payment failed — try again',
+}
+
 /** WEB-008 Order Tracking — Doc 12 §11.2 / Doc 09 WEB-008. */
 export default async function TrackOrderPage({
   params,
@@ -45,7 +56,7 @@ export default async function TrackOrderPage({
     <TrackingShell slug={params.slug}>
       <h1>Order {data.order.order_number}</h1>
       <p style={{ opacity: 0.8 }}>Order status: {data.order.status}</p>
-      <p style={{ opacity: 0.8 }}>Payment: {data.order.payment_status}</p>
+      <p style={{ opacity: 0.8 }}>Payment: {PAYMENT_WORDS[data.order.payment_status] || 'Being checked'}</p>
       {data.fulfilment ? (
         <section style={{ marginTop: '1.25rem' }}>
           <h2>Fulfilment</h2>

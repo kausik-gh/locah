@@ -208,6 +208,128 @@ def test_money_recorded_at_the_counter_against_an_order(monkeypatch: Any) -> Non
     assert sql("select payment_status from orders_orders where id = :o", o=order["id"]) == [("paid",)]
 
 
+@DB
+def test_one_money_book_per_sale_after_an_advance(monkeypatch: Any) -> None:
+    """Found in the P1-10D1 browser run: a failed balance try, the bill issued
+    from the order, the pay-at-pickup choice and a refund must all agree with
+    what was actually paid on the order."""
+    owner, shop = _shop(monkeypatch)
+    order = _order(owner, shop, qty=2)  # ₹2,000
+    base = shop["base"]
+    # the customer chose "pay at pickup" at checkout: an intent, not money
+    intent = str(uuid.uuid4())
+    sql("INSERT INTO payments_payment_attempts (id, business_id, source_type, source_id, amount, payment_method, "
+        "status, provider, customer_contact_id) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), 'order', "
+        "CAST(:o AS uuid), 2000, 'pay_at_business', 'pending_offline', 'offline', CAST(:c AS uuid))",
+        id=intent, b=shop["bid"], o=order["id"], c=shop["customer"])
+    advance = _ask(owner, shop, "order", order["id"], 800, "advance")
+    client.post(_page(shop, advance) + "/paid", json={"reference": "UTR 1"})
+    first = sql("select id from payments_payment_attempts where request_id = :r", r=advance["id"])[0][0]
+    client.post(f"{base}/collect/payments/{first}/confirm", json={"arrived": True}, headers=owner)
+
+    # the bill issued from the order knows about the advance, and takes no money of its own
+    bill = client.post(f"{base}/invoices/from-order/{order['id']}", json={}, headers=owner)
+    assert bill.status_code == 200, bill.text
+    doc = client.get(f"{base}/invoices/{bill.json()['data']['id']}", headers=owner).json()["data"]
+    assert (doc["payment_status"], doc["paid_on_order"], doc["outstanding"]) == ("part_paid", 800.0, 1200.0)
+    direct = client.post(f"{base}/invoices/{doc['id']}/payments", json={"amount": 100, "method": "cash"},
+                         headers=owner)
+    assert direct.status_code == 409 and "record the money on the order" in direct.text
+
+    # a failed balance try never undoes the advance
+    balance = _ask(owner, shop, "order", order["id"], 1200, "balance")
+    client.post(_page(shop, balance) + "/paid", json={})
+    second = sql("select id from payments_payment_attempts where request_id = :r", r=balance["id"])[0][0]
+    client.post(f"{base}/collect/payments/{second}/confirm", json={"arrived": False}, headers=owner)
+    assert sql("select payment_status from orders_orders where id = :o", o=order["id"]) == [("partially_paid",)]
+    due = _due(owner, shop, "order", order["id"])
+    [row] = [a for a in due["attempts"] if a["id"] == intent]
+    assert row["amount"] == 1200.0, "the pay-at-pickup choice stands for what is still to collect"
+
+    # collecting cash at pickup takes the balance, not the whole order again
+    settled = client.post(f"{base}/payments/{intent}/record-settlement", json={}, headers=owner)
+    assert settled.status_code == 200, settled.text
+    due = _due(owner, shop, "order", order["id"])
+    assert (due["paid"], due["balance"], due["state"]) == (2000.0, 0.0, "paid")
+    again = client.post(f"{base}/payments/{intent}/record-settlement", json={}, headers=owner)
+    assert again.status_code in (409, 422)
+    doc = client.get(f"{base}/invoices/{doc['id']}", headers=owner).json()["data"]
+    assert doc["payment_status"] == "paid" and doc["paid_via_order"] is True
+
+    # the customer's page shows each payment in words
+    kinds = [r[0] for r in sql("select activity_type from customer_relationships_timeline_entries where business_id = :b "
+                               "and contact_id = :c order by occurred_at", b=shop["bid"], c=shop["customer"])]
+    assert kinds.count("payment.received") == 2, kinds
+
+    # a refund is given back on purpose: it never reopens a balance to chase
+    cash_id = sql("select id from payments_payment_attempts where id = :i", i=intent)[0][0]
+    refund = client.post(f"{base}/payments/{cash_id}/refunds", json={"amount": 200, "reason": "Broken"}, headers=owner)
+    assert refund.status_code == 200, refund.text
+    due = _due(owner, shop, "order", order["id"])
+    assert (due["refunded"], due["balance"], due["state"], due["collectable"]) == (200.0, 0.0, "partially_refunded",
+                                                                                   True)
+    assert sql("select payment_status from orders_orders where id = :o", o=order["id"]) == [("paid",)]
+
+
+@DB
+def test_an_order_paid_by_link_closes_the_pay_on_delivery_choice(monkeypatch: Any) -> None:
+    owner, shop = _shop(monkeypatch)
+    order = _order(owner, shop)
+    intent = str(uuid.uuid4())
+    sql("INSERT INTO payments_payment_attempts (id, business_id, source_type, source_id, amount, payment_method, "
+        "status, provider) VALUES (CAST(:id AS uuid), CAST(:b AS uuid), 'order', CAST(:o AS uuid), 1000, 'cod', "
+        "'pending_offline', 'offline')", id=intent, b=shop["bid"], o=order["id"])
+    client.post(f"{shop['base']}/collect/record", json={"source_type": "order", "source_id": order["id"],
+                                                        "amount": 1000, "method": "upi"}, headers=owner)
+    assert sql("select status, failure_reason from payments_payment_attempts where id = :i", i=intent) == [
+        ("cancelled", "Paid another way")]
+    assert client.post(f"{shop['base']}/payments/{intent}/record-settlement", json={},
+                       headers=owner).status_code in (409, 422)
+
+
+@DB
+def test_cash_on_delivery_rules_live_with_pickup_and_delivery(monkeypatch: Any) -> None:
+    """A business without WhatsApp sets the rule where it sets pickup and delivery;
+    the WhatsApp page edits the same rule."""
+    _, owner = new_identity(monkeypatch)
+    bid = create_business(client, owner, modules=("offerings-catalog", "orders", "fulfilment", "payments"))
+    r = client.patch(f"/v1/b/{bid}/fulfilment/settings", json={"first_order_cod_cap": 700}, headers=owner)
+    assert r.status_code == 200, r.text
+    assert (r.json()["data"]["first_order_cod_cap"], r.json()["data"]["pickup_enabled"]) == (700.0, True)
+    slug = client.get(f"/v1/b/{bid}", headers=owner).json()["data"]["slug"]
+    client.post(f"/v1/b/{bid}/marketplace/visibility", json={"visibility": "unlisted"}, headers=owner)
+    assert client.post(f"/v1/b/{bid}/website/publish", headers=owner).status_code == 200
+    options = client.get(f"/v1/public/websites/{slug}/checkout/options").json()["data"]
+    assert options["cod"] == {"on_delivery": True, "first_order_cap": 700.0}
+    off = client.patch(f"/v1/b/{bid}/fulfilment/settings", json={"cod_allowed": False, "first_order_cod_cap": None},
+                       headers=owner).json()["data"]
+    assert (off["cod_allowed"], off["first_order_cod_cap"], off["pickup_enabled"]) == (False, None, True)
+    bad = client.patch(f"/v1/b/{bid}/fulfilment/settings", json={"first_order_cod_cap": 0}, headers=owner)
+    assert bad.status_code == 422
+
+
+@DB
+def test_a_link_is_sent_from_the_business_number_only_by_whoever_holds_it(monkeypatch: Any) -> None:
+    monkeypatch.setenv("MESSAGING_SANDBOX", "1")
+    owner, shop = _shop(monkeypatch, "messaging")
+    order = _order(owner, shop)
+    no_number = _ask(owner, shop, "order", order["id"], 400, "advance")
+    assert no_number["from_number"] is False, "not offered before WhatsApp is connected"
+    r = client.post(f"{shop['base']}/messaging/channel/sandbox", json={"display_phone": "+919840000001"},
+                    headers=owner)
+    assert r.status_code == 200, r.text
+    link = _ask(owner, shop, "order", order["id"], 400, "advance")
+    assert link["from_number"] is True
+    token = link["path"].rsplit("/", 1)[1]
+    wrong = client.post(f"{shop['base']}/collect/requests/{link['id']}/whatsapp", json={"token": "x" * 24},
+                        headers=owner)
+    assert wrong.status_code == 404, "a guessed token sends nothing"
+    sent = client.post(f"{shop['base']}/collect/requests/{link['id']}/whatsapp", json={"token": token}, headers=owner)
+    assert sent.status_code == 200, sent.text
+    body = sent.json()["data"]["body"]
+    assert "₹400 (advance for Order" in body and f"/pay/{token}" in body
+
+
 # ---------------------------------------------------------------- bills and khata, counted once
 @DB
 def test_a_bill_and_a_khata_balance_paid_by_link_are_counted_once(monkeypatch: Any) -> None:

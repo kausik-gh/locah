@@ -851,6 +851,9 @@ class FulfilmentSettings(Base):
     delivery_fee_offering_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("offerings_catalog_offerings.id"), nullable=True
     )
+    # Paying on delivery / at pickup, for every channel (20260929110000).
+    cod_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    first_order_cod_cap: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 

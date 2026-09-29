@@ -6,6 +6,7 @@ import {
   cancelPaymentLink,
   confirmPayment,
   recordMoney,
+  sendPaymentLink,
   type LinkResult,
 } from '@/lib/collect-actions'
 
@@ -47,7 +48,9 @@ export type Due = {
 }
 
 const rupees = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(v)
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: Number.isInteger(v) ? 0 : 2 }).format(v)
+/** What the customer chose at checkout (pay on delivery, at pickup, later) — an intent, not money. */
+const OFFLINE_INTENT = new Set(['cod', 'pay_at_business', 'pay_later'])
 const STATUS_WORDS: Record<string, string> = {
   succeeded: 'Received',
   pending_offline: 'Waiting',
@@ -116,7 +119,7 @@ export function MoneyPanel({ businessId, path, due }: { businessId: string; path
         <div>
           <dt>State</dt>
           <dd>
-            <span className={`bos-state ${due.state === 'paid' ? 'is-ready' : ''}`}>{due.state_words}</span>
+            <span className={`bos-state ${due.state === 'paid' ? 'is-ready' : ''}`}>{due.state_words.split(' · ')[0]}</span>
           </dd>
         </div>
       </dl>
@@ -204,8 +207,16 @@ export function MoneyPanel({ businessId, path, due }: { businessId: string; path
           </p>
           <input readOnly value={link.url} aria-label="Payment link" onFocus={(e) => e.currentTarget.select()} />
           <div className="bos-money__row">
+            {link.from_number ? (
+              <button type="button" disabled={pending}
+                onClick={() => run(() => sendPaymentLink(businessId, link.id, link.url), () => setDone('Sent from your WhatsApp number.'))}>
+                Send from your WhatsApp number
+              </button>
+            ) : null}
             {link.whatsapp ? (
-              <a className="btn" href={link.whatsapp} target="_blank" rel="noopener noreferrer">Send on WhatsApp</a>
+              <a className={link.from_number ? 'btn btn-ghost' : 'btn'} href={link.whatsapp} target="_blank" rel="noopener noreferrer">
+                {link.from_number ? 'Send from my phone' : 'Send on WhatsApp'}
+              </a>
             ) : null}
             <button type="button" className="btn-ghost"
               onClick={() => { void navigator.clipboard?.writeText(`${link.message}`); setDone('Copied.') }}>
@@ -285,7 +296,11 @@ export function MoneyPanel({ businessId, path, due }: { businessId: string; path
                 <div>
                   <strong>{rupees(a.amount)} · {a.method_label}</strong>
                   <p>
-                    {STATUS_WORDS[a.status] || a.status}
+                    {OFFLINE_INTENT.has(a.method) && a.status === 'pending_offline'
+                      ? 'Not collected yet'
+                      : OFFLINE_INTENT.has(a.method) && a.status === 'cancelled'
+                        ? a.failure_reason || 'Closed'
+                        : STATUS_WORDS[a.status] || a.status}
                     {a.reference ? ` · ${a.reference}` : ''}
                     {a.created_at ? ` · ${new Date(a.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}
                     {a.attention === 'paid_twice' ? ' · paid twice — refund due' : ''}

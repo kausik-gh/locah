@@ -58,8 +58,9 @@ type MerchantConnection = {
   provider_metadata?: { mode?: string; connection_mode?: string }
 } | null
 
+const REFUND_WORDS: Record<string, string> = { succeeded: 'Refunded', pending: 'Being refunded', processing: 'Being refunded', failed: 'Refund failed' }
 const rupees = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(v)
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: Number.isInteger(v) ? 0 : 2 }).format(v)
 
 function sourceHref(businessId: string, type: string, id: string) {
   const b = `/b/${businessId}`
@@ -200,7 +201,7 @@ export default async function PaymentsPage({ params }: { params: { businessId: s
               <li key={r.id}>
                 <div>
                   <strong>{rupees(r.amount)}</strong>
-                  <p>{r.reason || 'Refund'} · {r.status}</p>
+                  <p>{r.reason || 'Refund'} · {REFUND_WORDS[r.status] || 'Being processed'}</p>
                 </div>
                 <Link href={sourceHref(params.businessId, r.source_type, r.source_id)}>Open</Link>
               </li>

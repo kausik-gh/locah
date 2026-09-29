@@ -72,6 +72,8 @@ export type Bill = {
   outstanding: number
   credited: number
   paid_via_order: boolean
+  /** Verified money taken on the order this bill came from (advance, cash at pickup). */
+  paid_on_order?: number
   notes: string | null
   cancel_reason: string | null
   register_id: string

@@ -60,6 +60,8 @@ RECORDED_METHODS = {"cash": "Cash", "upi": "UPI", "card": "Card (own terminal)",
 _INVOICE_METHOD = {"upi_direct": "upi", "online": "other", "cash": "cash", "upi": "upi", "card": "card",
                    "bank_transfer": "bank_transfer"}
 LINK_DAYS = 7
+# Chosen at checkout; settled by collecting the money, closed if it came another way.
+OFFLINE_INTENTS = ("cod", "pay_at_business", "pay_later")
 ONLINE_LINKS_ACTIVE = False
 
 # What a customer reads (§13) — never provider words.
@@ -223,9 +225,17 @@ class PaymentCollectService:
         elif src.own_balance is not None:
             balance = src.own_balance
         else:
-            balance = max(src.total - paid + refunded, ZERO) if src.total is not None else None
+            # A refund is money the business chose to give back (a return, a
+            # goodwill gesture); it never reopens a balance to chase (§9).
+            balance = max(src.total - paid, ZERO) if src.total is not None else None
         state = payment_state(src.total, paid, refunded, pending=awaiting > 0,
                               last_failed=bool(last and last.status == "failed"))
+        pickup = False
+        if src.source_type == "order":
+            from platform_core.models import FulfilmentJob
+
+            pickup = (await session.execute(select(FulfilmentJob.mode).where(
+                FulfilmentJob.business_id == business_id, FulfilmentJob.order_id == src.source_id))).scalar() == "pickup"
         if src.source_type == "khata":
             state = "pending" if awaiting > 0 else ("unpaid" if (balance or 0) > 0 else "paid")
         words = STATE_WORDS[state]
@@ -237,8 +247,20 @@ class PaymentCollectService:
             "balance": _f(balance), "state": state, "state_words": words, "collectable": src.collectable,
             "why_not": src.why_not, "customer_contact_id": str(src.customer_contact_id) if src.customer_contact_id
             else None,
-            "attempts": [PaymentCollectService._attempt_row(a) for a in reversed(attempts)],
+            "attempts": [PaymentCollectService._intent_row(a, balance, pickup) if a.payment_method in OFFLINE_INTENTS
+                         else PaymentCollectService._attempt_row(a) for a in reversed(attempts)],
         }
+
+    @staticmethod
+    def _intent_row(a: PaymentAttempt, balance: Decimal | None, pickup: bool) -> dict[str, Any]:
+        """What the customer chose at checkout — pay on delivery, at pickup or
+        later. Not money: while open it stands for what is still to collect."""
+        row = PaymentCollectService._attempt_row(a)
+        if a.payment_method == "cod":
+            row["method_label"] = "Pay at pickup" if pickup else "Cash on delivery"
+        if a.status == "pending_offline" and balance is not None:
+            row["amount"] = float(min(_d(a.amount), balance))
+        return row
 
     @staticmethod
     def _attempt_row(a: PaymentAttempt) -> dict[str, Any]:
@@ -301,6 +323,39 @@ class PaymentCollectService:
                                   actor_context="business", action="cancel", business_id=business_id,
                                   resource_type="payment_request", resource_id=req.id)
         return req
+
+    @staticmethod
+    async def send_on_whatsapp(session: AsyncSession, business_id: uuid.UUID, actor_id: uuid.UUID,
+                               request_id: uuid.UUID, token: str) -> Any:
+        """Send an open link from the business's own WhatsApp number. The caller
+        proves it holds the link (its token matches the stored hash); LOCAH
+        never keeps the token itself."""
+        from platform_core.models import Business, CustomerContact
+        from platform_core.services.messaging import MessagingService, NotSent
+        from platform_core.site_urls import business_site_url
+
+        req = await PaymentCollectService._request(session, business_id, request_id)
+        if not secrets.compare_digest(req.token_hash, token_hash(token)):
+            raise ResourceNotFound("Payment link")
+        if req.status != "open" or req.expires_at <= datetime.now(timezone.utc):
+            raise ConflictError("Only an open payment link can be sent")
+        contact = await session.get(CustomerContact, req.customer_contact_id) if req.customer_contact_id else None
+        if contact is None or not contact.phone:
+            raise ValidationError("This customer has no phone number", details={"field": "phone"})
+        business = await session.get(Business, business_id)
+        assert business is not None
+        src = await PaymentCollectService.source(session, business_id, req.source_type, req.source_id)
+        what = f"{_inr(_d(req.amount))} ({PURPOSES[req.purpose].lower()} for {src.label})"
+        try:
+            msg = await MessagingService.send_template(
+                session, business_id, to=contact.phone, key="payment_due", contact_id=contact.id,
+                params=[business.display_name, what, business_site_url(business.slug, f"/pay/{token}")],
+                sent_via="workspace", sent_by=actor_id, idempotency_key=f"payreq:{req.id}:{uuid.uuid4()}")
+        except NotSent as exc:
+            raise ConflictError(str(exc)) from exc
+        if msg.status != "sent":
+            raise ConflictError(f"Not sent: {msg.error or msg.status}")
+        return msg
 
     @staticmethod
     async def _request(session: AsyncSession, business_id: uuid.UUID, request_id: uuid.UUID) -> PaymentRequest:
@@ -569,6 +624,21 @@ class PaymentCollectService:
                                         idempotency_key=f"pay:{attempt.id}")
 
     @staticmethod
+    async def close_intents(session: AsyncSession, attempt: PaymentAttempt) -> None:
+        """Once a transaction is paid in full, the customer's "pay on delivery /
+        at pickup" choice has nothing left to collect: close it, so nobody
+        collects the money a second time."""
+        others = (await session.execute(select(PaymentAttempt).where(
+            PaymentAttempt.business_id == attempt.business_id, PaymentAttempt.source_type == attempt.source_type,
+            PaymentAttempt.source_id == attempt.source_id, PaymentAttempt.id != attempt.id,
+            PaymentAttempt.deleted_at.is_(None), PaymentAttempt.status == "pending_offline",
+            PaymentAttempt.payment_method.in_(OFFLINE_INTENTS)).with_for_update())).scalars().all()
+        for other in others:
+            other.status = "cancelled"
+            other.failure_reason = "Paid another way"
+            other.version += 1
+
+    @staticmethod
     async def _flag_twice(session: AsyncSession, attempt: PaymentAttempt, request_id: uuid.UUID | None) -> None:
         attempt.attention = "paid_twice"
         await OutboxService.publish(
@@ -597,6 +667,16 @@ class PaymentCollectService:
         if total is None or paid >= total:
             return "paid"
         return "partially_paid"
+
+    @staticmethod
+    async def net_paid(session: AsyncSession, business_id: uuid.UUID, source_type: str,
+                       source_id: uuid.UUID) -> Decimal:
+        """Verified money kept on a transaction: paid minus refunded."""
+        return _d((await session.execute(select(func.coalesce(func.sum(
+            PaymentAttempt.amount - func.coalesce(PaymentAttempt.refunded_amount, 0)), 0)).where(
+            PaymentAttempt.business_id == business_id, PaymentAttempt.source_type == source_type,
+            PaymentAttempt.source_id == source_id, PaymentAttempt.deleted_at.is_(None),
+            PaymentAttempt.status.in_(PAID_STATUSES)))).scalar())
 
     # ------------------------------------------------------------------ the owner's overview (§14)
     @staticmethod

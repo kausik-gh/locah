@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { DataTable, EmptyState, FilterTabs, GateNotice, PageHeader, StatusPill } from '@/components/ui'
+import { CHANNEL, money, paymentLabel } from './labels'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,51 +17,6 @@ type OrderRow = {
   currency: string
   channel?: string | null
   created_at?: string
-}
-
-/** Where the order came from (Capability Universe §12: every channel ends in the same order). */
-const CHANNEL: Record<string, string> = {
-  web: 'Website',
-  whatsapp: 'WhatsApp',
-  pos: 'Counter',
-  phone: 'Phone',
-  workspace: 'Entered by team',
-  marketplace: 'Marketplace',
-}
-
-/** How the money stands, in words a shop owner uses. The stored values
- *  (`cod`, `pending_offline`) are internal states and must not reach the screen. */
-const PAY_METHOD: Record<string, string> = {
-  cod: 'Cash',
-  online: 'Online',
-  card: 'Card',
-  upi: 'UPI',
-}
-const PAY_STATUS: Record<string, string> = {
-  pending_offline: 'to collect',
-  pending: 'awaiting payment',
-  paid: 'paid',
-  refunded: 'refunded',
-  partially_refunded: 'part refunded',
-  failed: 'payment failed',
-}
-
-function money(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: currency || 'INR',
-      maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
-    }).format(amount)
-  } catch {
-    return `${currency} ${amount}`
-  }
-}
-
-function paymentLabel(o: { payment_method: string; payment_status: string }): string {
-  const method = PAY_METHOD[o.payment_method] || o.payment_method.replace(/_/g, ' ')
-  const status = PAY_STATUS[o.payment_status] || o.payment_status.replace(/_/g, ' ')
-  return `${method} · ${status}`
 }
 
 /** Doc 11 §4.2 orders — board/list. */

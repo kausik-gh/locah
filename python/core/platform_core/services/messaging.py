@@ -22,7 +22,6 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -133,8 +132,7 @@ class MessagingService:
     async def settings(session: AsyncSession, business_id: uuid.UUID) -> MessagingSettings:
         row = await session.get(MessagingSettings, business_id)
         if row is None:
-            row = MessagingSettings(business_id=business_id, language="en", customer_updates={}, human_pause_hours=12,
-                                    cod_allowed=True, first_order_cod_cap=None)
+            row = MessagingSettings(business_id=business_id, language="en", customer_updates={}, human_pause_hours=12)
             session.add(row)
             await session.flush()
         return row
@@ -148,8 +146,11 @@ class MessagingService:
                     permissions: frozenset[str]) -> dict[str, Any]:
         from platform_core.services.usage_meter import UsageMeterService
 
+        from platform_core.services.fulfilment import FulfilmentService
+
         channel = await MessagingService.channel(session, business_id)
         s = await MessagingService.settings(session, business_id)
+        cod = await FulfilmentService.payment_rules(session, business_id)
         states = {(t.template_key, t.language): t for t in (await session.execute(select(MessagingTemplate).where(
             MessagingTemplate.business_id == business_id))).scalars()}
         templates = []
@@ -164,9 +165,7 @@ class MessagingService:
             "meta": meta_public_config(), "meta_ready": meta_configured(), "sandbox_available": sandbox_enabled(),
             "settings": {"language": s.language, "human_pause_hours": s.human_pause_hours,
                          "customer_updates": {k: MessagingService.update_on(s, k) for k in CUSTOMER_UPDATES},
-                         "cod_allowed": s.cod_allowed,
-                         "first_order_cod_cap": float(s.first_order_cod_cap)
-                         if s.first_order_cod_cap is not None else None},
+                         "cod_allowed": cod["on_delivery"], "first_order_cod_cap": cod["first_order_cap"]},
             "entry": await MessagingService.entry(session, business_id),
             "customer_updates": CUSTOMER_UPDATES, "ladder_updates": LADDER_UPDATES, "languages": LANGUAGES,
             "templates": templates,
@@ -297,18 +296,14 @@ class MessagingService:
             if not 1 <= hours <= 72:
                 raise _err("human_pause_hours", "Between 1 and 72 hours")
             s.human_pause_hours = hours
-        if "cod_allowed" in payload:
-            s.cod_allowed = bool(payload["cod_allowed"])
-        if "first_order_cod_cap" in payload:
-            cap = payload["first_order_cod_cap"]
-            if cap is not None:
-                try:
-                    cap = Decimal(str(cap)).quantize(Decimal("0.01"))
-                except (InvalidOperation, ValueError):
-                    raise _err("first_order_cod_cap", "Enter an amount in rupees") from None
-                if cap <= 0 or cap > Decimal("10000000"):
-                    raise _err("first_order_cod_cap", "Enter an amount above ₹0, or leave it empty for no cap")
-            s.first_order_cod_cap = cap
+        rules = {k: payload[k] for k in ("cod_allowed", "first_order_cod_cap") if k in payload}
+        if rules:
+            # Paying on delivery is an order rule for every channel; it lives with
+            # pickup and delivery (fulfilment), this page only edits it there.
+            from platform_core.services.fulfilment import FulfilmentService
+
+            await FulfilmentService.set_payment_rules(session, business_id=business_id, actor_id=actor_id,
+                                                      payload=rules)
         s.updated_by, s.updated_at, s.version = actor_id, _now(), s.version + 1
         await session.flush()
         return s

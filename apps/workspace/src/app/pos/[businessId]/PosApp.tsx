@@ -489,14 +489,16 @@ export function PosApp({ businessId, businessName, initialToken, apiUrl, billBas
                 {tab === 'upi' ? (
                   <div className="pos-form">
                     {/* eslint-disable-next-line @next/next/no-img-element -- a QR drawn from an in-memory SVG */}
-                    {qr ? <img className="pos-qr" src={qr} alt={`UPI QR for ${rupees(remaining)}`} /> : null}
+                    {qr && remaining > 0 ? <img className="pos-qr" src={qr} alt={`UPI QR for ${rupees(remaining)}`} /> : null}
                     {!setup.settings.upi_vpa ? <p className="pos-muted">Add your UPI ID in Settings → Counter billing to show a QR.</p> : null}
                     {!online ? <p className="pos-warn">UPI cannot be confirmed without a connection. Take cash, or mark it “UPI to verify”.</p> : <p className="pos-muted">Not confirmed automatically: check the payment arrived before you tap “Paid”.</p>}
                     <label>Reference — optional<input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="UPI reference" /></label>
-                    <div className="pos-quick">
-                      {online ? <button type="button" onClick={() => addTender({ method: 'upi', amount: remaining / 100, reference: ref || undefined })}>Paid {rupees(remaining)}</button> : null}
-                      <button type="button" className="btn-ghost" onClick={() => addTender({ method: 'upi', amount: remaining / 100, reference: ref || undefined, to_verify: true })}>UPI to verify</button>
-                    </div>
+                    {remaining > 0 ? (
+                      <div className="pos-quick">
+                        {online ? <button type="button" onClick={() => addTender({ method: 'upi', amount: remaining / 100, reference: ref || undefined })}>Paid {rupees(remaining)}</button> : null}
+                        <button type="button" className="btn-ghost" onClick={() => addTender({ method: 'upi', amount: remaining / 100, reference: ref || undefined, to_verify: true })}>UPI to verify</button>
+                      </div>
+                    ) : <p className="pos-muted">Nothing left to pay.</p>}
                   </div>
                 ) : null}
                 {tab === 'card' ? (
