@@ -7,7 +7,7 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { SiteFrame } from '@/components/website/SiteFrame'
 import { siteLang } from '@/lib/site-lang'
 import { LANG_LOCALE, siteWords, type Words } from '@/lib/site-words'
-import { askToErase } from './actions'
+import { askToErase, changeTomorrow, payMembership, renewMembership } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +18,14 @@ type Account = {
   bookings: { id: string; number: string; title: string; status: string; starts_at: string; upcoming: boolean; manage_url: string | null }[]
   bills: { id: string; number: string; kind: string; status: string; issue_date: string | null; total: number; amount_due: number; url: string }[]
   quotes: { id: string; number: string; title: string | null; status: string; total: number; valid_until: string | null; url: string | null }[]
-  memberships: { id: string; plan: string; status: string; starts_at: string; ends_at: string | null; days_left: number | null }[]
+  memberships: {
+    id: string; plan: string; kind: string; title: string; valid_label: string; status: string; starts_at: string
+    ends_at: string | null; days_left: number | null; sessions_left: number | null; outstanding: number; paid: number
+    next_due_on: string | null; overdue: boolean; good_standing: boolean | null; checkin_code: string | null
+    can_renew: boolean; can_pay: boolean
+    next_instalment?: { label: string; amount: number; due_on: string } | null
+    tomorrow?: { date: string; status: string; quantity: number; cutoff: string; open: boolean }
+  }[]
   khata: { balance: number; url: string } | null
   erasure_request?: { status: 'open' | 'done' | 'declined'; asked_at: string; reason: string | null } | null
 }
@@ -35,7 +42,7 @@ const stateWords = (t: Words): Record<string, string> => ({
   accepted: t('Accepted'), declined: t('Declined'), draft: t('Being prepared'),
 })
 
-export default async function AccountPage({ params, searchParams }: { params: { slug: string }; searchParams?: { privacy?: string; lang?: string } }) {
+export default async function AccountPage({ params, searchParams }: { params: { slug: string }; searchParams?: { privacy?: string; lang?: string; membership?: string } }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
   const site = await fetchPublicWebsite(params.slug)
   if (!site) notFound()
@@ -87,9 +94,20 @@ export default async function AccountPage({ params, searchParams }: { params: { 
         <p className="ls-meta">{t('Orders and bookings you make while signed in appear here — and earlier ones made with the email you signed in with.')}</p>
         <p><Link className="ls-btn" href={`/${params.slug}`}>{t('See what {business} offers', { business: name })}</Link></p></div> : null}
 
-      {a.memberships.length ? <section className="ls-account__block" aria-labelledby="acc-m"><h2 id="acc-m">{t('Membership')}</h2>
+      {a.memberships.length ? <section className="ls-account__block" aria-labelledby="acc-m" id="acc-m"><h2 id="acc-m-h">{t(a.memberships[0].title)}</h2>
+        {searchParams?.membership === 'late' ? <p className="ls-meta" role="status">{t('Tomorrow is already decided — call or message the business to change it.')}</p> : null}
+        {searchParams?.membership === 'failed' ? <p className="ls-meta" role="status">{t('That could not be done right now.')}</p> : null}
         {a.memberships.map((m) => <div key={m.id} className="ls-account__card"><p><strong>{m.plan}</strong> · {state(m.status)}</p>
-          <p className="ls-meta">{m.ends_at ? t('From {start} to {end}', { start: when(m.starts_at), end: when(m.ends_at) }) : t('From {start}', { start: when(m.starts_at) })}{m.days_left !== null ? ` · ${m.days_left === 1 ? t('1 day left') : t('{n} days left', { n: m.days_left })}` : ''}</p></div>)}</section> : null}
+          <p className="ls-meta">{m.ends_at ? `${t(m.valid_label)} ${when(m.ends_at)}` : t('From {start}', { start: when(m.starts_at) })}{m.days_left !== null ? ` · ${m.days_left === 1 ? t('1 day left') : t('{n} days left', { n: m.days_left })}` : ''}{m.sessions_left !== null ? ` · ${t('{n} sessions left', { n: m.sessions_left })}` : ''}</p>
+          {m.good_standing !== null ? <p className="ls-meta">{m.good_standing ? t('In good standing') : t('Dues not paid')}</p> : null}
+          {m.next_instalment ? <p className="ls-meta">{t('Next instalment: {label} · {amount} due {date}', { label: m.next_instalment.label, amount: rupees(m.next_instalment.amount), date: when(m.next_instalment.due_on) })}</p> : null}
+          {m.kind === 'fee_plan' ? <p className="ls-meta">{t('Paid {paid} · outstanding {amount}', { paid: rupees(m.paid), amount: rupees(m.outstanding) })}</p> : null}
+          {m.checkin_code ? <p className="ls-meta">{t('Show this code at the front desk: {code}', { code: m.checkin_code })}</p> : null}
+          {m.tomorrow ? <p className="ls-meta">{m.tomorrow.status === 'deliver' ? t('Tomorrow: {qty}', { qty: m.tomorrow.quantity }) : m.tomorrow.status === 'skipped' ? t('Tomorrow: skipped') : m.tomorrow.status === 'paused' ? t('Tomorrow: paused') : t('Tomorrow: no delivery')}{m.tomorrow.open ? ` · ${t('Changes close at {time} tonight.', { time: m.tomorrow.cutoff })}` : ''}</p> : null}
+          <div className="ls-account__actions">
+            {m.tomorrow && m.tomorrow.open && (m.tomorrow.status === 'deliver' || m.tomorrow.status === 'skipped') ? <form action={changeTomorrow}><input type="hidden" name="slug" value={params.slug} /><input type="hidden" name="id" value={m.id} /><input type="hidden" name="on_date" value={m.tomorrow.date} /><input type="hidden" name="kind" value={m.tomorrow.status === 'deliver' ? 'skip' : 'restore'} /><button type="submit" className="ls-btn ls-btn--outline">{m.tomorrow.status === 'deliver' ? t('Skip tomorrow') : t('Back to the usual tomorrow')}</button></form> : null}
+            {m.can_pay ? <form action={payMembership}><input type="hidden" name="slug" value={params.slug} /><input type="hidden" name="id" value={m.id} /><button type="submit" className="ls-btn">{t('Pay {amount}', { amount: rupees(m.outstanding) })}</button></form> : m.can_renew ? <form action={renewMembership}><input type="hidden" name="slug" value={params.slug} /><input type="hidden" name="id" value={m.id} /><button type="submit" className="ls-btn">{t('Renew')}</button></form> : null}
+          </div></div>)}</section> : null}
 
       {upcoming.length ? <section className="ls-account__block" aria-labelledby="acc-b"><h2 id="acc-b">{t('Coming up')}</h2>
         {upcoming.map((b) => <div key={b.id} className="ls-account__card"><p><strong>{b.title}</strong> · {at(b.starts_at)}</p>

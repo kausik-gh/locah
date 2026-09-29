@@ -183,15 +183,17 @@ class BookingService:
                                 "offering_id": str(offering.id),
                             },
                         )
-                    has_enrolment = await MembershipResolver.has_active_enrolment(
-                        session,
-                        business_id=business_id,
-                        customer_contact_id=validated["customer_contact_id"],
-                        plan_ids=gating_plan_ids,
+                    # Memberships answers (P2-02): covered at the class time, and a
+                    # session pack still has a session — Bookings keeps no count.
+                    from platform_core.memberships.service import MembershipCore
+
+                    entitled = await MembershipCore.booking_entitlement(
+                        session, business_id, validated["customer_contact_id"], gating_plan_ids,
+                        at=validated["starts_at"],
                     )
-                    if not has_enrolment:
+                    if entitled is None:
                         raise ValidationError(
-                            "This class requires an active membership",
+                            "This class requires an active membership or a session pack with sessions left",
                             details={
                                 "code": "membership_required",
                                 "offering_id": str(offering.id),

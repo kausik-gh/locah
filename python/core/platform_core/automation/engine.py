@@ -323,7 +323,13 @@ class AutomationEngine:
             return StepOutcome("cancelled", "Switched off by the owner")
         quiet = rule["config"].get("quiet_hours", ladder.quiet_hours)
         if quiet:
-            until = in_quiet_hours(moment)
+            zone = (await session.execute(text(
+                "SELECT timezone FROM business_locations WHERE business_id = :b ORDER BY is_primary DESC LIMIT 1"),
+                {"b": str(step.business_id)})).scalar()
+            try:
+                until = in_quiet_hours(moment, str(zone or DEFAULT_TZ))
+            except Exception:  # noqa: BLE001 — a bad stored zone falls back to India
+                until = in_quiet_hours(moment)
             if until is not None:
                 await session.execute(
                     text("""UPDATE automation_steps SET status = 'pending', due_at = :d, leased_by = NULL,

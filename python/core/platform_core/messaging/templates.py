@@ -133,7 +133,47 @@ LIBRARY: dict[str, Template] = {t.key: t for t in (
             "ta": "உங்கள் {{1}} திட்டம் ({{2}}) {{3}} அன்று முடிகிறது. புதுப்பிக்க: {{4}} — நன்றி.",
             "hi": "आपका {{1}} प्लान ({{2}}) {{3}} को ख़त्म हो रहा है। रिन्यू करें: {{4}} — धन्यवाद।",
         },
-        "Before a membership ends (renewal reminders arrive with memberships, P2)", phase="P2",
+        "Before a membership, subscription or contract ends (Automations › Renewal reminders)", phase="P2",
+    ),
+    Template(
+        "membership_grace", "Membership in grace", "utility", "customer",
+        ("plan name", "business name", "end date", "last day of grace", "renewal link"),
+        {
+            "en": "Your {{1}} plan with {{2}} ended on {{3}}. You can still renew until {{4}}: {{5}} — thank you.",
+            "ta": "உங்கள் {{1}} திட்டம் ({{2}}) {{3}} அன்று முடிந்தது. {{4}} வரை புதுப்பிக்கலாம்: {{5}} — நன்றி.",
+            "hi": "आपका {{1}} प्लान ({{2}}) {{3}} को ख़त्म हो गया। आप {{4}} तक रिन्यू कर सकते हैं: {{5}} — धन्यवाद।",
+        },
+        "The day after a plan ends without renewal, when the plan has a grace period", phase="P2",
+    ),
+    Template(
+        "membership_expired", "Membership expired", "utility", "customer",
+        ("plan name", "business name", "renewal link"),
+        {
+            "en": "Your {{1}} plan with {{2}} has expired. Renew any time here: {{3}} — thank you.",
+            "ta": "உங்கள் {{1}} திட்டம் ({{2}}) காலாவதியாகிவிட்டது. எப்போது வேண்டுமானாலும் புதுப்பிக்க: {{3}} — நன்றி.",
+            "hi": "आपका {{1}} प्लान ({{2}}) समाप्त हो गया है। कभी भी यहाँ रिन्यू करें: {{3}} — धन्यवाद।",
+        },
+        "A plan expires without renewal", phase="P2",
+    ),
+    Template(
+        "membership_renewed", "Payment received for a plan", "utility", "customer",
+        ("business name", "plan name", "valid until"),
+        {
+            "en": "Thank you — {{1}} has received your payment. Your {{2}} plan is valid until {{3}}. See you soon.",
+            "ta": "நன்றி — {{1}} உங்கள் கட்டணத்தைப் பெற்றது. உங்கள் {{2}} திட்டம் {{3}} வரை செல்லும்.",
+            "hi": "धन्यवाद — {{1}} को आपका भुगतान मिल गया है। आपका {{2}} प्लान {{3}} तक मान्य है।",
+        },
+        "A membership, subscription or contract period is paid", phase="P2",
+    ),
+    Template(
+        "membership_winback", "We miss you (win-back)", "marketing", "customer",
+        ("business name", "plan name", "link"),
+        {
+            "en": "We miss you at {{1}}. Come back to your {{2}} plan any time: {{3}}. Reply STOP to stop offers.",
+            "ta": "உங்களை {{1}} நினைக்கிறது. உங்கள் {{2}} திட்டத்திற்கு எப்போது வேண்டுமானாலும் திரும்பலாம்: {{3}}. சலுகைகள் வேண்டாமெனில் STOP என்று பதில் அனுப்புங்கள்.",
+            "hi": "आपकी याद {{1}} को आती है। अपने {{2}} प्लान पर कभी भी लौटें: {{3}}। ऑफ़र बंद करने के लिए STOP लिखें।",
+        },
+        "15 days after a plan expired — only to customers who opted in to offers", phase="P2",
     ),
     Template(
         "offer_announcement", "Offer", "marketing", "customer",

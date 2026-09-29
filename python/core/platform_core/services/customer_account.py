@@ -14,7 +14,7 @@ nobody has claimed.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -199,6 +199,51 @@ class CustomerAccountService:
                      "business_slug": await _slug(session, enrolment.business_id)},
             occurred_at=datetime.now(timezone.utc))
 
+    @staticmethod
+    async def membership_view(session: AsyncSession, e: MembershipEnrolment, plan: MembershipPlan, *,
+                              now: datetime) -> dict[str, Any]:
+        """One relationship in the customer's own words (Founder refinement §23):
+        valid until and days left, sessions left, the next instalment, tomorrow's
+        delivery — and only the actions the business's rules allow now."""
+        from platform_core.memberships.service import RENEWING_KINDS, MembershipCore
+        from platform_core.memberships.subscriptions import SubscriptionService
+        from platform_core.memberships.words import words
+
+        st = await MembershipCore.state(session, e, plan, now=now)
+        w = words(plan.plan_kind)
+        item: dict[str, Any] = {
+            "id": str(e.id), "plan": plan.name, "kind": plan.plan_kind, "title": w["customer_title"],
+            "valid_label": w["valid"], "status": st.status, "starts_at": e.starts_at.isoformat(),
+            "ends_at": st.valid_until.isoformat() if st.valid_until else (e.ends_at.isoformat() if e.ends_at else None),
+            "days_left": st.days_remaining if st.status in ("active", "paused", "grace") else None,
+            "sessions_left": st.sessions_remaining, "outstanding": _f(st.outstanding), "paid": _f(st.paid),
+            "next_due_on": st.next_due_on.isoformat() if st.next_due_on else None, "overdue": st.overdue,
+            "good_standing": st.good_standing,
+            "checkin_code": e.checkin_code if plan.plan_kind in ("access", "session_pack", "member_dues")
+            and st.status in ("active", "grace") else None,
+            "can_renew": plan.plan_kind in RENEWING_KINDS and plan.billing_timing == "prepaid"
+            and st.status in ("active", "paused", "grace", "expired") and not st.renewed_ahead,
+            "can_pay": st.outstanding > 0 and plan.billing_timing != "postpaid"
+            and st.status not in ("cancelled", "completed"),
+        }
+        if plan.plan_kind == "fee_plan":
+            nxt = next((i for i in await MembershipCore.instalments(session, e.id)
+                        if i.status in ("due", "part_paid")), None)
+            item["next_instalment"] = {"label": nxt.label, "amount": _f(Decimal(str(nxt.amount)) - Decimal(
+                str(nxt.paid_amount))), "due_on": str(nxt.due_on)} if nxt else None
+        if plan.plan_kind == "recurring_delivery" and e.delivery and st.status in ("active", "paused", "grace"):
+            from zoneinfo import ZoneInfo
+
+            zone = ZoneInfo(await MembershipCore.tz(session, e.business_id, e.location_id))
+            tomorrow = now.astimezone(zone).date() + timedelta(days=1)
+            day = next((o for o in await SubscriptionService.plan_day(session, e.business_id, tomorrow)
+                        if o.enrolment_id == e.id), None)
+            item["tomorrow"] = {"date": str(tomorrow), "status": day.status if day else "no_delivery",
+                                "quantity": float(day.quantity) if day else 0,
+                                "cutoff": (e.delivery or {}).get("cutoff", "21:00"),
+                                "open": not await SubscriptionService._cutoff_passed(session, e, tomorrow, now)}
+        return item
+
     # ------------------------------------------------------------ one business's "My account"
     @staticmethod
     async def contacts(session: AsyncSession, business_id: uuid.UUID) -> list[uuid.UUID]:
@@ -277,16 +322,15 @@ class CustomerAccountService:
                                   "total": _f(q.total),
                                   "valid_until": q.valid_until.isoformat() if q.valid_until else None,
                                   "url": f"/q/{q.access_token}" if live else None})
+        from sqlalchemy import or_
+
         for e, plan in (await session.execute(select(MembershipEnrolment, MembershipPlan)
                         .join(MembershipPlan, MembershipPlan.id == MembershipEnrolment.plan_id)
                         .where(MembershipEnrolment.business_id == business.id,
-                               MembershipEnrolment.customer_contact_id.in_(mine))
+                               or_(MembershipEnrolment.customer_contact_id.in_(mine),
+                                   MembershipEnrolment.payer_contact_id.in_(mine)))
                         .order_by(MembershipEnrolment.starts_at.desc()).limit(10))).all():
-            days_left = (e.ends_at - now).days if e.ends_at and e.status == "active" else None
-            out["memberships"].append({"id": str(e.id), "plan": plan.name, "status": e.status,
-                                       "starts_at": e.starts_at.isoformat(),
-                                       "ends_at": e.ends_at.isoformat() if e.ends_at else None,
-                                       "days_left": days_left})
+            out["memberships"].append(await CustomerAccountService.membership_view(session, e, plan, now=now))
         acct = (await session.execute(select(LedgerAccount).where(
             LedgerAccount.business_id == business.id, LedgerAccount.customer_contact_id.in_(mine),
             LedgerAccount.party_type == "customer", LedgerAccount.status == "active"))).scalars().first()

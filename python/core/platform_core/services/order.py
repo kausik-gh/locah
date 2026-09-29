@@ -26,7 +26,8 @@ from platform_core.validation.order import validate_create_payload, validate_pat
 
 
 # Capability Universe §6.1: where an order came from.
-ORDER_CHANNELS = frozenset({"web", "whatsapp", "pos", "phone", "workspace", "marketplace", "chitbridge"})
+ORDER_CHANNELS = frozenset({"web", "whatsapp", "pos", "phone", "workspace", "marketplace", "chitbridge",
+                            "subscription"})
 
 class OrderService:
     @staticmethod

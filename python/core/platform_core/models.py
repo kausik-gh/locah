@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -1869,6 +1869,20 @@ class MembershipPlan(Base):
     duration_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
     visibility: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'private'"))
+    # P2-02: what kind of recurring relationship this plan is, and its rules.
+    plan_kind: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'access'"))
+    grace_days: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    grace_allows_entry: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    freeze_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    max_freeze_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sessions_included: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    consume_on: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'completed'"))
+    no_show_consumes: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    delivery: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    billing_timing: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'prepaid'"))
+    instalment_template: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
+    visits_included: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    visit_every_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
     )
@@ -1922,6 +1936,19 @@ class MembershipEnrolment(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # P2-02: where and by whom it is looked after, who pays, what it refers to
+    # in another module, this subscriber's schedule, and cached answers.
+    location_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    responsible_identity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    channel: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payer_contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    source_ref_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_ref_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    delivery: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    grace_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_due_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    checkin_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
     )

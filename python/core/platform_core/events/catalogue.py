@@ -276,6 +276,15 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "membership.enrolment.expired",
             "membership.enrolment.cancelled",
             "membership.enrolment.completed",
+            "membership.enrolment.grace",
+            "membership.period_paid",
+            "membership.instalment_paid",
+            "membership.freeze_added",
+            "membership.session_used",
+            "membership.session_reversed",
+            "membership.delivery_changed",
+            "membership.deliveries_generated",
+            "membership.service_visit_due",
         }
     ),
     # Capability Universe §14 — the one billing engine.

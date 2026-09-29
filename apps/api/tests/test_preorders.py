@@ -237,21 +237,24 @@ def test_the_daily_limit_holds_across_orders_and_channels(monkeypatch: Any) -> N
 @DB
 def test_the_board_and_the_production_list(monkeypatch: Any) -> None:
     owner, bid, base, slug, cake = _bakery(monkeypatch)
-    a = _checkout(slug, cake, {"date": _day(1), "time": "17:00"}, email="a@example.com").json()["data"]
-    b = _checkout(slug, cake, {"date": _day(1), "time": "17:00"}, email="b@example.com").json()["data"]
+    # 24 hours' notice: after 4 pm, tomorrow's 5 pm slot is too close — use the day after.
+    hour = datetime.now(timezone.utc).astimezone(IST).hour
+    first = 1 if hour < 16 else 2
+    a = _checkout(slug, cake, {"date": _day(first), "time": "17:00"}, email="a@example.com").json()["data"]
+    b = _checkout(slug, cake, {"date": _day(first), "time": "17:00"}, email="b@example.com").json()["data"]
     later = _checkout(slug, cake, {"date": _day(6), "time": "11:00"}, email="c@example.com").json()["data"]
     # an order already wanted in the past (taken before the rules applied) shows as overdue
     sql("update orders_orders set due_at = now() - interval '2 hours' where id = :o", o=later["order"]["id"])
     board = client.get(f"{base}/orders/board", headers=owner).json()["data"]
     by = {bk["key"]: [o["order_number"] for o in bk["orders"]] for bk in board["buckets"]}
     tomorrow = [a["order"]["order_number"], b["order"]["order_number"]]
-    if datetime.now(timezone.utc).astimezone(IST).hour >= 14:  # tomorrow 5 pm is within the day anyway
+    if first == 1 and hour >= 14:  # tomorrow 5 pm is within the day anyway
         assert sorted(by["tomorrow"]) == sorted(tomorrow)
     assert by["overdue"] == [later["order"]["order_number"]]
     card = next(o for bk in board["buckets"] for o in bk["orders"] if o["order_number"] == tomorrow[0])
     assert card["advance"] == 750.0 and card["advance_state"] == "awaited"
     assert card["items"][0]["notes"] == {"Message on the cake": "Happy birthday Asha"}
-    prod = client.get(f"{base}/orders/production", params={"date": _day(1)}, headers=owner).json()["data"]
+    prod = client.get(f"{base}/orders/production", params={"date": _day(first)}, headers=owner).json()["data"]
     assert prod["orders"] == 2 and len(prod["items"]) == 1
     row = prod["items"][0]
     assert row["quantity"] == 2 and "Black forest" in row["item"] and "“" not in row["item"]

@@ -32,7 +32,7 @@ client = TestClient(app)
 ROOT = Path(__file__).resolve().parents[3]
 WS = ROOT / "apps" / "workspace" / "src"
 CORE = ROOT / "python" / "core" / "platform_core"
-TABLE: dict[str, dict[str, str]] = json.loads((WS / "lib" / "ws-words.json").read_text())
+TABLE: dict[str, dict[str, str]] = json.loads((WS / "lib" / "ws-words.json").read_text(encoding="utf-8"))
 CALL = re.compile(r"""\bt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")""")
 BLANKS = re.compile(r"\{(\w+)\}")
 TRANSLATED = ["components/AppSidebar.tsx", "components/MoneyPanel.tsx", "components/MoneySection.tsx",
@@ -46,14 +46,14 @@ TRANSLATED = ["components/AppSidebar.tsx", "components/MoneyPanel.tsx", "compone
 def _said() -> dict[str, str]:
     found: dict[str, str] = {}
     for rel in TRANSLATED:
-        for m in CALL.finditer((WS / rel).read_text()):
+        for m in CALL.finditer((WS / rel).read_text(encoding="utf-8")):
             found.setdefault(m.group(1) if m.group(1) is not None else m.group(2), rel)
     return found
 
 
 def _table_values(rel: str, *names: str) -> set[str]:
     """The string values of `const NAME: Record<string, string> = {…}` tables in a TS file."""
-    text = (WS / rel).read_text()
+    text = (WS / rel).read_text(encoding="utf-8")
     out: set[str] = set()
     for name in names:
         body = re.search(rf"{name}[^=]*=\s*{{(.*?)\n}}", text, re.S)
@@ -63,13 +63,13 @@ def _table_values(rel: str, *names: str) -> set[str]:
 
 
 def _nav_labels() -> set[str]:
-    text = (WS / "lib" / "workspace-nav.ts").read_text()
+    text = (WS / "lib" / "workspace-nav.ts").read_text(encoding="utf-8")
     return set(re.findall(r"label: '([^']+)'", text)) | set(re.findall(r"return '([^']+)'", text))
 
 
 def _home_labels() -> set[str]:
     """What role_home and the order board put on Home and Orders: row labels, band titles, empties, stat labels."""
-    tree = ast.parse((CORE / "services" / "role_home.py").read_text())
+    tree = ast.parse((CORE / "services" / "role_home.py").read_text(encoding="utf-8"))
     out: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_item" and node.args:
@@ -121,7 +121,7 @@ def _money_labels() -> set[str]:
 
     out = set(STATE_WORDS.values()) | set(PURPOSES.values()) | set(ATTEMPT_METHOD_WORDS.values())
     out |= {"Pay at pickup", "Cash on delivery"} | set(invoicing.KIND_LABEL.values())
-    tree = ast.parse((CORE / "services" / "payment_collect.py").read_text())
+    tree = ast.parse((CORE / "services" / "payment_collect.py").read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "why" for t in node.targets) \
                 and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):

@@ -257,7 +257,7 @@ class MessagingService:
             raise ConflictError("Connect a WhatsApp number first")
         provider = provider_for(channel.provider)
         token = decrypt_secret(channel.encrypted_token) if channel.encrypted_token else None
-        wanted = keys or [k for k, t in LIBRARY.items() if t.phase == "P1"]
+        wanted = keys or [k for k, t in LIBRARY.items() if t.phase in ("P1", "P2")]
         out = []
         for key in wanted:
             if key not in LIBRARY:

@@ -31,7 +31,7 @@ DB = pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL requ
 client = TestClient(app)
 ROOT = Path(__file__).resolve().parents[3]
 WEB = ROOT / "apps" / "web" / "src"
-TABLE: dict[str, dict[str, str]] = json.loads((WEB / "lib" / "site-words.json").read_text())
+TABLE: dict[str, dict[str, str]] = json.loads((WEB / "lib" / "site-words.json").read_text(encoding="utf-8"))
 CALL = re.compile(r"""\bt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")""")
 BLANKS = re.compile(r"\{(\w+)\}")
 
@@ -44,7 +44,7 @@ def _tenant_files() -> list[Path]:
 def _said() -> dict[str, str]:
     found: dict[str, str] = {}
     for f in _tenant_files():
-        for m in CALL.finditer(f.read_text()):
+        for m in CALL.finditer(f.read_text(encoding="utf-8")):
             found.setdefault(m.group(1) if m.group(1) is not None else m.group(2), str(f.relative_to(WEB)))
     return found
 
@@ -101,8 +101,8 @@ def test_no_locah_colour_is_hard_coded_on_a_tenant_page() -> None:
     """Tenant pages take colour from the business's theme (--site-*), never a fixed hex."""
     hexes = re.compile(r"(?:background|color|border)[^;\n]{0,40}#[0-9a-fA-F]{3,6}\b")
     allowed = {"components/website/WebsitePageView.tsx"}  # the neutral per-personality fallbacks and the preview bar
-    found = [f"{f.relative_to(WEB)}: {m.group(0)}" for f in _tenant_files() if str(f.relative_to(WEB)) not in allowed
-             for m in hexes.finditer(f.read_text())]
+    found = [f"{f.relative_to(WEB).as_posix()}: {m.group(0)}" for f in _tenant_files() if f.relative_to(WEB).as_posix() not in allowed
+             for m in hexes.finditer(f.read_text(encoding="utf-8"))]
     assert found == [], "\n".join(found)
 
 
