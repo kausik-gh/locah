@@ -6,6 +6,11 @@ one order per quote (idempotency key `quote:{id}`). An order line is a
 catalogue item in whole units; a quote with a free-text or fractional line
 cannot become an order and is refused for good with that reason (hand it to a
 project or an invoice instead) — nothing is guessed.
+
+The token the customer accepted (the quote's deposit) becomes this order's
+advance. Payments then asks for it against the order, the real transaction —
+the Money panel defaults to it and a payment link carries it — so the quote's
+payment handoff lands in the one payment system, never a second one.
 """
 
 from __future__ import annotations
@@ -47,7 +52,7 @@ async def order_from_quote(session: AsyncSession, event: EventContext) -> None:
     location = (await session.execute(select(BusinessLocation.id).where(
         BusinessLocation.business_id == business_id, BusinessLocation.is_primary.is_(True),
         BusinessLocation.deleted_at.is_(None)))).scalars().first()
-    await OrderService.create_order(
+    order = await OrderService.create_order(
         session, business_id=business_id, actor_id=uuid.UUID(str(owner)),
         correlation_id=event.correlation_id or str(event.event_id),
         payload={"location_id": str(location) if location else None,
@@ -57,3 +62,9 @@ async def order_from_quote(session: AsyncSession, event: EventContext) -> None:
                  "idempotency_key": f"quote:{event.payload['quote_id']}",
                  "items": items},
         actor_context="system")
+    token = Decimal(str(event.payload.get("token_amount") or 0))
+    if token > 0:
+        ask = min(token, Decimal(str(order.total_amount)))
+        if Decimal(str(order.advance_amount or 0)) < ask:
+            order.advance_amount = float(ask)
+            await session.flush()

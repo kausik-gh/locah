@@ -102,3 +102,38 @@ def test_a_free_text_quote_is_not_turned_into_an_order(owner: dict[str, str]) ->
     quote_id = _accepted(owner, bid)  # "Design" and "Build": no catalogue items
     _hand(owner, bid, quote_id, "order")
     assert int(sql("select count(*) from orders_orders where business_id = :b", b=bid)[0][0]) == 0
+
+
+def test_the_accepted_token_is_the_orders_advance_and_payments_asks_for_it_once(owner: dict[str, str]) -> None:
+    """quote.payment_handoff lands in the one payment system: the token is the
+    converted order's advance, collected by Payment Collect on the order."""
+    bid = _business(client, owner)
+    _enable(owner, bid, "orders", "payments")
+    base = f"/v1/platform/businesses/{bid}"
+    bracket = client.post(f"{base}/products", json={
+        "title": "Steel bracket", "status": "active", "price_amount": 100, "tax_rate": 18}, headers=owner)
+    assert bracket.status_code == 200, bracket.text
+    quote_id = _accepted(owner, bid, title="Brackets, 20% token", deposit_type="percent", deposit_value=20, items=[
+        {"offering_id": bracket.json()["data"]["id"], "title": "Steel bracket", "quantity": 50, "unit_price": 90,
+         "tax_rate": 18}])
+    token = float(client.get(f"{base}/quotes/{quote_id}", headers=owner).json()["data"]["deposit_amount"])
+    assert token > 0
+    _hand(owner, bid, quote_id, "order")
+    order_id, advance = sql("select id::text, advance_amount::text from orders_orders "
+                            "where business_id = :b and idempotency_key = :k", b=bid, k=f"quote:{quote_id}")[0]
+    assert float(advance) == token, "the token the customer accepted is the order's advance"
+
+    due = client.get(f"{base}/collect/due", params={"source_type": "order", "source_id": order_id}, headers=owner)
+    assert due.status_code == 200, due.text
+    assert due.json()["data"]["advance"] == token and due.json()["data"]["paid"] == 0
+    asked = client.post(f"{base}/collect/requests", json={
+        "source_type": "order", "source_id": order_id, "amount": token, "purpose": "advance"}, headers=owner)
+    assert asked.status_code == 200, asked.text
+
+    # A replayed handoff changes nothing: one order, the same advance, no request made by the system.
+    again = client.post(f"{base}/quotes/{quote_id}/conversion", json={"target": "order"}, headers=owner)
+    assert again.status_code == 200, again.text
+    drain_events(bid)
+    assert sql("select count(*), max(advance_amount)::text from orders_orders where business_id = :b", b=bid) == [
+        (1, advance)]
+    assert int(sql("select count(*) from payments_requests where business_id = :b", b=bid)[0][0]) == 1
