@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_api.db import get_db_session
 from platform_core.context_resolver import bind_public_context, bind_quote_share_token
-from platform_core.exceptions import ResourceNotFound
+from platform_core.exceptions import ConflictError, ResourceNotFound, ValidationError
 from platform_core.models import Business, Quote
 from platform_core.services.quote import QuoteService
 from platform_core.services.quote_document import render_quote_document
@@ -72,6 +72,9 @@ async def view_quote(
     if _expired_token(quote):
         raise ResourceNotFound("Quote")
 
+    if QuoteService.effective_status(quote) == "issued":
+        await QuoteService.record_view(session, quote)
+        await session.commit()
     detail = await QuoteService.get_detail(
         session, business_id=quote.business_id, quote_id=quote.id
     )
@@ -96,6 +99,8 @@ async def decide_quote(
     token: str,
     request: Request,
     decision: str = Form(...),
+    name: str = Form(""),
+    code: str = Form(""),
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
     """Accept or decline from the document itself.
@@ -107,7 +112,36 @@ async def decide_quote(
     if _expired_token(quote):
         raise ResourceNotFound("Quote")
 
-    if decision in {"accepted", "rejected"}:
+    correlation = str(getattr(request.state, "correlation_id", "") or uuid.uuid4())
+    notice = ""
+    # Status first, so a lapsed quote is a conflict even when the form is empty.
+    current = QuoteService.effective_status(quote)
+    if decision == "request_code":
+        if current != "issued":
+            raise ConflictError(
+                f"A {current} quote cannot be accepted",
+                details={"status": current},
+            )
+        await QuoteService.issue_acceptance_code(
+            session, quote=quote, name=name, correlation_id=correlation
+        )
+        await session.commit()
+        notice = "Enter the code we sent you, then accept."
+    elif decision in {"accepted", "rejected"}:
+        if current != "issued":
+            raise ConflictError(
+                f"A {current} quote cannot be {decision}",
+                details={"status": current},
+            )
+        cleaned = name.strip()
+        if not cleaned:
+            raise ValidationError("Tell us your name")
+        if decision == "accepted":
+            try:
+                QuoteService.verify_acceptance_code(quote, code)
+            except ValidationError:
+                await session.commit()
+                raise
         await QuoteService.decide(
             session,
             business_id=quote.business_id,
@@ -118,8 +152,8 @@ async def decide_quote(
             # guest checkout and public bookings already do; actor_context on
             # the audit row is what records that a guest, not the owner, acted.
             actor_id=business.primary_owner_identity_id,
-            correlation_id=str(getattr(request.state, "correlation_id", "") or uuid.uuid4()),
-            decided_by_name="Customer via share link",
+            correlation_id=correlation,
+            decided_by_name=cleaned,
             actor_context="guest_checkout",
         )
         await session.commit()
@@ -131,6 +165,8 @@ async def decide_quote(
         quote=detail,
         business_name=business.display_name,
         can_decide=True,
+        notice=notice,
+        name=name.strip(),
     )
     return HTMLResponse(
         content=html,
@@ -151,6 +187,9 @@ async def quote_data(
     quote, business = await _resolve_by_token(session, token)
     if _expired_token(quote):
         raise ResourceNotFound("Quote")
+    if QuoteService.effective_status(quote) == "issued":
+        await QuoteService.record_view(session, quote)
+        await session.commit()
     detail = await QuoteService.get_detail(
         session, business_id=quote.business_id, quote_id=quote.id
     )

@@ -85,6 +85,7 @@ export const PERMISSIONS = {
   QUOTES_UPDATE: 'quotes.update',
   // Issuing binds the business to a price, so it is separate from editing.
   QUOTES_ISSUE: 'quotes.issue',
+  QUOTES_APPROVE: 'quotes.approve',
 
   // Module: invoicing (Capability Universe §14)
   INVOICES_READ: 'invoices.read',

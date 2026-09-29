@@ -24,13 +24,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.exceptions import ConflictError, ResourceNotFound, ValidationError
 from platform_core.gates import assert_business_mutable
-from platform_core.models import Quote, QuoteCharge, QuoteItem
+from platform_core.models import (
+    Quote,
+    QuoteCharge,
+    QuoteItem,
+    QuotePaymentPlanLine,
+    QuoteRfqIntake,
+    QuoteSettings,
+    QuoteView,
+)
+from platform_core.permissions import QUOTES_APPROVE
 from platform_core.resolvers.customer_resolver import CustomerResolver
 from platform_core.resolvers.offering_resolver import OfferingResolver
 from platform_core.services.audit import AuditService
 from platform_core.services.business import BusinessService
 from platform_core.services.outbox import OutboxService
 from platform_core.services.quote_calculation import calculate_quote
+from platform_core.services.quote_commercial import (
+    CONVERSION_TARGETS,
+    DEFAULT_DISCOUNT_LIMIT,
+    DEFAULT_VALID_DAYS,
+    OTP_MAX_ATTEMPTS,
+    OTP_TTL_MINUTES,
+    RFQ_CHANNELS,
+    conversion_contract,
+    discount_percent,
+    hash_acceptance_code,
+    money_str,
+    new_acceptance_code,
+    normalize_plan,
+    payment_handoff,
+    prepare_line,
+    qty_str,
+    resolve_plan_amounts,
+)
 
 # Only a draft can be changed. Everything else is a record of something that was
 # already communicated.
@@ -45,7 +72,7 @@ TERMS_MAX = 20000
 
 
 def _money_str(value: Any) -> str:
-    return str(Decimal(str(value or 0)).quantize(Decimal("0.01")))
+    return money_str(value)
 
 
 class QuoteService:
@@ -70,9 +97,11 @@ class QuoteService:
         quote: Quote,
         items: list[QuoteItem] | None = None,
         charges: list[QuoteCharge] | None = None,
+        plan: list[QuotePaymentPlanLine] | None = None,
     ) -> dict[str, Any]:
         data: dict[str, Any] = {
             "id": str(quote.id),
+            "business_id": str(quote.business_id),
             "quote_number": quote.quote_number,
             "revision": quote.revision,
             "status": QuoteService.effective_status(quote),
@@ -105,12 +134,22 @@ class QuoteService:
             "rejected_at": quote.rejected_at.isoformat() if quote.rejected_at else None,
             "cancelled_at": quote.cancelled_at.isoformat() if quote.cancelled_at else None,
             "decision_reason": quote.decision_reason,
+            "decided_by_name": quote.decided_by_name,
             "supersedes_quote_id": (
                 str(quote.supersedes_quote_id) if quote.supersedes_quote_id else None
             ),
             "root_quote_id": str(quote.root_quote_id) if quote.root_quote_id else None,
             "converted_to_type": quote.converted_to_type,
             "converted_to_id": str(quote.converted_to_id) if quote.converted_to_id else None,
+            "source": quote.source,
+            "source_ref": quote.source_ref,
+            "approval_status": quote.approval_status,
+            "opened_at": quote.opened_at.isoformat() if quote.opened_at else None,
+            "last_opened_at": quote.last_opened_at.isoformat() if quote.last_opened_at else None,
+            "open_count": int(quote.open_count or 0),
+            "price_locked_at": quote.price_locked_at.isoformat() if quote.price_locked_at else None,
+            "prices_locked": quote.status == "accepted",
+            "conversion_target": quote.conversion_target,
             "is_editable": quote.status in EDITABLE_STATUSES,
             "version": quote.version,
         }
@@ -134,6 +173,12 @@ class QuoteService:
                     "line_tax": _money_str(i.line_tax),
                     "line_total": _money_str(i.line_total),
                     "sort_order": i.sort_order,
+                    "line_kind": i.line_kind or "item",
+                    "moq": qty_str(i.moq) if i.moq is not None else None,
+                    "lead_time_days": i.lead_time_days,
+                    "quantity_breaks": i.quantity_breaks or [],
+                    "boq_section": i.boq_section,
+                    "size_matrix": i.size_matrix or [],
                 }
                 for i in items
             ]
@@ -148,6 +193,19 @@ class QuoteService:
                     "sort_order": c.sort_order,
                 }
                 for c in charges
+            ]
+        if plan is not None:
+            data["payment_plan"] = [
+                {
+                    "id": str(stage.id),
+                    "label": stage.label,
+                    "amount_type": stage.amount_type,
+                    "amount_value": _money_str(stage.amount_value),
+                    "due_rule": stage.due_rule,
+                    "due_days": stage.due_days,
+                    "sort_order": stage.sort_order,
+                }
+                for stage in plan
             ]
         return data
 
@@ -197,12 +255,29 @@ class QuoteService:
         return items, charges
 
     @staticmethod
+    async def load_plan(
+        session: AsyncSession, *, quote_id: uuid.UUID
+    ) -> list[QuotePaymentPlanLine]:
+        return list(
+            (
+                await session.execute(
+                    select(QuotePaymentPlanLine)
+                    .where(QuotePaymentPlanLine.quote_id == quote_id)
+                    .order_by(QuotePaymentPlanLine.sort_order, QuotePaymentPlanLine.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    @staticmethod
     async def get_detail(
         session: AsyncSession, *, business_id: uuid.UUID, quote_id: uuid.UUID
     ) -> dict[str, Any]:
         quote = await QuoteService.resolve(session, business_id=business_id, quote_id=quote_id)
         items, charges = await QuoteService.load_lines(session, quote_id=quote.id)
-        return QuoteService.serialize(quote, items, charges)
+        plan = await QuoteService.load_plan(session, quote_id=quote.id)
+        return QuoteService.serialize(quote, items, charges, plan)
 
     @staticmethod
     async def list_quotes(
@@ -386,6 +461,8 @@ class QuoteService:
             deposit_type=payload.get("deposit_type"),
             deposit_value=payload.get("deposit_value"),
             valid_until=valid_until,
+            source=str(payload.get("source") or "manual"),
+            source_ref=payload.get("source_ref"),
             idempotency_key=str(idempotency_key) if idempotency_key else None,
             created_by=actor_id,
         )
@@ -411,6 +488,9 @@ class QuoteService:
                 )
             )
         await session.flush()
+        await QuoteService._replace_plan(
+            session, business_id=business_id, quote=quote, raw_plan=payload.get("payment_plan") or []
+        )
         await QuoteService._recalculate(session, quote)
 
         await AuditService.record(
@@ -463,9 +543,7 @@ class QuoteService:
         if unit_price is None:
             unit_price = snapshot.get("unit_price", 0)
 
-        quantity = Decimal(str(raw.get("quantity") if raw.get("quantity") is not None else 1))
-        if quantity <= 0:
-            raise ValidationError("Quantity must be greater than zero")
+        prepared = prepare_line({**raw, "unit_price": unit_price})
 
         item = QuoteItem(
             business_id=business_id,
@@ -474,12 +552,18 @@ class QuoteService:
             title=title[:TITLE_MAX],
             description=raw.get("description") or snapshot.get("description"),
             unit_label=raw.get("unit_label"),
-            quantity=quantity,
-            unit_price=Decimal(str(unit_price or 0)),
+            quantity=prepared["quantity"],
+            unit_price=prepared["unit_price"],
             tax_rate=Decimal(str(raw.get("tax_rate") or 0)),
             discount_type=raw.get("discount_type"),
             discount_value=raw.get("discount_value"),
             sort_order=sort_order,
+            line_kind=prepared["line_kind"],
+            moq=prepared["moq"],
+            lead_time_days=prepared["lead_time_days"],
+            quantity_breaks=prepared["quantity_breaks"],
+            boq_section=prepared["boq_section"],
+            size_matrix=prepared["size_matrix"],
             item_metadata=raw.get("metadata") or {},
         )
         session.add(item)
@@ -564,8 +648,17 @@ class QuoteService:
                 )
             await session.flush()
 
+        if "payment_plan" in payload:
+            await QuoteService._replace_plan(
+                session,
+                business_id=business_id,
+                quote=quote,
+                raw_plan=payload.get("payment_plan") or [],
+            )
+
         quote.version += 1
         await QuoteService._recalculate(session, quote)
+        await QuoteService._sync_approval(session, quote)
         await AuditService.record(
             session,
             event_type="quote.updated",
@@ -598,6 +691,7 @@ class QuoteService:
         actor_id: uuid.UUID,
         correlation_id: str,
         valid_days: int | None = None,
+        permissions: frozenset[str] | None = None,
     ) -> Quote:
         """Send it. After this the figures are fixed and a share link exists."""
         business = await BusinessService.get_by_id(session, business_id)
@@ -612,9 +706,17 @@ class QuoteService:
         if not items:
             raise ValidationError("A quote needs at least one line before it can be issued")
 
+        await QuoteService._assert_discount_allowed(
+            session, quote, permissions or frozenset()
+        )
+
         now = datetime.now(timezone.utc)
         if valid_days:
             quote.valid_until = now + timedelta(days=int(valid_days))
+        elif quote.valid_until is None:
+            # Capability Universe §19.4: a quote is valid for 7 days unless the
+            # business names another date.
+            quote.valid_until = now + timedelta(days=DEFAULT_VALID_DAYS)
         quote.status = "issued"
         quote.issued_at = now
         # Opaque, single-purpose, and expiring — the same shape bookings use for
@@ -688,8 +790,11 @@ class QuoteService:
         quote.decided_by_name = decided_by_name
         if decision == "accepted":
             quote.accepted_at = now
+            quote.price_locked_at = now
         else:
             quote.rejected_at = now
+        quote.otp_hash = None
+        quote.otp_expires_at = None
         quote.version += 1
         await session.flush()
 
@@ -719,6 +824,30 @@ class QuoteService:
             business_id=business_id,
             correlation_id=correlation_id,
         )
+        if decision == "accepted":
+            detail = await QuoteService.get_detail(
+                session, business_id=business_id, quote_id=quote.id
+            )
+            plan = resolve_plan_amounts(
+                [
+                    {
+                        "label": stage["label"],
+                        "amount_type": stage["amount_type"],
+                        "amount_value": stage["amount_value"],
+                        "due_rule": stage["due_rule"],
+                        "due_days": stage["due_days"],
+                    }
+                    for stage in detail.get("payment_plan") or []
+                ],
+                quote.total,
+            )
+            await OutboxService.publish(
+                session,
+                event_type="quote.payment_handoff",
+                payload=payment_handoff(quote=detail, plan=plan),
+                business_id=business_id,
+                correlation_id=correlation_id,
+            )
         return quote
 
     @staticmethod
@@ -788,6 +917,11 @@ class QuoteService:
                 "This quote is still a draft — edit it instead of revising it",
                 details={"quote_id": str(original.id)},
             )
+        if original.status == "accepted":
+            raise ConflictError(
+                "An accepted quote is locked. Its prices cannot be revised.",
+                details={"quote_id": str(original.id), "code": "quote_locked"},
+            )
         if original.status in {"superseded", "cancelled"}:
             raise ConflictError(
                 f"A {original.status} quote cannot be revised",
@@ -834,6 +968,12 @@ class QuoteService:
                     discount_type=item.discount_type,
                     discount_value=item.discount_value,
                     sort_order=item.sort_order,
+                    line_kind=item.line_kind,
+                    moq=item.moq,
+                    lead_time_days=item.lead_time_days,
+                    quantity_breaks=item.quantity_breaks,
+                    boq_section=item.boq_section,
+                    size_matrix=item.size_matrix,
                     item_metadata=item.item_metadata,
                 )
             )
@@ -847,6 +987,21 @@ class QuoteService:
                     taxable=charge.taxable,
                     tax_rate=charge.tax_rate,
                     sort_order=charge.sort_order,
+                )
+            )
+        await session.flush()
+        original_plan = await QuoteService.load_plan(session, quote_id=original.id)
+        for stage in original_plan:
+            session.add(
+                QuotePaymentPlanLine(
+                    business_id=business_id,
+                    quote_id=revision.id,
+                    label=stage.label,
+                    amount_type=stage.amount_type,
+                    amount_value=stage.amount_value,
+                    due_rule=stage.due_rule,
+                    due_days=stage.due_days,
+                    sort_order=stage.sort_order,
                 )
             )
         await session.flush()
@@ -884,6 +1039,403 @@ class QuoteService:
             correlation_id=correlation_id,
         )
         return revision
+
+    # ------------------------------------------------------------- commercial rules
+
+    @staticmethod
+    async def _replace_plan(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        quote: Quote,
+        raw_plan: Any,
+    ) -> None:
+        stages = normalize_plan(raw_plan)
+        existing = await QuoteService.load_plan(session, quote_id=quote.id)
+        for stage in existing:
+            await session.delete(stage)
+        await session.flush()
+        for stage in stages:
+            session.add(
+                QuotePaymentPlanLine(
+                    business_id=business_id,
+                    quote_id=quote.id,
+                    label=stage["label"],
+                    amount_type=stage["amount_type"],
+                    amount_value=stage["amount_value"],
+                    due_rule=stage["due_rule"],
+                    due_days=stage["due_days"],
+                    sort_order=stage["sort_order"],
+                )
+            )
+        await session.flush()
+
+    @staticmethod
+    async def discount_limit(session: AsyncSession, business_id: uuid.UUID) -> Decimal:
+        row = await session.get(QuoteSettings, business_id)
+        if row is None:
+            return DEFAULT_DISCOUNT_LIMIT
+        return Decimal(str(row.executive_discount_limit_percent))
+
+    @staticmethod
+    async def set_discount_limit(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        percent: Decimal,
+    ) -> Decimal:
+        if percent < 0 or percent > 100:
+            raise ValidationError("The discount limit is a percent from 0 to 100")
+        row = await session.get(QuoteSettings, business_id)
+        if row is None:
+            row = QuoteSettings(business_id=business_id, executive_discount_limit_percent=percent)
+            session.add(row)
+        else:
+            row.executive_discount_limit_percent = percent
+            row.updated_at = datetime.now(timezone.utc)
+        await session.flush()
+        return percent
+
+    @staticmethod
+    async def _sync_approval(session: AsyncSession, quote: Quote) -> None:
+        """A discount edited after approval has to be approved again."""
+        limit = await QuoteService.discount_limit(session, quote.business_id)
+        pct = discount_percent(quote.subtotal, quote.discount_amount)
+        if pct <= limit:
+            quote.approval_status = "not_required"
+        elif quote.approval_status == "approved":
+            quote.approval_status = "pending"
+        await session.flush()
+
+    @staticmethod
+    async def _assert_discount_allowed(
+        session: AsyncSession, quote: Quote, permissions: frozenset[str]
+    ) -> None:
+        limit = await QuoteService.discount_limit(session, quote.business_id)
+        pct = discount_percent(quote.subtotal, quote.discount_amount)
+        if pct <= limit or QUOTES_APPROVE in permissions or quote.approval_status == "approved":
+            if pct <= limit:
+                quote.approval_status = "not_required"
+            elif QUOTES_APPROVE in permissions and quote.approval_status != "approved":
+                quote.approval_status = "approved"
+            return
+        quote.approval_status = "pending"
+        await session.flush()
+        raise ValidationError(
+            "This discount is above the executive's limit and needs the owner",
+            details={
+                "code": "discount_approval_required",
+                "discount_percent": str(pct),
+                "limit_percent": str(limit),
+            },
+        )
+
+    @staticmethod
+    async def decide_discount(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        quote_id: uuid.UUID,
+        decision: str,
+        actor_id: uuid.UUID,
+        correlation_id: str,
+    ) -> Quote:
+        if decision not in {"approved", "rejected"}:
+            raise ValidationError("Approval is approved or rejected")
+        quote = await QuoteService.resolve(session, business_id=business_id, quote_id=quote_id)
+        QuoteService._assert_editable(quote)
+        if quote.approval_status != "pending":
+            raise ConflictError(
+                "This quote is not waiting on a discount approval",
+                details={"approval_status": quote.approval_status},
+            )
+        quote.approval_status = decision
+        quote.version += 1
+        await session.flush()
+        await OutboxService.publish(
+            session,
+            event_type="quote.discount_decided",
+            payload={
+                "business_id": str(business_id),
+                "quote_id": str(quote.id),
+                "decision": decision,
+            },
+            business_id=business_id,
+            correlation_id=correlation_id,
+        )
+        await AuditService.record(
+            session,
+            event_type="quote.discount_decided",
+            actor_identity_id=actor_id,
+            actor_context="business",
+            business_id=business_id,
+            resource_type="quote",
+            resource_id=quote.id,
+            action=decision,
+            after_state={"approval_status": decision},
+        )
+        return quote
+
+    @staticmethod
+    async def record_view(session: AsyncSession, quote: Quote) -> None:
+        """The customer opened this version. Each open is its own row."""
+        now = datetime.now(timezone.utc)
+        session.add(
+            QuoteView(business_id=quote.business_id, quote_id=quote.id, opened_at=now)
+        )
+        if quote.opened_at is None:
+            quote.opened_at = now
+        quote.last_opened_at = now
+        quote.open_count = int(quote.open_count or 0) + 1
+        await session.flush()
+        await OutboxService.publish(
+            session,
+            event_type="quote.viewed",
+            payload={
+                "business_id": str(quote.business_id),
+                "quote_id": str(quote.id),
+                "revision": quote.revision,
+                "quote_number": quote.quote_number,
+                "opened_at": now.isoformat(),
+                "open_count": quote.open_count,
+            },
+            business_id=quote.business_id,
+            correlation_id=str(uuid.uuid4()),
+        )
+
+    @staticmethod
+    async def issue_acceptance_code(
+        session: AsyncSession,
+        *,
+        quote: Quote,
+        name: str,
+        correlation_id: str,
+    ) -> None:
+        cleaned = name.strip()
+        if not 1 <= len(cleaned) <= 80:
+            raise ValidationError("Tell us the name to put on the acceptance")
+        current = QuoteService.effective_status(quote)
+        if current != "issued":
+            raise ConflictError(
+                f"A {current} quote cannot be accepted",
+                details={"status": current},
+            )
+        code = new_acceptance_code()
+        quote.otp_hash = hash_acceptance_code(quote.id, code)
+        quote.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_TTL_MINUTES)
+        quote.otp_attempts = 0
+        quote.decided_by_name = cleaned
+        await session.flush()
+        # The code travels on the event so messaging can send it. The page
+        # the customer is looking at does not receive it.
+        await OutboxService.publish(
+            session,
+            event_type="quote.acceptance_code_issued",
+            payload={
+                "business_id": str(quote.business_id),
+                "quote_id": str(quote.id),
+                "quote_number": quote.quote_number,
+                "name": cleaned,
+                "code": code,
+                "customer_contact_id": (
+                    str(quote.customer_contact_id) if quote.customer_contact_id else None
+                ),
+            },
+            business_id=quote.business_id,
+            correlation_id=correlation_id,
+        )
+
+    @staticmethod
+    def verify_acceptance_code(quote: Quote, code: str) -> None:
+        if quote.otp_attempts >= OTP_MAX_ATTEMPTS:
+            raise ValidationError(
+                "Too many attempts. Ask for a new code.",
+                details={"code": "otp_locked"},
+            )
+        now = datetime.now(timezone.utc)
+        presented = (code or "").strip()
+        expires = quote.otp_expires_at
+        matches = (
+            quote.otp_hash
+            and expires is not None
+            and expires > now
+            and hash_acceptance_code(quote.id, presented) == quote.otp_hash
+        )
+        if not matches:
+            quote.otp_attempts = int(quote.otp_attempts or 0) + 1
+            raise ValidationError(
+                "That code does not match",
+                details={"code": "otp_mismatch"},
+            )
+
+    @staticmethod
+    async def intake_rfq(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        correlation_id: str,
+        channel: str,
+        idempotency_key: str,
+        customer_name: str,
+        phone: str | None,
+        email: str | None,
+        brief: str | None,
+        lines: list[dict[str, Any]] | None,
+        offering_title: str | None = None,
+        source_ref: str | None = None,
+    ) -> Quote:
+        """A website or WhatsApp request becomes one draft quote.
+
+        The same key returns the draft already opened. Prices stay at zero
+        until someone at the business writes them — an RFQ is a request, not
+        an offer.
+        """
+        if channel not in RFQ_CHANNELS:
+            raise ValidationError("An RFQ arrives from the website or WhatsApp")
+        key = idempotency_key.strip()
+        if not key:
+            raise ValidationError("An RFQ needs an idempotency key")
+        existing = (
+            await session.execute(
+                select(QuoteRfqIntake).where(
+                    QuoteRfqIntake.business_id == business_id,
+                    QuoteRfqIntake.channel == channel,
+                    QuoteRfqIntake.idempotency_key == key,
+                )
+            )
+        ).scalars().first()
+        if existing is not None:
+            return await QuoteService.resolve(
+                session, business_id=business_id, quote_id=existing.quote_id
+            )
+
+        from platform_core.services.customer import CustomerService
+
+        name = customer_name.strip()
+        if not 1 <= len(name) <= 80:
+            raise ValidationError("An RFQ needs the customer's name")
+        contact = await CustomerService.find_or_create_contact(
+            session,
+            business_id=business_id,
+            correlation_id=correlation_id,
+            actor_id=actor_id,
+            display_name=name,
+            email=email,
+            phone=phone,
+            actor_context=f"rfq_{channel}",
+        )
+        item_rows = list(lines or [])
+        if not item_rows:
+            title = (offering_title or brief or "Quote request").strip()[:TITLE_MAX] or "Quote request"
+            item_rows = [{"title": title, "quantity": 1, "unit_price": 0}]
+        quote = await QuoteService.create(
+            session,
+            business_id=business_id,
+            actor_id=actor_id,
+            correlation_id=correlation_id,
+            payload={
+                "customer_contact_id": str(contact.id),
+                "title": (offering_title or "Quote request")[:TITLE_MAX],
+                "notes": (brief or "")[:4000] or None,
+                "items": item_rows,
+                "source": channel,
+                "source_ref": source_ref,
+                "idempotency_key": f"rfq:{channel}:{key}",
+            },
+        )
+        session.add(
+            QuoteRfqIntake(
+                business_id=business_id,
+                channel=channel,
+                idempotency_key=key,
+                quote_id=quote.id,
+            )
+        )
+        await session.flush()
+        await OutboxService.publish(
+            session,
+            event_type="quote.rfq_received",
+            payload={
+                "business_id": str(business_id),
+                "quote_id": str(quote.id),
+                "channel": channel,
+                "source_ref": source_ref,
+            },
+            business_id=business_id,
+            correlation_id=correlation_id,
+        )
+        return quote
+
+    @staticmethod
+    async def request_conversion(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        quote_id: uuid.UUID,
+        target: str,
+        actor_id: uuid.UUID,
+        correlation_id: str,
+    ) -> dict[str, Any]:
+        """Hand the locked accepted version to Orders, Projects or Invoicing.
+
+        The contract is the whole handoff. This does not insert an order, a
+        project or an invoice.
+        """
+        if target not in CONVERSION_TARGETS:
+            raise ValidationError("Choose an order, a project, or an invoice")
+        quote = await QuoteService.resolve(session, business_id=business_id, quote_id=quote_id)
+        if quote.status != "accepted" or quote.price_locked_at is None:
+            raise ConflictError(
+                "Only an accepted, locked quote can be handed on",
+                details={"status": quote.status, "code": "quote_not_locked"},
+            )
+        if quote.conversion_target and quote.conversion_target != target:
+            raise ConflictError(
+                f"This quote is already handed to {quote.conversion_target}",
+                details={"conversion_target": quote.conversion_target},
+            )
+        detail = await QuoteService.get_detail(
+            session, business_id=business_id, quote_id=quote.id
+        )
+        plan = resolve_plan_amounts(
+            [
+                {
+                    "label": stage["label"],
+                    "amount_type": stage["amount_type"],
+                    "amount_value": stage["amount_value"],
+                    "due_rule": stage["due_rule"],
+                    "due_days": stage["due_days"],
+                }
+                for stage in detail.get("payment_plan") or []
+            ],
+            quote.total,
+        )
+        contract = conversion_contract(quote=detail, plan=plan, target=target)
+        if quote.conversion_target == target:
+            return contract
+        quote.conversion_target = target
+        quote.version += 1
+        await session.flush()
+        await OutboxService.publish(
+            session,
+            event_type="quote.conversion_requested",
+            payload=contract,
+            business_id=business_id,
+            correlation_id=correlation_id,
+        )
+        await AuditService.record(
+            session,
+            event_type="quote.conversion_requested",
+            actor_identity_id=actor_id,
+            actor_context="business",
+            business_id=business_id,
+            resource_type="quote",
+            resource_id=quote.id,
+            action="conversion_requested",
+            after_state={"target": target},
+        )
+        return contract
 
     # ------------------------------------------------------------- sweeping
 

@@ -25,6 +25,12 @@ type LineDraft = {
   tax_rate: string
   discount_type: string
   discount_value: string
+  line_kind: string
+  moq: string
+  lead_time_days: string
+  quantity_breaks: string
+  boq_section: string
+  size_matrix: string
 }
 
 type ChargeDraft = {
@@ -50,7 +56,33 @@ function emptyLine(): LineDraft {
     tax_rate: '0',
     discount_type: '',
     discount_value: '',
+    line_kind: 'item',
+    moq: '',
+    lead_time_days: '',
+    quantity_breaks: '',
+    boq_section: '',
+    size_matrix: '',
   }
+}
+
+function breaksText(rows: { min_qty: string; unit_price: string }[] | undefined): string {
+  return (rows || []).map((row) => `${row.min_qty}:${row.unit_price}`).join(', ')
+}
+
+function sizesText(rows: { size: string; quantity: string }[] | undefined): string {
+  return (rows || []).map((row) => `${row.size}:${row.quantity}`).join(', ')
+}
+
+function parsePairs(raw: string, left: string, right: string): Record<string, string>[] {
+  return raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .flatMap((part) => {
+      const [a, b] = part.split(':').map((piece) => piece.trim())
+      if (!a || !b) return []
+      return [{ [left]: a, [right]: b }]
+    })
 }
 
 function lineFrom(item: QuoteItem): LineDraft {
@@ -65,6 +97,12 @@ function lineFrom(item: QuoteItem): LineDraft {
     tax_rate: fmtQty(item.tax_rate),
     discount_type: item.discount_type || '',
     discount_value: item.discount_value || '',
+    line_kind: item.line_kind || 'item',
+    moq: item.moq || '',
+    lead_time_days: item.lead_time_days === null || item.lead_time_days === undefined ? '' : String(item.lead_time_days),
+    quantity_breaks: breaksText(item.quantity_breaks),
+    boq_section: item.boq_section || '',
+    size_matrix: sizesText(item.size_matrix),
   }
 }
 
@@ -155,11 +193,20 @@ export function QuoteEditor({
       title: l.offering_id ? null : l.title,
       description: l.description,
       unit_label: l.unit_label,
-      quantity: Number(l.quantity) || 0,
+      quantity:
+        l.line_kind === 'size_matrix'
+          ? Math.max(Number(l.quantity) || 0, 1)
+          : Number(l.quantity) || 0,
       unit_price: l.unit_price === '' ? null : Number(l.unit_price),
       tax_rate: Number(l.tax_rate) || 0,
       discount_type: l.discount_type || null,
       discount_value: l.discount_value === '' ? null : Number(l.discount_value),
+      line_kind: l.line_kind || 'item',
+      moq: l.moq === '' ? null : Number(l.moq),
+      lead_time_days: l.lead_time_days === '' ? null : Number(l.lead_time_days),
+      quantity_breaks: parsePairs(l.quantity_breaks, 'min_qty', 'unit_price'),
+      boq_section: l.boq_section || null,
+      size_matrix: parsePairs(l.size_matrix, 'size', 'quantity'),
     }))
   )
 
@@ -172,9 +219,12 @@ export function QuoteEditor({
     }))
   )
 
-  const usable = lines.some(
-    (l) => (l.offering_id || l.title.trim()) && Number(l.quantity) > 0
-  )
+  const usable = lines.some((l) => {
+    const named = Boolean(l.offering_id || l.title.trim())
+    if (!named) return false
+    if (l.line_kind === 'size_matrix') return l.size_matrix.trim().length > 0 || Number(l.quantity) > 0
+    return Number(l.quantity) > 0
+  })
 
   return (
     <form
@@ -360,6 +410,67 @@ export function QuoteEditor({
                     />
                   </div>
                 </label>
+
+                <label style={FIELD}>
+                  <span style={LABEL}>Line kind</span>
+                  <select
+                    value={line.line_kind}
+                    onChange={(e) => patchLine(line.key, { line_kind: e.target.value })}
+                  >
+                    <option value="item">Item</option>
+                    <option value="boq">BOQ</option>
+                    <option value="size_matrix">Size matrix</option>
+                  </select>
+                </label>
+
+                <label style={FIELD}>
+                  <span style={LABEL}>Minimum quantity</span>
+                  <input
+                    value={line.moq}
+                    onChange={(e) => patchLine(line.key, { moq: e.target.value })}
+                    placeholder="None"
+                  />
+                </label>
+
+                <label style={FIELD}>
+                  <span style={LABEL}>Lead time (days)</span>
+                  <input
+                    value={line.lead_time_days}
+                    onChange={(e) => patchLine(line.key, { lead_time_days: e.target.value })}
+                    placeholder="None"
+                  />
+                </label>
+
+                <label style={FIELD}>
+                  <span style={LABEL}>Quantity breaks</span>
+                  <input
+                    value={line.quantity_breaks}
+                    onChange={(e) => patchLine(line.key, { quantity_breaks: e.target.value })}
+                    placeholder="10:450, 50:400"
+                  />
+                </label>
+
+                {line.line_kind === 'boq' ? (
+                  <label style={FIELD}>
+                    <span style={LABEL}>BOQ section</span>
+                    <input
+                      value={line.boq_section}
+                      onChange={(e) => patchLine(line.key, { boq_section: e.target.value })}
+                      placeholder="Flooring"
+                    />
+                  </label>
+                ) : null}
+
+                {line.line_kind === 'size_matrix' ? (
+                  <label style={FIELD}>
+                    <span style={LABEL}>Sizes</span>
+                    <input
+                      value={line.size_matrix}
+                      onChange={(e) => patchLine(line.key, { size_matrix: e.target.value })}
+                      placeholder="S:10, M:20, L:8"
+                    />
+                  </label>
+                ) : null}
               </div>
             </div>
           ))}
@@ -550,6 +661,28 @@ export function QuoteEditor({
             </div>
           </label>
         </div>
+      </Card>
+
+      <Card style={{ display: 'grid', gap: '0.9rem' }}>
+        <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Payment plan</h2>
+        <label style={FIELD}>
+          <span style={LABEL}>Stages</span>
+          <textarea
+            name="payment_plan"
+            rows={3}
+            defaultValue={(quote?.payment_plan || [])
+              .map((stage) =>
+                [stage.label, stage.amount_type, stage.amount_value, stage.due_rule, stage.due_days ?? ''].join(' | ')
+              )
+              .join('\n')}
+            onChange={touch}
+            placeholder={'Token | percent | 20 | on_acceptance\nBalance | amount | 80000 | net_days | 15'}
+          />
+          <span style={HINT}>
+            One stage a line: label | amount or percent | value | on_acceptance, net_days or milestone | days.
+            The deposit above is the token Payments is handed when the customer accepts.
+          </span>
+        </label>
       </Card>
 
       <Card style={{ display: 'grid', gap: '0.9rem' }}>

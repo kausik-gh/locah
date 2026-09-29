@@ -1737,6 +1737,19 @@ class Quote(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decided_by_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'manual'"))
+    source_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approval_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'not_required'")
+    )
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    open_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    price_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    conversion_target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    otp_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    otp_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     converted_to_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     converted_to_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     converted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1790,6 +1803,16 @@ class QuoteItem(Base):
         Numeric(12, 2), nullable=False, server_default=text("0")
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    line_kind: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'item'"))
+    moq: Mapped[float | None] = mapped_column(Numeric(12, 3), nullable=True)
+    lead_time_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quantity_breaks: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    boq_section: Mapped[str | None] = mapped_column(Text, nullable=True)
+    size_matrix: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
     item_metadata: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
@@ -1813,6 +1836,71 @@ class QuoteCharge(Base):
     taxable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     tax_rate: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, server_default=text("0"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class QuoteSettings(Base):
+    """The executive discount ceiling for one business. Owner approval sits above it."""
+
+    __tablename__ = "quotes_settings"
+
+    business_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True
+    )
+    executive_discount_limit_percent: Mapped[float] = mapped_column(
+        Numeric(5, 2), nullable=False, server_default=text("5")
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class QuotePaymentPlanLine(Base):
+    """One stage of the plan offered with the quote. Payments collects it later."""
+
+    __tablename__ = "quotes_payment_plan_lines"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    quote_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("quotes_quotes.id", ondelete="CASCADE")
+    )
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    amount_type: Mapped[str] = mapped_column(Text, nullable=False)
+    amount_value: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    due_rule: Mapped[str] = mapped_column(Text, nullable=False)
+    due_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class QuoteView(Base):
+    """One opening of one version by the customer holding the share link."""
+
+    __tablename__ = "quotes_views"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    quote_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("quotes_quotes.id", ondelete="CASCADE")
+    )
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class QuoteRfqIntake(Base):
+    """Idempotency for a website or WhatsApp request that became a draft quote."""
+
+    __tablename__ = "quotes_rfq_intakes"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    channel: Mapped[str] = mapped_column(Text, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    quote_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("quotes_quotes.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

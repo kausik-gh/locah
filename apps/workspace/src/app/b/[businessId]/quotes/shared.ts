@@ -39,6 +39,22 @@ export type QuoteRow = {
   converted_to_id: string | null
   is_editable: boolean
   version: number
+  source?: string
+  approval_status?: string
+  opened_at?: string | null
+  last_opened_at?: string | null
+  open_count?: number
+  prices_locked?: boolean
+  price_locked_at?: string | null
+  conversion_target?: string | null
+  decided_by_name?: string | null
+  payment_plan?: {
+    label: string
+    amount_type: string
+    amount_value: string
+    due_rule: string
+    due_days: number | null
+  }[]
   items?: QuoteItem[]
   charges?: QuoteCharge[]
 }
@@ -59,6 +75,12 @@ export type QuoteItem = {
   line_tax: string
   line_total: string
   sort_order: number
+  line_kind?: string
+  moq?: string | null
+  lead_time_days?: number | null
+  quantity_breaks?: { min_qty: string; unit_price: string }[]
+  boq_section?: string | null
+  size_matrix?: { size: string; quantity: string }[]
 }
 
 export type QuoteCharge = {

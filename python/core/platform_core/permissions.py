@@ -70,6 +70,9 @@ QUOTES_CREATE = "quotes.create"
 QUOTES_UPDATE = "quotes.update"
 # Issuing binds the business to a price, so it is separate from editing a draft.
 QUOTES_ISSUE = "quotes.issue"
+# Sending a discount past the executive's limit. Owners hold it through
+# ALL_PERMISSIONS. A sales executive does not.
+QUOTES_APPROVE = "quotes.approve"
 
 # Invoices & GST (Capability Universe §14). Issuing a numbered tax document,
 # cancelling one and setting the rates it charges are separate authorities:

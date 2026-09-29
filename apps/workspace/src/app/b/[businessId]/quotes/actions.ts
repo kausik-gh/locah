@@ -49,6 +49,12 @@ type QuoteItemInput = {
   tax_rate: number
   discount_type?: string | null
   discount_value?: number | null
+  line_kind?: string | null
+  moq?: number | null
+  lead_time_days?: number | null
+  quantity_breaks?: unknown[]
+  boq_section?: string | null
+  size_matrix?: unknown[]
 }
 
 type QuoteChargeInput = {
@@ -79,7 +85,14 @@ function parseItems(raw: FormDataEntryValue | null): QuoteItemInput[] {
     if (!row || typeof row !== 'object') return []
     const r = row as Record<string, unknown>
     const quantity = Number(r.quantity)
-    if (!Number.isFinite(quantity) || quantity <= 0) return []
+    const kind = r.line_kind === 'boq' || r.line_kind === 'size_matrix' ? r.line_kind : 'item'
+    const sizes = Array.isArray(r.size_matrix) ? r.size_matrix : []
+    // A size matrix's quantity is the sum of its sizes. The typed quantity
+    // can be empty; the API refuses the line if no size is filled in.
+    if (kind !== 'size_matrix' && (!Number.isFinite(quantity) || quantity <= 0)) return []
+    if (kind === 'size_matrix' && sizes.length === 0 && (!Number.isFinite(quantity) || quantity <= 0)) {
+      return []
+    }
     const offeringId = typeof r.offering_id === 'string' && r.offering_id ? r.offering_id : null
     const title = typeof r.title === 'string' && r.title.trim() ? r.title.trim() : null
     // A line is either catalogue-backed or free-text; one of the two must say
@@ -102,9 +115,45 @@ function parseItems(raw: FormDataEntryValue | null): QuoteItemInput[] {
           r.discount_type === 'percent' || r.discount_type === 'amount' ? r.discount_type : null,
         discount_value:
           Number.isFinite(discountValue) && discountValue > 0 ? discountValue : null,
+        line_kind:
+          r.line_kind === 'boq' || r.line_kind === 'size_matrix' || r.line_kind === 'item'
+            ? r.line_kind
+            : 'item',
+        moq: Number.isFinite(Number(r.moq)) && Number(r.moq) > 0 ? Number(r.moq) : null,
+        lead_time_days:
+          r.lead_time_days === null || r.lead_time_days === ''
+            ? null
+            : Number.isFinite(Number(r.lead_time_days))
+              ? Number(r.lead_time_days)
+              : null,
+        quantity_breaks: Array.isArray(r.quantity_breaks) ? r.quantity_breaks : [],
+        boq_section: typeof r.boq_section === 'string' && r.boq_section.trim() ? r.boq_section.trim() : null,
+        size_matrix: Array.isArray(r.size_matrix) ? r.size_matrix : [],
       },
     ]
   })
+}
+
+function parsePlan(raw: FormDataEntryValue | null): Record<string, unknown>[] {
+  const text = raw === null ? '' : String(raw).trim()
+  if (!text) return []
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      const [label, amountType, amountValue, dueRule, dueDays] = line.split('|').map((part) => part.trim())
+      if (!label || !amountValue) return []
+      return [
+        {
+          label,
+          amount_type: amountType === 'percent' ? 'percent' : 'amount',
+          amount_value: Number(amountValue),
+          due_rule: dueRule === 'net_days' || dueRule === 'milestone' ? dueRule : 'on_acceptance',
+          due_days: dueDays ? Number(dueDays) : null,
+        },
+      ]
+    })
 }
 
 function parseCharges(raw: FormDataEntryValue | null): QuoteChargeInput[] {
@@ -173,6 +222,7 @@ function collectBody(formData: FormData): Record<string, unknown> {
     valid_until: endOfDayIso(formData, 'valid_until'),
     items: parseItems(formData.get('items_json')),
     charges: parseCharges(formData.get('charges_json')),
+    payment_plan: parsePlan(formData.get('payment_plan')),
   }
 }
 
@@ -237,6 +287,24 @@ export async function cancelQuote(formData: FormData): Promise<void> {
     reason: optionalText(formData, 'reason'),
   })
   revalidatePath(`/b/${businessId}/quotes`)
+  revalidatePath(`/b/${businessId}/quotes/${quoteId}`)
+}
+
+export async function approveQuoteDiscount(formData: FormData): Promise<void> {
+  const businessId = String(formData.get('businessId'))
+  const quoteId = String(formData.get('quoteId'))
+  await send(`/v1/platform/businesses/${businessId}/quotes/${quoteId}/discount-approval`, 'POST', {
+    decision: String(formData.get('decision') || 'approved'),
+  })
+  revalidatePath(`/b/${businessId}/quotes/${quoteId}`)
+}
+
+export async function handOffQuote(formData: FormData): Promise<void> {
+  const businessId = String(formData.get('businessId'))
+  const quoteId = String(formData.get('quoteId'))
+  await send(`/v1/platform/businesses/${businessId}/quotes/${quoteId}/conversion`, 'POST', {
+    target: String(formData.get('target') || 'order'),
+  })
   revalidatePath(`/b/${businessId}/quotes/${quoteId}`)
 }
 

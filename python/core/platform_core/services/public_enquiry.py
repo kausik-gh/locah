@@ -114,4 +114,32 @@ class PublicEnquiryService:
                      "source": "website_enquiry", "origin_context": origin,
                      "offering_id": str(offering_id) if offering_id else None},
         )
+        # A "Get a quote" request is also a draft quote when Quotes is on.
+        # The lead stays the follow-up. The draft is what the team prices.
+        if purpose == "quote_request":
+            quotes_on = (await session.execute(
+                select(BusinessModuleState.activation_state).where(
+                    BusinessModuleState.business_id == business.id,
+                    BusinessModuleState.module_id == "quotes",
+                )
+            )).scalar()
+            if quotes_on in ("enabled", "ready", "active"):
+                from platform_core.services.quote import QuoteService
+
+                offering_title = origin.get("offering_title")
+                await QuoteService.intake_rfq(
+                    session,
+                    business_id=business.id,
+                    actor_id=business.primary_owner_identity_id,
+                    correlation_id=correlation_id,
+                    channel="website",
+                    idempotency_key=str(lead.id),
+                    customer_name=name,
+                    phone=phone,
+                    email=email,
+                    brief=message,
+                    lines=None,
+                    offering_title=str(offering_title) if offering_title else None,
+                    source_ref=str(lead.id),
+                )
         return {"received": True, "reference": str(lead.id)[:8].upper()}
