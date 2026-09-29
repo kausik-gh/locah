@@ -136,6 +136,13 @@ async def public_order_tracking(
     data = await FulfilmentService.get_tracking(
         session, order_id=order_id, token=token
     )
+    # Execution state, when a dispatch job exists. No coordinate is added here.
+    if data.get("state") != "expired":
+        from platform_core.dispatch.service import DispatchService
+
+        data["dispatch"] = await DispatchService.public_tracking(session, order_id=order_id)
+    else:
+        data["dispatch"] = None
     return {"data": data, "meta": {}}
 
 

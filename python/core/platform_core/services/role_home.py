@@ -73,7 +73,7 @@ class RoleHomeService:
             )).first()
             key = (row[0] if row else None) or ""
         return key if key in ("manager", "store_keeper", "accountant", "cashier", "provider",
-                              "sales_executive") else "member"
+                              "sales_executive", "dispatcher", "delivery_partner") else "member"
 
     @staticmethod
     async def compose(
@@ -100,6 +100,10 @@ class RoleHomeService:
             bands = [await ctx.my_day()]
         elif key == "sales_executive":
             bands = [await ctx.follow_ups()]
+        elif key == "dispatcher":
+            bands = [await ctx.dispatch_attention()]
+        elif key == "delivery_partner":
+            bands = [await ctx.my_next_drop()]
         else:
             bands = [await ctx.needs_you_now(), await ctx.today()]
             if key == "owner":
@@ -298,6 +302,45 @@ class _Ctx:
                                " · ".join(x for x in (when, lead.status) if x), tone="bad" if late else "info"))
         return {"key": "followups", "title": "Follow-ups due today", "items": items,
                 "empty": "No follow-ups due today."}
+
+    # ------------------------------------------------------------------ dispatch
+    async def dispatch_attention(self) -> dict[str, Any] | None:
+        """A dispatcher's home (§7.2 "Unassigned and late deliveries")."""
+        if not self.can("dispatch.read", "dispatch"):
+            return None
+        from platform_core.dispatch.models import DispatchJob
+
+        unassigned = await self._count(DispatchJob, DispatchJob.business_id == self.b, DispatchJob.status == "unassigned")
+        failed = await self._count(DispatchJob, DispatchJob.business_id == self.b, DispatchJob.status == "failed")
+        out = await self._count(
+            DispatchJob, DispatchJob.business_id == self.b,
+            DispatchJob.status.in_(("picked_up", "out_for_delivery")),
+        )
+        items = []
+        if unassigned:
+            items.append(_item("unassigned deliveries", unassigned, "/dispatch", tone="warn"))
+        if failed:
+            items.append(_item("deliveries that need attention", failed, "/dispatch", tone="bad"))
+        if out:
+            items.append(_item("out now", out, "/dispatch", tone="info"))
+        return {"key": "dispatch", "title": "Unassigned and late deliveries", "items": items,
+                "empty": "Nothing is waiting to be dispatched."}
+
+    async def my_next_drop(self) -> dict[str, Any] | None:
+        """A delivery partner's home (§7.2 "My next drop"). Assignment scope keeps it to their jobs."""
+        if not self.can("dispatch.read", "dispatch"):
+            return None
+        from platform_core.dispatch.models import DispatchJob
+
+        job = (await self.s.execute(select(DispatchJob).where(
+            DispatchJob.business_id == self.b,
+            DispatchJob.status.in_(("assigned", "picked_up", "out_for_delivery")),
+        ).order_by(DispatchJob.planned_at.asc().nulls_last(), DispatchJob.created_at).limit(1))).scalars().first()
+        if job is None:
+            return {"key": "nextdrop", "title": "My next drop", "items": [], "empty": "No jobs assigned to you."}
+        return {"key": "nextdrop", "title": "My next drop", "items": [
+            _item(job.order_number, 0, "/crew", job.pickup_label or job.status, tone="bad"),
+        ], "empty": ""}
 
     # ------------------------------------------------------------------ today
     async def today(self) -> dict[str, Any] | None:

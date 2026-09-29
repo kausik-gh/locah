@@ -230,6 +230,16 @@ _CATALOGUE: dict[str, frozenset[str]] = {
             "fulfilment.settings_updated",
         }
     ),
+    "dispatch": frozenset(
+        {
+            "dispatch.job_created",
+            "dispatch.assigned",
+            "dispatch.picked_up",
+            "dispatch.out_for_delivery",
+            "dispatch.delivered",
+            "dispatch.failed",
+        }
+    ),
     "lead": frozenset(
         {
             "lead.created",

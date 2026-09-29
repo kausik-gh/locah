@@ -53,6 +53,8 @@ export const AREAS: NavArea[] = [
       { href: '/queue', label: 'Queue', perm: 'queue.read', module: 'queue-operations' },
       { href: '/tasks', label: 'Tasks', perm: 'tasks.read', module: 'tasks' },
       { href: '/fulfilment', label: 'Deliveries & pickup', perm: 'fulfilment.read', module: 'fulfilment' },
+      { href: '/dispatch', label: 'Dispatch', perm: 'dispatch.assign', module: 'dispatch' },
+      { href: '/crew', label: 'My jobs', perm: 'dispatch.update_status', module: 'dispatch' },
       { href: '/memberships', label: 'Memberships', perm: 'memberships.read', module: 'memberships' },
       { href: '/quotes', label: 'Quotes', perm: 'quotes.read', module: 'quotes' },
       { href: '/projects', label: 'Projects', perm: 'projects.read', module: 'projects' },

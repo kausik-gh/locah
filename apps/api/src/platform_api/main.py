@@ -75,6 +75,7 @@ from platform_api.routers import (
     v1_academics,
     v1_queue,
     v1_tasks,
+    v1_dispatch,
 )
 
 # Database lifecycle state
@@ -277,6 +278,7 @@ app.include_router(v1_academics.router)
 app.include_router(v1_academics.portal_router)
 app.include_router(v1_queue.router)
 app.include_router(v1_tasks.router)
+app.include_router(v1_dispatch.router)
 
 app.add_exception_handler(PlatformError, platform_error_handler)
 

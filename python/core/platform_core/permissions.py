@@ -189,6 +189,10 @@ FULFILMENT_READ = "fulfilment.read"
 FULFILMENT_UPDATE_STATUS = "fulfilment.update_status"
 FULFILMENT_MANAGE_CONFIG = "fulfilment.manage_config"
 
+DISPATCH_READ = "dispatch.read"
+DISPATCH_ASSIGN = "dispatch.assign"
+DISPATCH_UPDATE_STATUS = "dispatch.update_status"
+
 WORKFORCE_READ = "workforce.read"
 WORKFORCE_CREATE = "workforce.create"
 WORKFORCE_UPDATE = "workforce.update"

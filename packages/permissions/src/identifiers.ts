@@ -221,6 +221,11 @@ export const PERMISSIONS = {
   FULFILMENT_UPDATE_STATUS: 'fulfilment.update_status',
   FULFILMENT_MANAGE_CONFIG: 'fulfilment.manage_config',
 
+  // Module: dispatch ΓÇö execution after the sale
+  DISPATCH_READ: 'dispatch.read',
+  DISPATCH_ASSIGN: 'dispatch.assign',
+  DISPATCH_UPDATE_STATUS: 'dispatch.update_status',
+
   // Module: workforce
   WORKFORCE_READ: 'workforce.read',
   WORKFORCE_CREATE: 'workforce.create',

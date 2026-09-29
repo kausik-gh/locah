@@ -42,6 +42,14 @@ const jobWords = (t: Words): Record<string, string> => ({
 
 const modeWords = (t: Words): Record<string, string> => ({ pickup: t('Pickup'), delivery: t('Delivery'), shipping: t('Shipping') })
 
+const trackSteps = (t: Words): { key: string; label: string }[] => [
+  { key: 'placed', label: t('Placed') },
+  { key: 'preparing', label: t('Preparing') },
+  { key: 'picked_up', label: t('Picked up') },
+  { key: 'on_the_way', label: t('On the way') },
+  { key: 'delivered', label: t('Delivered') },
+]
+
 /**
  * WEB-008 Order Tracking — Doc 12 §11.2 / Doc 09 WEB-008. Reached from the
  * order confirmation and from WhatsApp (?lang= carries the customer's
@@ -93,6 +101,27 @@ export default async function TrackOrderPage({
               </>
             ) : null}
           </dl>
+          {data.dispatch ? (
+            <>
+              <ol>
+                {trackSteps(t).map((step) => {
+                  const here = step.key === data.dispatch.reached_step
+                  return (
+                    <li key={step.key} aria-current={here ? 'step' : undefined}>
+                      {here ? <strong>{step.label}</strong> : step.label}
+                    </li>
+                  )
+                })}
+              </ol>
+              {data.dispatch.partner_first_name ? (
+                <p className="ls-meta">{t('With {name}', { name: data.dispatch.partner_first_name })}</p>
+              ) : null}
+              {data.dispatch.failed ? (
+                <p className="ls-offer__error" role="alert">{t('Could not be completed')}</p>
+              ) : null}
+              <p className="ls-meta">{t('Live location is off until a device shares it.')}</p>
+            </>
+          ) : null}
           {data.state === 'delayed' ? <p className="ls-meta">{t('Delivery appears delayed. Contact the business if needed.')}</p> : null}
           {data.state === 'failed' ? <p className="ls-offer__error" role="alert">{t('This could not be completed. Contact the business for help.')}</p> : null}
           {data.state === 'cancelled' ? <p className="ls-meta">{t('This was cancelled.')}</p> : null}
