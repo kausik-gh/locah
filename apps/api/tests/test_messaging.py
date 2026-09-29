@@ -442,6 +442,53 @@ def test_bookings_are_confirmed_and_reminded_and_a_cancel_stops_it(monkeypatch: 
 
 
 @DB
+def test_a_rescheduled_booking_is_reminded_for_its_new_time_only_once(monkeypatch: Any) -> None:
+    _, owner = new_identity(monkeypatch)
+    bid = create_business(client, owner, modules=("workforce", "bookings", "offerings-catalog", "payments",
+                                                  "customer-relationships", "messaging"))
+    base = f"/v1/platform/businesses/{bid}"
+    _connect(owner, bid)
+    service = client.post(f"{base}/products", json={"title": "Facial", "offering_type": "service", "status": "active",
+                                                    "price_amount": 900}, headers=owner).json()["data"]
+    contact = client.post(f"{base}/customers", json={"display_name": "Revathi", "phone": "+919876500016"},
+                          headers=owner).json()["data"]
+    from zoneinfo import ZoneInfo
+
+    ist = ZoneInfo("Asia/Kolkata")
+    starts = datetime.combine(datetime.now(ist).date() + timedelta(days=2), datetime.min.time().replace(hour=11),
+                              ist).astimezone(timezone.utc)
+    booking = client.post(f"{base}/bookings", json={
+        "location_id": primary_location(client, owner, bid), "offering_id": service["id"],
+        "customer_contact_id": contact["id"], "reservation_mode": "appointment",
+        "starts_at": starts.isoformat(), "ends_at": (starts + timedelta(hours=1)).isoformat()}, headers=owner)
+    assert booking.status_code == 200, booking.text
+    bk = booking.json()["data"]
+    assert client.post(f"{base}/bookings/{bk['id']}/status", json={"status": "confirmed"},
+                       headers=owner).status_code == 200
+    drain_events(bid)
+    moved_to = starts + timedelta(days=1)
+    moved = client.post(f"{base}/bookings/{bk['id']}/reschedule", json={
+        "starts_at": moved_to.isoformat(), "ends_at": (moved_to + timedelta(hours=1)).isoformat(),
+        "reason": "Customer asked"}, headers=owner)
+    assert moved.status_code == 200, moved.text
+    drain_events(bid)
+    steps = sql("select step_key, status, period_key from automation_steps where business_id = :b "
+                "and ladder_key = 'booking.reminder' order by created_at, due_at", b=bid)
+    old_key, new_key = starts.isoformat(), moved_to.isoformat()
+    assert [(k, st) for k, st, key in steps if key == old_key] == [("day_before", "cancelled"),
+                                                                   ("two_hours", "cancelled")], steps
+    assert [(k, st) for k, st, key in steps if key == new_key] == [("day_before", "pending"),
+                                                                   ("two_hours", "pending")], steps
+    # At the old day-before moment nothing goes; at the new one, one reminder.
+    run_automation(bid, now=starts - timedelta(hours=23, minutes=30))
+    assert _messages(bid, template_key="booking_reminder") == []
+    run_automation(bid, now=moved_to - timedelta(hours=23, minutes=30))
+    run_automation(bid, now=moved_to - timedelta(hours=23, minutes=20))
+    reminded = _messages(bid, template_key="booking_reminder")
+    assert len(reminded) == 1 and reminded[0][3] == "sent"
+
+
+@DB
 def test_a_chat_waiting_ten_minutes_reaches_needs_you_now_and_the_owners_whatsapp(monkeypatch: Any) -> None:
     _, owner = new_identity(monkeypatch)
     bid = create_business(client, owner, modules=("customer-relationships", "messaging"))
