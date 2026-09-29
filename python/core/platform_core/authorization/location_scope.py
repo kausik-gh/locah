@@ -1,4 +1,4 @@
-"""Location scope (Capability Universe §7.2; Business OS Guide §5 security model).
+"""Location scope (Capability Universe Â§7.2; Business OS Guide Â§5 security model).
 
 A member whose membership is limited to some locations sees and changes only
 the operational records at those locations: orders, bookings, deliveries,
@@ -33,12 +33,16 @@ def _scoped_models() -> tuple[type[Any], ...]:
         PosShift,
         InventoryRecord,
         Project,
+        QueueEntry,
+        QueueLane,
         Quote,
         SalesOrder,
+        WorkTask,
     )
 
     return (SalesOrder, Booking, FulfilmentJob, InventoryRecord, InventoryMovement, Quote, Project,
-            InvoicingDocument, InvoicingRegister, PosShift, PosCashMovement)
+            InvoicingDocument, InvoicingRegister, PosShift, PosCashMovement, QueueLane, QueueEntry,
+            WorkTask)
 
 
 def scoped_locations(membership: Any) -> tuple[uuid.UUID, ...] | None:

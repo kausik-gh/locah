@@ -1,14 +1,14 @@
 /**
- * Workspace navigation (Business OS Guide §3 "Recommended Workspace navigation
+ * Workspace navigation (Business OS Guide Â§3 "Recommended Workspace navigation
  * model"). Twelve areas in a fixed order; what sits inside each depends on the
  * tools this business runs and what this person may do. An area with nothing
- * inside for this person is not shown — "the Workspace expands only as
+ * inside for this person is not shown â€” "the Workspace expands only as
  * relevant capabilities become active". This only decides what is shown; the
  * API decides what anyone may actually do.
  */
 
-/** `href` is relative to the business (`/orders` → /b/{id}/orders); a leading `~`
- *  names another full-screen surface (`~/pos` → /pos/{id}). */
+/** `href` is relative to the business (`/orders` â†’ /b/{id}/orders); a leading `~`
+ *  names another full-screen surface (`~/pos` â†’ /pos/{id}). */
 export type NavChild = {
   href: string
   label: string
@@ -26,7 +26,7 @@ export const AREAS: NavArea[] = [
     label: 'Home',
     children: [
       { href: '', label: 'Home' },
-      // One person, one calendar (MD §22 "Solo professionals … one calendar").
+      // One person, one calendar (MD Â§22 "Solo professionals â€¦ one calendar").
       { href: '/calendar', label: 'Calendar', shape: 'solo' },
     ],
   },
@@ -48,6 +48,8 @@ export const AREAS: NavArea[] = [
       { href: '~/pos', label: 'Counter (POS)', perm: 'pos.use', module: 'pos' },
       { href: '/orders', label: 'Orders', perm: 'orders.read', module: 'orders' },
       { href: '/bookings', label: 'Bookings', perm: 'bookings.read', module: 'bookings' },
+      { href: '/queue', label: 'Queue', perm: 'queue.read', module: 'queue-operations' },
+      { href: '/tasks', label: 'Tasks', perm: 'tasks.read', module: 'tasks' },
       { href: '/fulfilment', label: 'Deliveries & pickup', perm: 'fulfilment.read', module: 'fulfilment' },
       { href: '/memberships', label: 'Memberships', perm: 'memberships.read', module: 'memberships' },
       { href: '/quotes', label: 'Quotes', perm: 'quotes.read', module: 'quotes' },

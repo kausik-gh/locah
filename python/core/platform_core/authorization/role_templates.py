@@ -1,13 +1,13 @@
-"""Role templates (Capability Universe §7.2–§7.3; Business OS Guide §5).
+"""Role templates (Capability Universe Â§7.2â€“Â§7.3; Business OS Guide Â§5).
 
 "A role is not just a sidebar label. It is permissions + scope + default
-surface." Each template below is one row of the §7.2 table: what the person
+surface." Each template below is one row of the Â§7.2 table: what the person
 sees and does (as permissions that exist today), their scope, the surface they
 work on and the question their home screen answers.
 
 A template is only offered to an owner when its phase is current, its surface
-exists and the business runs a module it is about — the rest stay in the
-registry, invisible, until they ship (Guide §4: never present something as
+exists and the business runs a module it is about â€” the rest stay in the
+registry, invisible, until they ship (Guide Â§4: never present something as
 working before its data, API, permissions and UI are complete).
 """
 
@@ -39,10 +39,10 @@ READY_AHEAD = frozenset({"provider", "sales_executive"})
 class RoleTemplate:
     key: str
     label: str
-    does: str  # §7.2 "Sees and does", owner words
+    does: str  # Â§7.2 "Sees and does", owner words
     scope: str
     surface: str
-    home: str  # §7.2 "Home screen answers"
+    home: str  # Â§7.2 "Home screen answers"
     permissions: frozenset[str]
     about: tuple[str, ...]  # modules that make this role relevant (any one); () = always
     phase: str
@@ -79,6 +79,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
             p.INVOICES_READ, p.INVOICES_ISSUE, p.INVOICES_CANCEL, p.INVOICES_RECORD_PAYMENT,
             p.POS_USE, p.POS_APPROVE, p.LEDGER_READ, p.LEDGER_RECORD,
             p.MESSAGING_READ, p.MESSAGING_REPLY, p.REVIEWS_READ, p.REVIEWS_REPLY, p.COMPLIANCE_READ,
+            p.QUEUE_READ, p.QUEUE_OPERATE, p.QUEUE_CONFIGURE, p.TASKS_READ, p.TASKS_MANAGE, p.TASKS_COMPLETE,
         },
         (), "P1", system_role=p.ROLE_MANAGER,
     ),
@@ -108,19 +109,21 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
                         p.LEDGER_READ, p.LEDGER_RECORD},
         ("pos",), "P1",
     ),
-    # ---- later phases: kept here so the registry mirrors §7.2, never offered yet.
+    # ---- later phases: kept here so the registry mirrors Â§7.2, never offered yet.
     RoleTemplate(
         "front_desk", "Front desk", "Bookings, queue, check-ins, customers and collecting payments",
         "location", "workspace", "Who is here, who is next, who owes?",
         _READ_BASICS | {p.BOOKINGS_READ, p.BOOKINGS_CREATE, p.BOOKINGS_UPDATE, p.BOOKINGS_CANCEL,
                         p.CUSTOMERS_READ, p.CUSTOMERS_UPDATE, p.CUSTOMERS_MANAGE_NOTES, p.PAYMENTS_READ,
-                        p.PAYMENTS_COLLECT, p.MEMBERSHIPS_READ, p.MEMBERSHIPS_MANAGE_ENROLMENT},
-        ("bookings", "memberships"), "P2",
+                        p.PAYMENTS_COLLECT, p.MEMBERSHIPS_READ, p.MEMBERSHIPS_MANAGE_ENROLMENT,
+                        p.QUEUE_READ, p.QUEUE_OPERATE, p.QUEUE_CONFIGURE, p.TASKS_READ, p.TASKS_MANAGE},
+        ("bookings", "memberships", "queue-operations"), "P2",
     ),
     RoleTemplate(
         "provider", "Provider", "Their own schedule, appointments and booking notes",
         "assignment", "workspace", "My next appointment and my day",
-        _READ_BASICS | {p.BOOKINGS_READ, p.BOOKINGS_UPDATE, p.CUSTOMERS_READ},
+        _READ_BASICS | {p.BOOKINGS_READ, p.BOOKINGS_UPDATE, p.CUSTOMERS_READ, p.QUEUE_READ, p.QUEUE_OPERATE,
+                        p.TASKS_READ, p.TASKS_COMPLETE},
         ("bookings",), "P2",
     ),
     RoleTemplate(
@@ -144,7 +147,8 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
     ),
     RoleTemplate(
         "housekeeping", "Housekeeping", "Assigned room and area tasks",
-        "assignment", "crew", "Rooms to turn around", frozenset(), (), "P2",
+        "assignment", "crew", "Rooms to turn around",
+        _READ_BASICS | {p.TASKS_READ, p.TASKS_COMPLETE}, ("tasks",), "P2",
     ),
     RoleTemplate(
         "sales_executive", "Sales executive", "Assigned leads, quotes and site visits",
@@ -166,7 +170,7 @@ ROLE_TEMPLATES: dict[str, RoleTemplate] = {t.key: t for t in (
 
 OWNER = RoleTemplate(
     "owner", "Owner", "Everything, approvals, billing and AI limits", "business", "workspace",
-    "Needs you now · Today · Your business", frozenset(p.ALL_PERMISSIONS), (), "P1",
+    "Needs you now Â· Today Â· Your business", frozenset(p.ALL_PERMISSIONS), (), "P1",
     system_role=p.ROLE_PRIMARY_OWNER,
 )
 
@@ -190,6 +194,10 @@ PERMISSION_WORDS: dict[str, str] = {
     "reviews.read": "See reviews", "reviews.reply": "Reply to reviews publicly",
     "reviews.manage": "Feature reviews on the website and report violations to LOCAH",
     "compliance.read": "See licences and filing dates", "compliance.manage": "Record and renew licences and filings",
+    "queue.read": "See the walk-in queue", "queue.operate": "Call, serve and miss tokens",
+    "queue.configure": "Set up queues",
+    "tasks.read": "See tasks", "tasks.manage": "Create and assign tasks",
+    "tasks.complete": "Complete tasks and checklists",
     "pos.use": "Bill at the counter and run a cash shift", "pos.approve": "Approve counter overrides with a PIN",
     "pos.configure": "Set counter billing rules",
     "invoices.read": "See bills and invoices", "invoices.issue": "Issue bills and credit notes",

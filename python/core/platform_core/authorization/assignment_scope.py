@@ -1,20 +1,20 @@
-"""Assignment scope (Capability Universe §7.2–§7.3, §24 #11; P2-01).
+"""Assignment scope (Capability Universe Â§7.2â€“Â§7.3, Â§24 #11; P2-01).
 
 "Assignment is the new security primitive." A member whose role's scope is
 `assignment` (a provider, a sales executive, later a delivery partner,
 technician or housekeeper) sees and changes only the records assigned to them:
 
-  * bookings where they are the provider (`provider_id` → their workforce
+  * bookings where they are the provider (`provider_id` â†’ their workforce
     record),
   * enquiries (leads) assigned to them (`assignee_identity_id`),
   * quotes they wrote, or for the customer of an enquiry assigned to them,
-  * project tasks assigned to them (`assignee_member_id` → their workforce
+  * project tasks assigned to them (`assignee_member_id` â†’ their workforce
     record),
   * and, of the customer book, only the customers on those bookings and
     enquiries (server-side only: matching a new enquiry to an existing customer
     by phone still looks at the whole book, with `skip_assignment_scope`).
 
-Dispatch jobs, job cards and the Tasks module join as they ship. A record with
+Dispatch jobs and job cards join as they ship. Tasks and the walk-in queue are in this scope. A record with
 nobody assigned is not theirs. The owner is never limited, and neither is a
 member whose scope is business or location.
 
@@ -36,7 +36,7 @@ _INFO_KEY = "locah_assignment_scope"
 
 # What a member limited to their assignments may be given: only permissions over
 # records this scope actually narrows (plus reading the business itself). A
-# permission over records nobody is assigned to — orders, stock, money — would
+# permission over records nobody is assigned to â€” orders, stock, money â€” would
 # show the whole book, so it cannot sit on an assignment-scoped role.
 ASSIGNMENT_PERMISSIONS = frozenset({
     "business.read", "locations.read", "notifications.read",
@@ -44,6 +44,9 @@ ASSIGNMENT_PERMISSIONS = frozenset({
     "leads.read", "leads.create", "leads.update_status",
     "quotes.read", "quotes.create", "quotes.update",
     "customers.read",
+    # Queue tokens for their provider lane, and tasks assigned to them.
+    "queue.read", "queue.operate",
+    "tasks.read", "tasks.complete",
 })
 
 
@@ -84,10 +87,10 @@ def _filter_reads(state: ORMExecuteState) -> None:
     identity = state.session.info.get(_INFO_KEY)
     if not identity or not state.is_select or state.execution_options.get("skip_assignment_scope"):
         return
-    from platform_core.models import Booking, CustomerContact, Lead, ProjectTask, Quote
+    from platform_core.models import Booking, CustomerContact, Lead, ProjectTask, QueueEntry, QueueLane, Quote, WorkTask
 
     mine = _member_ids(identity)
-    # Their customers are the ones on their bookings and enquiries — not the whole book.
+    # Their customers are the ones on their bookings and enquiries â€” not the whole book.
     theirs = select(Booking.customer_contact_id).where(Booking.provider_id.in_(_member_ids(identity))).union(
         select(Lead.customer_contact_id).where(Lead.assignee_identity_id == identity))
     state.statement = state.statement.options(
@@ -102,6 +105,12 @@ def _filter_reads(state: ORMExecuteState) -> None:
         with_loader_criteria(Quote, lambda cls: or_(cls.created_by == identity, cls.customer_contact_id.in_(
             select(Lead.customer_contact_id).where(Lead.assignee_identity_id == identity))),
             include_aliases=True, track_closure_variables=True),
+        with_loader_criteria(WorkTask, lambda cls: cls.assignee_member_id.in_(mine), include_aliases=True,
+                             track_closure_variables=True),
+        with_loader_criteria(QueueLane, lambda cls: cls.provider_id.in_(mine), include_aliases=True,
+                             track_closure_variables=True),
+        with_loader_criteria(QueueEntry, lambda cls: cls.provider_id.in_(mine), include_aliases=True,
+                             track_closure_variables=True),
     )
 
 
@@ -111,16 +120,14 @@ def _guard_writes(session: Session, flush_context: Any, instances: Any) -> None:
     identity = session.info.get(_INFO_KEY)
     if not identity:
         return
-    from platform_core.models import Booking, Lead, ProjectTask, WorkforceMember
-
-    from platform_core.models import Quote
+    from platform_core.models import Booking, Lead, ProjectTask, QueueEntry, QueueLane, Quote, WorkTask, WorkforceMember
 
     for quote in [o for o in session.new if isinstance(o, Quote)]:
         if quote.created_by is None or uuid.UUID(str(quote.created_by)) != identity:
             from platform_core.exceptions import OutsideAssignmentScope
 
             raise OutsideAssignmentScope()
-    objects = [o for o in list(session.new) + list(session.dirty) if isinstance(o, (Booking, Lead, ProjectTask))]
+    objects = [o for o in list(session.new) + list(session.dirty) if isinstance(o, (Booking, Lead, ProjectTask, WorkTask, QueueLane, QueueEntry))]
     if not objects:
         return
     with session.no_autoflush:
@@ -129,7 +136,7 @@ def _guard_writes(session: Session, flush_context: Any, instances: Any) -> None:
     for obj in objects:
         if isinstance(obj, Lead):
             ok = obj.assignee_identity_id is not None and uuid.UUID(str(obj.assignee_identity_id)) == identity
-        elif isinstance(obj, Booking):
+        elif isinstance(obj, (Booking, QueueLane, QueueEntry)):
             ok = obj.provider_id is not None and uuid.UUID(str(obj.provider_id)) in mine
         else:
             ok = obj.assignee_member_id is not None and uuid.UUID(str(obj.assignee_member_id)) in mine
