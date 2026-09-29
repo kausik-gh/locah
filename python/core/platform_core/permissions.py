@@ -146,6 +146,23 @@ INVENTORY_APPROVE = "inventory.approve"
 # What stock cost and is worth — owner, manager and accountant, not the counter.
 INVENTORY_COST = "inventory.cost"
 
+# Buying. Primary owner receives these through ALL_PERMISSIONS. Assignment-scoped
+# grants for store keeper / accountant wait on the shared role-scope engine.
+PROCUREMENT_READ = "procurement.read"
+PROCUREMENT_CREATE = "procurement.create"
+PROCUREMENT_APPROVE = "procurement.approve"
+PROCUREMENT_RECEIVE = "procurement.receive"
+PROCUREMENT_COST = "procurement.cost"
+SUPPLIER_READ = "supplier.read"
+EXPENSES_READ = "expenses.read"
+EXPENSES_WRITE = "expenses.write"
+CONNECTORS_READ = "connectors.read"
+CONNECTORS_MANAGE = "connectors.manage"
+DOCUMENTS_READ = "documents.read"
+DOCUMENTS_WRITE = "documents.write"
+DONATIONS_READ = "donations.read"
+DONATIONS_WRITE = "donations.write"
+
 FULFILMENT_READ = "fulfilment.read"
 FULFILMENT_UPDATE_STATUS = "fulfilment.update_status"
 FULFILMENT_MANAGE_CONFIG = "fulfilment.manage_config"
