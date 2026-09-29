@@ -23,6 +23,8 @@ from platform_core.events.subscribers import (  # noqa: F401  (registration side
     marketplace_index,
     memberships_engine,
     messaging_notify,
+    orders_from_quote,
+    projects_from_quote,
     queue_turn,
     recipe_consumption,
     reviews_invite,
@@ -30,5 +32,5 @@ from platform_core.events.subscribers import (  # noqa: F401  (registration side
 )
 
 __all__ = ["automation_triggers", "compliance_due", "customer_activity", "fulfilment_cancellation", "fulfilment_follows_dispatch", "inventory_expiry", "invoicing_auto",
-           "kitchen_intake", "loyalty_on_sale", "marketplace_index", "memberships_engine", "messaging_notify", "queue_turn",
+           "kitchen_intake", "loyalty_on_sale", "marketplace_index", "memberships_engine", "messaging_notify", "orders_from_quote", "projects_from_quote", "queue_turn",
            "recipe_consumption", "reviews_invite", "task_events"]
