@@ -60,6 +60,7 @@ CUSTOMER_UPDATES: dict[str, str] = {
     "order_confirmed": "When you accept an order",
     "order_delivered": "When an order is delivered",
     "booking_confirmed": "When a booking is confirmed",
+    "queue_turn_soon": "When a customer's queue turn is near",
 }
 # Timed messages are ladders the owner switches in Automations.
 LADDER_UPDATES: dict[str, str] = {

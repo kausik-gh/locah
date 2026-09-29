@@ -96,6 +96,16 @@ LIBRARY: dict[str, Template] = {t.key: t for t in (
         "Before a booking, on the booking reminder schedule",
     ),
     Template(
+        "queue_turn_soon", "Your turn soon", "utility", "customer",
+        ("business name", "token number", "how many are ahead"),
+        {
+            "en": "Your turn at {{1}} is coming up: token {{2}}, {{3}} ahead of you. Please be ready.",
+            "ta": "நினைவூட்டல்: {{1}} இல் உங்கள் முறை நெருங்குகிறது — டோக்கன் {{2}}, உங்களுக்கு முன் {{3}} பேர். தயாராக இருங்கள்.",
+            "hi": "सूचना: {{1}} पर आपकी बारी आने वाली है — टोकन {{2}}, आपसे पहले {{3}}। कृपया तैयार रहें।",
+        },
+        "When a queue token is next in line (the lane's 'tell them when … ahead')", phase="P2",
+    ),
+    Template(
         "review_request", "Review request", "utility", "customer",
         ("business name", "completed order or booking", "review link"),
         {

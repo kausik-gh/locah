@@ -263,6 +263,25 @@ async def remind_booking(session: AsyncSession, step: DueStep) -> StepOutcome:
                        f"Reminder for {booking.booking_number} sent on WhatsApp" if said == "sent" else said)
 
 
+# ---------------------------------------------------------------- walk-in queue
+@subscribe(  # type: ignore[untyped-decorator, unused-ignore]
+    "messaging.queue_turn_soon", "queue.turn_soon",
+    description="Tell the customer on WhatsApp that their turn is near — once per token visit",
+)
+async def queue_turn_soon(session: AsyncSession, event: EventContext) -> None:
+    business_id = event.require_business_id()
+    if not await _live(session, business_id) or not await _update_on(session, business_id, "queue_turn_soon"):
+        return
+    p = event.payload
+    contact = await _contact(session, p.get("customer_contact_id"))
+    if contact is None:
+        return  # a walk-in without a number is called at the desk
+    business = await _business(session, business_id)
+    await _send(session, business_id, to=contact.phone, key="queue_turn_soon", contact_id=contact.id,
+                params=[business.display_name, str(p.get("token_number")), str(p.get("ahead"))],
+                idem=f"queue:{p.get('entry_id')}:{p.get('visit_cycle')}")
+
+
 # ---------------------------------------------------------------- enquiries, khata alerts
 @subscribe(  # type: ignore[untyped-decorator, unused-ignore]
     "messaging.lead_created", "lead.created",
