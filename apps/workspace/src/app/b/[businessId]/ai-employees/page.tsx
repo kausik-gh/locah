@@ -168,8 +168,8 @@ export default async function AIEmployeesPage({ params }: { params: { businessId
               <fieldset style={{ border: 0, padding: 0, margin: '.8rem 0' }}>
                 <legend className="bos-label">Allowed tools</legend>
                 {e.tools.map((t) => (
-                  <label key={t.name} style={{ display: 'flex', gap: '.45rem', alignItems: 'baseline', margin: '.25rem 0' }}>
-                    <input type="checkbox" name="tools" value={t.name} defaultChecked={t.on} disabled={!canManage} />
+                  <label key={t.name} style={{ display: 'flex', gap: '.45rem', alignItems: 'flex-start', margin: '.25rem 0' }}>
+                    <input type="checkbox" style={{ minHeight: 0, margin: '.2rem 0 0', flex: 'none' }} name="tools" value={t.name} defaultChecked={t.on} disabled={!canManage} />
                     <span>{t.label} <span className="bos-hint">· {t.tier} {TIER_WORDS[t.tier]}</span></span>
                   </label>
                 ))}

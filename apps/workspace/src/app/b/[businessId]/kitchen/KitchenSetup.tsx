@@ -85,7 +85,10 @@ export function KitchenSetup({
       <section>
         <h2>What each station cooks</h2>
         {open.length === 0 ? <p>No prepared items yet.</p> : null}
-        {open.map((item) => {
+        {open.length > 0 && stations.length === 0 ? (
+          <p className="bos-hint">Add a station above, then choose which dishes it cooks.</p>
+        ) : null}
+        {(stations.length ? open : []).map((item) => {
           const selected = routed.get(item.id) ?? new Set<string>()
           return (
             <fieldset key={item.id} style={{ marginBottom: '0.8rem' }}>
