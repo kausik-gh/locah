@@ -20,6 +20,7 @@ type Pick = {
   module: string
   tier: 'always' | 'core' | 'recommended' | 'optional'
   reason: string
+  hints: string[]
   label: string
   built: boolean
   does: string
@@ -66,7 +67,8 @@ export default async function ModulesPage({ params }: { params: { businessId: st
   // Only what is really there: a Storefront tool LOCAH has not built yet is not claimed.
   const always = rec.modules.filter((m) => m.tier === 'always' && m.built)
   const running = built.filter((m) => m.tier !== 'always' && m.readiness?.enabled)
-  const suggested = built.filter((m) => (m.tier === 'core' || m.tier === 'recommended') && !m.readiness?.enabled)
+  const essential = built.filter((m) => m.tier === 'core' && !m.readiness?.enabled)
+  const suggested = built.filter((m) => m.tier === 'recommended' && !m.readiness?.enabled)
   const useful = built.filter((m) => m.tier === 'optional' && !m.readiness?.enabled)
   const known = new Set(rec.modules.map((m) => m.module))
   const more = (catRes.ok ? catRes.data.data.modules : []).filter((m) => m.built && !m.future && !known.has(m.key))
@@ -93,9 +95,19 @@ export default async function ModulesPage({ params }: { params: { businessId: st
         </section>
       ) : null}
 
+      {essential.length > 0 ? (
+        <section aria-labelledby="essential-h" className="bos-section">
+          <h2 id="essential-h" className="bos-section__title">Essential for you <span>{essential.length}</span></h2>
+          <p className="bos-hint">What businesses like yours run every day.</p>
+          <div className="bos-grid">
+            {essential.map((m) => <ToolCard key={m.module} m={m} businessId={params.businessId} />)}
+          </div>
+        </section>
+      ) : null}
+
       <section aria-labelledby="suggested-h" className="bos-section">
         <h2 id="suggested-h" className="bos-section__title">
-          Recommended for you <span>{suggested.length}</span>
+          Recommended <span>{suggested.length}</span>
         </h2>
         {suggested.length > 0 ? (
           <div className="bos-grid">
@@ -103,8 +115,8 @@ export default async function ModulesPage({ params }: { params: { businessId: st
           </div>
         ) : (
           <p className="bos-empty">
-            {running.length > 0
-              ? 'Everything we recommend is already running.'
+            {running.length > 0 || essential.length > 0
+              ? 'Nothing else to recommend right now.'
               : 'Nothing to recommend yet — set what kind of business you run first.'}{' '}
             <Link href={`${base}/settings/business`}>How your business works</Link>
           </p>
@@ -113,7 +125,7 @@ export default async function ModulesPage({ params }: { params: { businessId: st
 
       {useful.length > 0 ? (
         <details className="bos-section bos-more">
-          <summary className="bos-section__title">Also useful <span>{useful.length}</span></summary>
+          <summary className="bos-section__title">Optional <span>{useful.length}</span></summary>
           <div className="bos-grid">
             {useful.map((m) => <ToolCard key={m.module} m={m} businessId={params.businessId} />)}
           </div>
@@ -168,7 +180,7 @@ function ToolCard({ m, businessId }: { m: Pick; businessId: string }) {
         {status ? <span className={`bos-state${r?.ready ? ' is-ready' : ''}`}>{status}</span> : null}
       </header>
       <p className="bos-tool__does">{m.does}</p>
-      <p className="bos-tool__why"><span>Why</span>{m.reason}</p>
+      <p className="bos-tool__why"><span>Why</span>{m.reason}{m.hints?.length ? ` — set up for ${m.hints.join(', ')}` : ''}</p>
       {m.customer_can.length > 0 ? (
         <div className="bos-tool__cap"><span>Customers can</span><ul>{m.customer_can.map((c) => <li key={c}>{c}</li>)}</ul></div>
       ) : null}
@@ -188,7 +200,13 @@ function ToolCard({ m, businessId }: { m: Pick; businessId: string }) {
           </ul>
         </div>
       ) : null}
+      {on && !r?.ready && todo.length > 0 ? (
+        <p className="bos-tool__next"><span>Next</span>{todo[0].label}</p>
+      ) : null}
       <footer className="bos-tool__foot">
+        {on && !r?.ready ? (
+          <Link className="btn-primary" href={`/b/${businessId}/modules/${m.module}`}>Continue setup</Link>
+        ) : null}
         <form action={setModuleState}>
           <input type="hidden" name="businessId" value={businessId} />
           <input type="hidden" name="moduleId" value={m.module} />

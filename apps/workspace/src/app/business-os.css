@@ -84,8 +84,9 @@
 .bos-tool__head { display: flex; align-items: flex-start; justify-content: space-between; gap: .6rem; }
 .bos-tool__head h3 { font-size: 1.02rem; font-weight: 650; margin: 0; letter-spacing: -.01em; }
 .bos-tool__does { margin: 0; font-size: .88rem; color: var(--color-foreground); }
-.bos-tool__why, .bos-tool__cap, .bos-tool__setup { margin: 0; font-size: .82rem; color: var(--color-muted); }
-.bos-tool__why span, .bos-tool__cap > span, .bos-tool__setup > span {
+.bos-tool__why, .bos-tool__cap, .bos-tool__setup, .bos-tool__next { margin: 0; font-size: .82rem; color: var(--color-muted); }
+.bos-tool__next { color: var(--color-foreground); }
+.bos-tool__why span, .bos-tool__cap > span, .bos-tool__setup > span, .bos-tool__next span {
   display: block; font-size: .68rem; font-weight: 650; letter-spacing: .06em; text-transform: uppercase;
   color: var(--color-foreground); margin-bottom: .2rem;
 }

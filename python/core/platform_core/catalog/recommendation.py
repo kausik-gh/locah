@@ -417,8 +417,8 @@ def recommend(
                 # the trait that justified it.
                 removed = tier == "recommended" and not holds and _requirement_holds(module, defaults)
                 if (tier == "core" and holds) or (tier == "recommended" and not removed):
-                    word = "run" if tier == "core" else "usually add"
-                    put(module, tier, f"{label} {word} this", hint)
+                    who = label[:1].lower() + label[1:]
+                    put(module, tier, f"Most {who} rely on this" if tier == "core" else f"Many {who} add this", hint)
                 else:
                     why = REQUIRES[module][1]
                     put(module, "optional", f"Useful only if {why}", hint)
