@@ -603,3 +603,63 @@ def test_unknown_payment_source_type_is_422_not_500(
     )
     assert resp.status_code == 422, resp.text
     assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+def test_two_refunds_at_once_never_refund_more_than_was_paid(owner: tuple[dict[str, str], uuid.UUID]) -> None:
+    """Two people refunding 60% of the same payment at the same moment: one wins,
+    the other is refused — never 120% recorded against a 100% payment."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from platform_core.exceptions import ConflictError, ValidationError
+    from platform_core.services.refund import RefundService
+    from platform_testing.phase_b import db_url, sql
+
+    headers, owner_id = owner
+    client = TestClient(app)
+    business_id = _create_business(client, headers)
+    location_id = _primary_location_id(client, headers, business_id)
+    product_id = _create_tracked_product(client, headers, business_id)
+    _stock_product(client, headers, business_id, product_id, location_id)
+    order = _create_order(client, headers, business_id, location_id, product_id)
+    payment_id = client.post(f"/v1/platform/businesses/{business_id}/payments", json={
+        "source_type": "order", "source_id": order["id"], "amount": order["total_amount"],
+        "payment_method": "online"}, headers=headers).json()["data"]["id"]
+    raw = json.dumps({"event_id": str(uuid.uuid4()), "payment_id": payment_id, "status": "succeeded",
+                      "provider_reference": "stub-race"}).encode()
+    assert client.post("/v1/webhooks/payments/stub", content=raw, headers={
+        "Content-Type": "application/json", "x-payment-signature": _webhook_signature(raw)}).status_code == 200
+    part = round(float(order["total_amount"]) * 0.6, 2)
+    actor = sql("select primary_owner_identity_id from businesses where id = :b", b=business_id)[0][0]
+
+    async def refund(gate: asyncio.Barrier) -> str:
+        engine = create_async_engine(db_url(), poolclass=NullPool)
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as session:
+                await gate.wait()
+                try:
+                    await RefundService.create_refund(
+                        session, business_id=uuid.UUID(business_id), payment_id=uuid.UUID(payment_id),
+                        actor_id=actor, correlation_id=str(uuid.uuid4()),
+                        payload={"amount": part, "reason": "Return"})
+                    await asyncio.sleep(0.2)  # hold the transaction open while the other one tries
+                    await session.commit()
+                    return "refunded"
+                except (ValidationError, ConflictError):
+                    await session.rollback()
+                    return "refused"
+        finally:
+            await engine.dispose()
+
+    async def both() -> list[str]:
+        gate = asyncio.Barrier(2)
+        return list(await asyncio.gather(refund(gate), refund(gate)))
+
+    assert sorted(asyncio.run(both())) == ["refunded", "refused"]
+    rows = sql("select count(*), coalesce(sum(amount), 0) from payments_refunds where payment_attempt_id = :p",
+               p=payment_id)
+    refunded = sql("select refunded_amount from payments_payment_attempts where id = :p", p=payment_id)[0][0]
+    assert rows[0][0] == 1 and float(rows[0][1]) == part and float(refunded) == part

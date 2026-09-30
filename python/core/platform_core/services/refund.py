@@ -59,6 +59,17 @@ class RefundService:
         payment = await PaymentResolver.resolve_attempt(
             session, business_id=business_id, payment_id=payment_id
         )
+        # Lock the payment before working out what is left to refund: two refunds
+        # at the same moment must not both see the full amount (120% of a payment
+        # was recordable). The second waits, then sees the first.
+        payment = (
+            await session.execute(
+                select(PaymentAttempt)
+                .where(PaymentAttempt.id == payment.id, PaymentAttempt.business_id == business_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalars().one()
         if expected_version is not None and payment.version != expected_version:
             raise ConflictError(
                 "Stale payment version",
