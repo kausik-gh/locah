@@ -100,6 +100,7 @@ class BookingResolver:
             "hold_expires_at": booking.hold_expires_at.isoformat() if booking.hold_expires_at else None,
             "series_id": str(booking.series_id) if booking.series_id else None,
             "occurrence_index": booking.occurrence_index,
+            "lead_id": str(booking.lead_id) if booking.lead_id else None,
             "version": booking.version,
             "created_at": booking.created_at.isoformat(),
             "updated_at": booking.updated_at.isoformat(),

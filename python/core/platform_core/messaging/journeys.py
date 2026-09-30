@@ -1000,10 +1000,11 @@ async def _free(ctx: Ctx, service: Offering, location_id: uuid.UUID, start: date
         return None
     free = await BookingAllocationService.free_resources(
         ctx.session, business_id=ctx.business.id, location_id=location_id, resource_type=None,
-        starts_at=params["starts_at"], ends_at=params["ends_at"], party_size=1)
+        starts_at=params["starts_at"], ends_at=params["ends_at"], party_size=1, mode="appointment")
     if free:
         return [str(free[0]["resource_id"])]
-    if await BookingAllocationService.has_resources(ctx.session, business_id=ctx.business.id, location_id=location_id):
+    if await BookingAllocationService.has_resources(ctx.session, business_id=ctx.business.id, location_id=location_id,
+                                                    mode="appointment"):
         return None
     return []
 

@@ -320,6 +320,7 @@ class BookingService:
                 starts_at=validated["starts_at"],
                 ends_at=validated["ends_at"],
                 party_size=validated["party_size"],
+                mode=validated["reservation_mode"],
             )
             if held is not None:
                 booking.capacity = BookingAllocationService.effective_capacity([held])
@@ -338,6 +339,13 @@ class BookingService:
                 ends_at=validated["ends_at"],
                 party_size=validated["party_size"],
             )
+
+        if validated["reservation_mode"] == "site_visit" and validated["customer_contact_id"]:
+            booking.lead_id = await BookingService._site_visit_lead(
+                session, business_id=business_id, actor_id=actor_id, correlation_id=correlation_id,
+                booking=booking, contact_id=validated["customer_contact_id"],
+            )
+            await session.flush()
 
         history = BookingStatusHistory(
             business_id=business_id,
@@ -485,6 +493,39 @@ class BookingService:
                 },
             )
         return booking
+
+    @staticmethod
+    async def _site_visit_lead(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        correlation_id: str,
+        booking: Booking,
+        contact_id: uuid.UUID,
+    ) -> uuid.UUID | None:
+        """Founder §13: a site visit is also a sales conversation. Booking owns
+        the slot; Leads owns the relationship - through its own service, and
+        only when the business uses Leads."""
+        from platform_core.models import CustomerContact
+        from platform_core.services.lead import LeadService
+        from platform_core.services.module_readiness import module_states
+
+        if (await module_states(session, business_id)).get("leads") not in {"enabled", "ready", "active"}:
+            return None
+        contact = await session.get(CustomerContact, contact_id)
+        if contact is None:
+            return None
+        lead = await LeadService.create_lead(
+            session, business_id=business_id, actor_id=actor_id, correlation_id=correlation_id,
+            payload={"display_name": contact.display_name, "email": contact.email, "phone": contact.phone,
+                     "source": "website_enquiry" if booking.channel in (None, "web") else "manual",
+                     "offering_id": str(booking.offering_id) if booking.offering_id else None,
+                     "message": f"Site visit booked: {booking.title} on "
+                                f"{booking.starts_at.isoformat(timespec='minutes')} ({booking.booking_number})"},
+            actor_context="guest_checkout",
+        )
+        return cast(uuid.UUID, lead.id)
 
     @staticmethod
     async def get_or_create_policy(session: AsyncSession, business_id: uuid.UUID) -> BookingsPolicy:

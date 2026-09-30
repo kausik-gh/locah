@@ -57,6 +57,33 @@ class CreatePublicBookingRequest(BaseModel):
     payment_method: str = "cod"
     guest: GuestPayload
     idempotency_key: str | None = None
+    # A special request (a table by the window, a birthday), kept as a booking note.
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class SlotsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    location_id: UUID
+    offering_id: UUID | None = None
+    provider_id: UUID | None = None
+    mode: str = "appointment"
+    date: str
+    party_size: int = Field(default=1, ge=1, le=100)
+
+
+class RangeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    location_id: UUID
+    offering_id: UUID | None = None
+    mode: str = "rental"
+    check_in: str | None = None
+    check_out: str | None = None
+    date: str | None = None
+    starts_at: str | None = None
+    ends_at: str | None = None
+    party_size: int = Field(default=1, ge=1, le=100)
 
 
 class WaitlistJoinPublicRequest(BaseModel):
@@ -112,6 +139,26 @@ async def booking_availability(
     data = await PublicBookingService.check_availability(
         session, slug=slug, payload=body.model_dump(mode="json")
     )
+    return {"data": data, "meta": {}}
+
+
+@router.post("/websites/{slug}/booking/slots")
+async def booking_slots(
+    slug: str,
+    body: SlotsRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await PublicBookingService.slots(session, slug=slug, payload=body.model_dump(mode="json"))
+    return {"data": data, "meta": {}}
+
+
+@router.post("/websites/{slug}/booking/range")
+async def booking_range(
+    slug: str,
+    body: RangeRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await PublicBookingService.range_check(session, slug=slug, payload=body.model_dump(mode="json"))
     return {"data": data, "meta": {}}
 
 

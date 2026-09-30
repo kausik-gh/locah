@@ -11,7 +11,7 @@ import BookClient from './BookClient'
 export const dynamic = 'force-dynamic'
 
 /** WEB-009 Booking Flow — Doc 11 §4.1 / Doc 09 WEB-009. */
-export default async function BookPage({ params, searchParams }: { params: { slug: string }; searchParams?: { lang?: string } }) {
+export default async function BookPage({ params, searchParams }: { params: { slug: string }; searchParams?: { lang?: string; offering_id?: string } }) {
   if (RESERVED_SLUGS.has(params.slug)) notFound()
   let options
   try {
@@ -32,7 +32,8 @@ export default async function BookPage({ params, searchParams }: { params: { slu
   }
   return (
     <SiteFrame site={site} lang={siteLang(site?.website.languages, searchParams?.lang)}>
-      <BookClient slug={params.slug} options={options} customer={customer} authToken={customer ? token : null} />
+      <BookClient slug={params.slug} options={options} customer={customer} authToken={customer ? token : null}
+        initialOfferingId={searchParams?.offering_id ?? null} />
     </SiteFrame>
   )
 }

@@ -1239,6 +1239,10 @@ class Booking(Base):
         PG_UUID(as_uuid=True), ForeignKey("bookings_series.id"), nullable=True
     )
     occurrence_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # A site visit's sales relationship lives in Leads; the booking only points at it.
+    lead_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("leads_leads.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

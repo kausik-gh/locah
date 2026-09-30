@@ -40,6 +40,33 @@ _RESOURCE_CONFLICT = "bookings_allocation_resource_no_overlap"
 _PROVIDER_CONFLICT = "bookings_allocation_provider_no_overlap"
 
 
+# Which resources a kind of booking may be given when the guest names none.
+# Tables seat table bookings and rooms house stays; neither is handed to any
+# other kind of booking (a hall hire must never quietly take a hotel room).
+TABLE_TYPES = frozenset({"table"})
+ROOM_TYPES = frozenset({"room", "suite", "cottage", "villa", "dorm", "bed", "tent"})
+
+
+def _types_for(mode: str | None) -> tuple[frozenset[str] | None, frozenset[str]]:
+    """(only these types, never these types) for a booking mode; no mode = all."""
+    if mode is None:
+        return None, frozenset()
+    if mode == "table":
+        return TABLE_TYPES, frozenset()
+    if mode == "accommodation":
+        return ROOM_TYPES, frozenset()
+    return None, TABLE_TYPES | ROOM_TYPES
+
+
+def _filter_types(query: Any, mode: str | None) -> Any:
+    only, never = _types_for(mode)
+    if only is not None:
+        query = query.where(BookingResource.resource_type.in_(sorted(only)))
+    if never:
+        query = query.where(BookingResource.resource_type.notin_(sorted(never)))
+    return query
+
+
 @dataclass(frozen=True)
 class AllocationRequest:
     """A subject to claim. Exactly one of resource_id / provider_id is set."""
@@ -466,6 +493,7 @@ class BookingAllocationService:
         starts_at: datetime,
         ends_at: datetime,
         party_size: int = 1,
+        mode: str | None = None,
     ) -> BookingResource | None:
         """Hold a free resource for a guest who did not choose one.
 
@@ -482,7 +510,7 @@ class BookingAllocationService:
             resources=[], provider_id=provider_id, party_size=party_size
         )
         if not await BookingAllocationService.has_resources(
-            session, business_id=business_id, location_id=location_id
+            session, business_id=business_id, location_id=location_id, mode=mode
         ):
             await BookingAllocationService.allocate(
                 session, business_id=business_id, booking_id=booking_id, requests=provider_only,
@@ -492,7 +520,7 @@ class BookingAllocationService:
 
         free = await BookingAllocationService.free_resources(
             session, business_id=business_id, location_id=location_id, resource_type=None,
-            starts_at=starts_at, ends_at=ends_at, party_size=party_size,
+            starts_at=starts_at, ends_at=ends_at, party_size=party_size, mode=mode,
         )
         candidates = await BookingAllocationService.load_many(
             session, business_id=business_id,
@@ -524,7 +552,8 @@ class BookingAllocationService:
 
     @staticmethod
     async def has_resources(
-        session: AsyncSession, *, business_id: uuid.UUID, location_id: uuid.UUID | None = None
+        session: AsyncSession, *, business_id: uuid.UUID, location_id: uuid.UUID | None = None,
+        mode: str | None = None,
     ) -> bool:
         """Whether this business sells time on anything at all.
 
@@ -539,6 +568,7 @@ class BookingAllocationService:
         )
         if location_id is not None:
             query = query.where(BookingResource.location_id == location_id)
+        query = _filter_types(query, mode)
         return (await session.execute(query.limit(1))).scalars().first() is not None
 
     @staticmethod
@@ -552,6 +582,7 @@ class BookingAllocationService:
         ends_at: datetime,
         party_size: int = 1,
         exclude_booking_id: uuid.UUID | None = None,
+        mode: str | None = None,
     ) -> list[dict[str, Any]]:
         """Which resources can take this booking, answered in two queries.
 
@@ -580,6 +611,7 @@ class BookingAllocationService:
             candidates = candidates.where(
                 BookingResource.resource_type == resource_type.strip().lower()
             )
+        candidates = _filter_types(candidates, mode)
         resources = list((await session.execute(candidates)).scalars().all())
         if not resources:
             return []

@@ -62,7 +62,7 @@ class AvailabilityService:
         the limit by sending a bigger number, and a guest - who sends none -
         must still meet it.
         """
-        if reservation_mode != "class_session" or offering_id is None:
+        if reservation_mode not in ("class_session", "event_date") or offering_id is None:
             return None
         attributes = (
             await session.execute(
@@ -75,6 +75,10 @@ class AvailabilityService:
             places = int((attributes or {}).get("capacity") or 0)
         except (TypeError, ValueError):
             return None
+        if reservation_mode == "event_date":
+            # The date is what is scarce: one booking per date unless the owner
+            # says the offering takes more (a caterer doing two events a day).
+            return places if places > 0 else 1
         return places if places > 0 else None
 
     @staticmethod
@@ -119,7 +123,7 @@ class AvailabilityService:
         rentals run across days and are not held to a day's opening spans.
         """
         hours = location.hours or {}
-        if not hours or reservation_mode not in {"appointment", "table", "class_session"}:
+        if not hours or reservation_mode not in {"appointment", "table", "class_session", "site_visit"}:
             return None
         tz = ZoneInfo(location.timezone or DEFAULT_TIMEZONE)
         local_start, local_end = starts_at.astimezone(tz), ends_at.astimezone(tz)
@@ -177,6 +181,30 @@ class AvailabilityService:
         if exclude_booking_id:
             query = query.where(Booking.id != exclude_booking_id)
         return (await session.execute(query.limit(1))).scalars().first() is not None
+
+    @staticmethod
+    async def places_left(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        location_id: uuid.UUID,
+        offering_id: uuid.UUID | None,
+        reservation_mode: str,
+        starts_at: Any,
+        ends_at: Any,
+    ) -> int | None:
+        """How many places a class (or event date) still has, from its own
+        configured places; None when it states none."""
+        capacity = await AvailabilityService.configured_capacity(
+            session, business_id=business_id, offering_id=offering_id, reservation_mode=reservation_mode
+        )
+        if capacity is None:
+            return None
+        used = await AvailabilityService._capacity_usage(
+            session, business_id=business_id, location_id=location_id, offering_id=offering_id,
+            reservation_mode=reservation_mode, starts_at=starts_at, ends_at=ends_at, exclude_booking_id=None,
+        )
+        return max(capacity - used, 0)
 
     @staticmethod
     async def _capacity_usage(
@@ -264,7 +292,7 @@ class AvailabilityService:
                 )
 
         # Capacity modes: date-range / slot capacity — NOT inventory stock decrement.
-        if reservation_mode in {"table", "class_session", "rental", "accommodation"} and capacity:
+        if reservation_mode in {"table", "class_session", "rental", "accommodation", "event_date"} and capacity:
             used = await AvailabilityService._capacity_usage(
                 session,
                 business_id=business_id,

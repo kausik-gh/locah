@@ -13,10 +13,12 @@ BOOKING_STATUSES = frozenset({
 })
 TERMINAL_STATUSES = frozenset({"completed", "cancelled", "rejected", "no_show"})
 RESERVATION_MODES = frozenset({
-    "appointment", "accommodation", "table", "class_session", "rental",
+    "appointment", "accommodation", "table", "class_session", "rental", "site_visit", "event_date",
 })
 RESERVABLE_OFFERING_TYPES = frozenset({
     "service", "accommodation", "class_session", "rental", "menu_item", "product",
+    # A site visit is booked against the project or unit being shown.
+    "property_project", "property_unit",
 })
 PAYMENT_METHODS = frozenset({"cod", "online", "pay_at_business", "pay_later"})
 PAYMENT_STATUSES = frozenset({

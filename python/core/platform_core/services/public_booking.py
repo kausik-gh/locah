@@ -80,7 +80,8 @@ class PublicBookingService:
                         Offering.deleted_at.is_(None),
                         Offering.status == "active",
                         Offering.visibility == "public",
-                        Offering.offering_type.in_(("service", "experience", "rental")),
+                        Offering.offering_type.in_(("service", "experience", "class_session", "accommodation",
+                                                    "rental", "property_project", "property_unit")),
                     )
                     .order_by(Offering.title.asc())
                 )
@@ -132,7 +133,20 @@ class PublicBookingService:
         for a in associations:
             svc_map.setdefault(str(a.member_id), []).append(str(a.offering_id))
         policy = await BookingService.get_or_create_policy(session, business.id)
+        from platform_core.services.booking_slots import BookingSlotService, minutes_for, mode_for
+
+        def attr(o: Offering, key: str) -> Any:
+            return (o.attributes or {}).get(key)
+
         return {
+            "table": await BookingSlotService.table_booking(session, business.id),
+            "offerings": [
+                {"id": str(o.id), "title": o.title, "description": o.description, "offering_type": o.offering_type,
+                 "mode": mode_for(o), "minutes": minutes_for(o, mode_for(o)),
+                 "price_amount": float(o.price_amount) if o.price_amount is not None else None,
+                 "currency": o.currency, "capacity": attr(o, "capacity"), "max_guests": attr(o, "max_guests")}
+                for o in offerings
+            ],
             "business": {
                 "id": str(business.id),
                 "slug": business.slug,
@@ -145,6 +159,8 @@ class PublicBookingService:
                     "is_primary": loc.is_primary,
                     "status": loc.status,
                     "address": loc.address,
+                    "timezone": loc.timezone,
+                    "hours_known": bool(loc.hours),
                 }
                 for loc in locations
             ],
@@ -178,6 +194,7 @@ class PublicBookingService:
                 if policy.deposit_percent is not None
                 else None,
                 "cancel_window_hours": policy.cancel_window_hours,
+                "waitlist_enabled": policy.waitlist_enabled,
             },
             "payment_methods": ["cod", "pay_at_business"],
         }
@@ -219,6 +236,7 @@ class PublicBookingService:
             ends_at=params["ends_at"],
             party_size=params["party_size"],
             exclude_booking_id=params.get("exclude_booking_id"),
+            mode=params["reservation_mode"],
         )
         result["resources"] = [
             {
@@ -233,7 +251,8 @@ class PublicBookingService:
         # about providers and the offering-level pool.
         if result["available"] and not free:
             if await BookingAllocationService.has_resources(
-                session, business_id=business.id, location_id=params["location_id"]
+                session, business_id=business.id, location_id=params["location_id"],
+                mode=params["reservation_mode"],
             ):
                 result["available"] = False
                 result["code"] = "slot_conflict"
@@ -333,6 +352,86 @@ class PublicBookingService:
         return dict(data)
 
     @staticmethod
+    async def _mode_and_window(
+        session: AsyncSession, business: Business, location: Any, payload: dict[str, Any]
+    ) -> tuple[str, str, str]:
+        """The offering decides the mode, not the request: a class booked as an
+        'appointment' would otherwise skip its places limit. An event date is
+        the whole local day, whatever times were sent."""
+        from platform_core.services.booking_slots import day_window, mode_for, zone
+        from platform_core.validation.booking import parse_datetime
+
+        mode = str(payload.get("reservation_mode") or "appointment")
+        if payload.get("offering_id"):
+            offering = await session.get(Offering, uuid.UUID(str(payload["offering_id"])))
+            if offering is None or offering.business_id != business.id:
+                raise ResourceNotFound("Offering")
+            mode = mode_for(offering)
+        elif mode not in ("table", "appointment", "accommodation", "rental", "event_date"):
+            mode = "appointment"  # a class or site visit is always booked against its offering
+        starts, ends = str(payload["starts_at"]), str(payload["ends_at"])
+        if mode == "event_date":
+            first = parse_datetime(starts, field="starts_at").astimezone(zone(location)).date()
+            a, b = day_window(location, first)
+            starts, ends = a.isoformat(), b.isoformat()
+        return mode, starts, ends
+
+    @staticmethod
+    async def slots(session: AsyncSession, *, slug: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Times a customer can pick on one day (appointment, table, class, site visit)."""
+        from platform_core.services.booking_slots import BookingSlotService, mode_for, parse_day
+
+        business = await PublicBookingService._resolve_business(session, slug)
+        location = await LocationService.get_by_id(session, business.id, uuid.UUID(str(payload["location_id"])))
+        if location is None or location.status != "active":
+            raise ValidationError("Location is closed or inactive", details={"code": "location_closed"})
+        offering = None
+        mode = str(payload.get("mode") or "appointment")
+        if payload.get("offering_id"):
+            offering = await session.get(Offering, uuid.UUID(str(payload["offering_id"])))
+            if offering is None or offering.business_id != business.id:
+                raise ResourceNotFound("Offering")
+            mode = mode_for(offering)
+        provider = uuid.UUID(str(payload["provider_id"])) if payload.get("provider_id") else None
+        return dict(await BookingSlotService.day_slots(
+            session, business_id=business.id, location=location, mode=mode, offering=offering,
+            provider_id=provider, party_size=max(int(payload.get("party_size") or 1), 1),
+            day=parse_day(payload.get("date"))))
+
+    @staticmethod
+    async def range_check(session: AsyncSession, *, slug: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Stay (check-in/check-out dates), rental (start/end) or event date (a day)."""
+        from platform_core.services.booking_slots import (
+            BookingSlotService, day_window, mode_for, parse_day, stay_window,
+        )
+        from platform_core.validation.booking import parse_datetime
+
+        business = await PublicBookingService._resolve_business(session, slug)
+        location = await LocationService.get_by_id(session, business.id, uuid.UUID(str(payload["location_id"])))
+        if location is None or location.status != "active":
+            raise ValidationError("Location is closed or inactive", details={"code": "location_closed"})
+        offering = None
+        mode = str(payload.get("mode") or "rental")
+        if payload.get("offering_id"):
+            offering = await session.get(Offering, uuid.UUID(str(payload["offering_id"])))
+            if offering is None or offering.business_id != business.id:
+                raise ResourceNotFound("Offering")
+            mode = mode_for(offering)
+        if mode == "accommodation":
+            starts, ends = stay_window(location, offering, parse_day(payload.get("check_in")),
+                                       parse_day(payload.get("check_out")))
+        elif mode == "event_date":
+            starts, ends = day_window(location, parse_day(payload.get("date")))
+        elif mode == "rental":
+            starts = parse_datetime(payload.get("starts_at"), field="starts_at")
+            ends = parse_datetime(payload.get("ends_at"), field="ends_at")
+        else:
+            raise ValidationError("This kind of booking is picked by time slots", details={"field": "mode"})
+        return dict(await BookingSlotService.range_check(
+            session, business_id=business.id, location=location, mode=mode, offering=offering,
+            party_size=max(int(payload.get("party_size") or 1), 1), starts_at=starts, ends_at=ends))
+
+    @staticmethod
     async def create_public_booking(
         session: AsyncSession,
         *,
@@ -358,6 +457,7 @@ class PublicBookingService:
         contact = await PublicBookingService._guest_contact(
             session, business, payload, identity_id=identity_id, correlation_id=correlation_id)
         actor_id = business.primary_owner_identity_id
+        mode, starts_at, ends_at = await PublicBookingService._mode_and_window(session, business, location, payload)
 
         booking = await BookingService.create_booking(
             session,
@@ -369,10 +469,10 @@ class PublicBookingService:
                 "customer_contact_id": str(contact.id),
                 "offering_id": payload.get("offering_id"),
                 "provider_id": payload.get("provider_id"),
-                "reservation_mode": payload.get("reservation_mode") or "appointment",
+                "reservation_mode": mode,
                 "title": payload.get("title"),
-                "starts_at": payload["starts_at"],
-                "ends_at": payload["ends_at"],
+                "starts_at": starts_at,
+                "ends_at": ends_at,
                 "party_size": payload.get("party_size") or 1,
                 "guest_count": payload.get("guest_count"),
                 # Deliberately not payload.get("capacity"). Capacity is the
@@ -386,6 +486,13 @@ class PublicBookingService:
             assign_free_resource=True,
             enforce_opening_hours=True,
         )
+        note = str(payload.get("notes") or "").strip()
+        if note:
+            from platform_core.services.booking_note import BookingNoteService
+
+            await BookingNoteService.create_note(
+                session, business_id=business.id, booking_id=booking.id, actor_id=actor_id,
+                correlation_id=correlation_id, body=f"From the customer: {note[:1000]}")
         data = BookingResolver.serialize_booking(booking)
         data["management_token"] = booking.management_token
         data["management_token_expires_at"] = (
