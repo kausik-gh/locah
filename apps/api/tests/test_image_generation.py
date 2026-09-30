@@ -38,6 +38,20 @@ def test_every_picture_of_a_site_shares_one_shoot_brief() -> None:
         assert "photograph" in prompt and "No text" in prompt and "No people" in prompt
 
 
+def test_no_picture_carries_a_real_brand() -> None:
+    # The first real gym hero printed an equipment maker's name on the rack:
+    # realistic equipment is wanted, an accidental endorsement is not.
+    brief = shoot_brief({"palette": {"mode": "dark"}, "image_style": "barbell gym, racks and plates"})
+    photo = build_prompt(subject="squat racks and bumper plates", purpose="hero", truth_class="mood",
+                         brief=brief, trade="gym", hero_style="cinematic")
+    graphic = build_prompt(subject="gym", purpose="hero", truth_class="graphic", brief=brief, trade="gym")
+    for prompt in (photo, graphic):
+        for rule in ("no brand names, trademarks or manufacturer markings on equipment",
+                     "no branded logos", "no branded clothing", "no branded product packaging"):
+            assert rule in prompt
+    assert "squat racks and bumper plates" in photo  # the equipment itself stays
+
+
 def test_a_dark_site_is_shot_low_key_and_a_light_one_airy() -> None:
     dark = shoot_brief({"palette": {"mode": "dark"}, "image_style": "gym"})
     light = shoot_brief({"palette": {"mode": "light"}, "image_style": "gym"})

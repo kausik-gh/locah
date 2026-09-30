@@ -85,6 +85,33 @@ async def test_a_rejected_key_is_not_retried_on_another_model(monkeypatch):
     assert len(script.urls) == 1
 
 
+async def test_a_billing_refusal_is_one_call_not_one_per_model(monkeypatch):
+    # Seen live: "Your prepayment credits are depleted" — the fallback models
+    # bill to the same project, so trying them only triples the refusals.
+    script = Script(_error(402, "Your prepayment credits are depleted."),
+                    httpx.Response(200, json=OK), httpx.Response(200, json=OK))
+    monkeypatch.setattr(ai_provider.httpx, "AsyncClient", script.client)
+    with pytest.raises(ai_provider.AIProviderBillingError, match="billing") as raised:
+        await GeminiProvider("k").generate_structured("p", {"type": "object"}, {"purpose": "website.generate"}, 30)
+    assert isinstance(raised.value, AIProviderPermanentError)
+    assert _models(script) == ["gemini-3.8-flash"]
+
+
+async def test_the_website_generator_does_not_retry_a_billing_refusal(monkeypatch):
+    # Its own three-attempt loop sits over the fallback chain: 402 used to
+    # become up to nine refused calls; it is one.
+    from platform_core.services import website_generation
+    from platform_core.services.website_generation import WebsiteGenerationService
+
+    script = Script(*[_error(402, "Your prepayment credits are depleted.") for _ in range(9)])
+    monkeypatch.setattr(ai_provider.httpx, "AsyncClient", script.client)
+    monkeypatch.setattr(website_generation, "get_ai_provider", lambda: GeminiProvider("k"))
+    monkeypatch.setattr(website_generation, "build_generation_prompt", lambda *a: "p")
+    with pytest.raises(RuntimeError, match="billing"):
+        await WebsiteGenerationService._try_ai({})
+    assert len(script.urls) == 1
+
+
 async def test_when_every_model_fails_the_caller_gets_the_last_error(monkeypatch):
     script = Script(_error(503, "busy"), _error(503, "busy too"), _error(503, "still busy"))
     monkeypatch.setattr(ai_provider.httpx, "AsyncClient", script.client)

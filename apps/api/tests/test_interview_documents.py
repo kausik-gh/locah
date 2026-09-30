@@ -75,6 +75,20 @@ def test_nothing_is_invented_and_unclear_lines_are_flagged() -> None:
     assert facts == {"phone": "98401 23456", "hours": "7 am – 10 pm"}
 
 
+def test_a_price_that_was_not_read_cleanly_is_never_high_confidence() -> None:
+    # Tiny print read "confidently" is the case owner confirmation exists for;
+    # a misread digit must at least arrive flagged, never ticked.
+    reading = documents.DocumentReading.model_validate({"kind": "menu", "groups": [{"name": "Tiffin", "items": [
+        {"name": "Pongal", "price": "6O"}, {"name": "Vada", "price": "1l0"}, {"name": "Upma", "price": "Rs 4?"},
+        {"name": "Poori", "price": "Rs.120/-"}, {"name": "Coffee", "price": "₹1,200"},
+        {"name": "Tea", "price": "RS 20"}, {"name": "Podi", "price": "120", "unit": "250g"}]}]})
+    groups, _ = documents.govern(reading)
+    confidence = {i.name: i.confidence for i in groups[0].items}
+    assert confidence == {"Pongal": "low", "Vada": "low", "Upma": "low",
+                          "Poori": "high", "Coffee": "high", "Tea": "high", "Podi": "high"}
+    assert {i.name: i.price for i in groups[0].items}["Pongal"] == "6O"  # kept as read, for the owner to fix
+
+
 def test_only_accepted_lines_reach_the_catalogue() -> None:
     bp = BusinessBlueprint(business_id=uuid.uuid4())
     doc_id = uuid.uuid4()

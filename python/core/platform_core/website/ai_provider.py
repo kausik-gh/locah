@@ -49,6 +49,15 @@ class AIProviderPermanentError(RuntimeError):
     """
 
 
+class AIProviderBillingError(AIProviderPermanentError):
+    """Google refused on billing (HTTP 402 — prepaid credit depleted, billing off).
+
+    Every fallback model bills to the same Google project and refuses the same
+    way, so this is one call, never one per model. Its own type so the job's
+    `fallback_reason` and the logs say billing, not a generic failure.
+    """
+
+
 class UnavailableAIProvider:
     """Default provider when no API key is configured — always fails fast."""
 
@@ -311,7 +320,8 @@ class GeminiProvider:
         replica accepts unchanged. Quotas are per model, so the fallback model
         (GEMINI_FALLBACK_MODEL, a comma-separated list) are real further chances
         at no second provider.
-        Only a credential failure skips it: another model cannot fix a bad key.
+        Only a credential or billing failure skips it: another model cannot fix
+        a bad key, and it bills to the same depleted account.
         """
         return await self._structured(prompt, schema, model_config, timeout_seconds)
 
@@ -342,7 +352,7 @@ class GeminiProvider:
                 data = await self._post(model, body, purpose, max(remaining, 1.0))
             except _GeminiRejected as exc:
                 failure = exc.error
-                if exc.status in (401, 403):
+                if exc.status in (401, 402, 403):
                     break
                 continue
             parsed = self._parse(data, model, purpose, started)
@@ -373,6 +383,15 @@ class GeminiProvider:
                 reason = str((response.json().get("error") or {}).get("message", ""))[:200]
             except ValueError:
                 reason = response.text[:200]
+            if response.status_code == 402:
+                # Not a code or model problem: the Google project is out of credit.
+                _log.error(
+                    "ai.gemini.billing_refused", model=model, purpose=purpose,
+                    status_code=402, latency_ms=latency_ms, reason=reason,
+                )
+                raise _GeminiRejected(
+                    402, AIProviderBillingError(f"gemini billing refused the request (402): {reason}")
+                )
             _log.warning(
                 "ai.gemini.call_failed", model=model, purpose=purpose,
                 status_code=response.status_code, latency_ms=latency_ms, reason=reason,

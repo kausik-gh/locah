@@ -72,13 +72,18 @@ PROMPT = (
     "(veg / non-veg, spice level, specifications such as '2 HP, 1440 rpm').\n"
     "NEVER invent a price, size, specification, certification, ingredient, availability or claim. If a "
     "line is hard to read, cut off or ambiguous, still include it with confidence 'low' and leave out "
-    "what you cannot read. Headings are groups, not items. A property brochure's projects are items "
+    "what you cannot read. If the print is too small or blurred to be sure of every digit of a price, "
+    "keep the price as you read it and mark the line confidence 'low'. Headings are groups, not items. "
+    "A property brochure's projects are items "
     "of a group named by their kind (Villas, Apartments, Plots).\n"
     "kind: menu, catalogue, price_list, brochure or other. phone and hours only if printed.\n"
     "Output only schema-valid JSON."
 )
 
 _DIGIT = re.compile(r"\d")
+# A digit run into a letter it is often misread as ("12O", "1l0", "8?0"): the
+# price was not read cleanly, whatever confidence the reading claimed.
+_MISREAD = re.compile(r"(?<=\d)[OoIl?]|[OoIl?](?=\d)")
 
 
 def govern(reading: DocumentReading) -> tuple[list[ExtractedGroup], dict[str, str]]:
@@ -100,7 +105,8 @@ def govern(reading: DocumentReading) -> tuple[list[ExtractedGroup], dict[str, st
                 unit=" ".join(item.unit.split())[:40], variant=" ".join(item.variant.split())[:60],
                 attributes=" ".join(item.attributes.split())[:160],
                 # A price that was printed but unreadable is a reason to check the line.
-                confidence="low" if item.confidence == "low" or (price and not _DIGIT.search(price)) else "high",
+                confidence="low" if item.confidence == "low" or (price and not _DIGIT.search(price))
+                or _MISREAD.search(price) else "high",
             ))
         if items:
             groups.append(ExtractedGroup(name=(gname if gname and not gvague else "More")[:80], items=items[:40]))

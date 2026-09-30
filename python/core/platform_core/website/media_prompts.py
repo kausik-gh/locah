@@ -25,16 +25,23 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-PROMPT_VERSION = "media-v4.1"
+PROMPT_VERSION = "media-v4.2"
 
+# A real brand in a drawn picture reads as an endorsement the business never
+# had (the first real gym hero printed an equipment maker's name on the rack
+# and plates). Keep the equipment realistic; keep it unbranded.
+_UNBRANDED = (
+    "Everything unbranded: no brand names, trademarks or manufacturer markings on equipment, "
+    "machines, tools or vehicles; no branded logos; no branded clothing; no branded product packaging."
+)
 _NEVER = (
     "One continuous photograph of a single scene — no collage, split panels, borders, frames or inset "
     "pictures. No text, words, letters, numbers, logos, labels, packaging, price tags, signage or "
-    "watermarks. No people, faces or hands."
+    f"watermarks. {_UNBRANDED} No people, faces or hands."
 )
 _NEVER_GRAPHIC = (
-    "No text, letters, numbers, logos or signage. No people or faces. Not a photograph of a real place "
-    "or product."
+    f"No text, letters, numbers, logos or signage. {_UNBRANDED} No people or faces. Not a photograph "
+    "of a real place or product."
 )
 
 
