@@ -303,9 +303,8 @@ async def quote_acceptance_code(session: AsyncSession, event: EventContext) -> N
     contact = await _contact(session, p.get("customer_contact_id"))
     if contact is None:
         return
-    business = await _business(session, business_id)
     await _send(session, business_id, to=contact.phone, key="quote_acceptance_code", contact_id=contact.id,
-                params=[str(p.get("quote_number")), business.display_name, str(p.get("code"))],
+                params=[str(p.get("code"))],
                 idem=f"quote_code:{event.event_id}")
 
 

@@ -193,6 +193,13 @@ def test_a_signed_up_number_is_registered_before_it_is_called_connected(monkeypa
     assert data["channel"]["status"] == "connected" and data["channel"]["phone_registered_at"]
     assert ("POST", f"/{VERSION}/{pn}/register", {"messaging_product": "whatsapp", "pin": "246810"}) in meta.calls
     assert data["connection"]["messaging"]["state"] == "TEMPLATE_SETUP_REQUIRED", "templates wait for Meta's review"
+    [otp] = [b for m, p, b in meta.calls if p.endswith("/message_templates") and b["name"] == "quote_acceptance_code"
+             and b["language"] == "en"]
+    assert otp["category"] == "AUTHENTICATION" and otp["components"] == [
+        {"type": "BODY", "add_security_recommendation": True},
+        {"type": "FOOTER", "code_expiration_minutes": 10},
+        {"type": "BUTTONS", "buttons": [{"type": "OTP", "otp_type": "COPY_CODE", "text": "Copy code"}]}], \
+        "one-time codes go in Meta's preset authentication format, never custom text"
     assert data["connection"]["templates"]["awaiting_review"] > 0
     assert sql("select count(*) from platform_audit_events where business_id = :b and "
                "cast(after_state as text) like '%246810%'", b=bid) == [(0,)], "the PIN is never recorded"
@@ -342,3 +349,24 @@ def test_a_business_calls_only_customers_who_allowed_it(monkeypatch: Any) -> Non
     assert asyncio.run(may_call("919876500142")) == "ok"
     assert sql("select status, is_permanent from calls_permissions where business_id = :b and wa_id = '919876500142'",
                b=bid) == [("granted", True)]
+
+
+def test_a_one_time_code_is_sent_in_the_body_and_behind_the_copy_button(monkeypatch: Any) -> None:
+    import asyncio
+
+    from platform_core.messaging.provider import MetaCloudProvider
+
+    _meta_env(monkeypatch)
+    seen: list[dict[str, Any]] = []
+
+    def graph(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"messages": [{"id": "wamid.otp"}]})
+
+    _mock_graph(monkeypatch, graph)  # type: ignore[arg-type]
+    sent = asyncio.run(MetaCloudProvider().send_template("tok", "pn-1", "919876500001", "quote_acceptance_code",
+                                                         "en", ["482915"]))
+    assert sent.provider_message_id == "wamid.otp"
+    assert seen[0]["template"]["components"] == [
+        {"type": "body", "parameters": [{"type": "text", "text": "482915"}]},
+        {"type": "button", "sub_type": "url", "index": "0", "parameters": [{"type": "text", "text": "482915"}]}]

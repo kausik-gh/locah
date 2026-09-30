@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from platform_core.exceptions import ServiceUnavailable
-from platform_core.messaging.templates import LIBRARY, META_LANGUAGE
+from platform_core.messaging.templates import CODE_EXPIRY_MINUTES, LIBRARY, META_LANGUAGE
 from platform_core.secrets import is_development
 
 _META_ENV = ("META_APP_ID", "META_APP_SECRET", "META_GRAPH_VERSION", "META_ES_CONFIG_ID")
@@ -137,11 +137,15 @@ class MetaCloudProvider:
 
     async def send_template(self, token: str | None, phone_number_id: str | None, to: str, key: str, language: str,
                             params: list[str]) -> Sent:
+        components: list[dict[str, Any]] = [
+            {"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}]
+        if LIBRARY[key].category == "authentication":
+            # Meta's copy-code preset: the code in the body and behind the button.
+            components.append({"type": "button", "sub_type": "url", "index": "0",
+                               "parameters": [{"type": "text", "text": params[0]}]})
         return await self._send(token, phone_number_id, {
             "to": to, "type": "template",
-            "template": {"name": key, "language": {"code": META_LANGUAGE[language]},
-                         "components": [{"type": "body",
-                                         "parameters": [{"type": "text", "text": p} for p in params]}]}})
+            "template": {"name": key, "language": {"code": META_LANGUAGE[language]}, "components": components}})
 
     async def send_text(self, token: str | None, phone_number_id: str | None, to: str, body: str) -> Sent:
         return await self._send(token, phone_number_id, {
@@ -155,11 +159,18 @@ class MetaCloudProvider:
     async def submit_template(self, token: str | None, waba_id: str | None, key: str,
                               language: str) -> tuple[str, str | None, str | None]:
         t = LIBRARY[key]
-        body = t.bodies[language]
-        examples = [f"<{p}>" for p in t.params]
+        if t.category == "authentication":
+            # Only Meta's preset is accepted for one-time codes: no custom text.
+            components: list[dict[str, Any]] = [
+                {"type": "BODY", "add_security_recommendation": True},
+                {"type": "FOOTER", "code_expiration_minutes": CODE_EXPIRY_MINUTES},
+                {"type": "BUTTONS", "buttons": [{"type": "OTP", "otp_type": "COPY_CODE", "text": "Copy code"}]}]
+        else:
+            examples = [f"<{p}>" for p in t.params]
+            components = [{"type": "BODY", "text": t.bodies[language], "example": {"body_text": [examples]}}]
         data = await self._post(token, f"{waba_id}/message_templates", {
             "name": key, "language": META_LANGUAGE[language], "category": t.category.upper(),
-            "components": [{"type": "BODY", "text": body, "example": {"body_text": [examples]}}]})
+            "components": components})
         status = str(data.get("status") or "PENDING").lower()
         category = str(data.get("category") or "").lower() or None  # Meta's decision, which may differ
         return ("approved" if status == "approved" else "rejected" if status == "rejected" else "submitted",
