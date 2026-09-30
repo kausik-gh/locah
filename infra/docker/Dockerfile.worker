@@ -15,6 +15,9 @@ COPY apps/worker apps/worker
 COPY python python
 
 RUN uv sync --frozen --no-group dev
+# Everything is installed above; `uv run` must not re-sync (it would pull the dev
+# group from PyPI on every boot).
+ENV UV_NO_SYNC=1
 
 ENV PYTHONPATH=/app/apps/api/src:/app/apps/worker/src:/app/python/core:/app/python/domain_events
 
