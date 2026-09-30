@@ -88,3 +88,24 @@ def test_a_calm_developer_still_gets_a_property_site() -> None:
         return total + (2.5 if "personality=calm" in FAMILIES[key].affinity else 0)
 
     assert score("airy_property") > score("calm_professional")
+
+
+def test_the_editor_is_offered_a_drawn_picture_only_where_one_is_honest() -> None:
+    from platform_core.interview.media_director import image_policy
+
+    def theme(arche: str) -> dict[str, object]:
+        return {"creative_direction": {"archetype": arche}}
+
+    menu, folio, homes = theme("menu_commerce"), theme("project_portfolio"), theme("real_estate_projects")
+    assert image_policy(menu, "hero", "editorial_overlay") == {"self": "draw"}
+    assert image_policy(menu, "about", "story_split") == {"self": "draw"}
+    assert image_policy(menu, "cta_band", "image_banner") == {"self": "draw"}
+    assert image_policy(menu, "category_showcase", "image_cards") == {"items": "draw"}
+    assert image_policy(menu, "gallery", "masonry") == {"self": "real_photo"}  # a gallery is their own
+    # Evidence: a photographer's work, a developer's named projects.
+    assert image_policy(folio, "product_showcase", "service_cards") == {"items": "real_photo"}
+    assert image_policy(homes, "product_showcase", "project_cards") == {"items": "real_photo"}
+    assert image_policy(menu, "product_showcase", "project_cards") == {"items": "real_photo"}
+    # Nothing to picture on plan cards or a contact block.
+    assert image_policy(theme("membership_fitness"), "product_showcase", "plan_cards") == {}
+    assert image_policy(menu, "contact", "full") == {}

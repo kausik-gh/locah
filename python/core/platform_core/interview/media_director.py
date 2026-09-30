@@ -377,3 +377,32 @@ def section_image_prompt(
         return None
     return build_prompt(subject=subject or trade, purpose="item", truth_class="representative", brief=brief,
                         trade=trade), "4:3"
+
+
+# What the editor may offer for each picture a section can carry — the one
+# decision the Workspace follows. "draw": Generate / Regenerate / Upload /
+# Remove. "real_photo": Upload / Remove only, with "This should be a real photo
+# of your work — upload one instead." A drawn picture never stands in for
+# evidence: a named project, a studio's work, a real gallery.
+REAL_PHOTO_MESSAGE = "This should be a real photo of your work — upload one instead."
+_MOOD_SECTIONS = frozenset({"hero", "cta_band", "about"})
+_ROW_SECTIONS = frozenset({"category_showcase", "product_showcase"})
+_EVIDENCE_VARIANTS = frozenset({"project_cards"})
+_NO_ROW_PICTURES = frozenset({"plan_cards"})
+
+
+def image_policy(theme: dict[str, object], section_type: str, layout_variant: str | None) -> dict[str, str]:
+    """{"self": ..., "items": ...} for the pictures this section can carry."""
+    direction = theme.get("creative_direction") if isinstance(theme.get("creative_direction"), dict) else {}
+    assert isinstance(direction, dict)
+    arche = str(direction.get("archetype") or theme.get("site_archetype") or "")
+    if section_type in _MOOD_SECTIONS:
+        return {"self": "draw"}
+    if section_type == "gallery":
+        return {"self": "real_photo"}
+    if section_type in _ROW_SECTIONS:
+        if layout_variant in _NO_ROW_PICTURES:
+            return {}
+        evidence = arche in _EVIDENCE_LED_ARCHETYPES or layout_variant in _EVIDENCE_VARIANTS
+        return {"items": "real_photo" if evidence else "draw"}
+    return {}

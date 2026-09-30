@@ -20,7 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from platform_core.logging import get_logger
 from platform_core.models import Business, BusinessProfile, Offering, WebsitePage, WebsiteSection, WebsiteVersion
 from platform_core.services.media import MediaService
-from platform_core.interview.media_director import section_image_prompt
+from platform_core.interview.media_director import REAL_PHOTO_MESSAGE, image_policy, section_image_prompt
+from platform_core.website.media_prompts import PROMPT_VERSION
 from platform_core.website.image_generation import generate_image_bytes
 
 _log = get_logger("website.images")
@@ -86,24 +87,42 @@ class WebsiteImageService:
         business_id: uuid.UUID,
         actor_id: uuid.UUID,
         section_id: uuid.UUID,
+        list_key: str | None = None,
+        index: int | None = None,
     ) -> dict[str, Any]:
+        """Draw one picture for a section — its own, or one card's (`list_key`, `index`).
+
+        Only where `image_policy` says a drawn picture is honest; a factual slot
+        (a named project, real work, a gallery) answers `needs_real_photo`.
+        """
         business = await session.get(Business, business_id)
         if business is None:
             return {"ok": False, "reason": "business_missing"}
-        profile = (
-            await session.execute(
-                select(BusinessProfile).where(BusinessProfile.business_id == business_id)
-            )
-        ).scalars().first()
-        del profile
         section = await session.get(WebsiteSection, section_id)
-        if section is None:
+        # Tenant isolation: only this business's own sections.
+        if section is None or section.business_id != business_id:
             return {"ok": False, "reason": "section_missing"}
         theme = await WebsiteImageService._theme_of(session, section)
-        planned = section_image_prompt(theme, section.section_type_id, _trade(business))
+        policy = image_policy(theme, section.section_type_id, section.layout_variant)
+        content = dict(section.content or {})
+        subject = ""
+        row: dict[str, Any] | None = None
+        if list_key is not None:
+            rows = content.get(list_key)
+            if (list_key not in MediaService.NESTED_ASSET_LISTS or not isinstance(rows, list) or index is None
+                    or not 0 <= index < len(rows) or not isinstance(rows[index], dict)):
+                return {"ok": False, "reason": "item_missing"}
+            row = dict(rows[index])
+            subject = str(row.get("name") or "")[:120]
+            wanted = policy.get("items")
+        else:
+            wanted = policy.get("self")
+        if wanted is None:
+            return {"ok": False, "reason": "no_picture_here"}
+        planned = section_image_prompt(theme, section.section_type_id, _trade(business), subject=subject) \
+            if wanted == "draw" else None
         if planned is None:
-            return {"ok": False, "reason": "needs_real_photo",
-                    "detail": "This picture should be a real one of your work — upload it instead."}
+            return {"ok": False, "reason": "needs_real_photo", "detail": REAL_PHOTO_MESSAGE}
         prompt, aspect = planned
         generated = await generate_image_bytes(prompt, aspect_ratio=aspect)
         if generated is None:
@@ -112,6 +131,7 @@ class WebsiteImageService:
                 "reason": "generation_unavailable",
                 "detail": "Image generation did not return a picture. You can upload one instead.",
             }
+        slot = f"editor:{section.section_type_id}" + (f":{list_key}.{index}" if list_key is not None else "")
         asset = await MediaService.persist_generated(
             session,
             business_id=business_id,
@@ -119,11 +139,18 @@ class WebsiteImageService:
             purpose="website",
             mime_type=generated.mime_type,
             body=generated.bytes,
-            alt_text="Illustrative picture",
+            alt_text=f"Illustrative picture: {subject}"[:200] if subject else "Illustrative picture",
             original_filename="generated-section.png",
+            generated_for=slot,
+            prompt_version=PROMPT_VERSION,
         )
-        content = dict(section.content or {})
-        content["image_asset_id"] = asset["id"]
+        if row is not None and list_key is not None and index is not None:
+            row["image_asset_id"] = asset["id"]
+            rows = list(content[list_key])
+            rows[index] = row
+            content[list_key] = rows
+        else:
+            content["image_asset_id"] = asset["id"]
         section.content = content
         flag_modified(section, "content")
         await session.flush()

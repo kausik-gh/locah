@@ -31,12 +31,17 @@ const TOKEN_REFRESH_MS = 7 * 60 * 1000
 const ACCEPTED_IMAGE_TYPES = 'image/jpeg,image/png,image/webp,image/gif'
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
+type PicturePolicy = 'draw' | 'real_photo'
+
 export type EditorSection = {
   id: string
   section_type_id: string
   layout_variant?: string | null
   content: Record<string, unknown>
   assets?: Record<string, { url: string; alt_text?: string | null; draft?: boolean }>
+  /** Which pictures this section can carry — the server's one decision.
+   *  "draw": generate, regenerate, upload, remove. "real_photo": upload only. */
+  image_policy?: { self?: PicturePolicy; items?: PicturePolicy }
   is_visible: boolean
 }
 
@@ -285,12 +290,14 @@ function ListEditor({
   )
 }
 
-/** Sections that carry a picture. */
-const IMAGE_SECTIONS = new Set(['hero', 'about'])
+const REAL_PHOTO = 'This should be a real photo of your work — upload one instead.'
 
 function ImageField({
   businessId,
   sectionId,
+  policy,
+  label = 'Picture',
+  target,
   currentUrl,
   currentAssetId,
   draft,
@@ -299,6 +306,10 @@ function ImageField({
 }: {
   businessId: string
   sectionId: string
+  policy: PicturePolicy
+  label?: string
+  /** A card's picture inside the section; omitted for the section's own. */
+  target?: { list_key: 'items' | 'categories'; index: number }
   currentUrl?: string
   currentAssetId?: string
   /** A picture LOCAH drew that the owner has not approved yet. */
@@ -351,7 +362,7 @@ function ImageField({
 
   return (
     <div className="ed-field">
-      <span className="ed-label">Picture</span>
+      <span className="ed-label">{label}</span>
       {shown ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img className="ed-thumb" src={shown} alt="" />
@@ -360,6 +371,9 @@ function ImageField({
           No picture yet. A good photo of your space or your work makes the biggest difference.
         </p>
       )}
+      {policy === 'real_photo' ? (
+        <p className="ed-help" style={{ marginTop: 0 }}>{REAL_PHOTO}</p>
+      ) : null}
       {isDraft ? (
         <p className="ed-help" style={{ marginTop: 0 }}>
           <strong>Draft picture by LOCAH</strong> — it illustrates the mood, it is not a photo of your
@@ -379,6 +393,7 @@ function ImageField({
           }}
         />
       </label>
+      {policy === 'draw' ? (
       <button
         type="button"
         className="btn btn-ghost"
@@ -387,7 +402,7 @@ function ImageField({
           setError(null)
           setBusy(true)
           try {
-            const result = await generateSectionImage(businessId, sectionId)
+            const result = await generateSectionImage(businessId, sectionId, target)
             if (!result.ok) {
               setError(result.error)
               return
@@ -403,6 +418,7 @@ function ImageField({
       >
         {shown ? 'Generate a new picture' : 'Generate a picture'}
       </button>
+      ) : null}
       {isDraft && currentAssetId ? (
         <button
           type="button"
@@ -434,6 +450,109 @@ function ImageField({
         </button>
       ) : null}
       {error ? <p className="ed-error">{error}</p> : null}
+    </div>
+  )
+}
+
+type CardRow = Record<string, unknown>
+
+/** Pictures on a section's cards (a category, a dish, a product). Each card
+ *  is its own picture with the same controls; factual cards upload only. */
+function CardPictures({
+  businessId,
+  section,
+  listKey,
+  policy,
+  rows,
+  onChange,
+}: {
+  businessId: string
+  section: EditorSection
+  listKey: 'items' | 'categories'
+  policy: PicturePolicy
+  rows: unknown
+  onChange: (rows: CardRow[]) => void | Promise<void>
+}) {
+  const list: CardRow[] = Array.isArray(rows)
+    ? rows.filter((r): r is CardRow => Boolean(r) && typeof r === 'object' && Boolean((r as CardRow).name))
+    : []
+  if (!list.length) return null
+  const all: CardRow[] = Array.isArray(rows) ? (rows as CardRow[]) : []
+  const setAt = (index: number, assetId: string | null) => {
+    const next = all.map((r, i) => {
+      if (i !== index) return r
+      const copy = { ...r }
+      if (assetId) copy.image_asset_id = assetId
+      else delete copy.image_asset_id
+      return copy
+    })
+    return onChange(next)
+  }
+  return (
+    <details className="ed-field">
+      <summary className="ed-label">
+        {listKey === 'categories' ? 'Category pictures' : 'Pictures on the cards'} ({list.length})
+      </summary>
+      {all.map((row, index) =>
+        row && typeof row === 'object' && row.name ? (
+          <ImageField
+            key={`${listKey}-${index}-${String(row.image_asset_id ?? '')}`}
+            businessId={businessId}
+            sectionId={section.id}
+            policy={policy}
+            label={String(row.name)}
+            target={{ list_key: listKey, index }}
+            currentUrl={section.assets?.[`${listKey}.${index}`]?.url}
+            currentAssetId={typeof row.image_asset_id === 'string' ? row.image_asset_id : undefined}
+            draft={section.assets?.[`${listKey}.${index}`]?.draft}
+            onUploaded={(assetId) => setAt(index, assetId)}
+            onRemove={() => setAt(index, null)}
+          />
+        ) : null
+      )}
+    </details>
+  )
+}
+
+/** A gallery holds the business's own photos: upload, replace or remove. */
+function GalleryPictures({
+  businessId,
+  section,
+  ids,
+  onChange,
+}: {
+  businessId: string
+  section: EditorSection
+  ids: string[]
+  onChange: (ids: string[]) => void | Promise<void>
+}) {
+  return (
+    <div className="ed-field">
+      <span className="ed-label">Photos</span>
+      {ids.map((id, index) => (
+        <ImageField
+          key={id}
+          businessId={businessId}
+          sectionId={section.id}
+          policy="real_photo"
+          label={`Photo ${index + 1}`}
+          currentUrl={section.assets?.[`image_asset_id_${index}`]?.url}
+          currentAssetId={id}
+          onUploaded={(assetId) => onChange(ids.map((x, i) => (i === index ? assetId : x)))}
+          onRemove={() => onChange(ids.filter((_, i) => i !== index))}
+        />
+      ))}
+      {ids.length < 20 ? (
+        <ImageField
+          key={`add-${ids.length}`}
+          businessId={businessId}
+          sectionId={section.id}
+          policy="real_photo"
+          label="Add a photo"
+          onUploaded={(assetId) => onChange([...ids, assetId])}
+          onRemove={() => undefined}
+        />
+      ) : null}
     </div>
   )
 }
@@ -555,7 +674,7 @@ export function SiteEditor({
 
                 {isOpen ? (
                   <div className="ed-sec__body">
-                    {fields.length === 0 && !IMAGE_SECTIONS.has(section.section_type_id) ? (
+                    {fields.length === 0 && !section.image_policy?.self && !section.image_policy?.items ? (
                       <p className="ed-help">
                         This section arranges itself from your business details. There is nothing
                         to type here.
@@ -603,10 +722,11 @@ export function SiteEditor({
                       />
                     ) : null}
 
-                    {IMAGE_SECTIONS.has(section.section_type_id) ? (
+                    {section.image_policy?.self && section.section_type_id !== 'gallery' ? (
                       <ImageField
                         businessId={businessId}
                         sectionId={section.id}
+                        policy={section.image_policy.self}
                         currentUrl={section.assets?.image_asset_id?.url}
                         currentAssetId={typeof current.image_asset_id === 'string' ? current.image_asset_id : undefined}
                         draft={section.assets?.image_asset_id?.draft}
@@ -614,6 +734,29 @@ export function SiteEditor({
                         onRemove={() => commit(section, 'image_asset_id', null)}
                       />
                     ) : null}
+
+                    {section.section_type_id === 'gallery' && section.image_policy?.self ? (
+                      <GalleryPictures
+                        businessId={businessId}
+                        section={section}
+                        ids={Array.isArray(current.image_asset_ids) ? current.image_asset_ids.map(String) : []}
+                        onChange={(ids) => commit(section, 'image_asset_ids', ids)}
+                      />
+                    ) : null}
+
+                    {section.image_policy?.items
+                      ? (['items', 'categories'] as const).map((listKey) => (
+                          <CardPictures
+                            key={listKey}
+                            businessId={businessId}
+                            section={section}
+                            listKey={listKey}
+                            policy={section.image_policy!.items!}
+                            rows={current[listKey]}
+                            onChange={(rows) => commit(section, listKey, rows)}
+                          />
+                        ))
+                      : null}
 
                     {bound ? (
                       <p className="ed-help">

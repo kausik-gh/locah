@@ -138,7 +138,9 @@ export async function approveDraftImage(
 
 export async function generateSectionImage(
   businessId: string,
-  sectionId: string
+  sectionId: string,
+  /** A card's picture: which list and which row. Omit for the section's own. */
+  target?: { list_key: 'items' | 'categories'; index: number }
 ): Promise<{ ok: true; assetId: string; url: string | null } | { ok: false; error: string }> {
   const token = await getAccessToken()
   if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
@@ -148,7 +150,8 @@ export async function generateSectionImage(
     `${apiUrl}/v1/b/${businessId}/website/sections/${sectionId}/generate-image`,
     {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(target ?? {}),
       cache: 'no-store',
     }
   )
