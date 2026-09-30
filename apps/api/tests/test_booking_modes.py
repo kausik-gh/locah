@@ -177,3 +177,20 @@ def test_a_site_visit_is_a_booking_and_a_lead(owner: dict[str, str]) -> None:
     assert lead["display_name"] == "Kavya" and "Site visit booked" in (lead["message"] or "")
     notes = client.get(f"/v1/platform/businesses/{bid}/bookings/{data['id']}/notes", headers=owner).json()["data"]
     assert [n["body"] for n in notes] == ["From the customer: Please bring the floor plans"]
+
+
+def test_each_kind_of_resource_serves_its_own_kind_of_booking(owner: dict[str, str]) -> None:
+    bid, slug, loc = _business(owner)
+    _open_all_week(owner, bid, loc)
+    chair = _resource(owner, bid, loc, resource_type="chair", name="Chair 1", allocation_mode="exclusive", capacity=1)
+    _resource(owner, bid, loc, resource_type="hall", name="Wedding lawn", allocation_mode="exclusive", capacity=1,
+              max_party_size=500)
+    facial = _offering(owner, bid, "service", duration_minutes=60)
+    slot = _slots(slug, location_id=loc, offering_id=facial, date=_day().isoformat())["slots"][0]
+    first = _book(slug, location_id=loc, offering_id=facial, starts_at=slot["starts_at"], ends_at=slot["ends_at"])
+    assert first.status_code == 200, first.text
+    assert sql("select resource_id::text from bookings_booking_allocations where booking_id = :b",
+               b=first.json()["data"]["id"]) == [(chair,)]
+    second = _book(slug, location_id=loc, offering_id=facial, starts_at=slot["starts_at"], ends_at=slot["ends_at"],
+                   guest=_guest(8))
+    assert second.status_code == 409, "the chair is taken; an appointment never takes the wedding lawn"

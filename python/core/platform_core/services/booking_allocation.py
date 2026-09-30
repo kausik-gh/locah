@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, NoReturn
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,30 +41,30 @@ _PROVIDER_CONFLICT = "bookings_allocation_provider_no_overlap"
 
 
 # Which resources a kind of booking may be given when the guest names none.
-# Tables seat table bookings and rooms house stays; neither is handed to any
-# other kind of booking (a hall hire must never quietly take a hotel room).
-TABLE_TYPES = frozenset({"table"})
+# Each known kind of resource serves its own kind of booking - tables seat
+# table bookings, rooms house stays, halls take event dates, studios classes,
+# vehicles and equipment rentals, chairs and courts appointments - so a hall
+# hire never quietly takes a hotel room and an appointment never takes the
+# wedding lawn. A resource type LOCAH does not know stays open to any booking.
 ROOM_TYPES = frozenset({"room", "suite", "cottage", "villa", "dorm", "bed", "tent"})
-
-
-def _types_for(mode: str | None) -> tuple[frozenset[str] | None, frozenset[str]]:
-    """(only these types, never these types) for a booking mode; no mode = all."""
-    if mode is None:
-        return None, frozenset()
-    if mode == "table":
-        return TABLE_TYPES, frozenset()
-    if mode == "accommodation":
-        return ROOM_TYPES, frozenset()
-    return None, TABLE_TYPES | ROOM_TYPES
+MODE_TYPES: dict[str, frozenset[str]] = {
+    "table": frozenset({"table"}),
+    "accommodation": ROOM_TYPES,
+    "event_date": frozenset({"hall", "lawn"}),
+    "class_session": frozenset({"studio"}),
+    "rental": frozenset({"vehicle", "equipment"}),
+    "appointment": frozenset({"chair", "court"}),
+    "site_visit": frozenset(),
+}
+KNOWN_TYPES = frozenset().union(*MODE_TYPES.values())
 
 
 def _filter_types(query: Any, mode: str | None) -> Any:
-    only, never = _types_for(mode)
-    if only is not None:
-        query = query.where(BookingResource.resource_type.in_(sorted(only)))
-    if never:
-        query = query.where(BookingResource.resource_type.notin_(sorted(never)))
-    return query
+    if mode is None:
+        return query
+    allowed = MODE_TYPES.get(mode, frozenset())
+    return query.where(or_(BookingResource.resource_type.in_(sorted(allowed) or [""]),
+                           BookingResource.resource_type.notin_(sorted(KNOWN_TYPES))))
 
 
 @dataclass(frozen=True)

@@ -78,7 +78,8 @@ export default async function BookingsPage({
     <div>
       <PageHeader title="Bookings" subtitle={canSetPolicy
         ? 'Confirm or cancel reservations, and set the deposit and cancellation policy.'
-        : 'Your appointments: confirm them, and mark them done.'} />
+        : 'Your appointments: confirm them, and mark them done.'}
+        actions={canSetPolicy ? <Link className="btn btn-ghost" href={`${base}/bookings/resources`}>Tables, rooms & equipment</Link> : null} />
       <FilterTabs
         current={searchParams?.status}
         hrefFor={(v) => `${base}/bookings${v ? `?status=${v}` : ''}`}
