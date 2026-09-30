@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal as D
 from typing import Any
 
@@ -32,6 +32,7 @@ from platform_core.invoicing import LineIn, TaxContext, compute, gstin_problem
 from platform_core.invoicing.states import _check_char
 from platform_core.services.invoicing import build_spec
 from platform_core.services.number_series import financial_year
+from platform_core.services.invoicing_setup import local_today
 from platform_testing.phase_b import (
     assert_tenant_isolated,
     create_business,
@@ -44,7 +45,7 @@ from platform_testing.phase_b import (
 
 DB = pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 client = TestClient(app)
-FY = financial_year(date.today())
+FY = financial_year(local_today())
 
 
 def gstin(state: str, pan: str = "AAACL1234K") -> str:
@@ -116,7 +117,7 @@ def _spec_detail(kind: str, *, scheme: str, round_off: float = 0.0) -> dict[str,
             "discount": 0.0, "taxable_value": 450.0, "tax_rate": None if scheme != "regular" else 5.0,
             "cgst": 0.0 if scheme != "regular" else 11.25, "sgst": 0.0 if scheme != "regular" else 11.25,
             "igst": 0.0, "line_total": 450.0 if scheme != "regular" else 472.5}
-    return {"doc_kind": kind, "status": "issued", "number": f"CHN1/{FY}/00001", "issue_date": date.today().isoformat(),
+    return {"doc_kind": kind, "status": "issued", "number": f"CHN1/{FY}/00001", "issue_date": local_today().isoformat(),
             "seller": {"legal_name": "Sri Stores", "scheme": scheme, "gstin": gstin("33") if scheme != "unregistered"
                        else None, "state_code": "33", "declaration": "Composition taxable person, not eligible to "
                        "collect tax on supplies" if scheme == "composition" else None},
@@ -255,7 +256,7 @@ def test_rates_are_dated_data_and_a_missing_rate_blocks_the_bill(monkeypatch: An
     assert sql("select count(*) from invoicing_documents where business_id = :b", b=shop["bid"]) == [(0,)]
 
     rates = f"{shop['base']}/invoicing/tax-rates"
-    today = date.today()
+    today = local_today()
     assert client.post(rates, json={"hsn_sac": "0405", "rate": 12, "effective_from": (today - timedelta(days=30))
                                     .isoformat()}, headers=owner).status_code == 200
     later = client.post(rates, json={"hsn_sac": "0405", "rate": 5, "effective_from": (today + timedelta(days=5))
@@ -284,7 +285,7 @@ def test_b2b_bill_igst_stock_cancel_keeps_number_and_series_stays_gapless(monkey
     assert first.status_code == 200, first.text
     b1 = first.json()["data"]
     assert b1["place_of_supply"] == "29" and b1["igst_total"] == 450.0 and b1["cgst_total"] == 0
-    assert b1["due_date"] == (date.today() + timedelta(days=15)).isoformat()
+    assert b1["due_date"] == (local_today() + timedelta(days=15)).isoformat()
     stock = sql("select quantity_on_hand from inventory_records where offering_id = :o", o=pipe["id"])
     assert stock == [(40,)]
 
@@ -615,7 +616,7 @@ def test_overdue_bills_reach_the_owner_and_the_accountant_home(monkeypatch: Any)
     shop = _shop(owner)
     late = _bill(owner, shop, [{"title": "Annual maintenance", "hsn_sac": "998719", "rate": 18, "unit_price": 1000}],
                  buyer={"name": "Kaveri Builders", "gstin": gstin("33", "AABCK1234Q")},
-                 due_date=(date.today() - timedelta(days=3)).isoformat())
+                 due_date=(local_today() - timedelta(days=3)).isoformat())
     assert late.status_code == 200, late.text
     assert late.json()["data"]["overdue"] is True
     overdue = client.get(f"{shop['base']}/invoices?payment=overdue", headers=owner).json()["data"]

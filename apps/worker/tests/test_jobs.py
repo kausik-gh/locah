@@ -343,3 +343,21 @@ async def test_a_deployed_worker_acknowledges_a_test_job_without_running_it(monk
     monkeypatch.setenv("LOCAH_JOBS_INERT", "1")
     with pytest.raises(RuntimeError, match="forced job failure"):
         await _execute_job(None, job)
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
+async def test_a_business_scoped_claim_never_takes_another_business_job(db_session: AsyncSession) -> None:
+    # Under `pytest -n` every worker shares one database. A test draining "its"
+    # jobs without a scope once ran another test's website.generate and
+    # interview.read_document jobs, without that test's stubs.
+    isolated_type = f"platform.scope-{uuid.uuid4().hex[:8]}"
+    job_id = await _insert_async_job(db_session, job_type=isolated_type)
+    other_business = str(uuid.uuid4())
+    taken = await claim_job_batch(db_session, "test-scope", job_type=isolated_type, business_id=other_business)
+    await db_session.commit()
+    assert taken == []
+    assert (await _job_status(db_session, job_id))[0] == "pending"
+    claimed = await claim_job_batch(db_session, "test-scope", job_type=isolated_type)
+    await db_session.commit()
+    assert [row["id"] for row in claimed] == [job_id]

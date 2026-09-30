@@ -218,10 +218,10 @@ def owner(monkeypatch: Any) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _drain() -> None:
+def _drain(business_id: str) -> None:
     async def _go(session: AsyncSession) -> None:
         for _ in range(5):
-            await poll_and_execute_jobs(session, "mkt-discovery-worker")
+            await poll_and_execute_jobs(session, "mkt-discovery-worker", business_id=business_id)
 
     _run_db(_go)
 
@@ -244,7 +244,7 @@ def _create_business(
     assert resp.status_code == 200, resp.text
     business = cast(dict[str, Any], resp.json()["data"]["business"])
     bid = business["id"]
-    _drain()
+    _drain(bid)
     client.patch(
         f"/v1/platform/businesses/{bid}/profile",
         json={"description": description or f"{name} description for discovery", "tagline": name},

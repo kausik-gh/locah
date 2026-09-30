@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from platform_core.services.ledger import LedgerService, age
+from platform_core.services.invoicing_setup import local_today
 from platform_testing.phase_b import (
     assert_tenant_isolated,
     billing_shop,
@@ -35,7 +36,9 @@ from platform_testing.phase_b import (
 
 DB = pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="DATABASE_URL required")
 client = TestClient(app)
-TODAY = date.today()
+# The business day (Asia/Kolkata), as the app dates entries — not the
+# container's UTC date, which is a day behind from 18:30 to 24:00 UTC.
+TODAY = local_today()
 
 
 class _E:

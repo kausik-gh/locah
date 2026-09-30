@@ -104,7 +104,7 @@ def _drain_website_jobs(business_id: str) -> None:
         factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         async with factory() as session:
             for _ in range(5):
-                await poll_and_execute_jobs(session, "mkt-recovery-worker")
+                await poll_and_execute_jobs(session, "mkt-recovery-worker", business_id=business_id)
         await engine.dispose()
 
     asyncio.run(_run())

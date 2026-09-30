@@ -98,7 +98,7 @@ def _drain_generation(business_id: str) -> None:
 
         for _ in range(15):
             async with factory() as session:
-                await poll_and_execute_jobs(session, "test-publish-worker")
+                await poll_and_execute_jobs(session, "test-publish-worker", business_id=business_id)
                 job = await WebsiteGenerationService.latest_job(
                     session, business_id=uuid.UUID(business_id)
                 )
