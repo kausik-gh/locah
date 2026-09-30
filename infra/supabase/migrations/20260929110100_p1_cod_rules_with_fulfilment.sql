@@ -21,6 +21,6 @@ FROM messaging_settings m
 WHERE m.business_id = f.business_id;
 
 COMMENT ON COLUMN messaging_settings.cod_allowed IS
-    'Superseded by fulfilment_settings.cod_allowed (20260929110000); not read or written.';
+    'Superseded by fulfilment_settings.cod_allowed (20260929110100); not read or written.';
 COMMENT ON COLUMN messaging_settings.first_order_cod_cap IS
-    'Superseded by fulfilment_settings.first_order_cod_cap (20260929110000); not read or written.';
+    'Superseded by fulfilment_settings.first_order_cod_cap (20260929110100); not read or written.';
