@@ -74,15 +74,17 @@ function Price({ item }: { item: Item }) {
   )
 }
 
-function Picture({ image, name, className }: { image?: Asset; name: string; className: string }) {
+function Picture({ image, name, className, plate = name }: { image?: Asset; name: string; className: string; plate?: string }) {
   return (
     <div className={className}>
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={image.url} alt={image.alt_text || name} loading="lazy" />
       ) : (
-        <span className="ls-picture__initial" aria-hidden="true">
-          {name.trim().charAt(0)}
+        // No picture yet (or one that must be a real photo, like a project):
+        // a designed plate in the site's own colours — never a giant initial.
+        <span className="ls-picture__plate" aria-hidden="true">
+          {plate.trim() ? <span>{plate.trim()}</span> : null}
         </span>
       )}
     </div>
@@ -368,7 +370,8 @@ export function ProductShowcase({
           {cards.map((item) => (
             <li key={`${item.category}-${item.name}`} className="ls-card ls-card--product">
               {kind !== 'plan' ? (
-                <Picture image={item.image} name={item.name} className="ls-card__media" />
+                // A project's card already says its name: its plate stays a quiet drawing.
+                <Picture image={item.image} name={item.name} className="ls-card__media" plate={kind === 'project' ? '' : item.name} />
               ) : null}
               <div className="ls-card__body">
                 {item.category && kind !== 'menu' ? (

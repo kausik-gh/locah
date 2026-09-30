@@ -119,9 +119,28 @@ export async function completeImageUpload(
   return { ok: true, url: body.data.url }
 }
 
+/** The owner keeps a draft picture LOCAH drew. It stays marked as generated. */
+export async function approveDraftImage(
+  businessId: string,
+  assetId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const token = await getAccessToken()
+  if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
+  const res = await fetch(`${platformUrl('api')}/v1/b/${businessId}/media/${assetId}/approve`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  if (!res.ok) return { ok: false, error: `That picture could not be kept (${res.status}).` }
+  revalidatePath(`/b/${businessId}/website/preview`)
+  return { ok: true }
+}
+
 export async function generateSectionImage(
   businessId: string,
-  sectionId: string
+  sectionId: string,
+  /** A card's picture: which list and which row. Omit for the section's own. */
+  target?: { list_key: 'items' | 'categories'; index: number }
 ): Promise<{ ok: true; assetId: string; url: string | null } | { ok: false; error: string }> {
   const token = await getAccessToken()
   if (!token) return { ok: false, error: 'Your session expired — sign in again.' }
@@ -131,7 +150,8 @@ export async function generateSectionImage(
     `${apiUrl}/v1/b/${businessId}/website/sections/${sectionId}/generate-image`,
     {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(target ?? {}),
       cache: 'no-store',
     }
   )

@@ -20,7 +20,7 @@ from platform_core.interview import voice
 from platform_core.interview.models import BusinessBlueprint, Fact
 from platform_core.interview.orchestrator import BusinessInterviewOrchestrator as Engine
 from platform_core.website import ai_provider, image_generation
-from platform_core.website.ai_provider import GeminiProvider, GrokProvider
+from platform_core.website.ai_provider import GeminiProvider
 
 
 class Reached:
@@ -62,7 +62,7 @@ def test_the_suite_runs_with_the_switch_on() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("provider", [GeminiProvider("k"), GrokProvider("k")], ids=["gemini", "xai"])
+@pytest.mark.parametrize("provider", [GeminiProvider("k")], ids=["gemini"])
 async def test_text_providers_refuse_before_any_request(provider: Any, reached: Reached) -> None:
     with pytest.raises(ExternalAICallBlocked):
         await provider.generate_structured("p", {"type": "object"}, {"purpose": "business.interview"}, 5)
@@ -82,27 +82,23 @@ async def test_gemini_images_refuse_loudly_not_as_a_failed_picture(
 
 
 @pytest.mark.asyncio
-async def test_xai_images_refuse(monkeypatch: pytest.MonkeyPatch, reached: Reached) -> None:
+async def test_an_old_xai_image_setting_draws_nothing(monkeypatch: pytest.MonkeyPatch, reached: Reached) -> None:
     monkeypatch.setenv("XAI_API_KEY", "x-present")
     monkeypatch.setenv("IMAGE_PROVIDER", "xai")
-    with pytest.raises(ExternalAICallBlocked):
-        await image_generation.generate_image_bytes("draw")
+    assert await image_generation.generate_image_bytes("draw") is None
     assert not reached.used
 
 
 @pytest.mark.asyncio
-async def test_voice_credentials_refuse_for_both_providers(
+async def test_voice_credentials_refuse(
     monkeypatch: pytest.MonkeyPatch, reached: Reached
 ) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "g-present")
-    monkeypatch.setenv("XAI_API_KEY", "x-present")
     bp = BusinessBlueprint(business_id=uuid4())
     with pytest.raises(ExternalAICallBlocked):
         await voice.mint_gemini_token(bp)
-    with pytest.raises(ExternalAICallBlocked):
-        await voice.mint_client_secret()
     assert not reached.used
-    assert {c.provider for c in blocked_calls()} == {"gemini", "xai"}
+    assert {c.provider for c in blocked_calls()} == {"gemini"}
 
 
 @pytest.mark.asyncio

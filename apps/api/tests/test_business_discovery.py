@@ -305,6 +305,12 @@ async def test_the_ishant_proteins_conversation():
     bp = await say_(bp, "We deliver ourselves around Nookampalayam and Perumbakkam, people can pick up too", N5)
     assert bp.last_asked_target == "contact.location"
     bp = await say_(bp, "In nookampalayam road", N7)
+    # V4: the last question before the first version — what pictures or menu the
+    # owner has, with drafts offered. It never spends the business-question budget.
+    assert bp.last_asked_target == "media.photos"
+    assert "draft visuals" in reply(bp)
+    bp = await say_(bp, "No photos yet, you can create them", N3)
+    assert bp.visual_consent == "draft_visuals"
 
     # 3. Enough for a strong first version after three follow-ups — said once,
     # with a summary and the choice to build or keep refining.
@@ -313,7 +319,7 @@ async def test_the_ishant_proteins_conversation():
     # The summary is a read-back of the business, not a "So far:" list.
     assert "You're a meat shop in Nookampalayam Road" in reply(bp)
     assert "Nookampalayam and Perumbakkam" in reply(bp)
-    for never in ("operations.hours", "media.logo", "media.photos", "offerings.pricing", "commerce.payment"):
+    for never in ("operations.hours", "media.logo", "offerings.pricing", "commerce.payment"):
         assert bp.discovery[never].asked == 0, never
 
     # Saying more after that adds detail; Build is never taken away.
@@ -325,8 +331,7 @@ async def test_the_ishant_proteins_conversation():
     bp = Engine.refine(bp, "other")
     assert bp.refining and bp.readiness.ready
     first_optional = bp.last_asked_target
-    assert first_optional in {"media.photos", "brand.story", "offerings.pricing"}
-    bp = await say_(bp, "No photos yet, you can create them", N3)
+    assert first_optional in {"brand.story", "offerings.pricing"}
     bp = await say_(bp, STORY, T8)
     bp = await say_(bp, "Chicken 240 per kg, mutton 800 per kg. Fish I'll fill later.", N9)
     # Prices only as the owner said them — an invented one is dropped.

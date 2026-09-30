@@ -110,6 +110,24 @@ async def complete_upload(
     return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
 
 
+@router.post("/{business_id}/media/{asset_id}/approve")
+async def approve_draft(
+    business_id: UUID,
+    asset_id: UUID,
+    ctx: RequestContext = Depends(get_request_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """The owner keeps a draft picture LOCAH drew. Same two-stage permission as complete."""
+    actor = await resolve_business_member(business_id, ctx, session)
+    stored = await MediaService.get(session, business_id=business_id, asset_id=asset_id)
+    required = MediaService.permission_for(str(stored.get("purpose") or ""))
+    if required not in actor.request.effective_permissions:
+        raise PermissionDenied(required)
+    data = await MediaService.approve_draft(session, business_id=business_id, asset_id=asset_id)
+    await session.commit()
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
 @router.get("/{business_id}/media")
 async def list_media(
     business_id: UUID,

@@ -128,6 +128,12 @@ async def _execute_job(session: AsyncSession, job: dict[str, Any]) -> None:
         from platform_core.interview.media import generate_interview_logo
         await generate_interview_logo(session, business_id=UUID(payload["business_id"]),
                                       actor_id=UUID(payload["actor_id"]))
+    elif job_type == "interview.read_document":
+        # The owner's menu / catalogue / price list, read while they carry on.
+        from uuid import UUID
+        from platform_core.interview.documents import read_owner_document
+        await read_owner_document(session, business_id=UUID(payload["business_id"]),
+                                  asset_id=UUID(payload["asset_id"]))
     elif job_type in {"interview.generate_media", "interview.generate_hero"}:
         # generate_hero is the name jobs queued before logos existed still carry.
         from uuid import UUID
@@ -228,7 +234,7 @@ async def _mark_dead_letter(session: AsyncSession, job: dict[str, Any], error: s
 
 
 async def poll_and_execute_jobs(
-    session: AsyncSession, worker_id: str, job_type: str | None = None
+    session: AsyncSession, worker_id: str, job_type: str | None = None, business_id: str | None = None
 ) -> int:
     """Claim and process a batch of async jobs. Returns jobs transitioned this poll.
 
@@ -237,9 +243,10 @@ async def poll_and_execute_jobs(
     it so a worker drains the whole lane. A test that omits it claims the
     oldest-due jobs across the entire shared database, so under `pytest -n` it
     competes with every other worker for the batch, and asserting on its own
-    job becomes a race it usually but not always wins.
+    job becomes a race it usually but not always wins — and runs other
+    tests' jobs without their stubs. `business_id` scopes a test to its own.
     """
-    jobs = await claim_job_batch(session, worker_id, job_type=job_type)
+    jobs = await claim_job_batch(session, worker_id, job_type=job_type, business_id=business_id)
     if not jobs:
         return 0
 

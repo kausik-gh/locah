@@ -54,14 +54,22 @@ async def claim_outbox_batch(
 
 
 async def claim_job_batch(
-    session: AsyncSession, worker_id: str, limit: int = 10, job_type: str | None = None
+    session: AsyncSession,
+    worker_id: str,
+    limit: int = 10,
+    job_type: str | None = None,
+    business_id: str | None = None,
 ) -> list[Any]:
     """Claim pending/failed/expired-lease async jobs.
 
-    `job_type` is optional isolation for tests. Production callers omit it so
-    a worker processes the whole lane.
+    `job_type` and `business_id` are optional isolation for tests: under
+    `pytest -n` every worker shares one database, and an unscoped drain runs
+    other tests' jobs (without their stubs). Production callers omit both so a
+    worker processes the whole lane.
     """
     type_filter = "AND job_type = :job_type" if job_type else ""
+    if business_id:
+        type_filter += " AND business_id = CAST(:business_id AS uuid)"
     result = await session.execute(
         text(f"""
             UPDATE platform_async_jobs
@@ -89,6 +97,7 @@ async def claim_job_batch(
             "limit": limit,
             "lease_seconds": LEASE_SECONDS,
             **({"job_type": job_type} if job_type else {}),
+            **({"business_id": str(business_id)} if business_id else {}),
         },
     )
     return list(result.mappings())

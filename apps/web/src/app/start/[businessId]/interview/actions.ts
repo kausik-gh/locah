@@ -20,14 +20,14 @@ export async function reloadInterview(businessId: string): Promise<Result> {
   return res.ok ? { ok: true, data: res.data.data } : { ok: false, error: res.error.message }
 }
 
-export async function startInterviewUpload(businessId: string, role: InterviewMedia['role'],
+export async function startInterviewUpload(businessId: string, role: InterviewMedia['role'] | 'document',
   mimeType: string, sizeBytes: number, filename: string,
 ): Promise<{ ok: true; assetId: string; uploadUrl: string } | { ok: false; error: string }> {
   const token = await getAccessToken()
   if (!token) return { ok: false, error: 'Sign in again to upload an image.' }
   const res = await apiPost<{ data: { asset: { id: string }; upload: { upload_url: string } } }>(
     `/v1/b/${businessId}/media/upload-url`, token,
-    { purpose: role === 'logo' ? 'brand' : 'website', mime_type: mimeType, size_bytes: sizeBytes, original_filename: filename },
+    { purpose: role === 'document' ? 'document' : role === 'logo' ? 'brand' : 'website', mime_type: mimeType, size_bytes: sizeBytes, original_filename: filename },
   )
   return res.ok ? { ok: true, assetId: res.data.data.asset.id, uploadUrl: res.data.data.upload.upload_url }
     : { ok: false, error: res.error.message }
@@ -43,8 +43,8 @@ export async function finishInterviewUpload(businessId: string, assetId: string)
 /**
  * Mint a short-lived credential for this owner's voice session.
  *
- * The permanent xAI key stays on the API. What reaches the browser expires in
- * about two minutes and is good for one realtime socket and nothing else.
+ * The permanent Gemini key stays on the API. What reaches the browser is a
+ * short-lived Gemini Live token, good for one socket and nothing else.
  */
 export async function startVoiceSession(
   businessId: string

@@ -9,7 +9,7 @@
  * end to end without spending anything.
  */
 
-import type { VoiceCallbacks } from './realtime'
+import type { VoiceCallbacks } from './types'
 
 export type ReplaySession = { provider: 'replay'; utterances: string[] }
 

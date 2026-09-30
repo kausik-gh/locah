@@ -1,8 +1,8 @@
 """AI model provider abstraction (Doc 12 §12.2).
 
-`get_ai_provider()` returns the one provider `AI_PROVIDER` names — Gemini by
-default, xAI Grok as an explicit alternative — or `UnavailableAIProvider` when
-that provider has no key. Callers describe a *purpose*; each provider maps the
+`get_ai_provider()` returns Gemini — LOCAH's only AI provider — or, for local
+acceptance runs, the recorded replay provider; `UnavailableAIProvider` when no
+key is configured. Callers describe a *purpose*; each provider maps the
 purpose to its own model, so no vendor model name leaks into business logic.
 Callers always keep the deterministic fallback path (Doc 12 §12.1) regardless.
 """
@@ -22,15 +22,6 @@ from platform_core.logging import get_logger
 _log = get_logger("website.ai_provider")
 
 # Content generation only — never platform mechanics (Doc 12 §12.6).
-# Default is a fast Grok model suited to large structured website drafts; override
-# with XAI_MODEL for staging/production tuning.
-#
-# Must be an id xAI currently serves. `grok-3-mini` was the previous default and
-# is no longer in /v1/models — xAI still answers for it by aliasing to a current
-# model, so the substitution is silent and the configured id is not what runs.
-# Pin the real one instead of relying on an alias that can be withdrawn.
-_DEFAULT_MODEL = os.getenv("XAI_MODEL", "grok-4.3")
-_XAI_CHAT_COMPLETIONS_URL = "https://api.x.ai/v1/chat/completions"
 
 
 @runtime_checkable
@@ -78,174 +69,11 @@ class UnavailableAIProvider:
             "AI provider not configured (no key for AI_PROVIDER); use deterministic fallback"
         )
 
-
-class GrokProvider:
-    """xAI Grok via the OpenAI-compatible Chat Completions API.
-
-    Structured output uses native `response_format.type=json_schema`. Section
-    content objects stay schema-loose (`strict=False`) because each SectionType
-    carries a different content shape; the hard guarantee remains the caller's
-    `validate_generation_payload`.
-    """
-
-    provider_name = "xai"
-
-    # Extraction is quotation, not reasoning. Measured on the real interview
-    # payload: grok-4.3 8.6-10.2s per turn, the non-reasoning model 1.5-2.3s and
-    # more accurate. Owned here so callers never name a vendor's model.
-    _PURPOSE_MODELS = {"business.interview": "grok-4.20-0309-non-reasoning"}
-
-    def __init__(self, api_key: str, model: str = _DEFAULT_MODEL) -> None:
-        self._api_key = api_key
-        self._model = model
-        self.last_usage: dict[str, Any] | None = None
-
-    @property
-    def model_name(self) -> str:
-        return self._model
-
-    def model_for(self, purpose: str | None) -> str:
-        return self._PURPOSE_MODELS.get(str(purpose or ""), self._model)
-
-    async def generate_structured(
-        self,
-        prompt: str,
-        schema: dict[str, Any],
-        model_config: dict[str, Any],
-        timeout_seconds: int,
+    async def generate_structured_from_file(
+        self, prompt: str, data: bytes, mime_type: str, schema: dict[str, Any],
+        model_config: dict[str, Any], timeout_seconds: int,
     ) -> dict[str, Any]:
-        purpose = model_config.get("purpose")
-        guard_external_ai("text", self.provider_name, str(purpose or ""))
-        model = str(model_config.get("model") or self.model_for(purpose))
-        body = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": model_config.get("system_prompt") or (
-                        "You generate structured multi-page business website drafts. "
-                        "Return JSON only that matches the supplied schema. "
-                        "Do not include markdown fences or commentary."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": str(model_config.get("schema_name", "website_generation")),
-                    "schema": schema,
-                    # Section `content` objects vary by SectionType — strict mode
-                    # would reject the envelope schema the platform already validates.
-                    "strict": False,
-                },
-            },
-            "temperature": float(model_config.get("temperature", 0.6)),
-            "max_tokens": int(model_config.get("max_output_tokens", 8192)),
-        }
-        started = time.monotonic()
-        try:
-            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-                response = await client.post(
-                    _XAI_CHAT_COMPLETIONS_URL,
-                    headers={
-                        "Authorization": f"Bearer {self._api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=body,
-                )
-            latency_ms = int((time.monotonic() - started) * 1000)
-            if response.status_code >= 400:
-                _log.warning(
-                    "website.ai_provider.call_failed",
-                    provider=self.provider_name,
-                    model=model,
-                    purpose=purpose,
-                    status_code=response.status_code,
-                    latency_ms=latency_ms,
-                    error=response.text[:500],
-                )
-                # 401/403 are unambiguous. xAI also answers a bad key with 400
-                # + code "invalid-argument", so match on the code rather than
-                # the status alone; a genuinely malformed request is equally
-                # not worth three attempts.
-                detail = response.text[:300]
-                if response.status_code in (401, 403) or (
-                    response.status_code == 400 and "invalid-argument" in detail
-                ):
-                    raise AIProviderPermanentError(
-                        f"{self.provider_name} rejected the request "
-                        f"({response.status_code}): {detail}"
-                    )
-                response.raise_for_status()
-
-            data = response.json()
-            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-            self.last_usage = {
-                "prompt_tokens": usage.get("prompt_tokens"),
-                "completion_tokens": usage.get("completion_tokens"),
-                "total_tokens": usage.get("total_tokens"),
-                "latency_ms": latency_ms,
-                "model": model,
-            }
-            _log.info(
-                "website.ai_provider.completed",
-                provider=self.provider_name,
-                model=model,
-                purpose=purpose,
-                latency_ms=latency_ms,
-                prompt_tokens=usage.get("prompt_tokens"),
-                completion_tokens=usage.get("completion_tokens"),
-            )
-            text = self._extract_message_content(data)
-        except Exception as exc:  # noqa: BLE001 — surface as a retry/fallback trigger
-            _log.warning(
-                "website.ai_provider.call_failed",
-                provider=self.provider_name,
-                model=model,
-                purpose=purpose,
-                error=str(exc),
-            )
-            raise
-
-        if text.startswith("```"):
-            text = text.strip("`")
-            text = text[text.index("{") :] if "{" in text else text
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError as exc:
-            _log.warning(
-                "website.ai_provider.unparseable_response",
-                provider=self.provider_name,
-                model=model,
-                error=str(exc),
-            )
-            raise RuntimeError("Grok returned non-JSON output") from exc
-        if not isinstance(parsed, dict):
-            raise RuntimeError("Grok returned a non-object JSON value")
-        return parsed
-
-    @staticmethod
-    def _extract_message_content(data: dict[str, Any]) -> str:
-        choices = data.get("choices")
-        if not isinstance(choices, list) or not choices:
-            raise RuntimeError("Grok returned no choices")
-        message = choices[0].get("message")
-        if not isinstance(message, dict):
-            raise RuntimeError("Grok returned an invalid message envelope")
-        content = message.get("content")
-        if isinstance(content, str):
-            return content.strip()
-        if isinstance(content, list):
-            parts: list[str] = []
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    text = part.get("text")
-                    if isinstance(text, str):
-                        parts.append(text)
-            if parts:
-                return "".join(parts).strip()
-        raise RuntimeError("Grok returned empty content")
+        raise RuntimeError("AI provider not configured (no key for AI_PROVIDER)")
 
 
 # ---------------------------------------------------------------- Gemini
@@ -259,6 +87,9 @@ GEMINI_DEFAULT_MODEL = "gemini-3.8-flash"
 # the one place where a little more deliberation visibly changes the result.
 _GEMINI_THINKING = {
     "business.interview": "low",
+    # Reading a menu or catalogue is transcription with judgement about what is
+    # a heading and what is an item; a little thinking, not much.
+    "document.extract": "low",
     "website.design_strategy": "medium",
     "website.personalization": "medium",
     "website.generate": "medium",
@@ -407,7 +238,7 @@ class GeminiProvider:
 
     Schema compliance is a convenience, not a guarantee the platform trusts:
     every caller re-validates with its own Pydantic model and deterministic
-    rules, exactly as it does for Grok. A quota or credential failure is
+    rules. A quota or credential failure is
     permanent for the request — retrying a 429 on a free tier only spends the
     remaining allowance faster.
     """
@@ -431,9 +262,14 @@ class GeminiProvider:
             return os.getenv("GEMINI_INTERVIEW_MODEL", "").strip() or self._model
         if key.startswith("website."):
             return os.getenv("GEMINI_WEBSITE_MODEL", "").strip() or self._model
+        if key.startswith("document."):
+            return os.getenv("GEMINI_DOCUMENT_MODEL", "").strip() or self._model
         return self._model
 
-    def build_body(self, prompt: str, schema: dict[str, Any], model_config: dict[str, Any]) -> dict[str, Any]:
+    def build_body(
+        self, prompt: str, schema: dict[str, Any], model_config: dict[str, Any],
+        file: tuple[bytes, str] | None = None,
+    ) -> dict[str, Any]:
         purpose = model_config.get("purpose")
         generation: dict[str, Any] = {
             "responseMimeType": "application/json",
@@ -445,8 +281,15 @@ class GeminiProvider:
         thinking = model_config.get("thinking_level") or _GEMINI_THINKING.get(str(purpose or ""))
         if thinking:
             generation["thinkingConfig"] = {"thinkingLevel": thinking}
+        parts: list[dict[str, Any]] = []
+        if file is not None:
+            import base64
+
+            # The owner's own document, inline: a menu photo or a catalogue PDF.
+            parts.append({"inlineData": {"mimeType": file[1], "data": base64.b64encode(file[0]).decode()}})
+        parts.append({"text": prompt})
         body: dict[str, Any] = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "contents": [{"role": "user", "parts": parts}],
             "generationConfig": generation,
         }
         system_prompt = model_config.get("system_prompt")
@@ -470,12 +313,25 @@ class GeminiProvider:
         at no second provider.
         Only a credential failure skips it: another model cannot fix a bad key.
         """
+        return await self._structured(prompt, schema, model_config, timeout_seconds)
+
+    async def generate_structured_from_file(
+        self, prompt: str, data: bytes, mime_type: str, schema: dict[str, Any],
+        model_config: dict[str, Any], timeout_seconds: int,
+    ) -> dict[str, Any]:
+        """One structured answer about one file the owner gave (a menu, a catalogue)."""
+        return await self._structured(prompt, schema, model_config, timeout_seconds, file=(data, mime_type))
+
+    async def _structured(
+        self, prompt: str, schema: dict[str, Any], model_config: dict[str, Any], timeout_seconds: int,
+        file: tuple[bytes, str] | None = None,
+    ) -> dict[str, Any]:
         purpose = model_config.get("purpose")
         guard_external_ai("text", self.provider_name, str(purpose or ""))
         primary = str(model_config.get("model") or self.model_for(purpose))
         fallbacks = (os.getenv("GEMINI_FALLBACK_MODEL") or GEMINI_FALLBACK_MODEL).split(",")
         models = [primary] + [m.strip() for m in fallbacks if m.strip() and m.strip() != primary]
-        body = self.build_body(prompt, schema, model_config)
+        body = self.build_body(prompt, schema, model_config, file)
         started = time.monotonic()
         failure: Exception | None = None
         for attempt, model in enumerate(models):
@@ -592,11 +448,10 @@ def configured_provider_name() -> str:
 def get_ai_provider() -> AIModelProvider:
     """The one configured provider, or none at all.
 
-    There is deliberately no automatic cross-provider fallback: silently calling
-    a second paid provider whenever the first returns an error is how a bad
-    afternoon becomes an unexpected bill. Switching is an explicit
-    configuration change. When the configured provider has no key, callers get
-    `UnavailableAIProvider` and take their existing deterministic path.
+    There is deliberately no second provider: a busy Gemini model falls back
+    only to other Gemini models (GEMINI_FALLBACK_MODEL). When no key is
+    configured, callers get `UnavailableAIProvider` and take their existing
+    deterministic path.
     """
     choice = configured_provider_name()
     if choice == "replay":
@@ -614,9 +469,7 @@ def get_ai_provider() -> AIModelProvider:
             model = os.getenv("GEMINI_MODEL", GEMINI_DEFAULT_MODEL).strip() or GEMINI_DEFAULT_MODEL
             return GeminiProvider(api_key, model)
         return UnavailableAIProvider()
-    if choice in {"xai", "grok"}:
-        api_key = os.getenv("XAI_API_KEY", "").strip()
-        if api_key:
-            model = os.getenv("XAI_MODEL", _DEFAULT_MODEL).strip() or _DEFAULT_MODEL
-            return GrokProvider(api_key, model)
+    # Gemini is LOCAH's only AI provider; any other value (e.g. a leftover
+    # AI_PROVIDER=xai) means no model at all — never a silent second vendor.
+    _log.warning("website.ai_provider.unsupported", provider=choice)
     return UnavailableAIProvider()

@@ -87,6 +87,8 @@ def test_purpose_maps_to_existing_canonical_permissions() -> None:
         "brand": BUSINESS_UPDATE,
         "profile": BUSINESS_UPDATE,
         "offering": OFFERINGS_UPDATE,
+        # The owner's menu / catalogue / brochure, read to fill their catalogue.
+        "document": BUSINESS_UPDATE,
     }
     assert MediaService.permission_for("website") == WEBSITE_EDIT
     assert MediaService.permission_for("offering") == OFFERINGS_UPDATE

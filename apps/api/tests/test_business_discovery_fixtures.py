@@ -92,10 +92,10 @@ MEAT = Fixture(
     ],
     strong={"offerings-catalog", "orders", "payments", "inventory", "fulfilment"},
     never={"bookings", "workforce", "quotes", "memberships", "projects"},
-    # Photos, logo, prices and hours come after the first version (Phase A
-    # brief: media before the transaction model is a red flag).
+    # Logo, prices and hours come after the first version. Photos (or a menu,
+    # or drafts) are asked before it for a trade whose site is pictures (V4).
     never_asked={"bookings.format", "b2b.customers", "memberships.plans", "offerings.main",
-                 "operations.hours", "media.photos", "media.logo", "offerings.pricing"},
+                 "operations.hours", "media.logo", "offerings.pricing"},
     # "We sell chicken, mutton and fish… by the kg" now reads as a meat shop
     # (it read as "other" before), and a meat shop's first expert question is
     # the cuts. Delivery was then volunteered in the next answer, so it is
@@ -144,7 +144,10 @@ FURNITURE = Fixture(
     useful={"projects"},
     never={"orders", "payments", "inventory", "bookings", "workforce"},
     never_asked={"bookings.format", "commerce.payment", "memberships.plans"},
-    asked={"offerings.customisation"},
+    # "made to order" describes the furniture, not how people buy it: the
+    # first thing worth asking is how customers order (it once read as
+    # "order online", which skipped that question).
+    asked={"commerce.action"},
 )
 
 RESTAURANT = Fixture(

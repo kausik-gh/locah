@@ -222,9 +222,10 @@ def red_flags(bp: BusinessBlueprint, asks: list[str], transcript: list[tuple[str
         flags.append("same question twice in a row")
     if any(asks.count(a) > 2 for a in set(asks)):
         flags.append("a question asked three times")
-    # Enrichment before the checkpoint — photos only where they are not the
-    # product itself (a photographer's, a florist's or a hotel's work).
-    critical_media = playbook_for(bp).media == "critical"
+    # Enrichment before the checkpoint — except photos (or a menu/catalogue)
+    # where pictures carry the site: knowing what the owner has, or that LOCAH
+    # should draw drafts, belongs before the first version there.
+    critical_media = playbook_for(bp).media in {"critical", "high"}
     pre = asks[: (bp.checkpoint_turn or len(asks))]
     early = [a for a in pre if a in _ENRICHMENT_ASKS and not (a == "photos" and critical_media)]
     if early and not bp.refining:

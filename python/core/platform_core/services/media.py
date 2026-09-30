@@ -28,10 +28,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from platform_core.exceptions import ResourceNotFound, ValidationError
 from platform_core.media.supabase_storage import (
     ALLOWED_MIME_TYPES,
+    DOCUMENT_BUCKET,
+    DOCUMENT_MIME_TYPES,
     EXTENSION_BY_MIME,
+    MAX_DOCUMENT_BYTES,
     MAX_FILE_BYTES,
     create_signed_upload_url,
     object_exists,
+    private_object_size,
     public_url,
 )
 from platform_core.models import MediaAsset
@@ -44,6 +48,8 @@ PURPOSE_PERMISSIONS: dict[str, str] = {
     "brand": BUSINESS_UPDATE,
     "profile": BUSINESS_UPDATE,
     "offering": OFFERINGS_UPDATE,
+    # A menu, catalogue, price list or brochure the owner gives LOCAH to read.
+    "document": BUSINESS_UPDATE,
 }
 PURPOSES = frozenset(PURPOSE_PERMISSIONS)
 
@@ -80,21 +86,26 @@ class MediaService:
         MediaService.permission_for(purpose)
 
         normalized_mime = (mime_type or "").strip().lower()
-        if normalized_mime not in ALLOWED_MIME_TYPES:
+        document = purpose == "document"
+        allowed = DOCUMENT_MIME_TYPES if document else ALLOWED_MIME_TYPES
+        if normalized_mime not in allowed:
             raise ValidationError(
                 "Unsupported file type",
                 details={
                     "errors": [
                         _field_error(
-                            "mime_type", "Only JPEG, PNG, WebP and GIF images are accepted"
+                            "mime_type",
+                            "Attach a PDF or a photo (JPEG, PNG or WebP)" if document
+                            else "Only JPEG, PNG, WebP and GIF images are accepted",
                         )
                     ]
                 },
             )
-        if size_bytes is not None and size_bytes > MAX_FILE_BYTES:
+        limit = MAX_DOCUMENT_BYTES if document else MAX_FILE_BYTES
+        if size_bytes is not None and size_bytes > limit:
             raise ValidationError(
                 "File is too large",
-                details={"errors": [_field_error("size_bytes", "Maximum size is 10MB")]},
+                details={"errors": [_field_error("size_bytes", f"Maximum size is {limit // (1024 * 1024)}MB")]},
             )
 
         asset_id = uuid.uuid4()
@@ -109,17 +120,19 @@ class MediaService:
             original_filename=(original_filename or None),
             mime_type=normalized_mime,
             size_bytes=size_bytes,
-            bucket="media",
+            bucket=DOCUMENT_BUCKET if document else "media",
             storage_key=storage_key,
             alt_text=(alt_text or None),
             purpose=purpose,
             status="pending",
+            source_type="owner_uploaded",
+            approval_state="approved",
         )
         session.add(asset)
         await session.flush()
 
         signed = await create_signed_upload_url(
-            user_jwt=user_jwt, bucket="media", storage_key=storage_key
+            user_jwt=user_jwt, bucket=asset.bucket, storage_key=storage_key
         )
         return {"asset": MediaService.serialize(asset), "upload": signed}
 
@@ -135,7 +148,9 @@ class MediaService:
         if asset.status == "ready":
             return MediaService.serialize(asset)
 
-        size = await object_exists(bucket=asset.bucket, storage_key=asset.storage_key)
+        private = asset.bucket == DOCUMENT_BUCKET
+        size = await (private_object_size if private else object_exists)(
+            bucket=asset.bucket, storage_key=asset.storage_key)
         if size is None:
             # Commit before raising: the router commits *after* a successful
             # call, so without this the rollback would leave the asset stuck
@@ -150,7 +165,8 @@ class MediaService:
 
         asset.status = "ready"
         asset.size_bytes = size or asset.size_bytes
-        asset.public_url = public_url(asset.bucket, asset.storage_key)
+        # A private document never gets a public URL.
+        asset.public_url = None if private else public_url(asset.bucket, asset.storage_key)
         asset.updated_at = datetime.now(timezone.utc)
         await session.flush()
 
@@ -229,7 +245,7 @@ class MediaService:
         *,
         business_id: uuid.UUID | None = None,
     ) -> list[dict[str, Any]]:
-        """Add `section["assets"] = {content_key: url}` for any asset id present.
+        """Add `section["assets"] = {content_key: {url, alt_text, draft}}` for any asset id present.
 
         `business_id` scopes resolution so one Business cannot surface another's
         asset by writing its id into a section.
@@ -279,17 +295,17 @@ class MediaService:
             for key in MediaService.ASSET_CONTENT_KEYS:
                 asset = by_id.get(str(content.get(key) or ""))
                 if asset is not None and asset.public_url:
-                    resolved[key] = {"url": asset.public_url, "alt_text": asset.alt_text}
+                    resolved[key] = MediaService._resolved(asset)
             for index, raw in enumerate((content.get("image_asset_ids") or [])[:20]):
                 asset = by_id.get(str(raw))
                 if asset is not None and asset.public_url:
-                    resolved[f"image_asset_id_{index}"] = {"url": asset.public_url, "alt_text": asset.alt_text}
+                    resolved[f"image_asset_id_{index}"] = MediaService._resolved(asset)
             for list_key in MediaService.NESTED_ASSET_LISTS:
                 for index, row in enumerate((content.get(list_key) or [])[:48]):
                     raw = row.get("image_asset_id") if isinstance(row, dict) else None
                     asset = by_id.get(str(raw or ""))
                     if asset is not None and asset.public_url:
-                        resolved[f"{list_key}.{index}"] = {"url": asset.public_url, "alt_text": asset.alt_text}
+                        resolved[f"{list_key}.{index}"] = MediaService._resolved(asset)
             if resolved:
                 section["assets"] = resolved
         return sections
@@ -305,12 +321,17 @@ class MediaService:
         body: bytes,
         alt_text: str | None,
         original_filename: str,
+        generated_for: str | None = None,
+        generation_job_id: uuid.UUID | None = None,
+        prompt_version: str | None = None,
     ) -> dict[str, Any]:
         """Persist platform-generated image bytes as a ready media asset.
 
         User uploads still use the signed-URL path. This is only for images
-        the platform produced (Grok Imagine) so they follow the same
-        ownership and public-URL rules as an owner upload.
+        the platform produced (Gemini drafts) so they follow the same
+        ownership and public-URL rules as an owner upload — and carry their
+        provenance: generated, for which slot, by which job and prompt version,
+        and a draft until the owner approves or replaces it.
         """
         from platform_core.media.supabase_storage import (
             EXTENSION_BY_MIME,
@@ -344,6 +365,11 @@ class MediaService:
             alt_text=alt_text,
             purpose=purpose,
             status="ready",
+            source_type="gemini_generated",
+            generated_for=(generated_for or None),
+            generation_job_id=generation_job_id,
+            prompt_version=(prompt_version or None),
+            approval_state="draft",
         )
         session.add(asset)
         await session.flush()
@@ -361,6 +387,26 @@ class MediaService:
         return MediaService.serialize(asset)
 
     @staticmethod
+    async def approve_draft(
+        session: AsyncSession, *, business_id: uuid.UUID, asset_id: uuid.UUID
+    ) -> dict[str, Any]:
+        """The owner keeps a picture LOCAH drew. It stays marked as generated."""
+        asset = await MediaService._get(session, business_id=business_id, asset_id=asset_id)
+        if asset.source_type != "gemini_generated":
+            raise ValidationError("Only a draft picture LOCAH made needs approving")
+        asset.approval_state = "approved"
+        await session.flush()
+        return MediaService.serialize(asset)
+
+    @staticmethod
+    def _resolved(asset: MediaAsset) -> dict[str, Any]:
+        # `draft`: a picture LOCAH drew that the owner has not approved yet —
+        # the editor says so, and offers to replace, keep or remove it.
+        return {"url": asset.public_url, "alt_text": asset.alt_text,
+                "draft": getattr(asset, "source_type", None) == "gemini_generated"
+                and getattr(asset, "approval_state", None) == "draft"}
+
+    @staticmethod
     def serialize(asset: MediaAsset) -> dict[str, Any]:
         return {
             "id": str(asset.id),
@@ -373,5 +419,9 @@ class MediaService:
             "height": asset.height,
             "status": asset.status,
             "url": asset.public_url,
+            # Provenance: never present a draft LOCAH drew as the owner's photo.
+            "source_type": asset.source_type,
+            "generated_for": asset.generated_for,
+            "approval_state": asset.approval_state,
             "created_at": asset.created_at.isoformat() if asset.created_at else None,
         }

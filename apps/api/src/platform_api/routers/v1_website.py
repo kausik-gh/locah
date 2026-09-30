@@ -164,10 +164,19 @@ async def patch_section(
     }
 
 
+class GenerateImageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # A card's picture: which list ("items" / "categories") and which row.
+    list_key: str | None = Field(default=None, max_length=20)
+    index: int | None = Field(default=None, ge=0, le=47)
+
+
 @router.post("/{business_id}/website/sections/{section_id}/generate-image")
 async def generate_section_image(
     business_id: UUID,
     section_id: UUID,
+    body: GenerateImageRequest | None = None,
     actor: BusinessActorContext = Depends(require_business_actor(WEBSITE_EDIT)),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
@@ -176,6 +185,8 @@ async def generate_section_image(
         business_id=business_id,
         actor_id=actor.request.identity_id,
         section_id=section_id,
+        list_key=body.list_key if body else None,
+        index=body.index if body else None,
     )
     await session.commit()
     return {"data": result, "meta": {"correlation_id": actor.request.correlation_id}}

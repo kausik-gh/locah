@@ -585,3 +585,69 @@
   color: var(--site-ink);
   border-color: color-mix(in srgb, var(--site-ink) 28%, transparent);
 }
+
+/* ------------------------------------------- the phone, as its own composition
+   (creative direction v4: theme.mobile). The main action rides in the bottom
+   bar beside Call and WhatsApp; a full-bleed hero keeps the subject its picture
+   was framed for (on the right: the headline's calm space is on the left). */
+
+@media (max-width: 760px) {
+  [data-locah-site][data-mobile-hero-focus='right'] .ls-hero--hasimage {
+    background-position: 72% center;
+  }
+  [data-locah-site][data-mobile-hero-focus='left'] .ls-hero--hasimage {
+    background-position: 28% center;
+  }
+  .ls-mobile-bar:has(> .ls-mobile-bar__primary) {
+    grid-template-columns: 1.7fr;
+  }
+  [data-locah-site] nav.ls-mobile-bar a.ls-mobile-bar__primary {
+    background: var(--site-primary);
+    border-color: var(--site-primary);
+    color: var(--site-primary-fg);
+    font-weight: 700;
+  }
+}
+
+/* ------------------------------------------------ no picture, still designed
+   A card whose picture is missing — or must be a real photo (a developer's
+   project, a studio's work) — gets a plate: its name over a fine line pattern
+   in the site's colours. A giant initial letter reads as "image missing" and
+   made unrelated sites look alike. */
+
+.ls-picture__plate {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 1.1rem 1.2rem;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 31px, color-mix(in srgb, var(--site-primary) 14%, transparent) 31px 32px),
+    repeating-linear-gradient(0deg, transparent 0 31px, color-mix(in srgb, var(--site-primary) 10%, transparent) 31px 32px),
+    linear-gradient(160deg, color-mix(in srgb, var(--site-primary) 18%, var(--site-bg-alt)), var(--site-bg-alt));
+}
+.ls-picture__plate span {
+  font-family: var(--site-display-font);
+  font-weight: var(--site-heading-weight, 700);
+  font-size: clamp(1.1rem, 0.9rem + 0.8vw, 1.5rem);
+  line-height: 1.1;
+  color: color-mix(in srgb, var(--site-primary) 70%, var(--site-ink));
+}
+[data-locah-site] .ls-category:not(.ls-category--image) .ls-category__initial {
+  display: none;
+}
+[data-locah-site] .ls-category:not(.ls-category--image) {
+  border-top: 3px solid var(--site-primary);
+  padding-top: 1.6rem;
+}
+
+/* The monumental wordmark is as large as it can be without a word breaking:
+   the longest word, at ~0.95em a letter in wide caps, fits the column. */
+[data-locah-site][data-family='monumental'] .ls-hero__headline {
+  font-size: min(
+    clamp(3.2rem, 1.2rem + 10vw, 10rem),
+    calc((min(100vw, 1200px) - 2 * clamp(1.25rem, 0.5rem + 3vw, 3rem)) / (var(--hero-longest, 8) * 0.95))
+  );
+  overflow-wrap: normal;
+  hyphens: none;
+}

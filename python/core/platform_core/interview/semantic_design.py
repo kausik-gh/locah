@@ -9,7 +9,7 @@ the whole payload, of business semantics against:
 * navigation labels,
 * calls to action (hero, bar, closing band, ordering label),
 * section titles,
-* media (the truth rule: no drawn picture where a picture is evidence),
+* media (the truth policy: no drawn picture in a factual slot — a project, a work),
 * treatment (a photographer's site must present work).
 
 Each finding is FAIL (meaning is wrong: repaired, never shipped as is) or
@@ -189,12 +189,16 @@ def validate(
                     if key == "cta_label":
                         content.pop("cta_url", None)
 
-    # The truth rule, enforced on the payload: nothing drawn stands in for evidence.
-    from platform_core.interview.media_director import may_draw
+    # The media truth policy, enforced on the payload: a drawn picture may set a
+    # mood (hero, story, closing band) but never stand in for a factual thing —
+    # a developer's project, a photographer's or a studio's work.
+    from platform_core.interview.media_director import evidence_led
 
     drawn = {str(m.asset_id) for m in bp.media_assets if m.source == "AI_GENERATED"}
-    if drawn and not may_draw(bp, direction):
+    if drawn and evidence_led(bp, direction):
         for section in page["sections"]:
+            if section["section_type_id"] not in {"product_showcase", "category_showcase", "gallery"}:
+                continue
             content = section.get("content") or {}
             for holder in [content, *[r for key in ("items", "categories") for r in content.get(key) or []
                                       if isinstance(r, dict)]]:

@@ -111,10 +111,18 @@ class WebsiteService:
         # the Workspace preview can show uploaded images.
         from platform_core.services.media import MediaService
 
+        from platform_core.interview.media_director import image_policy
+
         for payload in page_payloads:
             await MediaService.attach_section_asset_urls(
                 session, payload.get("sections") or [], business_id=business_id
             )
+            # Which pictures each section can carry, and whether one may be
+            # drawn — the editor follows this, never its own list.
+            for section in payload.get("sections") or []:
+                section["image_policy"] = image_policy(
+                    dict(draft.theme or {}), str(section.get("section_type_id") or ""),
+                    section.get("layout_variant"))
         published = None
         if website.published_version_id:
             result = await session.execute(

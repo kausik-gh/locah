@@ -5,15 +5,14 @@ persisted as `media_assets` and only the asset id is stored on sections /
 offerings. Failure is non-fatal — the site stays editable without a broken
 image URL.
 
-What gets drawn is artwork, never evidence. A generated picture of "our
-clinic", "our chef" or "our sofa" would show a visitor something that does not
-exist, so every prompt asks for editorial illustration, texture or abstract
-atmosphere, and forbids people, storefronts, signage and products presented
-as real. The owner's own photos always come first; artwork only fills a gap.
+This module only talks to the image model. WHAT is drawn — and what may never
+be drawn (the media truth policy) — is decided by the MediaDirector, and every
+website prompt is written by `website.media_prompts` from the site's own shoot
+brief. Logo prompts live here.
 
-Provider: IMAGE_PROVIDER=gemini (default, GEMINI_IMAGE_MODEL) or xai. There is
-no automatic fallback between them — a failed image is a missing image, not a
-second paid call.
+Provider: Gemini only (IMAGE_PROVIDER=gemini, the default, GEMINI_IMAGE_MODEL);
+IMAGE_PROVIDER=none switches drawing off. A failed image is a missing image,
+never a second paid call.
 """
 
 from __future__ import annotations
@@ -31,61 +30,8 @@ from platform_core.logging import get_logger
 
 _log = get_logger("website.image_generation")
 
-_XAI_IMAGES_URL = "https://api.x.ai/v1/images/generations"
-_DEFAULT_IMAGE_MODEL = os.getenv("XAI_IMAGE_MODEL", "grok-imagine-image-2.0")
 _GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image"
-
-# A mood and a material for each family — never a scene. The renderer already
-# has the business's words; the artwork only has to feel like the trade.
-_SCENE_BY_FAMILY: dict[str, str] = {
-    "food": "warm spice and ember tones, soft rising curves like steam, hand-made paper grain",
-    "appointment": "calm diffused light, soft gradients, gentle rounded geometry, clean air",
-    "membership": "strong diagonal forces, high contrast, a sense of motion and effort",
-    "stay": "evening window light, linen-like softness, quiet layered planes",
-    "retail": "rhythmic stacked forms, warm light across textured surfaces",
-    "property": "architectural lines and open space, calm horizons, light and shadow",
-    "professional": "precise geometric structure, measured grid lines, engineered rhythm",
-    "education": "open layered shapes, a sense of growth and steps, soft chalk-like texture",
-    "repair": "strong tool-steel greys, machined curves, practical workshop light",
-    "rental": "modular blocks and open space, clean and flexible",
-    "furniture": "the rhythm of timber grain, soft light across wood-toned planes, joinery-like lines",
-    "general": "warm, specific, layered abstract shapes with a subtle paper texture",
-}
-
-# Everything a generated picture must never pretend to show.
-_NEVER = (
-    "No text, letters or numbers. No logos or signage. No people, faces or hands. "
-    "No buildings, shopfronts or interiors presented as a real place. No products, "
-    "dishes, equipment or medical imagery presented as real. It must read clearly "
-    "as artwork, not as a photograph of a business."
-)
-
-_FAMILY_BY_TYPE: dict[str, str] = {
-    "restaurant": "food",
-    "cafe": "food",
-    "food": "food",
-    "salon": "appointment",
-    "spa": "appointment",
-    "clinic": "appointment",
-    "gym": "membership",
-    "studio": "membership",
-    "hotel": "stay",
-    "homestay": "stay",
-    "retail": "retail",
-    "grocery": "retail",
-    "real_estate": "property",
-    "professional": "professional",
-    "agency": "professional",
-    "coaching": "education",
-    "education": "education",
-    "repair": "repair",
-    "rental": "rental",
-    "furniture": "furniture",
-    "manufacturer": "professional",
-    "wholesale": "professional",
-    "hospital": "appointment",
-}
 
 
 @dataclass(frozen=True)
@@ -95,34 +41,6 @@ class GeneratedImage:
     model: str
     latency_ms: int
     prompt: str
-
-
-def family_for_business_type(business_type: str | None) -> str:
-    key = (business_type or "other").strip().lower()
-    return _FAMILY_BY_TYPE.get(key, "general")
-
-
-def hero_prompt(
-    *,
-    display_name: str,
-    business_type: str | None,
-    description: str | None,
-    palette: tuple[str, ...] = (),
-) -> str:
-    """Wide editorial artwork for a homepage header — atmosphere, not a scene.
-
-    `display_name` and `description` are deliberately not sent: a model given
-    "Teakwood Furniture Co makes sofas" draws a sofa and a sign.
-    """
-    del display_name, description
-    family = family_for_business_type(business_type)
-    colours = ", ".join(c for c in palette if c) or "a restrained, natural palette"
-    return (
-        "Wide editorial artwork for the header of a small business website. "
-        f"Mood and material: {_SCENE_BY_FAMILY[family]}. Colours: {colours}, with soft neutrals. "
-        "Abstract or semi-abstract, textured and layered, with calm open space on the left "
-        "where a headline will sit. " + _NEVER
-    )
 
 
 def logo_prompt(*, initial: str, primary: str | None) -> str:
@@ -157,42 +75,17 @@ def brand_logo_prompt(
     )
 
 
-def offering_prompt(
-    *,
-    display_name: str,
-    business_type: str | None,
-    title: str,
-    description: str | None,
-) -> str:
-    # An illustration of the idea, clearly drawn — a photoreal "our dish" would
-    # be a picture of food this kitchen never made.
-    del display_name, description
-    family = family_for_business_type(business_type)
-    return (
-        f"A flat editorial illustration evoking '{title[:80]}', drawn simply with a few "
-        f"shapes. Mood: {_SCENE_BY_FAMILY[family]}. Clearly an illustration, not a photo. "
-        "No text, letters, logos, price tags, people or faces."
-    )
-
-
 def image_provider() -> str:
     return (os.getenv("IMAGE_PROVIDER") or "gemini").strip().lower()
 
 
 def image_generation_available() -> bool:
-    """Whether the configured image provider has its key. No key, no button."""
-    provider = image_provider()
-    if provider == "gemini":
-        return bool(os.getenv("GEMINI_API_KEY", "").strip())
-    if provider in {"xai", "grok"}:
-        return bool(os.getenv("XAI_API_KEY", "").strip())
-    return False
+    """Whether Gemini image generation is configured. No key, no button."""
+    return image_provider() == "gemini" and bool(os.getenv("GEMINI_API_KEY", "").strip())
 
 
 def image_model() -> str:
-    if image_provider() == "gemini":
-        return (os.getenv("GEMINI_IMAGE_MODEL") or GEMINI_IMAGE_MODEL).strip()
-    return os.getenv("XAI_IMAGE_MODEL", _DEFAULT_IMAGE_MODEL).strip() or _DEFAULT_IMAGE_MODEL
+    return (os.getenv("GEMINI_IMAGE_MODEL") or GEMINI_IMAGE_MODEL).strip()
 
 
 def gemini_image_body(prompt: str, aspect_ratio: str) -> dict[str, Any]:
@@ -298,14 +191,10 @@ async def generate_image(
     timeout_seconds: int = 60,
 ) -> tuple[GeneratedImage | None, str]:
     """(image, "") or (None, reason) — reason is a key of FAILURE_REASONS."""
-    provider = image_provider()
-    if provider == "gemini":
-        return await _generate_gemini(
-            prompt, aspect_ratio=aspect_ratio, timeout_seconds=timeout_seconds
-        )
-    image = await generate_image_bytes(prompt, aspect_ratio=aspect_ratio,
-                                       timeout_seconds=timeout_seconds)
-    return (image, "") if image else (None, "unavailable" if not image_generation_available() else "error")
+    if image_provider() != "gemini":
+        _log.info("website.image_generation.skipped", reason="no_image_provider")
+        return None, "unavailable"
+    return await _generate_gemini(prompt, aspect_ratio=aspect_ratio, timeout_seconds=timeout_seconds)
 
 
 async def generate_image_bytes(
@@ -315,77 +204,5 @@ async def generate_image_bytes(
     timeout_seconds: int = 60,
 ) -> GeneratedImage | None:
     """Return generated bytes, or None when the key is missing or the provider fails."""
-    provider = image_provider()
-    if provider == "gemini":
-        image, _ = await _generate_gemini(
-            prompt, aspect_ratio=aspect_ratio, timeout_seconds=timeout_seconds
-        )
-        return image
-    if provider not in {"xai", "grok"}:
-        _log.info("website.image_generation.skipped", reason="no_image_provider")
-        return None
-    api_key = os.getenv("XAI_API_KEY", "").strip()
-    if not api_key:
-        _log.info("website.image_generation.skipped", reason="no_xai_api_key")
-        return None
-    guard_external_ai("image", "xai", "image")
-    model = image_model()
-    started = time.monotonic()
-    body: dict[str, Any] = {
-        "model": model,
-        "prompt": prompt,
-        "n": 1,
-        "aspect_ratio": aspect_ratio,
-        "response_format": "b64_json",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-            response = await client.post(
-                _XAI_IMAGES_URL,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=body,
-            )
-        latency_ms = int((time.monotonic() - started) * 1000)
-        if response.status_code >= 400:
-            _log.warning(
-                "website.image_generation.failed",
-                status_code=response.status_code,
-                latency_ms=latency_ms,
-                error=response.text[:400],
-            )
-            return None
-        payload = response.json()
-        rows = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(rows, list) or not rows:
-            _log.warning("website.image_generation.empty", latency_ms=latency_ms)
-            return None
-        first = rows[0] if isinstance(rows[0], dict) else {}
-        raw_b64 = first.get("b64_json")
-        if isinstance(raw_b64, str) and raw_b64:
-            return GeneratedImage(
-                mime_type="image/jpeg",
-                bytes=base64.b64decode(raw_b64),
-                model=model,
-                latency_ms=latency_ms,
-                prompt=prompt,
-            )
-        url = first.get("url")
-        if isinstance(url, str) and url.startswith("https://"):
-            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-                downloaded = await client.get(url)
-            if downloaded.status_code == 200 and downloaded.content:
-                return GeneratedImage(
-                    mime_type=downloaded.headers.get("content-type", "image/jpeg").split(";")[0],
-                    bytes=downloaded.content,
-                    model=model,
-                    latency_ms=latency_ms,
-                    prompt=prompt,
-                )
-        _log.warning("website.image_generation.unusable_payload", latency_ms=latency_ms)
-        return None
-    except Exception as exc:  # noqa: BLE001 — image gen must never fail the draft
-        _log.warning("website.image_generation.error", error=str(exc)[:400])
-        return None
+    image, _ = await generate_image(prompt, aspect_ratio=aspect_ratio, timeout_seconds=timeout_seconds)
+    return image

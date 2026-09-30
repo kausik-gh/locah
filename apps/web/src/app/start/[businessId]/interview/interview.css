@@ -229,6 +229,50 @@
   gap: 0.4rem;
 }
 
+/* ---- A menu / catalogue read for the owner to check ----------------------- */
+
+.ti-doc__groups {
+  display: grid !important;
+  gap: 0.75rem !important;
+  max-height: 22rem;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+}
+.ti-doc__group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ti-doc__group legend {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.3rem;
+}
+.ti-doc__line {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.3rem 0;
+  font-size: 0.9rem;
+}
+.ti-doc__line input {
+  margin-top: 0.2rem;
+}
+.ti-doc__line span {
+  display: grid;
+}
+.ti-doc__line small {
+  color: var(--ti-muted, #6b6b6b);
+}
+.ti-doc__line em {
+  font-style: normal;
+  font-size: 0.78rem;
+  color: #9a5b00;
+}
+.ti-doc__facts {
+  font-size: 0.85rem !important;
+}
+
 /* ---- Composer ----------------------------------------------------------- */
 
 .ti-compose {

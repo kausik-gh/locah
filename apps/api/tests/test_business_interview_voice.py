@@ -25,7 +25,6 @@ from platform_core.interview.models import BusinessBlueprint, Fact
 from platform_core.interview.orchestrator import BusinessInterviewOrchestrator as Engine
 from platform_core.interview.orchestrator import QUESTIONS
 
-KEY = "xai-secret-key-that-must-never-be-served"
 
 # Credential minting runs against a stub HTTP client; the backstop stays on.
 pytestmark = pytest.mark.usefixtures("stubbed_ai_transport")
@@ -73,55 +72,37 @@ class _Client:
 # ------------------------------------------------------------- configuration
 
 
-def test_voice_is_unavailable_without_a_key(monkeypatch):
-    monkeypatch.delenv("XAI_API_KEY", raising=False)
+def test_an_old_xai_voice_setting_gives_no_voice(monkeypatch):
+    """Gemini Live is the only voice: a leftover VOICE_PROVIDER=xai is simply off."""
+    monkeypatch.setenv("VOICE_PROVIDER", "xai")
+    monkeypatch.setenv("XAI_API_KEY", "old")
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
     assert voice.is_configured() is False
 
 
-def test_voice_is_available_with_a_key(monkeypatch):
-    monkeypatch.setenv("XAI_API_KEY", KEY)
+@pytest.mark.asyncio
+async def test_an_unsupported_provider_is_a_voice_failure(monkeypatch):
     monkeypatch.setenv("VOICE_PROVIDER", "xai")
-    assert voice.is_configured() is True
-
-
-@pytest.mark.asyncio
-async def test_missing_key_fails_safely_rather_than_calling_out(monkeypatch):
-    monkeypatch.delenv("XAI_API_KEY", raising=False)
     with pytest.raises(voice.VoiceSessionError):
-        await voice.mint_client_secret()
+        await voice.create_voice_session(blueprint())
 
 
-@pytest.mark.asyncio
-async def test_a_revoked_credential_fails_safely(monkeypatch):
-    """A deleted key must degrade to "carry on in chat", not to a stack trace."""
-    monkeypatch.setenv("XAI_API_KEY", "xai-revoked")
-    monkeypatch.setattr(voice.httpx, "AsyncClient", lambda **_: _Client(status=401))
-    with pytest.raises(voice.VoiceSessionError):
-        await voice.mint_client_secret()
 
 
-@pytest.mark.asyncio
-async def test_provider_outage_fails_safely(monkeypatch):
-    monkeypatch.setenv("XAI_API_KEY", KEY)
-    monkeypatch.setattr(voice.httpx, "AsyncClient", lambda **_: _Client(raises=TimeoutError()))
-    with pytest.raises(voice.VoiceSessionError):
-        await voice.mint_client_secret()
 
 
-@pytest.mark.asyncio
-async def test_only_the_ephemeral_secret_is_returned(monkeypatch):
-    monkeypatch.setenv("XAI_API_KEY", KEY)
-    client = _Client(payload={"value": "xai-realtime-client-secret-max-EPH", "expires_at": 123})
-    monkeypatch.setattr(voice.httpx, "AsyncClient", lambda **_: client)
 
-    minted = await voice.mint_client_secret()
-    assert minted["client_secret"] == "xai-realtime-client-secret-max-EPH"
-    assert KEY not in json.dumps(minted)
-    # The permanent key is used to ask, and only to ask.
-    assert client.sent["headers"]["Authorization"] == f"Bearer {KEY}"
-    # A short life, so a leaked secret is worth very little.
-    assert client.sent["json"]["expires_after"]["seconds"] == voice.SECRET_TTL_SECONDS
-    assert voice.SECRET_TTL_SECONDS <= 300
+
+
+
+
+
+
+
+
+
+
+
 
 
 # ------------------------------------------------------------- authorization
@@ -145,41 +126,7 @@ async def test_a_member_who_is_not_the_owner_cannot_mint_a_voice_token(monkeypat
         await routes.create_voice_session(uuid4(), MagicMock(), AsyncMock())
 
 
-@pytest.mark.asyncio
-async def test_the_owner_gets_a_session_and_never_the_account_key(monkeypatch):
-    import platform_api.routers.v1_business_interview as routes
-    from platform_core.services.business_interview import BusinessInterviewService
 
-    monkeypatch.setenv("XAI_API_KEY", KEY)
-    monkeypatch.setenv("VOICE_PROVIDER", "xai")
-    bp = blueprint(description="We are a hospital", offerings="Cardiology")
-    monkeypatch.setattr(
-        routes,
-        "resolve_business_actor",
-        AsyncMock(
-            return_value=SimpleNamespace(
-                actor_membership=SimpleNamespace(role="primary_owner"),
-                request=SimpleNamespace(
-                    effective_permissions={"website.edit", "business.update"}
-                ),
-            )
-        ),
-    )
-    monkeypatch.setattr(BusinessInterviewService, "load_business", AsyncMock(return_value=MagicMock()))
-    monkeypatch.setattr(BusinessInterviewService, "read", MagicMock(return_value=bp))
-    monkeypatch.setattr(
-        routes.voice_module,
-        "mint_client_secret",
-        AsyncMock(return_value={"client_secret": "eph-abc", "expires_at": 9}),
-    )
-
-    result = await routes.create_voice_session(
-        bp.business_id, SimpleNamespace(identity_id=uuid4(), correlation_id="c"), AsyncMock()
-    )
-    assert KEY not in json.dumps(result), "the permanent key must never reach the browser"
-    assert result["data"]["client_secret"] == "eph-abc"
-    assert result["data"]["url"].startswith("wss://")
-    assert result["data"]["model"] == voice.VOICE_MODEL
 
 
 @pytest.mark.asyncio
@@ -201,9 +148,10 @@ async def test_a_voice_outage_is_a_service_unavailable_not_a_crash(monkeypatch):
     )
     monkeypatch.setattr(BusinessInterviewService, "load_business", AsyncMock(return_value=MagicMock()))
     monkeypatch.setattr(BusinessInterviewService, "read", MagicMock(return_value=blueprint()))
+    monkeypatch.setenv("VOICE_PROVIDER", "gemini")
     monkeypatch.setattr(
         routes.voice_module,
-        "mint_client_secret",
+        "mint_gemini_token",
         AsyncMock(side_effect=voice.VoiceSessionError("down")),
     )
     with pytest.raises(ServiceUnavailable):
@@ -217,7 +165,7 @@ async def test_a_voice_outage_is_a_service_unavailable_not_a_crash(monkeypatch):
 
 def test_the_session_is_built_from_the_existing_blueprint():
     bp = blueprint(description="We are a 120-bed hospital", offerings="Cardiology and scans")
-    instructions = voice.session_config(bp)["instructions"]
+    instructions = voice.gemini_setup(bp)["systemInstruction"]["parts"][0]["text"]
     assert "Riverside Hospital" in instructions
     assert "120-bed hospital" in instructions
     assert "Cardiology and scans" in instructions
@@ -295,17 +243,10 @@ def test_there_is_no_parallel_voice_blueprint_or_orchestrator():
         assert banned not in source
 
 
-def test_server_vad_and_transcription_are_on_so_the_owner_can_interrupt():
-    config = voice.session_config(blueprint())
-    assert config["turn_detection"]["type"] == "server_vad"
-    assert config["audio"]["input"]["transcription"]["model"] == "grok-transcribe"
-    assert config["audio"]["input"]["format"] == {"type": "audio/pcm", "rate": 24000}
-    assert config["audio"]["output"]["format"] == {"type": "audio/pcm", "rate": 24000}
-    assert "audio" in config["modalities"] and "text" in config["modalities"]
 
 
-def test_voice_uses_the_fast_model_not_a_reasoning_one():
-    assert "fast" in voice.VOICE_MODEL
+
+
 
 
 # ------------------------------------------------------------------- Gemini Live
@@ -320,6 +261,11 @@ def test_gemini_is_the_default_voice_provider(monkeypatch):
     assert voice.is_configured() is True
     monkeypatch.delenv("GEMINI_API_KEY")
     assert voice.is_configured() is False
+
+
+def test_gemini_detects_turns_so_the_owner_can_interrupt():
+    detection = voice.gemini_setup(blueprint())["realtimeInputConfig"]["automaticActivityDetection"]
+    assert detection["startOfSpeechSensitivity"] == "START_SENSITIVITY_HIGH"
 
 
 def test_the_gemini_setup_locks_one_narrow_tool_and_the_instructions():

@@ -31,6 +31,15 @@ export function roleFromText(text: string): MediaRole | null {
   return null
 }
 
+/**
+ * A menu, catalogue, price list or brochure — to be read, not shown as a photo.
+ * A PDF always is; a photo is when the owner's words say so ("here's our menu").
+ */
+export function isDocument(file: File, text: string): boolean {
+  if (file.type === 'application/pdf') return true
+  return /\b(menu|menu card|catalogue|catalog|brochure|price ?list|rate ?card|rate list)\b/i.test(text)
+}
+
 /** How the choice is described back to the owner. Never the enum value. */
 export const ROLE_LABELS: Record<MediaRole, string> = {
   logo: 'your logo',

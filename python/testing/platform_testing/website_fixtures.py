@@ -10,7 +10,13 @@ semantic validation — with no model and no image generation. What comes out:
 * its semantic findings,
 * a site-lab file (the public renderer's input) for screenshots.
 
-    uv run python -m platform_testing.website_fixtures <out_dir>
+    uv run python -m platform_testing.website_fixtures <out_dir> [--images]
+
+``--images`` composes as a deployment with an image provider does: pictures
+are expected before the design is chosen, the media plan is made, and every
+drawable slot is filled with a synthetic placeholder (an SVG gradient in the
+site's palette, visibly not a photograph) so compositions can be judged
+without paying for, or pretending to have, real Gemini pictures.
 """
 
 from __future__ import annotations
@@ -54,11 +60,20 @@ def contact_for(bp: BusinessBlueprint) -> dict[str, str]:
     return {k: str(v) for k, v in public_contact(bp).items() if isinstance(v, str)}
 
 
-def compose(bp: BusinessBlueprint, business_type: str) -> dict[str, Any]:
+def compose(bp: BusinessBlueprint, business_type: str, *, images: bool = False) -> dict[str, Any]:
     """The first website, as the build composes it — deterministic, no model."""
+    from uuid import uuid4
+
+    from platform_core.interview.media_director import plan_media, plan_slots, record
+
     resolve_recommendations(bp, every_module_entitled(), business_type)
     active = frozenset(m.module_id for m in bp.recommended_modules if m.strength == "strong")
-    direction = direct(bp, business_type)
+    direction = direct(bp, business_type, media_expected=images)
+    plan_media(bp, direction)
+    if images:
+        for slot in plan_slots(bp, direction):
+            if slot.truth_class != "factual":
+                record(bp, slot, uuid4())
     return dict(compose_site(
         bp, direction, with_draft(bp, None), business_type=business_type, contact=contact_for(bp),
         active_modules=active, meta={"stage": "immediate", "creative_strategy": "deterministic",
@@ -66,25 +81,53 @@ def compose(bp: BusinessBlueprint, business_type: str) -> dict[str, Any]:
     ))
 
 
-async def build(p: Persona) -> SiteFixture:
+async def build(p: Persona, *, images: bool = False) -> SiteFixture:
     run = await run_persona(p, "model")
-    payload = compose(run.bp, p.business_type)
+    payload = compose(run.bp, p.business_type, images=images)
     theme = payload["theme_hints"]
     dims = dict((theme.get("creative_direction") or {}).get("dimensions") or {})
     return SiteFixture(p.key, p.name, p.business, run.bp, payload, signature(payload), dims)
 
 
-async def build_all(personas: list[Persona] | None = None) -> list[SiteFixture]:
-    return [await build(p) for p in (personas or FIXTURE_PERSONAS)]
+async def build_all(personas: list[Persona] | None = None, *, images: bool = False) -> list[SiteFixture]:
+    return [await build(p, images=images) for p in (personas or FIXTURE_PERSONAS)]
 
 
 def distinctness(fixtures: list[SiteFixture]) -> Report:
     return report({f.key: (f.signature, f.dimensions) for f in fixtures})
 
 
+def _placeholder(asset_id: str, theme: dict[str, Any], label: str) -> dict[str, str]:
+    """A synthetic stand-in picture: a gradient in the site's palette. Not a photo."""
+    from urllib.parse import quote
+
+    a = str(theme.get("primary_color") or "#555555")
+    b = str(theme.get("accent_color") or "#999999")
+    c = str(theme.get("surface_alt_color") or "#dddddd")
+    angle = int(asset_id.replace("-", "")[:2], 16) % 90
+    svg = (f"<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='900' viewBox='0 0 1200 900'>"
+           f"<defs><linearGradient id='g' gradientTransform='rotate({angle})'><stop offset='0' stop-color='{c}'/>"
+           f"<stop offset='.55' stop-color='{a}'/><stop offset='1' stop-color='{b}'/></linearGradient></defs>"
+           f"<rect width='1200' height='900' fill='url(#g)'/><circle cx='800' cy='420' r='260' fill='{b}' "
+           f"opacity='.35'/></svg>")
+    return {"url": "data:image/svg+xml;utf8," + quote(svg), "alt_text": f"Placeholder · {label}"}
+
+
+def _lab_assets(content: dict[str, Any], theme: dict[str, Any]) -> dict[str, dict[str, str]]:
+    assets: dict[str, dict[str, str]] = {}
+    if content.get("image_asset_id"):
+        assets["image_asset_id"] = _placeholder(str(content["image_asset_id"]), theme, "picture")
+    for key in ("items", "categories"):
+        for i, row in enumerate(content.get(key) or []):
+            if isinstance(row, dict) and row.get("image_asset_id"):
+                assets[f"{key}.{i}"] = _placeholder(str(row["image_asset_id"]), theme, str(row.get("name", "")))
+    return assets
+
+
 def lab_payload(f: SiteFixture) -> dict[str, Any]:
     """The public renderer's input (PublicWebsitePayload), for the site lab."""
     page = f.payload["pages"][0]
+    theme = f.payload.get("theme_hints", {})
     contact = contact_for(f.bp)
     return {
         "business": {"id": str(f.bp.business_id), "slug": f.key, "display_name": f.name,
@@ -96,7 +139,8 @@ def lab_payload(f: SiteFixture) -> dict[str, Any]:
             "seo_description": page.get("seo_description"),
             "sections": [{"id": f"{f.key}-{i}", "section_type_id": s["section_type_id"],
                           "layout_variant": s.get("layout_variant"), "content": s.get("content", {}),
-                          "assets": {}, "is_visible": s.get("is_visible", True)}
+                          "assets": _lab_assets(s.get("content", {}), theme),
+                          "is_visible": s.get("is_visible", True)}
                          for i, s in enumerate(page["sections"])],
         },
         "navigation": f.payload.get("navigation", []),
@@ -108,10 +152,10 @@ def lab_payload(f: SiteFixture) -> dict[str, Any]:
     }
 
 
-def main(out: str) -> None:  # pragma: no cover — a tool
+def main(out: str, images: bool = False) -> None:  # pragma: no cover — a tool
     root = Path(out)
     root.mkdir(parents=True, exist_ok=True)
-    fixtures = asyncio.run(build_all())
+    fixtures = asyncio.run(build_all(images=images))
     index = []
     for f in fixtures:
         (root / f"{f.key}.json").write_text(json.dumps(lab_payload(f), ensure_ascii=False, indent=1),
@@ -127,4 +171,5 @@ def main(out: str) -> None:  # pragma: no cover — a tool
 
 
 if __name__ == "__main__":  # pragma: no cover
-    main(sys.argv[1] if len(sys.argv) > 1 else "site-lab")
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    main(args[0] if args else "site-lab", images="--images" in sys.argv)

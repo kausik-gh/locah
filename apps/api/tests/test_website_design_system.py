@@ -24,7 +24,7 @@ from platform_core.ai_guard import blocked_calls
 from platform_core.interview.creative_director import direct
 from platform_core.interview.design_system import FAMILIES
 from platform_core.interview.distinctness import differences
-from platform_core.interview.media_director import may_draw, plan_slots
+from platform_core.interview.media_director import evidence_led, plan_slots
 from platform_core.interview.models import BusinessBlueprint, CategorySeed, Fact
 from platform_core.interview.semantic_design import validate
 from platform_core.validation.website import validate_generation_payload
@@ -96,16 +96,22 @@ def test_each_trade_speaks_in_its_own_words(fixtures) -> None:
     assert hero_cta("gym") == "Book a free trial"
 
 
-def test_truth_rule_nothing_drawn_where_a_picture_is_evidence(fixtures) -> None:
+def test_truth_policy_nothing_drawn_where_a_picture_is_evidence(fixtures) -> None:
     by_key = {f.key: f for f in fixtures}
     for key in ("photographer", "interiors", "real-estate"):
         f = by_key[key]
         direction = direct(f.bp, None)
-        assert not may_draw(f.bp, direction), key
-        assert plan_slots(f.bp, direction) == [], key
+        assert evidence_led(f.bp, direction), key
+        for slot in plan_slots(f.bp, direction):
+            # Work and projects are factual; only mood (hero, story) may be drawn.
+            if slot.purpose in {"category", "item"}:
+                assert slot.truth_class == "factual", (key, slot.key)
+            else:
+                assert slot.truth_class == "mood", (key, slot.key)
     for f in fixtures:
         for slot in plan_slots(f.bp, direct(f.bp, None)):
-            assert not slot.key.startswith(("item:", "project:")), (f.key, slot.key)
+            if slot.key.startswith("item:"):
+                assert slot.truth_class == "representative" and not evidence_led(f.bp, direct(f.bp, None))
 
 
 # ------------------------------------------------ the validator's own rules

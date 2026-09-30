@@ -129,12 +129,9 @@ export default async function WebsiteOverviewPage({
 
       <h2 className="ws-section-title">Make it yours <span>Manage your website</span></h2>
       <div className="ws-actions">
-        <Link className="ws-action" href={`${base}/templates`}>
-          <span className="ws-action__title">Starting point</span>
-          <span className="ws-action__body">
-            Pick the layout your site is built on. See what each one looks like before you choose.
-          </span>
-        </Link>
+        {/* v1 "Starting point" templates are retired from here: they replaced a
+            website designed for this business with a generic layout. The page
+            stays reachable for existing links (see templates/page.tsx). */}
         <Link className="ws-action" href={`${base}/preview`}>
           <span className="ws-action__title">Edit your website</span>
           <span className="ws-action__body">

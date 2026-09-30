@@ -27,7 +27,17 @@ ALLOWED_MIME_TYPES: frozenset[str] = frozenset(
 )
 MAX_FILE_BYTES = 10 * 1024 * 1024
 
+# The owner's menus, catalogues, price lists and brochures: a PRIVATE bucket.
+# They are read by LOCAH (server-side, service role) to fill the catalogue and
+# are never given a public URL — a brochure can carry private details.
+DOCUMENT_BUCKET = "owner-documents"
+DOCUMENT_MIME_TYPES: frozenset[str] = frozenset(
+    {"application/pdf", "image/jpeg", "image/png", "image/webp"}
+)
+MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+
 EXTENSION_BY_MIME: dict[str, str] = {
+    "application/pdf": "pdf",
     "image/jpeg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
@@ -153,3 +163,32 @@ async def object_exists(*, bucket: str, storage_key: str, timeout_seconds: int =
         return int(resp.headers.get("content-length") or 0)
     except ValueError:
         return 0
+
+
+async def private_object_size(*, bucket: str, storage_key: str, timeout_seconds: int = 10) -> int | None:
+    """Byte size of an object in a private bucket (service role), else None."""
+    service = _service_role_key()
+    url = f"{_base_url()}/storage/v1/object/{bucket}/{storage_key}"
+    async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
+        try:
+            resp = await client.head(url, headers={"Authorization": f"Bearer {service}", "apikey": service})
+        except httpx.HTTPError as exc:
+            _log.warning("media.private_head_failed", bucket=bucket, error=str(exc))
+            return None
+    if resp.status_code != 200:
+        return None
+    try:
+        return int(resp.headers.get("content-length") or 0)
+    except ValueError:
+        return 0
+
+
+async def download_private_object(*, bucket: str, storage_key: str, timeout_seconds: int = 30) -> bytes:
+    """The bytes of an owner's private document, for LOCAH to read. Service role."""
+    service = _service_role_key()
+    url = f"{_base_url()}/storage/v1/object/{bucket}/{storage_key}"
+    async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {service}", "apikey": service})
+    if resp.status_code != 200:
+        raise RuntimeError(f"Storage refused the document ({resp.status_code})")
+    return bytes(resp.content)

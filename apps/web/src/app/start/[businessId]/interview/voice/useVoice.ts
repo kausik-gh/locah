@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { startVoiceSession } from '../actions'
 import { GeminiLiveConnection, type GeminiLiveSession } from './gemini-live'
-import { VoiceConnection, type RealtimeSession, type VoiceCallbacks, type VoiceState } from './realtime'
+import type { VoiceCallbacks, VoiceState } from './types'
 import { ReplayVoiceConnection, type ReplaySession } from './replay'
 
-type Connection = VoiceConnection | GeminiLiveConnection | ReplayVoiceConnection
+type Connection = GeminiLiveConnection | ReplayVoiceConnection
 
 /** What the owner sees: four words, not a protocol. */
 export type VoicePhase = 'off' | 'connecting' | 'listening' | 'understanding' | 'speaking' | 'failed'
@@ -82,9 +82,7 @@ export function useVoice({
         connection.current = conn
         await conn.start(session as GeminiLiveSession)
       } else {
-        const conn = new VoiceConnection(callbacks)
-        connection.current = conn
-        await conn.start(session as RealtimeSession)
+        throw new Error('Voice isn’t available right now — you can keep typing.')
       }
     } catch (e) {
       setPhase('failed')

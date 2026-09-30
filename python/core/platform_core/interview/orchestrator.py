@@ -27,6 +27,7 @@ from platform_core.interview import reader as rd
 from platform_core.interview.conversation import (
     LOGO_QUEUED,
     LOGO_UNAVAILABLE,
+    DOCUMENT_UPLOAD,
     LOGO_UPLOAD,
     REDIRECT,
     REDUNDANT,
@@ -836,6 +837,14 @@ def _read_for_question(
         if raw:
             fact("phone", raw)
             answer("contact.phone", "Your number", evidence=raw)
+    # Opening hours are opening hours whatever was asked ("Open 5:30 am to
+    # 10 pm every day" once became the gym's membership plans).
+    if not _answered(ti, "operations.hours") and not any(f.field == "opening_hours" for f in ti.facts):
+        said = next((s.strip(" .") for s in re.split(r"(?<=[.!?])\s+", text)
+                     if rd.looks_like_hours(s) and rd.valid_for("operations.hours", s)), "")
+        if said:
+            fact("opening_hours", said)
+            answer("operations.hours", said[:120], evidence=said)
     if reading.finish or (reading.decline and not reading.phone):
         # "No, just this much" / "skip" — the pieces just asked are declined, not answered.
         if reading.decline and not reading.finish:
@@ -900,7 +909,9 @@ def _read_for_question(
             if not offer(rd.offer_statement(text) or rd.offering_names(text), rd.group_items(text)):
                 continue
         elif target in _FREE_TEXT and target == lead and not text.rstrip().endswith("?") \
-                and len(words) >= (2 if not model_ok else 3):
+                and len(words) >= (2 if not model_ok else 3) \
+                and not (rd.looks_like_hours(text) and _answered(ti, "operations.hours")):
+            # (A reply that is the opening hours answers the hours, not the plans.)
             # A real reply to the question just asked answers it, even when the
             # model filed it elsewhere — the gym was asked "what do people book?"
             # twice. Only for questions whose answer is free text.
@@ -969,6 +980,19 @@ _YES = re.compile(r"^\s*(yes|yeah|yep|sure|ok(?:ay)?|please|go ahead|do it|seri|
 _OWN_PHOTOS = re.compile(
     r"\b(i (?:have|'ll|will) (?:upload|send|share|add)|i have (?:photos|pictures|pics)|will upload)\b",
     re.I)
+# "I have a menu / our price list / a brochure" — attach it, don't retype it.
+_OWN_DOCUMENT = re.compile(
+    r"\b(?:i|we)\s+(?:have|'ve got|got|can send|will send|can share)\s+(?:a|an|our|my|the)?\s*"
+    r"(?:printed\s+|pdf\s+|full\s+)?(?:menu|menu card|catalogue|catalog|brochure|price ?list|rate ?card|rate list)\b",
+    re.I)
+# An explicit wish for a site WITHOUT generated pictures. "I don't have photos"
+# is not this: an owner with no photos is exactly who draft visuals are for.
+_TEXT_LED = re.compile(
+    r"\b(?:no (?:pictures|images|visuals|photos) at all|without (?:any )?(?:pictures|images|visuals|photos)|"
+    r"text[- ]only|only text|just text|text[- ]led|keep it (?:simple|plain) without|"
+    r"(?:don'?t|do not|no need to|never)\b[^.]{0,20}\b(?:create|generate|make|draw|use)\b[^.]{0,20}"
+    r"\b(?:pictures|images|visuals|photos|ai))\b",
+    re.I)
 
 
 def _contextual_signals(bp: BusinessBlueprint, ti: TurnIntelligence, text: str) -> None:
@@ -976,16 +1000,23 @@ def _contextual_signals(bp: BusinessBlueprint, ti: TurnIntelligence, text: str) 
     asked = set(bp.asks[-1].targets) if bp.asks else set()
     if "media.logo" in asked and ti.media_intent == "none" and _GENERATE.search(text):
         ti.media_intent = "generate_logo"
+    text_led = bool(_TEXT_LED.search(text))
+    if ti.media_intent == "no_visuals" and not text_led:
+        # "No, I don't have photos" is a yes to drafts: only an explicit wish for
+        # a text-led site switches pictures off.
+        ti.media_intent = "generate_visuals"
+    if text_led and ti.media_intent == "none":
+        # An explicit "text only, no pictures" counts whenever it is said.
+        ti.media_intent = "no_visuals"
+    if ti.media_intent == "none" and _OWN_DOCUMENT.search(text) and not any(
+            d.status in {"reading", "ready", "applied"} for d in bp.documents):
+        ti.media_intent = "will_upload_catalogue"
     if "media.photos" in asked and ti.media_intent == "none":
-        # "No photos yet, you can create them" is a yes to drafts, not a no.
-        refused = re.search(r"\b(?:don'?t|do not|no need to|not)\b[^.]{0,20}\b(?:create|generate|make)",
-                            text, re.I)
         if _OWN_PHOTOS.search(text):
             ti.media_intent = "will_upload_photos"
-        elif not refused and (_YES.search(text) or _GENERATE.search(text)):
+        elif _YES.search(text) or _GENERATE.search(text) or _DECLINE.search(text):
+            # "yes, create them", "no photos yet", "nothing" — all mean: draw drafts.
             ti.media_intent = "generate_visuals"
-        elif refused or (_DECLINE.search(text) and len(text) < 40):
-            ti.media_intent = "no_visuals"
 
 
 def _merge_facts(bp: BusinessBlueprint, ti: TurnIntelligence, text: str, source: str) -> int:
@@ -1058,6 +1089,8 @@ def _record_media_intent(bp: BusinessBlueprint, intent: str, image_available: bo
     if intent == "no_logo":
         logo.status = "declined"
         return ""
+    if intent == "will_upload_catalogue":
+        return str(DOCUMENT_UPLOAD[lang])
     if intent in {"generate_visuals", "will_upload_photos", "no_visuals"}:
         photos = bp.discovery.setdefault("media.photos", TargetState())
         photos.status = "answered" if intent != "no_visuals" else "declined"
@@ -1067,8 +1100,8 @@ def _record_media_intent(bp: BusinessBlueprint, intent: str, image_available: bo
         }[intent]
         photos.summary = {
             "generate_visuals": "Locah will create draft visuals you can replace with real photos.",
-            "will_upload_photos": "You'll add your own photos.",
-            "no_visuals": "No pictures for now.",
+            "will_upload_photos": "You'll add your own photos; Locah fills any gap with drafts until then.",
+            "no_visuals": "A text-led website, without generated pictures.",
         }[intent]
         if intent == "generate_visuals" and image_available:
             return str(VISUALS_QUEUED[lang])

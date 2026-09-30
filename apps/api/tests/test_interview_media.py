@@ -76,8 +76,11 @@ def test_prompts_carry_the_trade_and_colours_not_the_business():
     bp = blueprint("hero", "logo")
     hero, hero_aspect = media.prompt_for(bp.media_generation_requests[0], bp)
     logo, logo_aspect = media.prompt_for(bp.media_generation_requests[1], bp)
-    assert hero_aspect == "16:9" and logo_aspect == "1:1"
-    assert "Teakwood" not in hero and "wardrobe" not in hero.lower()
+    # The cover is framed for the composition that will hold it, in the site's
+    # own shoot brief (media_prompts) — the same as every other picture.
+    assert hero_aspect in {"16:9", "4:3"} and logo_aspect == "1:1"
+    assert "Part of one editorial series for this brand" in hero
+    assert "Teakwood" not in hero
     assert "letter T" in logo  # the build-time monogram prompt
 
 
@@ -175,7 +178,7 @@ async def test_the_build_job_never_draws_the_logo_a_second_time(wired):
     adapter = Adapter()
     await media.generate_interview_media(w.session, business_id=bp.business_id, actor_id=uuid4(),
         generation_job_id=bp.completion_state.generation_job_id, adapter=adapter)
-    assert [aspect for _, aspect in adapter.calls] == ["16:9"]
+    assert len(adapter.calls) == 1 and adapter.calls[0][1] in {"16:9", "4:3"}
 
 
 async def test_a_stale_job_does_nothing(wired):

@@ -103,6 +103,11 @@ VISUALS_QUEUED = {
     "ta_en": "Website-ku draft visuals ready pannaren — appuram unga real photos podalaam.",
     "ta": "வெப்சைட்டுக்கு மாதிரி படங்கள் ரெடி பண்றேன் — பிறகு உங்க படங்களை மாற்றலாம்.",
 }
+DOCUMENT_UPLOAD = {
+    "en": "Perfect — attach it with the 📎 button (a PDF or a photo works). I'll read it and list the items for you to check.",
+    "ta_en": "Super — 📎 button-la attach pannunga (PDF illa photo). Naan padichu items list panren, neenga check pannunga.",
+    "ta": "சரி — 📎 பட்டன்ல இணைச்சிடுங்க (PDF அல்லது போட்டோ). நான் படிச்சு பொருட்களைப் பட்டியலிடுறேன், நீங்க சரிபாருங்க.",
+}
 LOGO_UPLOAD = {
     "en": "Sure — attach it here with the 📎 button whenever you're ready.",
     "ta_en": "Seri — 📎 button-la attach pannunga.",
@@ -461,8 +466,10 @@ SYSTEM_PROMPT = (
     "including short replies like 'generate one' or 'yes, make one' after a question about a logo; "
     "generate_hero for a cover picture; will_upload_logo when they have one to upload; no_logo "
     "when they want none. For photos of products or the place: generate_visuals when they have "
-    "none and agree Locah may create draft visuals (including 'yes', 'ok, create' after that "
-    "question); will_upload_photos when they will add their own; no_visuals when they want none."
+    "none or agree Locah may create draft visuals ('no photos yet', 'yes', 'ok, create'); "
+    "will_upload_photos when they will add their own; no_visuals ONLY when they explicitly want a "
+    "website without generated pictures ('text only', 'no pictures at all') — 'I don't have "
+    "photos' is generate_visuals."
     "\n\n"
     "DRAFT: website wording. Expand, never parrot: turn rough answers into specific, warm, simple "
     "copy an owner would be proud of. hero_headline (at most 8 words, specific to what they sell "

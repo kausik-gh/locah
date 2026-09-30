@@ -44,7 +44,10 @@ class Dimensions:
     personality: str  # bold | warm | calm | playful | refined | technical | friendly
     energy: str  # high | medium | low
     media_importance: str  # critical | high | medium | low
-    has_media: bool  # the owner's own photos (not a logo)
+    # The site WILL have pictures: the owner's own, or drafts LOCAH draws now.
+    # Decided before the design, so a business without photos still gets the
+    # image-led composition its trade deserves.
+    has_media: bool
     density: str  # catalogue | curated | sparse
     locality: str  # local | regional | national
     portfolio: str  # heavy | light | none
@@ -57,6 +60,8 @@ class Dimensions:
     # The owner described the feel themselves ("fun, colourful") — worth more
     # than anything inferred.
     personality_said: bool = False
+    # The owner's own photos (uploads, catalogue pictures) — not drafts.
+    owner_media: bool = False
     evidence: tuple[str, ...] = ()  # why, in plain words — for review and tests
 
     def as_dict(self) -> dict[str, object]:
@@ -121,8 +126,15 @@ def _said(bp: BusinessBlueprint) -> str:
     return " ".join(words)
 
 
-def read_dimensions(bp: BusinessBlueprint, business_type: str | None = None) -> Dimensions:
-    """The business, as the dimensions a designer would reason from."""
+def read_dimensions(
+    bp: BusinessBlueprint, business_type: str | None = None, *, media_expected: bool | None = None,
+) -> Dimensions:
+    """The business, as the dimensions a designer would reason from.
+
+    ``media_expected`` says whether the site will have pictures; by default it
+    is worked out from the owner's photos, their choice about drafts and
+    whether an image provider is configured (media_director.pictures_expected).
+    """
     from platform_core.interview.discovery import characteristics
     from platform_core.interview.playbooks import playbook_for
     from platform_core.interview.understanding import customer_actions, delivery_area, fulfilment
@@ -189,7 +201,13 @@ def read_dimensions(bp: BusinessBlueprint, business_type: str | None = None) -> 
                        "hospitality": "refined"}.get(service_mode, "friendly")
     evidence.append(f"personality: {personality}")
 
-    owner_photos = [m for m in bp.media_assets if m.role != "logo" and m.source == "USER_UPLOAD"]
+    from platform_core.interview.media_director import owner_photos as _owner_photos
+    from platform_core.interview.media_director import pictures_expected
+
+    owner_photos = _owner_photos(bp)
+    if media_expected is None:
+        media_expected = pictures_expected(bp)
+    media_expected = media_expected or bool(owner_photos)
     items = sum(len(g.items) for g in bp.taxonomy.groups)
     density = "catalogue" if items >= 12 or len(bp.taxonomy.groups) >= 6 else \
         "curated" if items >= 4 or len(bp.taxonomy.groups) >= 3 else "sparse"
@@ -206,13 +224,13 @@ def read_dimensions(bp: BusinessBlueprint, business_type: str | None = None) -> 
         else "in_person"
     return Dimensions(
         offering=offering, journey=journey, primary_action=first, positioning=positioning,
-        personality=personality, energy=energy, media_importance=pb.media, has_media=bool(owner_photos),
+        personality=personality, energy=energy, media_importance=pb.media, has_media=media_expected,
         density=density, locality=locality,
         portfolio="heavy" if pb.portfolio else "light" if offering in {"property", "service"} and
         "made_to_order" in seen else "none",
         audience=audience, trust="high" if category in _HIGH_TRUST or pb.key in {"hospital", "clinic"}
         else "normal", transaction=transaction, service_mode=service_mode, personality_said=personality_said,
-        evidence=tuple(evidence),
+        owner_media=bool(owner_photos), evidence=tuple(evidence),
     )
 
 
@@ -456,8 +474,10 @@ FAMILIES: dict[str, Family] = {f.key: f for f in (
     ),
     Family(
         "airy_property", "Airy Property", ("Spacious", "Assured", "Light"), "airy_real_estate",
+        # Calm is how a property site should feel: a developer who says "calm,
+        # green" is describing homes, not asking for a clinic's page.
         {"offering=property": 5, "journey=visit": 3, "offering=stay": 4, "service_mode=hospitality": 2,
-         "positioning=premium": 0.5, "trust=high": 0.5},
+         "positioning=premium": 0.5, "trust=high": 0.5, "personality=calm": 3},
         (
             _pal("sky_navy", "light", "#0f8fd6", "#0b1220", "#ffffff", "#f1f8fd", "#0b1220", "#5a6778", "blue"),
             _pal("sand_sage", "light", "#5b7a5a", "#b88a55", "#fcfbf8", "#f2efe7", "#1d231c", "#666d64", "green"),
@@ -562,8 +582,10 @@ def choose(bp: BusinessBlueprint, dims: Dimensions, *, seed: str = "") -> Choice
         # "offering: menu" — never "offering=menu", which the site's markup guard rightly refuses.
         return ", ".join(sorted(str(k).replace("=", ": ") for k in keys))  # type: ignore[attr-defined]
 
+    pictures = ("owner photos" if dims.owner_media else "draft visuals" if dims.has_media
+                else "no pictures")
     reasons = (f"{family.label} — " + said(d for d in family.affinity if d in values)[:200],
-               f"composition {variant.key} — " + ("owner photos" if dims.has_media else "no owner photos yet")
+               f"composition {variant.key} — " + pictures
                + f", {dims.offering}, {dims.journey}, {dims.service_mode}",
                f"palette {palette.key}")
     return Choice(family, variant, palette, scores, reasons)
@@ -595,23 +617,31 @@ _PALETTE_BY_EVIDENCE: dict[tuple[str, str], str] = {
 
 
 def _variant(family: Family, d: Dimensions) -> Variant:
-    """The composition inside the family, from the evidence — one readable rule per family."""
+    """The composition inside the family, from the evidence — one readable rule per family.
+
+    Pictures (the owner's, or drafts LOCAH draws) make image-led compositions
+    possible; they do not decide which one. A restaurant people book and a
+    café people drop into are both warm and pictured, and still not the same
+    page.
+    """
     photos = d.has_media
+    order, weighed = d.journey == "order", d.offering == "weighed_product"
+    modern = d.positioning == "modern" or d.transaction == "online"
     key = {
-        "editorial_warm": "overlay" if photos else "counter_book" if d.offering == "weighed_product"
-        else "menu_board" if d.journey == "order" else "split" if d.positioning == "heritage" else "letterpress",
-        "premium_dark": "gallery" if photos else "counter" if d.journey == "order" or d.density == "catalogue"
-        else "salon",
-        "modern_commerce": "storefront" if photos else "app_like"
-        if d.positioning == "modern" or d.transaction == "online" else "catalogue",
-        "playful_editorial": "scrapbook" if photos else "sticker" if d.offering in {"class", "service"}
-        else "poster",
-        "calm_professional": "reassure" if photos else "desk" if d.service_mode == "advisory"
-        else "retreat" if d.service_mode == "wellbeing" else "campus" if d.service_mode == "learning"
-        else "reassure" if d.positioning in {"modern", "premium"} or d.journey == "enquire" else "practice",
+        "editorial_warm": "overlay" if photos and order and not weighed else "counter_book" if weighed
+        else "menu_board" if order else "split" if d.positioning == "heritage" else "letterpress",
+        "premium_dark": "counter" if order or d.density == "catalogue" else "gallery" if photos else "salon",
+        "modern_commerce": "app_like" if modern else "storefront" if photos else "catalogue",
+        "playful_editorial": "scrapbook" if photos and d.offering not in {"class", "service"}
+        else "sticker" if d.offering in {"class", "service"} else "poster",
+        "calm_professional": "desk" if d.service_mode == "advisory" else "retreat" if d.service_mode == "wellbeing"
+        else "campus" if d.service_mode == "learning" else "reassure" if d.positioning in {
+            "modern", "premium"} or d.journey == "enquire" else "practice",
         "monumental": "cinema" if photos else "wordmark" if d.offering == "plan" else "block",
-        "portfolio_sketchbook": "contact_sheet" if photos else "notebook" if d.journey == "dates" else "studio",
-        "technical_b2b": "plant" if photos else "blueprint" if d.density == "catalogue" else "spec_sheet",
+        "portfolio_sketchbook": "contact_sheet" if photos and d.owner_media else "notebook"
+        if d.journey == "dates" else "studio",
+        "technical_b2b": "plant" if photos and d.offering == "b2b_catalogue" else "blueprint"
+        if d.density == "catalogue" else "spec_sheet",
         "airy_property": "estate" if d.offering == "stay" else "horizon" if photos else "brochure",
         "local_friendly": "shopfront" if photos else "neighbour" if d.density == "sparse" else "noticeboard",
     }.get(family.key, "")

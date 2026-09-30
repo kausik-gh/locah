@@ -2,8 +2,8 @@
 
 `LOCAH_TEST_NO_EXTERNAL_AI=1` turns it on. With it on:
 
-* every provider path — text (Gemini, xAI), images (Gemini, xAI) and voice
-  credentials (Gemini Live, xAI realtime) — calls :func:`guard_external_ai`
+* every provider path — Gemini text, images and Live voice credentials —
+  calls :func:`guard_external_ai`
   immediately before its network request, and the call raises
   :class:`ExternalAICallBlocked` instead of spending anything;
 * :func:`install_transport_guard` additionally refuses any httpx request to a

@@ -221,6 +221,11 @@ export function WebsitePageView({
       ? (theme.nav_cta as { label?: unknown; href?: unknown })
       : null
   const utility = Array.isArray(theme.utility_bar) ? theme.utility_bar.map(String).slice(0, 2) : []
+  // The phone is its own composition (creative direction v4): whether the main
+  // action rides in the bottom bar, and where a full-bleed hero keeps its subject.
+  const mobile = theme.mobile && typeof theme.mobile === 'object' ? (theme.mobile as Record<string, unknown>) : {}
+  const stickyPrimary = mobile.sticky_primary === true
+  const heroFocus = finite(mobile.hero_focus, ['left', 'center', 'right'], 'center')
 
   // The tab title is set by each route's generateMetadata, not here — a <title>
   // rendered in the tree lands in <body> on React 18 and duplicates the tag.
@@ -319,6 +324,7 @@ export function WebsitePageView({
       data-image={imageTreatment || undefined}
       data-surface={surface || undefined}
       data-footer={family ? footerStyle : undefined}
+      data-mobile-hero-focus={heroFocus}
       style={styleVars}
     >
       <SiteWordsProvider lang={lang}>
@@ -446,6 +452,12 @@ export function WebsitePageView({
       {reachable ? (
         // On a phone the two things a visitor most wants are always one tap away.
         <nav className="ls-mobile-bar" aria-label={t('Contact')}>
+          {stickyPrimary && ctaLabel && ctaTarget && !/wa\.me|^tel:/.test(ctaTarget) ? (
+            // The site's main action, one thumb away (not a second WhatsApp or Call).
+            <a className="ls-mobile-bar__primary" href={ctaTarget}>
+              {ctaLabel}
+            </a>
+          ) : null}
           {contact.phone ? <a href={`tel:${contact.phone}`}>{callLabel}</a> : null}
           {waHref ? (
             <a href={waHref} target="_blank" rel="noopener noreferrer">
