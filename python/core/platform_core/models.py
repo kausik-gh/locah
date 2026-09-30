@@ -3406,3 +3406,62 @@ class TaskChecklistTemplateItem(Base):
     required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     photo_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 
+
+
+# ---------------------------------------------------------------- AI employees
+# One shared runtime (platform_core/ai_employees). No tool writes these three
+# tables: an AI employee cannot change its own tools, tier or limits.
+class AIEmployee(Base):
+    __tablename__ = "ai_employees"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    autonomy: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'T1'"))
+    tools: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
+    limits: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    updated_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AIEmployeeControl(Base):
+    __tablename__ = "ai_employee_controls"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    paused: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paused_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AIAction(Base):
+    __tablename__ = "ai_actions"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    ai_employee_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("ai_employees.id"))
+    tool: Mapped[str] = mapped_column(Text, nullable=False)
+    tier: Mapped[str] = mapped_column(Text, nullable=False)
+    input_summary: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    result_summary: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    related_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    related_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    approval_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    approval_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pending_args: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    conversation_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    decided_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

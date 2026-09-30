@@ -825,7 +825,8 @@ class MessagingService:
                     extra: dict[str, Any]) -> str:
         """§12.1 router, cheapest branch first: STOP → opt-out; 'talk to a person' →
         the inbox; a button or menu word → the structured journey (P1-08); free
-        text → the AI WhatsApp Manager (P3, not built) — so, for now, a person."""
+        text → the AI receptionist when the owner switched it on (answers from
+        records only), and anything it cannot answer → a person."""
         from platform_core.messaging.journeys import language_for
         from platform_core.messaging.words import detect, tr
         from platform_core.services.consent import ConsentService
@@ -852,6 +853,13 @@ class MessagingService:
 
             if await journeys.handle(session, conv, kind, body, extra):
                 return "journey"
+            if kind == "text":
+                # Free text no journey matched: the AI receptionist, when the owner
+                # switched it on — answers only from records; otherwise a person.
+                from platform_core.ai_employees import receptionist
+
+                if await receptionist.handle(session, conv, body or ""):
+                    return "ai_employee"
         first_wait = conv.waiting_since is None
         conv.needs_person, conv.handler = True, "person"
         conv.waiting_since = conv.waiting_since or _now()

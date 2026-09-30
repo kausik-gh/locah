@@ -110,7 +110,6 @@ export const AREAS: NavArea[] = [
       { href: '/workforce', label: 'Staff & rota', perm: 'workforce.read', module: 'workforce', shape: 'team' },
     ],
   },
-  // AI Employees join as their tools ship (P3).
   {
     key: 'reach',
     label: 'Reach',
@@ -127,7 +126,11 @@ export const AREAS: NavArea[] = [
     // Basic insights from real data (IS-01) are part of the Workspace; the deeper Analytics tool comes later.
     children: [{ href: '/insights', label: 'Your numbers', anyPerm: ['orders.read', 'bookings.read', 'invoices.read', 'payments.read'] }],
   },
-  { key: 'ai', label: 'AI employees', children: [] },
+  {
+    key: 'ai',
+    label: 'AI employees',
+    children: [{ href: '/ai-employees', label: 'AI staff', perm: 'ai_employees.read', module: 'ai-employees' }],
+  },
   {
     key: 'modules',
     label: 'Modules & integrations',

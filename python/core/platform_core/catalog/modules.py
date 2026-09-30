@@ -258,7 +258,7 @@ MODULES: dict[str, ModuleInfo] = {m.key: m for m in (
     ModuleInfo(
         "ai-employees", "AI staff", "P3",
         "AI employees that work inside your limits with a full audit trail — they never act beyond what you allow.",
-        staff_can=("Install, limit, pause and review AI staff",),
+        staff_can=("Install, limit, pause and review AI staff",), built=True,
     ),
     ModuleInfo(
         "connectors", "Integrations", "P4",

@@ -100,6 +100,14 @@ async def _execute_job(session: AsyncSession, job: dict[str, Any]) -> None:
         await sweep_all(session)
         if payload.get("recurring"):
             await ensure_scheduled(session, minutes=int(os.getenv("MEMBERSHIPS_SWEEP_MINUTES") or 60))
+    elif job_type == "ai_employees.sweep":
+        # The daily run for AI employees on a schedule (collections, procurement).
+        # Books its own next run.
+        from platform_core.ai_employees.sweep import ensure_scheduled, sweep_all
+
+        await sweep_all(session)
+        if payload.get("recurring"):
+            await ensure_scheduled(session, minutes=int(os.getenv("AI_EMPLOYEES_SWEEP_MINUTES") or 1440))
     elif job_type == "marketplace.reindex":
         from uuid import UUID
 

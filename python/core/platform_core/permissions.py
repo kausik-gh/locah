@@ -240,6 +240,12 @@ ATTENDANCE_MANAGE = "attendance.manage"
 DOCUMENTS_MANAGE = "documents.manage"
 DOCUMENTS_REQUEST = "documents.request"
 
+# AI employees (Capability Universe §8). Reading the feed and approving is for
+# whoever manages the business; changing an AI employee's tools, tier, limits
+# or kill switch is the owner's (ALL_PERMISSIONS). No AI employee holds either.
+AI_EMPLOYEES_READ = "ai_employees.read"
+AI_EMPLOYEES_MANAGE = "ai_employees.manage"
+
 ALL_PERMISSIONS: frozenset[str] = frozenset(
     str(v) for k, v in globals().items() if k.isupper() and isinstance(v, str) and "." in v
 )

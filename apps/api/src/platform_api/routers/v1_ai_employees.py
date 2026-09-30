@@ -1,0 +1,145 @@
+"""AI employees — the owner's controls, the action feed and approvals (Capability Universe §8).
+
+Reading the feed needs ``ai_employees.read``. Changing an AI employee's tools,
+tier, limits or kill switch, pausing all of them and deciding approvals need
+``ai_employees.manage`` — a person's permission; no AI employee holds it.
+Approving a request that acts in another module also needs that module's own
+permission (sending a purchase order needs ``procurement.approve``).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from platform_api.db import get_db_session
+from platform_api.dependencies import BusinessActorContext, require_business_actor
+from platform_core.ai_employees import collections, procurement
+from platform_core.ai_employees.runtime import AIRuntime
+from platform_core.exceptions import PermissionDenied, ResourceNotFound
+from platform_core.models import AIAction
+from platform_core.permissions import AI_EMPLOYEES_MANAGE, AI_EMPLOYEES_READ
+from platform_core.services.audit import AuditService
+
+router = APIRouter(prefix="/v1/b", tags=["ai-employees"])
+
+# The module permission an approval acts with, per approval-only tool.
+APPROVAL_NEEDS = {"request_po_send": "procurement.approve"}
+RUNNERS = {"collections": collections.run, "procurement": procurement.run}
+
+
+def _meta(actor: BusinessActorContext) -> dict[str, Any]:
+    return {"correlation_id": actor.request.correlation_id}
+
+
+class EmployeePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    autonomy: str | None = Field(default=None, pattern="^T[0-2]$")
+    tools: list[str] | None = Field(default=None, max_length=20)
+    limits: dict[str, int] | None = None
+
+
+class PauseBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paused: bool
+
+
+class DecisionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approve: bool
+
+
+@router.get("/{business_id}/ai-employees")
+async def overview(
+    business_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(AI_EMPLOYEES_READ)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await AIRuntime.overview(session, business_id)
+    await session.commit()
+    return {"data": data, "meta": _meta(actor)}
+
+
+@router.patch("/{business_id}/ai-employees/{kind}")
+async def update_employee(
+    business_id: UUID,
+    kind: str,
+    body: EmployeePatch,
+    actor: BusinessActorContext = Depends(require_business_actor(AI_EMPLOYEES_MANAGE)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    patch = body.model_dump(exclude_none=True)
+    emp = await AIRuntime.update(session, business_id, kind, patch, actor_id=actor.request.identity_id)
+    await AuditService.record(
+        session, event_type="ai_employee.updated", actor_identity_id=actor.request.identity_id,
+        actor_context="business", action="update", business_id=business_id, resource_type="ai_employee",
+        resource_id=emp.id, after_state={"kind": kind, **patch})
+    data = await AIRuntime.overview(session, business_id)
+    await session.commit()
+    return {"data": data, "meta": _meta(actor)}
+
+
+@router.post("/{business_id}/ai-employees/pause")
+async def pause_all(
+    business_id: UUID,
+    body: PauseBody,
+    actor: BusinessActorContext = Depends(require_business_actor(AI_EMPLOYEES_MANAGE)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    await AIRuntime.set_pause(session, business_id, body.paused, actor_id=actor.request.identity_id)
+    await AuditService.record(
+        session, event_type="ai_employee.paused" if body.paused else "ai_employee.resumed",
+        actor_identity_id=actor.request.identity_id, actor_context="business",
+        action="pause" if body.paused else "resume", business_id=business_id, resource_type="ai_employee")
+    data = await AIRuntime.overview(session, business_id)
+    await session.commit()
+    return {"data": data, "meta": _meta(actor)}
+
+
+@router.post("/{business_id}/ai-employees/{kind}/run")
+async def run_now(
+    business_id: UUID,
+    kind: str,
+    actor: BusinessActorContext = Depends(require_business_actor(AI_EMPLOYEES_MANAGE)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    runner = RUNNERS.get(kind)
+    if runner is None:
+        raise ResourceNotFound("AI employee that runs on demand")
+    report = await runner(session, business_id, source=f"run by {actor.request.identity_id}")
+    data = await AIRuntime.overview(session, business_id)
+    await session.commit()
+    return {"data": {**data, "report": report}, "meta": _meta(actor)}
+
+
+@router.post("/{business_id}/ai-employees/actions/{action_id}/decision")
+async def decide(
+    business_id: UUID,
+    action_id: UUID,
+    body: DecisionBody,
+    actor: BusinessActorContext = Depends(require_business_actor(AI_EMPLOYEES_MANAGE)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    action = await session.get(AIAction, action_id)
+    if action is None or action.business_id != business_id:
+        raise ResourceNotFound("AI action")
+    needed = APPROVAL_NEEDS.get(action.tool)
+    if body.approve and needed and needed not in actor.request.effective_permissions:
+        raise PermissionDenied(needed)
+    decided = await AIRuntime.decide_approval(session, business_id, action_id, approve=body.approve,
+                                              actor_id=actor.request.identity_id)
+    await AuditService.record(
+        session, event_type="ai_employee.approval_decided", actor_identity_id=actor.request.identity_id,
+        actor_context="business", action="approve" if body.approve else "reject", business_id=business_id,
+        resource_type="ai_action", resource_id=decided.id, after_state={"tool": decided.tool})
+    data = await AIRuntime.overview(session, business_id)
+    await session.commit()
+    return {"data": data, "meta": _meta(actor)}

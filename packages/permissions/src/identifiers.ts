@@ -245,6 +245,9 @@ export const PERMISSIONS = {
   // Module: loyalty — points, stamps, referrals, gift vouchers (§18.2)
   LOYALTY_READ: 'loyalty.read',
   LOYALTY_MANAGE: 'loyalty.manage',
+  // Module: ai-employees — the feed, approvals, tools, tiers, limits, kill switch (§8)
+  AI_EMPLOYEES_READ: 'ai_employees.read',
+  AI_EMPLOYEES_MANAGE: 'ai_employees.manage',
 
   // Module: marketing — the owner approves every broadcast and every rupee (§18)
   MARKETING_READ: 'marketing.read',
