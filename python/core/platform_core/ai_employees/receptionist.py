@@ -33,6 +33,11 @@ _log = get_logger("ai.receptionist")
 OWNER_ONLY = re.compile(r"(\bdiscount|\d+\s*%\s*off|\bcheaper\b|\breduce (?:the )?price|\bless price|\brefund|"
                         r"\bcomplain|\bcomplaint|\bspecial price|\bcustom price|\bnegotiat|\bbargain|"
                         r"\bmoney back|\bcompensat)", re.I)
+# Attempts to steer the assistant or reach what is not the customer's own go to
+# a person as they are — decided here, never left to a model's classification.
+STEERING = re.compile(r"(\bignore (?:all |your |the |any |previous |prior |above )*(?:rules|instructions|prompts?)\b|"
+                      r"\bsystem prompt|\bdeveloper mode|\bjailbreak|\badmin\b|\bpassword|\bapi key|"
+                      r"\bother customers?'?s? (?:data|details|numbers?|phones?)\b)", re.I)
 WHO = ("are you a bot", "are you human", "are you a human", "are you ai", "are you an ai", "is this a bot",
        "is this a robot", "am i talking to", "who is this", "real person")
 PRICE = ("price", "cost", "how much", "rate", "fee", "fees", "charge", "charges", "evvalavu", "कितना", "விலை")
@@ -173,8 +178,8 @@ async def _handle(session: AsyncSession, conv: MessagingConversation, body: str)
     assert business is not None
     offerings = await _offerings(session, business.id)
     said = body.strip()
-    if OWNER_ONLY.search(said):
-        # Never negotiated by the AI: the question goes to a person as it is.
+    if OWNER_ONLY.search(said) or STEERING.search(said):
+        # Never negotiated or obeyed by the AI: the message goes to a person as it is.
         return await _to_a_person(session, emp, conv, said, f"whatsapp:{conv.id}", None, (None, None))
     intent = deterministic_intent(said)
     meta: dict[str, Any] = {}

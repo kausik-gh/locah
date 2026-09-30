@@ -79,8 +79,24 @@ STAFF_ALERTS: dict[str, tuple[str, str]] = {
     "call.missed": ("WhatsApp calls LOCAH could not answer", "messaging.read"),
 }
 # "Talk to a person" in English, Tamil and Hindi (a button id, or words typed).
-PERSON_WORDS = ("talk to person", "talk to a person", "human", "agent", "person", "call me", "speak to someone",
-                "நபர்", "ஆளிடம் பேச", "इंसान", "व्यक्ति से बात")
+# A lone word counts only as the whole message; otherwise whole phrases. Matching
+# inside words sent "how much is personal training?" to a person, and "price per
+# person?" is a question for the receptionist, not a request for one.
+PERSON_ALONE = ("person", "a person", "human", "a human", "agent", "someone")
+PERSON_WORDS = ("talk to person", "talk to a person", "talk to someone", "talk to a human", "talk to an agent",
+                "speak to someone", "speak to a person", "speak to a human", "real person", "live agent",
+                "human being", "call me", "நபர்", "ஆளிடம் பேச", "इंसान", "व्यक्ति से बात")
+
+
+def wants_a_person(text: str) -> bool:
+    """True when the customer asked for a person, not merely used the word."""
+    said = text.strip().lower()
+    words = " ".join(re.findall(r"[a-z0-9']+", said))
+    if words in PERSON_ALONE:
+        return True
+    # Tamil and Hindi phrases are matched as typed (their vowel signs are not
+    # "word" characters, so they are never split into words).
+    return any(f" {p} " in f" {words} " if p.isascii() else p in said for p in PERSON_WORDS)
 STOP_WORDS = ("stop", "unsubscribe", "நிறுத்து", "बंद")
 
 
@@ -847,7 +863,7 @@ class MessagingService:
                                                               "WhatsApp any more. Order and booking updates still "
                                                               "come here."), via="journey")
             return "opted_out"
-        wants_person = extra.get("id") == "talk_to_person" or any(w in said for w in PERSON_WORDS)
+        wants_person = extra.get("id") == "talk_to_person" or wants_a_person(body)
         if not wants_person:
             from platform_core.messaging import journeys
 
