@@ -320,9 +320,14 @@ function ImageField({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [justUploaded, setJustUploaded] = useState<string | null>(null)
+  // What this field just put there, before the page reloads its data: a
+  // picture LOCAH just drew is a draft at once (label + "Keep this picture").
+  const [fresh, setFresh] = useState<{ id: string; drawn: boolean } | null>(null)
   const [kept, setKept] = useState(false)
-  const shown = justUploaded || currentUrl
-  const isDraft = Boolean(draft && !justUploaded && !kept)
+  const [removed, setRemoved] = useState(false)
+  const shown = removed ? null : justUploaded || currentUrl
+  const assetId = fresh?.id ?? currentAssetId
+  const isDraft = Boolean((fresh ? fresh.drawn : draft) && !kept)
 
   const pick = async (file: File) => {
     setError(null)
@@ -352,6 +357,9 @@ function ImageField({
         return
       }
       if (done.url) setJustUploaded(done.url)
+      setFresh({ id: started.assetId, drawn: false })
+      setKept(false)
+      setRemoved(false)
       await onUploaded(started.assetId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed.')
@@ -408,6 +416,9 @@ function ImageField({
               return
             }
             if (result.url) setJustUploaded(result.url)
+            setFresh({ id: result.assetId, drawn: true })
+            setKept(false)
+            setRemoved(false)
             await onUploaded(result.assetId)
           } catch (err) {
             setError(err instanceof Error ? err.message : 'Generation failed.')
@@ -419,7 +430,7 @@ function ImageField({
         {shown ? 'Generate a new picture' : 'Generate a picture'}
       </button>
       ) : null}
-      {isDraft && currentAssetId ? (
+      {isDraft && assetId ? (
         <button
           type="button"
           className="btn btn-ghost"
@@ -427,7 +438,7 @@ function ImageField({
           onClick={async () => {
             setError(null)
             setBusy(true)
-            const result = await approveDraftImage(businessId, currentAssetId)
+            const result = await approveDraftImage(businessId, assetId)
             setBusy(false)
             if (result.ok) setKept(true)
             else setError(result.error)
@@ -443,6 +454,8 @@ function ImageField({
           disabled={busy}
           onClick={async () => {
             setJustUploaded(null)
+            setFresh(null)
+            setRemoved(true)
             await onRemove()
           }}
         >

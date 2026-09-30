@@ -27,4 +27,8 @@ export RATE_LIMIT_ENABLED=0
 # The local web (3100) and Workspace (3101) call the API from the browser.
 export CORS_ALLOWED_ORIGINS=${ACCEPT_CORS:-http://localhost:3100,http://localhost:3101}
 unset GEMINI_API_KEY XAI_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY || true
+if [ -n "${ACCEPT_STANDIN_IMAGES:-}" ]; then
+  # Labelled stand-in pictures, to click through the editor's picture buttons.
+  exec uv run --no-env-file python tools/acceptance/stack/api_standin_images.py
+fi
 exec uv run --no-env-file uvicorn platform_api.main:app --app-dir apps/api/src --port "${API_PORT:-8010}"
