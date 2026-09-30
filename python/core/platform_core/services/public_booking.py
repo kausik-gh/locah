@@ -241,6 +241,98 @@ class PublicBookingService:
         return dict(result)
 
     @staticmethod
+    async def _guest_contact(
+        session: AsyncSession, business: Business, payload: dict[str, Any], *,
+        identity_id: uuid.UUID | None, correlation_id: str,
+    ) -> Any:
+        guest = payload.get("guest") or {}
+        display_name = str(guest.get("name") or "").strip()
+        email = str(guest.get("email") or "").strip().lower()
+        phone = (str(guest.get("phone")).strip() if guest.get("phone") else None) or None
+        if identity_id is None and (not display_name or not email):
+            raise ValidationError(
+                "Guest name and email are required",
+                details={"field": "guest", "code": "policy_restriction"},
+            )
+
+        # Doc 05 Part 7.1: a guest booking is bounded to the transaction and
+        # never becomes a Platform Identity. Customer attribution is the
+        # business-scoped CustomerContact; audit/actor attribution is the
+        # storefront owner acting in a guest-checkout context.
+        actor_id = business.primary_owner_identity_id
+        if identity_id is not None:
+            from platform_core.services.customer_account import CustomerAccountService
+
+            return await CustomerAccountService.contact_for_identity(
+                session, business_id=business.id, identity_id=identity_id, display_name=display_name,
+                phone=phone, actor_id=actor_id, correlation_id=correlation_id)
+        return await CustomerService.find_or_create_contact(
+            session,
+            business_id=business.id,
+            correlation_id=correlation_id,
+            actor_id=actor_id,
+            actor_context="guest_checkout",
+            display_name=display_name,
+            email=email,
+            phone=phone,
+        )
+
+    @staticmethod
+    async def join_waitlist(
+        session: AsyncSession, *, slug: str, correlation_id: str, payload: dict[str, Any],
+        identity_id: uuid.UUID | None = None,
+    ) -> dict[str, Any]:
+        """A guest asks to be told if a full slot opens up (only when it is full)."""
+        from platform_core.services.booking_waitlist import BookingWaitlistService
+
+        business = await PublicBookingService._resolve_business(session, slug)
+        if not await PublicBookingService._bookings_active(session, business.id):
+            raise ValidationError("Bookings are not enabled for this Business", details={"code": "bookings_disabled"})
+        contact = await PublicBookingService._guest_contact(
+            session, business, payload, identity_id=identity_id, correlation_id=correlation_id)
+        entry = await BookingWaitlistService.join(
+            session, business_id=business.id, customer_contact_id=contact.id,
+            payload={k: v for k, v in payload.items() if k != "guest"},
+            actor_id=business.primary_owner_identity_id, correlation_id=correlation_id, channel="web")
+        data: dict[str, Any] = dict(BookingWaitlistService.serialize(entry))
+        data.pop("customer_contact_id", None)
+        return data
+
+    @staticmethod
+    async def waitlist_offer(
+        session: AsyncSession, *, slug: str, entry_id: uuid.UUID, token: str
+    ) -> dict[str, Any]:
+        """What the offer link shows: the slot, and whether it can still be taken."""
+        from platform_core.services.booking_waitlist import BookingWaitlistService
+
+        business = await PublicBookingService._resolve_business(session, slug)
+        entry = await BookingWaitlistService.resolve_offer(session, business.id, entry_id, token)
+        offering = await session.get(Offering, entry.offering_id) if entry.offering_id else None
+        now = datetime.now(timezone.utc)
+        return {
+            "business": {"display_name": business.display_name, "slug": business.slug},
+            "title": offering.title if offering is not None else "Booking",
+            "starts_at": entry.starts_at.isoformat(), "ends_at": entry.ends_at.isoformat(),
+            "party_size": entry.party_size, "status": entry.status,
+            "offer_expires_at": entry.offer_expires_at.isoformat() if entry.offer_expires_at else None,
+            "can_take": entry.status == "offered" and entry.offer_expires_at is not None
+            and entry.offer_expires_at > now,
+        }
+
+    @staticmethod
+    async def claim_waitlist(
+        session: AsyncSession, *, slug: str, entry_id: uuid.UUID, token: str, correlation_id: str
+    ) -> dict[str, Any]:
+        from platform_core.services.booking_waitlist import BookingWaitlistService
+
+        business = await PublicBookingService._resolve_business(session, slug)
+        booking = await BookingWaitlistService.claim(
+            session, business=business, entry_id=entry_id, token=token, correlation_id=correlation_id)
+        data = BookingResolver.serialize_booking(booking)
+        data["management_token"] = booking.management_token
+        return dict(data)
+
+    @staticmethod
     async def create_public_booking(
         session: AsyncSession,
         *,
@@ -263,38 +355,9 @@ class PublicBookingService:
                 details={"code": "location_closed", "field": "location_id"},
             )
 
-        guest = payload.get("guest") or {}
-        display_name = str(guest.get("name") or "").strip()
-        email = str(guest.get("email") or "").strip().lower()
-        phone = (str(guest.get("phone")).strip() if guest.get("phone") else None) or None
-        if identity_id is None and (not display_name or not email):
-            raise ValidationError(
-                "Guest name and email are required",
-                details={"field": "guest", "code": "policy_restriction"},
-            )
-
-        # Doc 05 Part 7.1: a guest booking is bounded to the transaction and
-        # never becomes a Platform Identity. Customer attribution is the
-        # business-scoped CustomerContact; audit/actor attribution is the
-        # storefront owner acting in a guest-checkout context.
+        contact = await PublicBookingService._guest_contact(
+            session, business, payload, identity_id=identity_id, correlation_id=correlation_id)
         actor_id = business.primary_owner_identity_id
-        if identity_id is not None:
-            from platform_core.services.customer_account import CustomerAccountService
-
-            contact = await CustomerAccountService.contact_for_identity(
-                session, business_id=business.id, identity_id=identity_id, display_name=display_name,
-                phone=phone, actor_id=actor_id, correlation_id=correlation_id)
-        else:
-            contact = await CustomerService.find_or_create_contact(
-                session,
-                business_id=business.id,
-                correlation_id=correlation_id,
-                actor_id=actor_id,
-                actor_context="guest_checkout",
-                display_name=display_name,
-                email=email,
-                phone=phone,
-            )
 
         booking = await BookingService.create_booking(
             session,

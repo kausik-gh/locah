@@ -304,13 +304,17 @@ def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
     shown = [a["key"] for a in client.get(f"/v1/platform/businesses/{bid}/automations",
                                           headers=owner).json()["data"]["automations"]]
     # P2-02 wired the membership renewal and fee-instalment ladders.
-    assert shown == ["membership.renewal", "membership.instalment", "booking.reminder", "stock.low",
+    # Bookings depth wired unpaid holds, the waitlist offer and its time limit, and the no-show follow-up.
+    assert shown == ["membership.renewal", "membership.instalment", "booking.reminder", "booking.hold",
+                     "booking.waitlist", "booking.waitlist_expiry", "booking.no_show", "stock.low",
                      "order.tracking", "review.request", "lead.followup", "chat.waiting", "compliance.due",
                      "inventory.expiry"]
     assert {k for k in LADDERS if is_wired(k)} == {"stock.low", "lead.followup", "booking.reminder", "order.tracking",
                                                    "invoice.overdue", "ledger.statement", "chat.waiting",
                                                    "review.request", "compliance.due", "inventory.expiry",
-                                                   "membership.renewal", "membership.instalment", "task.due"}
+                                                   "membership.renewal", "membership.instalment", "task.due",
+                                                   "booking.hold", "booking.waitlist", "booking.waitlist_expiry",
+                                                   "booking.no_show"}
 
 
 @DB

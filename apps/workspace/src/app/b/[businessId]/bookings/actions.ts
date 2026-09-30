@@ -34,3 +34,10 @@ export async function updateBookingsPolicy(
   )
   revalidatePath(`/b/${businessId}/bookings`)
 }
+
+export async function withdrawWaitlist(businessId: string, entryId: string) {
+  const token = await getAccessToken()
+  if (!token) throw new Error('Unauthorized')
+  await apiPost(`/v1/platform/businesses/${businessId}/bookings-waitlist/${entryId}/withdraw`, {}, token)
+  revalidatePath(`/b/${businessId}/bookings`)
+}

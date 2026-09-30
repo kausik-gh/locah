@@ -92,3 +92,38 @@ export async function rescheduleManagedBooking(
   }
   return json.data
 }
+
+export type WaitlistOffer = {
+  business: { display_name: string; slug: string }
+  title: string
+  starts_at: string
+  ends_at: string
+  party_size: number
+  status: string
+  offer_expires_at: string | null
+  can_take: boolean
+}
+
+/** A waitlist offer as its link shows it; null when the link is not (or no longer) valid. */
+export async function fetchWaitlistOffer(slug: string, entryId: string, token: string): Promise<WaitlistOffer | null> {
+  const res = await fetch(
+    `${apiUrl}/v1/public/websites/${slug}/waitlist/${entryId}?t=${encodeURIComponent(token)}`,
+    { cache: 'no-store' }
+  )
+  if (!res.ok) return null
+  return (await res.json()).data as WaitlistOffer
+}
+
+export async function claimWaitlistOffer(slug: string, entryId: string, token: string) {
+  const res = await fetch(`${apiUrl}/v1/public/websites/${slug}/waitlist/${entryId}/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const code = json?.error?.details?.code || json?.detail?.details?.code
+    throw Object.assign(new Error(json?.error?.message || 'Could not take the place'), { code })
+  }
+  return json.data as { id: string; booking_number: string; management_token: string }
+}

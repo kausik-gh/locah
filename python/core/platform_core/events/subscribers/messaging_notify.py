@@ -263,6 +263,33 @@ async def remind_booking(session: AsyncSession, step: DueStep) -> StepOutcome:
                        f"Reminder for {booking.booking_number} sent on WhatsApp" if said == "sent" else said)
 
 
+@subscribe(  # type: ignore[untyped-decorator, unused-ignore]
+    "messaging.booking_no_show", "booking.no_show",
+    description="Schedule the “we missed you” follow-up for a no-show (owner switch in Automations)",
+)
+async def booking_no_show(session: AsyncSession, event: EventContext) -> None:
+    business_id = event.require_business_id()
+    booking_id = event.require_uuid("booking_id")
+    await AutomationEngine.schedule(session, business_id, ladder_key="booking.no_show", entity_id=booking_id,
+                                    anchor=datetime.now(timezone.utc), period_key=str(booking_id))
+
+
+@step_handler("booking.no_show")  # type: ignore[untyped-decorator, unused-ignore]
+async def follow_up_no_show(session: AsyncSession, step: DueStep) -> StepOutcome:
+    booking = await session.get(Booking, step.entity_id)
+    if booking is None or booking.status != "no_show":
+        return StepOutcome("skipped", "The booking is no longer a no-show")
+    contact = await _contact(session, booking.customer_contact_id)
+    business = await _business(session, step.business_id)
+    said = await _send(session, step.business_id, to=contact.phone if contact else None, key="booking_missed",
+                       contact_id=contact.id if contact else None,
+                       params=[business.display_name, booking.title, _when(booking.starts_at),
+                               business_site_url(business.slug, "/book")],
+                       idem=f"booking_missed:{booking.id}")
+    return StepOutcome("done" if said == "sent" else "skipped",
+                       f"“We missed you” for {booking.booking_number} sent on WhatsApp" if said == "sent" else said)
+
+
 # ---------------------------------------------------------------- quotes
 @subscribe(  # type: ignore[untyped-decorator, unused-ignore]
     "messaging.quote_acceptance_code", "quote.acceptance_code_issued",

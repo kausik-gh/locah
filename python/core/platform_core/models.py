@@ -1157,6 +1157,10 @@ class BookingsPolicy(Base):
     cancel_window_hours: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("24")
     )
+    # How long an unpaid online deposit keeps its slot (Founder §17).
+    hold_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("15"))
+    waitlist_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    waitlist_offer_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("60"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
@@ -1229,9 +1233,72 @@ class Booking(Base):
         PG_UUID(as_uuid=True), ForeignKey("platform_identities.id"), nullable=True
     )
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # An unpaid online deposit's slot is kept until then, then released.
+    hold_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    series_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("bookings_series.id"), nullable=True
+    )
+    occurrence_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class BookingSeries(Base):
+    """Linked weekly occurrences. Each occurrence is an ordinary booking."""
+
+    __tablename__ = "bookings_series"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    interval_weeks: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    occurrences: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    provider_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("workforce_members.id"), nullable=True
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class BookingWaitlistEntry(Base):
+    """A request for a full slot. Never a booking until the customer takes an offer."""
+
+    __tablename__ = "bookings_waitlist_entries"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    location_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("business_locations.id"))
+    offering_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    provider_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("workforce_members.id"), nullable=True
+    )
+    reservation_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    party_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    customer_contact_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("customer_relationships_contacts.id")
+    )
+    channel: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'waiting'"))
+    offered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    offer_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claim_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    booking_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("bookings_bookings.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 

@@ -23,7 +23,10 @@ from platform_core.services.availability import AvailabilityService
 from platform_core.services.booking import BookingService
 from platform_core.services.booking_lifecycle import BookingLifecycleService
 from platform_core.services.booking_note import BookingNoteService
-from platform_core.validation.booking import validate_availability_query
+from platform_core.models import Business
+from platform_core.services.booking_series import BookingSeriesService
+from platform_core.services.booking_waitlist import BookingWaitlistService
+from platform_core.validation.booking import parse_datetime, validate_availability_query
 
 router = APIRouter(prefix="/v1/platform/businesses", tags=["bookings"])
 
@@ -91,6 +94,43 @@ class BookingsPolicyRequest(BaseModel):
     deposit_amount: float | None = None
     deposit_percent: float | None = None
     cancel_window_hours: int | None = Field(default=None, ge=0)
+    hold_minutes: int | None = Field(default=None, ge=5, le=1440)
+    waitlist_enabled: bool | None = None
+    waitlist_offer_minutes: int | None = Field(default=None, ge=5, le=2880)
+
+
+class WaitlistJoinRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    customer_contact_id: UUID
+    location_id: UUID
+    offering_id: UUID | None = None
+    provider_id: UUID | None = None
+    reservation_mode: str = "appointment"
+    starts_at: str
+    ends_at: str
+    party_size: int = Field(default=1, ge=1)
+
+
+class RepeatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interval_weeks: int = Field(default=1, ge=1, le=4)
+    occurrences: int = Field(ge=2, le=52)
+
+
+class SeriesChangeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_booking_id: UUID
+    starts_at: str
+    ends_at: str
+
+
+class SeriesEndRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_booking_id: UUID
 
 
 class AvailabilityCheckRequest(BaseModel):
@@ -353,17 +393,7 @@ async def get_bookings_policy(
     policy = await BookingService.get_or_create_policy(session, business_id)
     await session.commit()
     return {
-        "data": {
-            "require_deposit": policy.require_deposit,
-            "deposit_amount": float(policy.deposit_amount)
-            if policy.deposit_amount is not None
-            else None,
-            "deposit_percent": float(policy.deposit_percent)
-            if policy.deposit_percent is not None
-            else None,
-            "cancel_window_hours": policy.cancel_window_hours,
-            "version": policy.version,
-        },
+        "data": BookingService.serialize_policy(policy),
         "meta": {"correlation_id": actor.request.correlation_id},
     }
 
@@ -386,16 +416,117 @@ async def patch_bookings_policy(
     )
     await session.commit()
     return {
-        "data": {
-            "require_deposit": policy.require_deposit,
-            "deposit_amount": float(policy.deposit_amount)
-            if policy.deposit_amount is not None
-            else None,
-            "deposit_percent": float(policy.deposit_percent)
-            if policy.deposit_percent is not None
-            else None,
-            "cancel_window_hours": policy.cancel_window_hours,
-            "version": policy.version,
-        },
+        "data": BookingService.serialize_policy(policy),
         "meta": {"correlation_id": actor.request.correlation_id},
     }
+
+
+# ------------------------------------------------------------------ waitlist
+
+
+@router.get("/{business_id}/bookings-waitlist")
+async def list_waitlist(
+    business_id: UUID,
+    status: str | None = Query(default=None),
+    actor: BusinessActorContext = Depends(require_business_actor(BOOKINGS_READ, "bookings")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    business = await session.get(Business, business_id)
+    assert business is not None
+    entries = await BookingWaitlistService.list_entries(session, business_id, status)
+    return {
+        "data": [BookingWaitlistService.serialize(e, with_link=BookingWaitlistService.offer_link(business, e))
+                 for e in entries],
+        "meta": {"correlation_id": actor.request.correlation_id},
+    }
+
+
+@router.post("/{business_id}/bookings-waitlist")
+async def join_waitlist(
+    business_id: UUID,
+    body: WaitlistJoinRequest,
+    actor: BusinessActorContext = Depends(require_business_actor(BOOKINGS_CREATE, "bookings")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = body.model_dump(mode="json")
+    entry = await BookingWaitlistService.join(
+        session, business_id=business_id, customer_contact_id=body.customer_contact_id,
+        payload={k: v for k, v in data.items() if k != "customer_contact_id"},
+        actor_id=actor.request.identity_id, correlation_id=actor.request.correlation_id, channel="workspace")
+    await session.commit()
+    return {"data": BookingWaitlistService.serialize(entry), "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/bookings-waitlist/{entry_id}/withdraw")
+async def withdraw_waitlist(
+    business_id: UUID,
+    entry_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(BOOKINGS_UPDATE, "bookings")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    entry = await BookingWaitlistService.withdraw(session, business_id, entry_id, actor.request.identity_id)
+    await session.commit()
+    return {"data": BookingWaitlistService.serialize(entry), "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+# ------------------------------------------------------------------ series
+
+
+@router.post("/{business_id}/bookings/{booking_id}/repeat")
+async def repeat_booking(
+    business_id: UUID,
+    booking_id: UUID,
+    body: RepeatRequest,
+    actor: BusinessActorContext = Depends(require_business_actor(BOOKINGS_CREATE, "bookings")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await BookingSeriesService.repeat(
+        session, business_id=business_id, booking_id=booking_id, actor_id=actor.request.identity_id,
+        correlation_id=actor.request.correlation_id, interval_weeks=body.interval_weeks,
+        occurrences=body.occurrences)
+    await session.commit()
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.get("/{business_id}/bookings-series/{series_id}")
+async def get_series(
+    business_id: UUID,
+    series_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(BOOKINGS_READ, "bookings")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    series = await BookingSeriesService.get(session, business_id, series_id)
+    return {"data": await BookingSeriesService.serialize(session, series),
+            "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/bookings-series/{series_id}/change-future")
+async def change_series_future(
+    business_id: UUID,
+    series_id: UUID,
+    body: SeriesChangeRequest,
+    actor: BusinessActorContext = Depends(require_business_actor(BOOKINGS_UPDATE, "bookings")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await BookingSeriesService.change_future(
+        session, business_id=business_id, series_id=series_id, from_booking_id=body.from_booking_id,
+        starts_at=parse_datetime(body.starts_at, field="starts_at"),
+        ends_at=parse_datetime(body.ends_at, field="ends_at"),
+        actor_id=actor.request.identity_id, correlation_id=actor.request.correlation_id)
+    await session.commit()
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}
+
+
+@router.post("/{business_id}/bookings-series/{series_id}/end")
+async def end_series(
+    business_id: UUID,
+    series_id: UUID,
+    body: SeriesEndRequest,
+    actor: BusinessActorContext = Depends(require_business_actor(BOOKINGS_CANCEL, "bookings")),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await BookingSeriesService.end(
+        session, business_id=business_id, series_id=series_id, from_booking_id=body.from_booking_id,
+        actor_id=actor.request.identity_id, correlation_id=actor.request.correlation_id)
+    await session.commit()
+    return {"data": data, "meta": {"correlation_id": actor.request.correlation_id}}

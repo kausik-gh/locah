@@ -407,6 +407,25 @@ class BookingService:
                 correlation_id=correlation_id,
             )
 
+        # Founder §17: a slot waiting on an online deposit is held, not kept for
+        # ever - if the deposit is not paid within the owner's hold time the
+        # slot is released (booking.hold ladder).
+        if (
+            deposit_required
+            and deposit_amount > 0
+            and validated["payment_method"] == "online"
+            and booking.payment_status not in ("deposit_paid", "paid")
+        ):
+            from platform_core.automation import AutomationEngine
+
+            booking.hold_expires_at = datetime.now(timezone.utc) + timedelta(minutes=policy.hold_minutes)
+            await session.flush()
+            await AutomationEngine.schedule(
+                session, business_id, ladder_key="booking.hold", entity_id=booking.id,
+                anchor=booking.hold_expires_at,
+                period_key=booking.hold_expires_at.isoformat(timespec="seconds"),
+            )
+
         after = BookingResolver.serialize_booking(booking)
         await OutboxService.publish(
             session,
@@ -532,6 +551,12 @@ class BookingService:
             policy.deposit_percent = payload["deposit_percent"]
         if "cancel_window_hours" in payload:
             policy.cancel_window_hours = int(payload["cancel_window_hours"])
+        if payload.get("hold_minutes") is not None:
+            policy.hold_minutes = int(payload["hold_minutes"])
+        if payload.get("waitlist_enabled") is not None:
+            policy.waitlist_enabled = bool(payload["waitlist_enabled"])
+        if payload.get("waitlist_offer_minutes") is not None:
+            policy.waitlist_offer_minutes = int(payload["waitlist_offer_minutes"])
         policy.version += 1
         policy.updated_at = datetime.now(timezone.utc)
         await session.flush()
@@ -550,9 +575,25 @@ class BookingService:
                 if policy.deposit_amount is not None
                 else None,
                 "cancel_window_hours": policy.cancel_window_hours,
+                "hold_minutes": policy.hold_minutes,
+                "waitlist_enabled": policy.waitlist_enabled,
+                "waitlist_offer_minutes": policy.waitlist_offer_minutes,
             },
         )
         return policy
+
+    @staticmethod
+    def serialize_policy(policy: BookingsPolicy) -> dict[str, Any]:
+        return {
+            "require_deposit": policy.require_deposit,
+            "deposit_amount": float(policy.deposit_amount) if policy.deposit_amount is not None else None,
+            "deposit_percent": float(policy.deposit_percent) if policy.deposit_percent is not None else None,
+            "cancel_window_hours": policy.cancel_window_hours,
+            "hold_minutes": policy.hold_minutes,
+            "waitlist_enabled": policy.waitlist_enabled,
+            "waitlist_offer_minutes": policy.waitlist_offer_minutes,
+            "version": policy.version,
+        }
 
     @staticmethod
     async def patch_booking(

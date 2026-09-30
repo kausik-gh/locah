@@ -3,10 +3,15 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { DataTable, EmptyState, FilterTabs, GateNotice, PageHeader, Section, StatusPill } from '@/components/ui'
-import { updateBookingsPolicy } from './actions'
+import { updateBookingsPolicy, withdrawWaitlist } from './actions'
 import { LocalTime } from '@/components/LocalTime'
 
 export const dynamic = 'force-dynamic'
+
+type Waiting = {
+  id: string; starts_at: string; party_size: number; status: string
+  offer_expires_at: string | null; offer_link?: string
+}
 
 /** Doc 11 §4.2 Bookings — list/calendar + policies. */
 export default async function BookingsPage({
@@ -20,17 +25,22 @@ export default async function BookingsPage({
   if (!token) redirect('/login')
   const base = `/b/${params.businessId}`
   const qs = searchParams?.status ? `?status=${encodeURIComponent(searchParams.status)}` : ''
-  const [listRes, policyRes, meRes] = await Promise.all([
+  const [listRes, policyRes, meRes, waitRes] = await Promise.all([
     apiTry<{ data: Array<Record<string, unknown>> }>(
       `/v1/platform/businesses/${params.businessId}/bookings${qs}`,
       token
     ),
     apiTry<{
-      data: { require_deposit: boolean; deposit_amount: number | null; cancel_window_hours: number }
+      data: {
+        require_deposit: boolean; deposit_amount: number | null; cancel_window_hours: number
+        hold_minutes: number; waitlist_enabled: boolean; waitlist_offer_minutes: number
+      }
     }>(`/v1/platform/businesses/${params.businessId}/bookings-policy`, token),
     apiTry<{ data: { permissions: string[] } }>(`/v1/me/context`, token,
       { 'X-Operating-Context': 'business', 'X-Business-Id': params.businessId }),
+    apiTry<{ data: Waiting[] }>(`/v1/platform/businesses/${params.businessId}/bookings-waitlist`, token),
   ])
+  const waiting = waitRes.ok ? waitRes.data.data || [] : []
   // Only people who set the business's booking rules see the policy form (a provider does not).
   const canSetPolicy = meRes.ok && (meRes.data.data.permissions ?? []).includes('bookings.manage_availability')
   if (!listRes.ok) {
@@ -44,7 +54,8 @@ export default async function BookingsPage({
   const bookings = listRes.data.data || []
   const policy = policyRes.ok
     ? policyRes.data.data
-    : { require_deposit: false, deposit_amount: null, cancel_window_hours: 24 }
+    : { require_deposit: false, deposit_amount: null, cancel_window_hours: 24, hold_minutes: 15,
+        waitlist_enabled: false, waitlist_offer_minutes: 60 }
 
   async function savePolicy(formData: FormData) {
     'use server'
@@ -52,7 +63,15 @@ export default async function BookingsPage({
       require_deposit: formData.get('require_deposit') === 'on',
       deposit_amount: formData.get('deposit_amount') ? Number(formData.get('deposit_amount')) : null,
       cancel_window_hours: Number(formData.get('cancel_window_hours') || 24),
+      hold_minutes: Number(formData.get('hold_minutes') || 15),
+      waitlist_enabled: formData.get('waitlist_enabled') === 'on',
+      waitlist_offer_minutes: Number(formData.get('waitlist_offer_minutes') || 60),
     })
+  }
+
+  async function withdraw(formData: FormData) {
+    'use server'
+    await withdrawWaitlist(params.businessId, String(formData.get('id')))
   }
 
   return (
@@ -112,6 +131,29 @@ export default async function BookingsPage({
         }
       />
 
+      {waiting.length ? (
+        <Section title="Waitlist">
+          <p style={{ marginTop: 0, color: 'var(--color-muted)' }}>
+            When a place opens up, the first person waiting is offered it on WhatsApp. Nobody is booked until they take it.
+          </p>
+          <ul>
+            {waiting.map((w) => (
+              <li key={w.id} style={{ marginBottom: '0.4rem' }}>
+                <LocalTime value={w.starts_at} /> · party of {w.party_size} · {w.status === 'offered' ? 'offered' : 'waiting'}
+                {w.status === 'offered' && w.offer_expires_at ? <> until <LocalTime value={w.offer_expires_at} /></> : null}
+                {w.offer_link ? (
+                  <input readOnly value={w.offer_link} aria-label="Offer link to share" style={{ display: 'block', width: '100%', maxWidth: 520, fontSize: '0.8rem' }} />
+                ) : null}
+                <form action={withdraw} style={{ display: 'inline' }}>
+                  <input type="hidden" name="id" value={w.id} />
+                  <button type="submit" className="btn-quiet">Remove</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+
       {canSetPolicy ? (
         <Section title="Booking policy">
           <form action={savePolicy} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -126,6 +168,18 @@ export default async function BookingsPage({
             <label style={{ display: 'grid', gap: '0.2rem' }}>
               Cancellation window (hours)
               <input name="cancel_window_hours" type="number" defaultValue={policy.cancel_window_hours} />
+            </label>
+            <label style={{ display: 'grid', gap: '0.2rem' }}>
+              Hold an unpaid online deposit for (minutes)
+              <input name="hold_minutes" type="number" min={5} max={1440} defaultValue={policy.hold_minutes} />
+            </label>
+            <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', color: 'var(--color-foreground)' }}>
+              <input type="checkbox" name="waitlist_enabled" defaultChecked={policy.waitlist_enabled} style={{ minHeight: 'auto' }} />
+              Keep a waitlist when a slot is full
+            </label>
+            <label style={{ display: 'grid', gap: '0.2rem' }}>
+              Keep an offered place for (minutes)
+              <input name="waitlist_offer_minutes" type="number" min={5} max={2880} defaultValue={policy.waitlist_offer_minutes} />
             </label>
             <button type="submit">Save policy</button>
           </form>

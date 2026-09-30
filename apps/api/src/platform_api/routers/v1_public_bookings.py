@@ -59,6 +59,25 @@ class CreatePublicBookingRequest(BaseModel):
     idempotency_key: str | None = None
 
 
+class WaitlistJoinPublicRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    location_id: UUID
+    offering_id: UUID | None = None
+    provider_id: UUID | None = None
+    reservation_mode: str = "appointment"
+    starts_at: str
+    ends_at: str
+    party_size: int = Field(default=1, ge=1)
+    guest: GuestPayload
+
+
+class WaitlistClaimRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str
+
+
 class CancelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -158,5 +177,43 @@ async def reschedule_public_booking(
         reason=body.reason,
         correlation_id=str(uuid.uuid4()),
     )
+    await session.commit()
+    return {"data": data, "meta": {}}
+
+
+@router.post("/websites/{slug}/waitlist")
+async def join_waitlist(
+    slug: str,
+    body: WaitlistJoinPublicRequest,
+    session: AsyncSession = Depends(get_db_session),
+    identity_id: UUID | None = Depends(optional_customer_identity),
+) -> dict[str, Any]:
+    data = await PublicBookingService.join_waitlist(
+        session, slug=slug, correlation_id=str(uuid.uuid4()), payload=body.model_dump(mode="json"),
+        identity_id=identity_id)
+    await session.commit()
+    return {"data": data, "meta": {}}
+
+
+@router.get("/websites/{slug}/waitlist/{entry_id}")
+async def view_waitlist_offer(
+    slug: str,
+    entry_id: UUID,
+    t: str = Query(default=""),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await PublicBookingService.waitlist_offer(session, slug=slug, entry_id=entry_id, token=t)
+    return {"data": data, "meta": {}}
+
+
+@router.post("/websites/{slug}/waitlist/{entry_id}/claim")
+async def claim_waitlist_offer(
+    slug: str,
+    entry_id: UUID,
+    body: WaitlistClaimRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    data = await PublicBookingService.claim_waitlist(
+        session, slug=slug, entry_id=entry_id, token=body.token, correlation_id=str(uuid.uuid4()))
     await session.commit()
     return {"data": data, "meta": {}}

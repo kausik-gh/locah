@@ -116,6 +116,26 @@ LIBRARY: dict[str, Template] = {t.key: t for t in (
         "When a queue token is next in line (the lane's 'tell them when … ahead')", phase="P2",
     ),
     Template(
+        "booking_waitlist_opening", "A place opened up", "utility", "customer",
+        ("business name", "what is booked", "date and time", "link to take it", "minutes it is held"),
+        {
+            "en": "Good news from {{1}}: a place opened up for {{2}} on {{3}}. Take it here: {{4}} (kept for you for {{5}} minutes, then offered to the next person).",
+            "ta": "நல்ல செய்தி: {{1}} இல் {{2}} க்கு {{3}} அன்று இடம் கிடைத்துள்ளது. இங்கே பெறுங்கள்: {{4}} ({{5}} நிமிடங்கள் உங்களுக்காக வைத்திருப்போம், பின்னர் அடுத்தவருக்கு).",
+            "hi": "खुशखबरी: {{1}} में {{2}} के लिए {{3}} को जगह खाली हुई है। यहाँ लें: {{4}} ({{5}} मिनट तक आपके लिए रखी है, फिर अगले व्यक्ति को)।",
+        },
+        "A place a customer is waiting for opens up (Bookings waitlist)", phase="P2",
+    ),
+    Template(
+        "booking_missed", "We missed you", "utility", "customer",
+        ("business name", "what was booked", "date and time", "link to book again"),
+        {
+            "en": "Hello from {{1}}: we missed you for {{2}} on {{3}}. Book another time here: {{4}} (or reply to this message).",
+            "ta": "வணக்கம்: {{1}} இல் {{2}} ({{3}}) க்கு உங்களைக் காணவில்லை. வேறு நேரம் முன்பதிவு செய்ய: {{4}} (அல்லது இங்கே பதில் அனுப்புங்கள்).",
+            "hi": "नमस्ते: {{1}} में {{2}} ({{3}}) के लिए आप नहीं आ पाए। दूसरा समय यहाँ बुक करें: {{4}} (या इस संदेश का जवाब दें)।",
+        },
+        "A booking is marked no-show (Bookings no-show follow-up)", phase="P2",
+    ),
+    Template(
         "review_request", "Review request", "utility", "customer",
         ("business name", "completed order or booking", "review link"),
         {
