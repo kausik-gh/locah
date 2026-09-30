@@ -122,7 +122,9 @@ class AutomationEngine:
         if ladder is None:
             raise ValidationError("Unknown automation", details={"field": "ladder_key"})
         current = await AutomationEngine.rule(session, business_id, ladder_key)
-        new_config = current["config"] if config is None else AutomationEngine._validate_config(ladder, config)
+        # A change names only what it changes: switching a step keeps the other options.
+        new_config = current["config"] if config is None else AutomationEngine._validate_config(
+            ladder, {**current["config"], **config})
         new_enabled = current["enabled"] if enabled is None else bool(enabled)
         await session.execute(
             text("""
@@ -170,6 +172,13 @@ class AutomationEngine:
         out["offset_hours"] = clean
         if "quiet_hours" in config:
             out["quiet_hours"] = bool(config["quiet_hours"])
+        # Low stock may also draft a requisition - only when the owner turns it
+        # on, and never more than a draft (no purchase order goes to anyone).
+        if "draft_requisition" in config:
+            if ladder.key != "stock.low":
+                raise ValidationError("Only low-stock alerts can draft a requisition",
+                                      details={"field": "draft_requisition"})
+            out["draft_requisition"] = bool(config["draft_requisition"])
         return out
 
     # ------------------------------------------------------------- schedule / cancel
