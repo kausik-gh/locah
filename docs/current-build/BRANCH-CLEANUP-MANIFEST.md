@@ -1,9 +1,10 @@
 # Branch cleanup manifest
 
 Prepared 2026-09-30 on `claude/final-release-candidate` after `git fetch --all --prune`.
-**Nothing has been deleted.** Deletion happens only after final `main`
-contains the release and each branch is re-checked with
-`git merge-base --is-ancestor <head> main`.
+Deletion happened only after final `main` contained the release and each
+branch was re-checked with `git merge-base --is-ancestor <head> main` — see
+**Deleted** at the end (18 branches, 2026-09-30). The table below is the
+audit as prepared.
 
 Reference commit for "included": the release lane head at the time of the
 audit (`3a75f55`, which contains the integration head `a2047cb` and a
@@ -51,4 +52,38 @@ not reachable from the release lane.
 
 ## Deleted
 
-_None yet._
+2026-09-30, after `main` = `0fe5026` (release tag `locah-demo-2026-09-30-r2`), the
+hosted migration and the Railway deploy from `main`. Each branch was
+re-checked immediately before deletion.
+
+| Branch | Head | Check |
+| --- | --- | --- |
+| `claude/p2-02-memberships-wip` | `88ca43c` | ancestor of main |
+| `claude/phase-b-final-integration` | `a2047cb` | ancestor of main |
+| `claude/sleepy-gauss-ou1t3i` | `1cb02e1` | ancestor of main |
+| `claude/wonderful-newton-eiw7jn` | `9fe343c` | ancestor of main |
+| `claude/compassionate-allen-hlpq6p` (Website-v4) | `f2c6353` | ancestor of main (merged in `9a5248b`; full gate re-run on the final product) |
+| `parallel/antigravity-growth` | `e48fd60` | ancestor of main |
+| `parallel/codex-attendance` | `f8a1348` | ancestor of main |
+| `parallel/codex-documents-forms` | `d070a7e` | ancestor of main |
+| `parallel/codex-projects-jobs-academics` | `e821a63` | ancestor of main |
+| `parallel/cursor-dispatch` | `2b115c6` | ancestor of main |
+| `parallel/cursor-growth-hardening` | `8921222` | ancestor of main |
+| `parallel/cursor-inventory-field` | `7245f54` | ancestor of main |
+| `parallel/cursor-kitchen` | `ccf09ff` | ancestor of main |
+| `parallel/cursor-queue-tasks` | `25a0d69` | ancestor of main |
+| `parallel/cursor-quotes` | `b52002c` | ancestor of main |
+| `parallel/cursor-supply-b2b` | `0d3c80f` | ancestor of main |
+| `cursor/gemini-activation-audit` | `e27dfe9` | not an ancestor (cherry-picked as `747a4d4`); its only change, `GEMINI-ACTIVATION-AUDIT.md`, is byte-identical in main; tag `archive/gemini-activation-audit` |
+| `cashfree-sandbox` | `8b495b8` | not merged by design; disposition in `FINAL-RELEASE-HANDOFF.md` (CASHFREE) and `6fec540`; tag `archive/cashfree-sandbox` |
+
+Kept: `main`; `claude/final-release-candidate` (the release worktree's
+branch, equal to main's release commit — delete once no further release
+documentation is pushed from it). Local-only `backup-before-reset` and
+`web-builder-lovable` untouched (founder's decision, see above). Local
+branches in the other worktrees (`/locah`, `/locah-gemini-audit`) untouched.
+
+Tags: `locah-demo-2026-09-30-r2` (release, `0fe5026`),
+`locah-demo-2026-09-30` (`dfe2995`, superseded — its migration set collided
+with the hosted history), `archive/cashfree-sandbox`,
+`archive/gemini-activation-audit`.

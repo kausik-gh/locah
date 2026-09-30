@@ -3,19 +3,19 @@
 Release lane `claude/final-release-candidate`, worked in the existing worktree
 `/Users/user25/gowtham/Personal_Projects/locah-release` (macOS, local stack).
 Every "tested" below was executed; what could not be run says so.
-Deployment fields are filled in by the post-deploy update of this file.
+Updated after the deploy (same day).
 
 ## Identity
 
 | Field | Value |
 |---|---|
-| FINAL MAIN SHA | PENDING (set after promotion; `git rev-parse origin/main`) |
-| RELEASE TAG | PENDING (`locah-demo-2026-09-30`) |
+| FINAL MAIN SHA | **`0fe502674f6a868e533e3cace0cdfe445c6d6ddd`** — the tested release (promoted by fast-forward `9c21d46..dfe2995..0fe5026`, no force, tree = tested tree). `main` may carry later docs-only commits (this file's updates); the code is `0fe5026`. |
+| RELEASE TAG | **`locah-demo-2026-09-30-r2`** → `0fe5026` (tag object `52dc4da`). `locah-demo-2026-09-30` → `dfe2995` is superseded: correct code, but its migration set could not be deployed to hosted (see SUPABASE). |
 | Release lane start | `d0fb04f` (fast-forwarded from local `42ff0e9`; tree clean) |
 | WEBSITE-V4 SOURCE SHA | `f2c6353a7ede027eb01350cb5eac97c69b03aff3` (`origin/claude/compassionate-allen-hlpq6p`), merged in `9a5248b` |
 | GEMINI AUDIT SHA | `e27dfe99d8897ed48bf77086667c6adaa992a6f0` (`origin/cursor/gemini-activation-audit`, docs only), cherry-picked as `747a4d4` → `docs/current-build/GEMINI-ACTIVATION-AUDIT.md` |
 | Old main | `9c21d4689033ed0539035cbfa8d39efb6efacf89` (already inside the release lineage via `2b34513`) |
-| MIGRATION COUNT | **93** (`infra/supabase/migrations`), no duplicate versions |
+| MIGRATION COUNT | **95** (`infra/supabase/migrations`), no duplicate versions; hosted history = 95 |
 
 ## What this pass changed (commits on top of `d0fb04f`)
 
@@ -28,13 +28,16 @@ Deployment fields are filled in by the post-deploy update of this file.
 | `708553b` | **WhatsApp routing fix**: "how much is personal training?" matched "person" and went to a person. A lone word counts only as the whole message; otherwise whole phrases. Steering attempts go to a person deterministically. |
 | `533408e` | Hosted-only migration `20260929115750_location_list_places` brought into Git (exact hosted statement; seed row aligned). |
 | `e3b4085` | `DEMO-RUNBOOK.md`, `RAILWAY-DEPLOYMENT-CHECKLIST.md`; two browser suites made runnable off Windows (harness only). |
+| `dfe2995` | This handoff (first version). Promoted to main and tagged `locah-demo-2026-09-30`. |
+| `0fe5026` | **Hosted history collision fixed**: hosted versions `20260929110000` / `20260929120000` held two never-committed `REVOKE`s while the repo used them for the COD-rules and dated pre-orders migrations (Supabase would have skipped both → 7 missing columns → every order failing). Hosted statements committed under their versions; the two repo migrations moved to `20260929110100` / `20260929120100` (same relative order). Found by rehearsal. Promoted and tagged `-r2`. |
 
 ## Gates (executed)
 
 **API/WORKER TESTS** — full suite, fresh database, RLS role `platform_api`
 (`TEST_API_DATABASE_URL`), `-n 8`:
 - at `708553b` (92 migrations): **1355 passed, 0 failed**.
-- final tree (93 migrations): see "Final gate" below.
+- at `dfe2995` (93 migrations): **1355 passed, 0 failed**.
+- **at the release `0fe5026` (95 migrations): 1355 passed, 0 failed** (78 s).
 
 **STATIC CHECKS** (at `708553b`; no application source changed after it —
 only docs, harness `.mjs`, one migration, one seed row):
@@ -155,9 +158,13 @@ no duplicate offerings, plans, quotes or contacts.
     activation, not in this release.
 - **TALLY**: connector hub foundation only; ACTIVATION_REQUIRED.
 
-## Final gate (release HEAD)
+## Final gate (release `0fe5026`)
 
-PENDING — filled in when the full suite has run on the final commit.
+Fresh database from all 95 migrations + seed (`ON_ERROR_STOP`): clean.
+Full API + worker suite on it (RLS role, `-n 8`): **1355 passed, 0 failed**.
+Ruff clean. No application source changed since the static checks and
+production builds at `708553b` (only docs, harness, migrations/seed, one code
+comment). Browser suites and the demo gate above ran on the same code.
 
 ## SUPABASE
 
@@ -175,8 +182,44 @@ read-only analysis done in this pass:
   constraint fingerprints are equal). → safe for `supabase migration repair
   --status applied 20260930130000`.
 - Genuinely pending: 28 migrations (20 create tables absent on hosted; 8
-  column/data-only ones whose sentinel objects are absent).
-- Repair / apply / backup status: PENDING (after main promotion).
+  column/data-only ones whose sentinel objects are absent) — plus 2 more found
+  by the rehearsal below.
+
+**Rehearsal (local, on real data)**: the hosted backup restored into a local
+database, then exactly the commands used on hosted. It showed that after
+`db push` seven columns the release reads were still missing: hosted history
+versions `20260929110000` / `20260929120000` were two hot-fix `REVOKE`s never
+committed, and the repo reused those versions for the COD-rules and dated
+pre-orders migrations, so Supabase counted them as applied. Fixed in
+`0fe5026`; re-rehearsed: 30 applied, history 95, and the result equal to a
+fresh replay of the release in tables (235), columns with defaults (2961),
+indexes (677), constraints (1671), policies (512), function bodies (34),
+triggers (84) and `platform_api` grants (600 = 600).
+
+**Applied to hosted** (official Supabase CLI 2.109.1, session pooler):
+1. Backups (custom format, `public` + `supabase_migrations`, 150 tables):
+   `/Users/user25/gowtham/Personal_Projects/locah-backups/hosted-before-release-20260930T062526Z.dump`
+   and, immediately before applying, `hosted-pre-apply-20260930T063938Z.dump`
+   (43.6 MB each). Supabase's managed backups are separate.
+2. `supabase migration repair --status applied 20260930130000` → "Migration
+   history repaired" (the objects were proven equal first — above).
+3. `supabase db push --include-all --dry-run` → exactly the rehearsed 30.
+4. `supabase db push --include-all` → 30 applied, no errors; history 64 → **95**.
+5. Seed `00_platform.sql` in one transaction → ok (no-op: the module and
+   section registries already matched).
+6. Verified read-only: hosted schema vs. the fresh replay of the release —
+   structurally identical except a Supabase-provided platform function body
+   (`rls_auto_enable`) and a pre-existing no-op FORCE-RLS flag on six platform
+   tables whose RLS is off; `platform_api` grants and function EXECUTE
+   identical (901 = 901).
+
+SUPABASE REPAIR STATUS: DONE (`20260930130000` repaired as applied; hosted-only
+`20260929115750`, `20260929110000`, `20260929120000` brought into Git).
+MIGRATION STATUS: hosted = repository = 95.
+SUPABASE STORAGE: published tenant pictures are served from
+`pmwyaqmwxfbnfulqbqmk.supabase.co/storage/.../media/…` through the deployed
+API and render on the deployed sites (existing pictures; a new generation on
+the deployed stack was not run — needs a signed-in owner).
 
 ## RAILWAY
 
@@ -186,7 +229,58 @@ with their Dockerfiles. Found before deploying: only `locah-workspace` tracks
 `main` in its live config; an un-applied staged patch (web → `main`, worker
 variable changes); `XAI_*` still on API/worker; `GEMINI_API_KEY` present on
 API and worker; web/Workspace carry only `NEXT_PUBLIC_*`.
-Deployment status: PENDING.
+
+**Configured and deployed** (one staged patch, reviewed, non-destructive,
+committed once): all four services' source pinned to `kausik-gh/locah` @
+`main`; API + worker `AI_PROVIDER` / `IMAGE_PROVIDER` / `VOICE_PROVIDER` =
+`gemini` and the `GEMINI_*_MODEL` pins; `RATE_LIMIT_TRUST_XFF=1` on the API;
+`XAI_API_KEY`, `XAI_MODEL`, `XAI_VOICE`, `XAI_VOICE_MODEL` removed from the
+API and `XAI_API_KEY`, `XAI_MODEL` from the worker; the worker given
+`SUPABASE_JWT_SECRET=${{locah-api.SUPABASE_JWT_SECRET}}` (a Railway reference
+— the worker signs bill / khata links for collections and reminders, and had
+no signing secret; no value was copied). Confirmed absent on both:
+`LOCAH_TEST_NO_EXTERNAL_AI`, `AUTO_GENERATE_WEBSITE_IMAGES`,
+`MESSAGING_SANDBOX`. `ENVIRONMENT` is set on both; its value is not readable
+through the tools used and was left unchanged. No secret value was printed.
+
+Deployments, all from `main` @ `0fe5026`, all SUCCESS:
+`locah-api` 16230927…, `locah-worker` 25c47950…, `locah-web` c6f3e8b6…,
+`locah-workspace` 203f8879…. **DOCKER BUILDS**: all four images built on
+Railway from their Dockerfiles (worker log: `uv sync --frozen --no-group dev`,
+32 runtime packages).
+
+RAILWAY DEPLOYMENT URLS:
+- Web: https://locah-web-production.up.railway.app
+- Workspace: https://locah-workspace-production.up.railway.app
+- API: https://locah-api-production.up.railway.app
+- Worker: no public URL (health via `API/health/worker`).
+
+**Deployed smoke — executed (deployed URLs, not localhost):**
+- API HEALTH: `/health/live` 200 · `/health/ready` 200 `database: connected` ·
+  new build confirmed (`/v1/b/…/ai-employees`, a route only this release has, → 401 unauthenticated) · startup log
+  `external_ai_disabled: false`.
+- WORKER STATUS: `worker.starting → worker.db_connected → worker.polling`
+  (interval 2 s); `/health/worker` 200 `healthy, lag_seconds 0, pending 0`.
+- Web `/`, `/marketplace`, `/signup`, `/login` → 200; home, login and
+  Marketplace render styled at 1440 and 390, no horizontal overflow, no
+  console errors (headless Chromium).
+- Workspace → 307 to the web login when signed out (by design).
+- Public tenant websites `/nalla-veedu-kitchen-1`, `/grit-barbell-club-1` →
+  200; styled; hero picture loaded (1376 px) from Supabase Storage; 1440 and
+  390; no overflow; no broken images in view; no console errors.
+
+**Deployed smoke — NOT executed (needs a signed-in account):** Supabase
+sign-in, Create Business, Talk to LOCAH, recommendations, enable module,
+Build Website with real Gemini personalization and hero, manual Generate
+picture, menu/catalogue read, Booking, Membership, Order, Payment, Kitchen,
+Automation + Automation Activity, AI Receptionist answer, escalation, My
+Activity. Creating accounts or entering passwords on a non-local site is not
+something this session may do; these run once the founder signs in (web and
+Workspace tabs), and every one of them passed on the local stack on the same
+code (Gates). WhatsApp on the deployed stack is activation-required by
+design (no Meta number; sandbox is development-only). GEMINI on Railway:
+key present on API and worker, providers set; not exercised on the deployed
+stack yet (the audit proved the same key and models locally).
 
 ## ACTIVATION_REQUIRED
 
@@ -216,10 +310,30 @@ domain (shared sign-in across web/Workspace).
 
 ## Branches
 
-DELETED: PENDING (after deployment is proven, per `BRANCH-CLEANUP-MANIFEST.md`).
-KEPT: PENDING.
+DELETED (18, each re-checked immediately before, details in
+`BRANCH-CLEANUP-MANIFEST.md`): `claude/p2-02-memberships-wip`,
+`claude/phase-b-final-integration`, `claude/sleepy-gauss-ou1t3i`,
+`claude/wonderful-newton-eiw7jn`, `claude/compassionate-allen-hlpq6p`, the
+eleven `parallel/*` branches — all ancestors of main — and
+`cursor/gemini-activation-audit`, `cashfree-sandbox` after archive tags
+`archive/gemini-activation-audit` (`e27dfe9`) and `archive/cashfree-sandbox`
+(`8b495b8`).
+KEPT: `main`; `claude/final-release-candidate` (= `0fe5026` + these docs; the
+release worktree's branch); local-only `backup-before-reset`,
+`web-builder-lovable` (founder's decision); local branches in the `/locah` and
+`/locah-gemini-audit` worktrees.
 
 ## Verdicts
 
-DEMO_READY = PENDING · RAILWAY_READY = PENDING · DEPLOYED = PENDING ·
-PRODUCTION_READY = PENDING
+- **DEPLOYED = YES** — all four services on Railway from `main` @ `0fe5026`,
+  healthy; hosted database at the release schema.
+- **RAILWAY_READY = YES** — four Dockerfile builds on Railway, health checks
+  green, configuration per `RAILWAY-DEPLOYMENT-CHECKLIST.md`.
+- **DEMO_READY = NO — one step short**: the whole workflow passed on the
+  local stack on this exact code (demo gate 17/17 and every suite above), and
+  the deployed services are healthy, but the signed-in walk-through on the
+  deployed URLs (including a live Gemini build there) has not been executed.
+  It becomes YES when the founder signs in and that walk-through passes.
+- **PRODUCTION_READY = NO** — ACTIVATION_REQUIRED items (Meta WhatsApp /
+  Calling, Cashfree live, Tally, custom domain for one sign-in) and the known
+  non-blockers above.
