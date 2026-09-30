@@ -75,7 +75,7 @@ INSERT INTO website_section_types (id, label, description, content_schema, allow
  NULL, 40),
 
 ('location_list', 'Locations', 'List of business locations with contact information',
- '{"type":"object","properties":{"title":{"type":"string","maxLength":120},"show_hours":{"type":"boolean"},"show_map":{"type":"boolean"}}}',
+ '{"type":"object","properties":{"title":{"type":"string","maxLength":120},"show_hours":{"type":"boolean"},"show_map":{"type":"boolean"},"locations":{"type":"array","maxItems":12,"items":{"type":"object","required":["name"],"properties":{"id":{"type":"string","maxLength":80},"name":{"type":"string","maxLength":80},"address":{"type":"string","maxLength":500},"hours_summary":{"type":"string","maxLength":500},"is_primary":{"type":"boolean"}}}}}}',
  ARRAY['cards', 'list'],
  NULL, 50),
 
