@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ModuleState'
-import { AutomationActivity, AutomationCard, type Activity, type Automation } from './AutomationsEditor'
+import { AutomatedMessages, AutomationActivity, AutomationCard, type Activity, type Automation, type SentMessage } from './AutomationsEditor'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
 export default async function AutomationsPage({ params }: { params: { businessId: string } }) {
   const token = await getAccessToken()
   if (!token) redirect('/login')
-  const res = await apiTry<{ data: { automations: Automation[]; activity: Activity[] } }>(
+  const res = await apiTry<{ data: { automations: Automation[]; activity: Activity[]; messages?: SentMessage[] } }>(
     `/v1/platform/businesses/${params.businessId}/automations`,
     token,
   )
@@ -35,7 +35,7 @@ export default async function AutomationsPage({ params }: { params: { businessId
       </div>
     )
   }
-  const { automations, activity } = res.data.data
+  const { automations, activity, messages = [] } = res.data.data
   return (
     <div className="bos-page">
       {header}
@@ -57,6 +57,12 @@ export default async function AutomationsPage({ params }: { params: { businessId
           What automations did <span>last {activity.length}</span>
         </h2>
         <AutomationActivity items={activity} />
+      </section>
+      <section className="bos-section" aria-labelledby="msg-h">
+        <h2 className="bos-section__title" id="msg-h">
+          Messages sent automatically <span>last {messages.length}</span>
+        </h2>
+        <AutomatedMessages items={messages} />
       </section>
     </div>
   )

@@ -159,6 +159,11 @@ def test_a_freed_class_place_is_offered_to_the_first_person_waiting_who_takes_it
     [(status, text)] = sql("select status, body from messaging_messages where business_id = :b "
                            "and template_key = 'booking_waitlist_opening'", b=bid)
     assert status == "sent" and "Sunrise yoga" in text and offer["offer_link"] in text
+    feed = client.get(f"{base}/automations", headers=owner).json()["data"]
+    waitlist = next(a for a in feed["automations"] if a["key"] == "booking.waitlist")
+    assert waitlist["channel"] == "WhatsApp to the person waiting" and waitlist["last_run_at"]
+    [sent] = [m for m in feed["messages"] if m["what"] == "A place opened up"]
+    assert (sent["status_label"], sent["test_number"], sent["to"]) == ("Sent", True, "…0082"), sent
     assert sql("select count(*) from bookings_bookings where business_id = :b and status in "
                "('pending', 'confirmed')", b=bid) == [(0,)], "nothing is booked until Ravi takes it"
     drain_events(bid)

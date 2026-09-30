@@ -1140,6 +1140,30 @@ class MessagingService:
 
     # ------------------------------------------------------------------ staff alerts
     @staticmethod
+    async def automated_messages(session: AsyncSession, business_id: uuid.UUID,
+                                 limit: int = 30) -> list[dict[str, Any]]:
+        """What LOCAH sent on its own, with WhatsApp's real delivery state
+        (queued → sent → delivered → read, or failed / held back) and whether it
+        went from a test number. The number is shown only by its last digits."""
+        rows = (await session.execute(
+            select(MessagingMessage, MessagingConversation.wa_id, MessagingChannel.provider)
+            .join(MessagingConversation, MessagingConversation.id == MessagingMessage.conversation_id)
+            .join(MessagingChannel, MessagingChannel.id == MessagingConversation.channel_id)
+            .where(MessagingMessage.business_id == business_id, MessagingMessage.direction == "out",
+                   MessagingMessage.sent_via == "automation")
+            .order_by(MessagingMessage.created_at.desc()).limit(limit))).all()
+        words = {"queued": "Queued", "sent": "Sent", "delivered": "Delivered", "read": "Read",
+                 "failed": "Failed", "blocked": "Held back"}
+        return [{
+            "id": str(m.id), "what": LIBRARY[m.template_key].label if m.template_key in LIBRARY else (m.template_key or
+                                                                                                      "Message"),
+            "to": f"…{str(wa_id)[-4:]}", "status": m.status, "status_label": words.get(m.status, m.status),
+            "error": m.error, "category": m.category, "test_number": provider == "sandbox",
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+            "status_at": m.status_at.isoformat() if m.status_at else None,
+        } for m, wa_id, provider in rows]
+
+    @staticmethod
     async def alert_staff(session: AsyncSession, business_id: uuid.UUID, kind: str, what: str, *,
                           key: str) -> int:
         """WhatsApp alerts to team members who asked for this kind (§26.3 P1-07:

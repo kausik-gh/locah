@@ -16,7 +16,15 @@ export type Automation = {
   quiet_hours: boolean
   /** Low stock only: also put a draft requisition on the Buying desk. */
   draft_requisition?: boolean | null
+  channel?: string
+  last_run_at?: string | null
+  next_run_at?: string | null
+  counts?: { done?: number; skipped?: number; failed?: number }
   steps: Step[]
+}
+export type SentMessage = {
+  id: string; what: string; to: string; status: string; status_label: string; error: string | null
+  category: string | null; test_number: boolean; created_at: string | null; status_at: string | null
 }
 export type Activity = {
   id: string
@@ -86,6 +94,14 @@ export function AutomationCard({ businessId, automation }: { businessId: string;
           <h2 id={titleId}>{automation.label}</h2>
           <p className="bos-auto__meta">
             Part of {automation.module_label} · counts from {automation.anchor}
+            {automation.channel ? <> · {automation.channel}</> : null}
+          </p>
+          <p className="bos-auto__meta">
+            Last ran {automation.last_run_at ? <LocalTime value={automation.last_run_at} /> : 'not yet'}
+            {automation.next_run_at ? <> · next <LocalTime value={automation.next_run_at} /></> : null}
+            {automation.counts && (automation.counts.done || automation.counts.skipped || automation.counts.failed)
+              ? ` · last 30 days: ${automation.counts.done ?? 0} done, ${automation.counts.skipped ?? 0} not needed${automation.counts.failed ? `, ${automation.counts.failed} failed` : ''}`
+              : null}
           </p>
         </div>
         <label className="bos-toggle">
@@ -146,10 +162,45 @@ export function AutomationCard({ businessId, automation }: { businessId: string;
 const STATUS: Record<string, { label: string; tone: string }> = {
   done: { label: 'Done', tone: 'good' },
   pending: { label: 'Scheduled', tone: 'info' },
+  // A step waiting for 8 am says so in its outcome ("Waiting for 8 am (quiet hours)").
   processing: { label: 'Running', tone: 'info' },
   skipped: { label: 'Not needed', tone: 'neutral' },
   cancelled: { label: 'Stopped', tone: 'neutral' },
   failed: { label: 'Failed', tone: 'bad' },
+}
+
+const MSG_TONE: Record<string, string> = {
+  queued: 'info', sent: 'info', delivered: 'good', read: 'good', failed: 'bad', blocked: 'warn',
+}
+
+/** Messages automations sent, with WhatsApp's own delivery state - never assumed. */
+export function AutomatedMessages({ items }: { items: SentMessage[] }) {
+  if (items.length === 0) {
+    return <div className="bos-empty">No automatic messages yet. Confirmations, reminders and updates are listed here with what WhatsApp reported.</div>
+  }
+  return (
+    <ul className="bos-log">
+      {items.map((m) => {
+        const tone = MSG_TONE[m.status] ?? 'neutral'
+        return (
+          <li key={m.id}>
+            <span className={`bos-log__dot is-${tone}`} aria-hidden />
+            <div>
+              <p className="bos-log__what">
+                <strong>{m.what}</strong> · WhatsApp to {m.to}
+                {m.test_number ? <span className="bos-tag bos-tag--warn" style={{ marginLeft: '0.4rem' }}>TEST / SANDBOX</span> : null}
+              </p>
+              {m.error ? <p className="bos-log__outcome">{m.error}</p> : null}
+            </div>
+            <div className="bos-log__when">
+              <span className={`bos-log__status is-${tone}`}>{m.status_label}</span>
+              <LocalTime value={m.status_at ?? m.created_at} />
+            </div>
+          </li>
+        )
+      })}
+    </ul>
+  )
 }
 
 /** The activity log: every step, what it did or why it did not run. */

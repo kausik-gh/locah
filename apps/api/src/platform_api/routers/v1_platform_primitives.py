@@ -56,8 +56,11 @@ class AutomationPatch(BaseModel):
     config: dict[str, Any] | None = None
 
 
-def _ladder_view(key: str, rule: dict[str, Any]) -> dict[str, Any]:
+def _ladder_view(key: str, rule: dict[str, Any], runs: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    from platform_core.automation.ladders import CHANNELS
+
     lad = LADDERS[key]
+    run = (runs or {}).get(key, {})
     info = MODULES.get(lad.module)
     offsets = rule["config"].get("offset_hours", {})
     off = set(rule["config"].get("disabled_steps", []))
@@ -65,6 +68,9 @@ def _ladder_view(key: str, rule: dict[str, Any]) -> dict[str, Any]:
         "key": key, "label": lad.label, "module": lad.module, "module_label": info.label if info else lad.module,
         "anchor": lad.anchor, "stops_when": lad.stops_when, "enabled": rule["enabled"],
         "quiet_hours": rule["config"].get("quiet_hours", lad.quiet_hours),
+        "channel": CHANNELS.get(key, "Workspace"),
+        "last_run_at": run.get("last_run_at"), "next_run_at": run.get("next_run_at"),
+        "counts": run.get("counts", {}),
         # Low stock only: also draft a requisition (owner opt-in; never an order).
         "draft_requisition": bool(rule["config"].get("draft_requisition")) if key == "stock.low" else None,
         "steps": [
@@ -90,9 +96,14 @@ async def list_automations(
         info = MODULES.get(lad.module)
         if not info or not info.built or lad.module not in live or not is_wired(key):
             continue
-        items.append(_ladder_view(key, await AutomationEngine.rule(session, business_id, key)))
+        items.append(key)
+    runs = await AutomationEngine.runs(session, business_id)
+    views = [_ladder_view(key, await AutomationEngine.rule(session, business_id, key), runs) for key in items]
     activity = await AutomationEngine.activity(session, business_id, limit=30)
-    return {"data": {"automations": items, "activity": activity}, "meta": _meta(actor)}
+    from platform_core.services.messaging import MessagingService
+
+    messages = await MessagingService.automated_messages(session, business_id, limit=30)
+    return {"data": {"automations": views, "activity": activity, "messages": messages}, "meta": _meta(actor)}
 
 
 @router.patch("/{business_id}/automations/{ladder_key}")

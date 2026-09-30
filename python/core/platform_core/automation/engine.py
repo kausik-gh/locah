@@ -364,6 +364,23 @@ class AutomationEngine:
 
     # ------------------------------------------------------------- read (owner)
     @staticmethod
+    async def runs(session: AsyncSession, business_id: uuid.UUID) -> dict[str, dict[str, Any]]:
+        """Per automation: when a step last ran, when the next is due, and what
+        the last 30 days' steps came to."""
+        rows = (await session.execute(text("""
+            SELECT ladder_key,
+                   max(executed_at) FILTER (WHERE status IN ('done', 'skipped', 'failed')),
+                   min(due_at) FILTER (WHERE status = 'pending'),
+                   count(*) FILTER (WHERE status = 'done' AND executed_at > now() - interval '30 days'),
+                   count(*) FILTER (WHERE status = 'skipped' AND executed_at > now() - interval '30 days'),
+                   count(*) FILTER (WHERE status = 'failed' AND executed_at > now() - interval '30 days')
+            FROM automation_steps WHERE business_id = :b GROUP BY ladder_key
+        """), {"b": str(business_id)})).all()
+        return {r[0]: {"last_run_at": r[1].isoformat() if r[1] else None,
+                       "next_run_at": r[2].isoformat() if r[2] else None,
+                       "counts": {"done": r[3], "skipped": r[4], "failed": r[5]}} for r in rows}
+
+    @staticmethod
     async def activity(
         session: AsyncSession, business_id: uuid.UUID, *, ladder_key: str | None = None,
         entity_id: uuid.UUID | None = None, limit: int = 50,

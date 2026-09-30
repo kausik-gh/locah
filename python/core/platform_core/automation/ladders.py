@@ -36,6 +36,19 @@ class Ladder:
 D = timedelta(days=1)
 H = timedelta(hours=1)
 
+# Where each automation's step lands, in owner words (for the Automations page).
+CHANNELS: dict[str, str] = {
+    "membership.renewal": "WhatsApp to the member", "membership.instalment": "WhatsApp to whoever pays",
+    "booking.reminder": "WhatsApp to the customer", "booking.hold": "Bookings (frees the slot)",
+    "booking.waitlist": "WhatsApp to the person waiting", "booking.waitlist_expiry": "Bookings",
+    "booking.no_show": "WhatsApp to the customer", "invoice.overdue": "WhatsApp to the customer",
+    "ledger.statement": "WhatsApp to the customer", "stock.low": "Notifications to stock keepers",
+    "order.tracking": "WhatsApp to the customer", "review.request": "WhatsApp to the customer",
+    "lead.followup": "Notification to the lead's owner", "chat.waiting": "Alert to whoever handles WhatsApp",
+    "compliance.due": "Notification and a task", "task.due": "Notification to the assignee",
+    "inventory.expiry": "Notifications to stock keepers",
+}
+
 LADDERS: dict[str, Ladder] = {lad.key: lad for lad in (
     Ladder(
         "membership.renewal", "memberships", "Renewal reminders", "the plan's end date", "member_subscription",
