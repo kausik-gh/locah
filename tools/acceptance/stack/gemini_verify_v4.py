@@ -370,34 +370,49 @@ def manual_controls(owner: Owner) -> dict[str, Any]:
 
 async def read_menu_pdf() -> dict[str, Any]:
     """Real Gemini document extraction on a menu PDF; nothing may be invented."""
-    from PIL import Image, ImageDraw
+    import re
+
+    from PIL import Image, ImageDraw, ImageFont
 
     from platform_core.interview import documents
 
+    def words(text: str) -> str:
+        return " ".join(re.sub(r"[^0-9a-z]+", " ", text.lower()).split())
+
+    def amount(text: str) -> float | None:
+        number = re.search(r"\d[\d,]*(?:\.\d+)?", text)
+        return float(number.group().replace(",", "")) if number else None
+
+    # A menu a person could read: 32 px text. The default bitmap font is a few
+    # pixels high, and on it a correct reader drops prices it cannot see.
+    font = ImageFont.load_default(size=32)
     page = Image.new("RGB", (1240, 1754), "white")
     draw = ImageDraw.Draw(page)
     y = 80
-    draw.text((80, y), "NALLA VEEDU KITCHEN — MENU", fill="black")
-    printed = ""
+    draw.text((80, y), "NALLA VEEDU KITCHEN - MENU", fill="black", font=font)
+    printed_prices: set[float | None] = set()
     for group, printed_rows in MENU:
-        y += 70
-        draw.text((80, y), group.upper(), fill="black")
+        y += 90
+        draw.text((80, y), group.upper(), fill="black", font=font)
         for name, price in printed_rows:
-            y += 45
-            draw.text((110, y), f"{name}  ....  Rs {price}", fill="black")
-            printed += f"{name} {price} "
+            y += 60
+            draw.text((110, y), f"{name}  ....  Rs {price}", fill="black", font=font)
+            printed_prices.add(amount(price))
     buf = io.BytesIO()
     page.save(buf, "PDF", resolution=150)
     (OUT / "menu.pdf").write_bytes(buf.getvalue())
     if SELF_TEST:
         return {"ok": False, "note": "self-test: not read"}
     read_kind, groups, facts = await documents.read(buf.getvalue(), "application/pdf")
-    items: list[tuple[str, str, str]] = [(g.name, i.name, i.price) for g in groups for i in g.items]
-    invented = [i for i in items if i[2] and i[2].replace(",", "") not in printed]
-    expected = {name for _, rows in MENU for name, _ in rows}
-    found = {i[1] for i in items}
+    items = [(g.name, i.name, i.unit, i.price) for g in groups for i in g.items]
+    # LOCAH returns a price as printed ("Rs 40") and the size as its own unit
+    # ("Idli Podi" + "200 g"): compare the amount, and the name with or
+    # without its unit.
+    invented = [i for i in items if i[3] and amount(i[3]) not in printed_prices]
+    expected = {words(name): name for _, rows in MENU for name, _ in rows}
+    found = {words(i[1]) for i in items} | {words(f"{i[1]} {i[2]}") for i in items if i[2]}
     return {"ok": bool(items) and not invented, "kind": read_kind, "items": items, "invented_prices": invented,
-            "missed": sorted(expected - found), "facts": facts}
+            "missed": sorted(name for key, name in expected.items() if key not in found), "facts": facts}
 
 
 # -------------------------------------------------------------------- main
@@ -434,16 +449,24 @@ def main() -> None:
             published = owner.post("/website/publish")
             slug = sql("select slug from businesses where id = :b", b=business_id)[0][0]
             theme = owner.site()["draft"]["theme"]
+            drawn_hero = owner.hero()["content"].get("image_asset_id")
             checks = verify_hero(owner, job_id, slug) if published["status"] == 200 else {"published": False}
-            # Re-publish with the Gemini hero back on, for the screenshots.
-            owner.post("/website/publish")
+            # verify_hero ends on its Remove check: put the Gemini hero back,
+            # then re-publish, so the screenshots show the picture Gemini drew.
+            hero_restored = False
+            if drawn_hero:
+                hero = owner.hero()
+                hero_restored = owner.patch_section(hero, {**hero["content"], "image_asset_id": drawn_hero}) == 200 \
+                    and owner.hero()["content"].get("image_asset_id") == drawn_hero
+            republished = owner.post("/website/publish")["status"] == 200
             site = {"key": spec["key"], "name": spec["name"], "business_id": business_id, "slug": slug,
                     "job": status, "creative_source": usage.get("creative_strategy"),
                     "fallback_reason": usage.get("fallback_reason"), "media_drawn": usage.get("media_drawn"),
                     "gemini_images_this_site": calls.get("gemini_images", 0) - before,
                     "visual_consent": owner.interview()["blueprint"]["visual_consent"],
                     "hero_style": theme.get("hero_style"), "palette": theme.get("palette_key"),
-                    "checks": checks, "transcript": transcript}
+                    "checks": checks, "hero_restored_for_screenshots": hero_restored and republished,
+                    "transcript": transcript}
             report["sites"].append(site)
             results.append({k: site[k] for k in ("key", "name", "business_id", "slug", "hero_style", "palette")})
             print(f"{spec['key']}: /{slug} drawn={usage.get('media_drawn')} checks="
