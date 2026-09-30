@@ -67,7 +67,7 @@ Website creative audit lane).
 
 - **Migration replay**: brand-new DB via `tools/acceptance/stack/db.sh`
   (CI shim + **89 migrations** + seed, `ON_ERROR_STOP`): clean. Newest
-  `20261001110000_whatsapp_connection_calling.sql`. No duplicate versions.
+  `20261001100000_whatsapp_connection_calling.sql`. No duplicate versions.
 - **Full API + worker suite** on that fresh DB as CI runs it (RLS role
   `platform_api`, `TEST_API_DATABASE_URL` set, `-n 8`):
   **1296 passed, 0 failed, 0 skipped** (was 1276; +20 new).
@@ -150,7 +150,7 @@ merging to main is the owner's call.
 without a migration-history row. Do not rerun, drop, or hand-insert history.
 Later: live schema dump → compare to a clean local replay → reviewed mapping →
 official `supabase migration repair`. Two new migrations this session
-(`20261001090000_bookings_depth.sql`, `20261001110000_whatsapp_connection_calling.sql`)
+(`20261001090000_bookings_depth.sql`, `20261001100000_whatsapp_connection_calling.sql`)
 are **local only** — nothing was applied to any hosted database.
 
 ## Known risks / open items
