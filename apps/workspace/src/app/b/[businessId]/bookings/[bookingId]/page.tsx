@@ -72,6 +72,20 @@ export default async function BookingDetailPage({ params }: { params: { business
     }, access)
     revalidatePath(here)
   }
+  async function changeLater(formData: FormData) {
+    'use server'
+    const access = await getAccessToken()
+    if (!access) throw new Error('Unauthorized')
+    // A shift from this occurrence's own time - no clock or time zone involved.
+    const shift = (Number(formData.get('days') || 0) * 24 * 60 + Number(formData.get('minutes') || 0)) * 60_000
+    const start = new Date(new Date(bk.starts_at).getTime() + shift)
+    const length = new Date(bk.ends_at).getTime() - new Date(bk.starts_at).getTime()
+    await apiPost(`${base}/bookings-series/${bk.series_id}/change-future`, {
+      from_booking_id: params.bookingId, starts_at: start.toISOString(),
+      ends_at: new Date(start.getTime() + length).toISOString(),
+    }, access)
+    revalidatePath(here)
+  }
   async function endSeries() {
     'use server'
     const access = await getAccessToken()
@@ -125,7 +139,15 @@ export default async function BookingDetailPage({ params }: { params: { business
                 ))}
               </ul>
               {series.status === 'active' && live ? (
-                <form action={endSeries}><button type="submit" className="btn-quiet">End the series from this one</button></form>
+                <>
+                  <form action={changeLater} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span>Move this and later ones by</span>
+                    <label><input name="days" type="number" min={-6} max={6} defaultValue={0} style={{ width: '4.5rem' }} /> days</label>
+                    <label><input name="minutes" type="number" min={-720} max={720} step={15} defaultValue={0} style={{ width: '5.5rem' }} /> minutes</label>
+                    <button type="submit">Move</button>
+                  </form>
+                  <form action={endSeries}><button type="submit" className="btn-quiet">End the series from this one</button></form>
+                </>
               ) : null}
             </>
           ) : live ? (

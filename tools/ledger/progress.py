@@ -1028,3 +1028,85 @@ done("P5-documents", {
     "DC-05": dict(status=P, code="one-time upload/form link created and shown to share ('Share this private link once'); "
                                  "not sent on WhatsApp"),
 })
+
+# ---------------------------------------------------------------- Wrap: bookings depth, workforce schedules, WhatsApp + calling (claude/phase-b-final-integration, 2026-09-30)
+_BKR_TEST = ("✓ test_booking_final_slot (5: four concurrent requests for the last place, each on its own "
+             "connection through the API - class seat, instructor vs none, pooled seat, unnamed table, provider; "
+             "mutation-checked) + test_bookings_kernel + test_booking_resources")
+_BKS_TEST = "✓ test_booking_schedules (3: provider hours/leave/breaks on every path; guest opening hours)"
+_BKD_TEST = ("✓ test_booking_depth (5: hold release / paid kept / replay; waitlist offer once, claim, spent link, "
+             "expiry; weekly series create / edit one / change later all-or-nothing / end; no-show follow-up once); "
+             "browser: cancel → WhatsApp offer (sandbox) → customer takes it on the site → Workspace series + Arrived")
+_WA_TEST = ("✓ test_whatsapp_connection_calling (6: every connection state; Embedded Signup → registration with "
+            "PIN against a mock of Graph; template/quality WABA webhooks; OTP preset; sandbox calls; permission gate)")
+done("WRAP-bookings-whatsapp", {
+    "FR-BK-02": dict(status=P, code="availability from the location's opening hours (guests; the desk may override), "
+                                    "the provider's own schedule (weekly hours, dated leave or one-off hours, breaks), "
+                                    "resource buffers, capacity (a class's places per session bind), existing "
+                                    "bookings; re-checked at commit under one lock per location+mode, with the "
+                                    "check and the claim committing together. Booking horizon / minimum notice rules "
+                                    "not built", svc="✓", test=f"{_BKR_TEST}; {_BKS_TEST}"),
+    "BK-05": dict(status=P, code="class capacity is the class's own 'places per session', enforced for guests and "
+                                 "staff alike; full → waitlist; no timetable grid", test=_BKR_TEST),
+    "BK-09": dict(status=C, code="waitlist (owner switch): join only when full; a freed place (cancel, decline, move, "
+                                 "no-show before start) is offered to the first person waiting, one offer at a time, "
+                                 "on WhatsApp with a link to the business's site; taken only by the customer through "
+                                 "the booking path; runs out and passes on", db="✓", svc="✓", perm="✓ tenant/location/"
+                                 "assignment RLS", ws="✓ Bookings › Waitlist (offer links)", cust="✓ /{slug}/waitlist",
+                  integ="✓ Messaging, Automation", auto="✓", test=_BKD_TEST),
+    "BK-10": dict(status=C, code="repeat a booking every 1–4 weeks for 2–52; each occurrence checked on its own "
+                                 "(collisions reported, never double-booked); edit/cancel one; move this-and-later "
+                                 "all-or-nothing; end the series; past/finished never rewritten. Workspace: Repeat, "
+                                 "Move this and later (by days/minutes), End", db="✓", svc="✓", ws="✓",
+                  test=_BKD_TEST + "; browser: Repeat → 4, Move +60 min moved all four"),
+    "BK-12": dict(status=P, code="final-slot lock at commit on every path (exclusion constraints + advisory locks); "
+                                 "a slot waiting on an online deposit is held for the owner's hold time and released "
+                                 "unpaid. The website offers only pay-at-business today (online deposits need the "
+                                 "payment provider), and there is no explicit hold tool yet for an AI receptionist",
+                  svc="✓", test=f"{_BKR_TEST}; {_BKD_TEST}"),
+    "BK-13": dict(status=P, code="a booking can hold a room/chair and a provider together (both allocated, provider "
+                                 "on duty checked); no customer-facing picker for the pair", test=_BKS_TEST),
+    "BK-14": dict(status=P, code="a class mapped to plans needs an active membership or a session-pack session "
+                                 "(Memberships answers, P2-02); an owner override is not built"),
+    "FR-BK-04": dict(status=P, code="recurring series, waitlist with customer acceptance, unpaid holds released - see "
+                                    "BK-09/10/12", test=_BKD_TEST),
+    "FR-BK-05": dict(status=C, code="deposit via Payments; reschedule releases the old slot, keeps history, re-checks "
+                                    "provider duty and (for guests) opening hours; cancellation frees the slot and wakes "
+                                    "the waitlist; Workspace moves only as the state allows (Confirm → Arrived / "
+                                    "No-show → Done); no-show gets one 'we missed you'", ws="✓", auto="✓",
+                     test=_BKD_TEST),
+    "FR-BK-07": dict(status=P, code="two simultaneous customers → exactly one: proven through the API with real "
+                                    "concurrent requests (not yet a browser script); other scenarios partly covered"),
+    "WF-02": dict(status=P, code="per-person weekly hours, dated leave / one-off hours and breaks, managed on the "
+                                 "member page (day names) and enforced by Bookings on every path; shift rota planning "
+                                 "for crew/teachers not built", ws="✓", integ="✓ Bookings", test=_BKS_TEST),
+    "WF-03": dict(status=P, code="service associations are the bookable skills (checked at booking); assignment rules "
+                                 "absent"),
+    "MS-07": dict(status=A, code="built, not exercised against Meta (docs checked 2026-09-30): Embedded Signup → code "
+                                 "exchange → WABA webhook subscription → number registration with the two-step PIN "
+                                 "(never stored); honest states ACTIVATION_REQUIRED / META_REVIEW_REQUIRED / "
+                                 "NOT_CONNECTED / SETUP_REQUIRED / PHONE_VERIFICATION_REQUIRED / "
+                                 "TEMPLATE_SETUP_REQUIRED / ACTIVE / DEGRADED / DISCONNECTED with a checklist; sandbox "
+                                 "labelled TEST / SANDBOX; one-time codes in Meta's authentication preset. Needs "
+                                 "LOCAH's Meta app, Tech Provider enrolment and App Review "
+                                 "(docs/current-build/WHATSAPP-CALLING-SETUP.md)", ws="✓", test=_WA_TEST),
+    "CN-06": dict(status=A, code="as MS-07", test=_WA_TEST),
+    "MS-08": dict(status=C, code="webhooks also handle WABA-level template decisions (approved / rejected with reason "
+                                 "/ paused) and quality/limit updates, routed by WABA id; another account's events "
+                                 "touch nothing", test=_WA_TEST),
+    "CN-07": dict(status=A, code="WhatsApp Calling built to Meta's documented signalling: settings with call hours from "
+                                 "the location, call actions, `calls` webhook → one call record (no SDP/media/tokens), "
+                                 "call permissions (reply, 7-day temporary on calling in), business-initiated calls "
+                                 "only with permission, requests inside the window at most 1/day 2/week. Answering "
+                                 "needs a WebRTC call runtime LOCAH does not have: CALLING_ACTIVATION_REQUIRED",
+                  test=_WA_TEST),
+    "RC-20": dict(status=A, code="as CN-07 - calls are recorded and the team alerted; nobody pretends one was "
+                                 "answered", test=_WA_TEST),
+    "CN-08": dict(status=A, code="provider-neutral VoiceProvider boundary (place, answer/route, transfer, hang up, "
+                                 "webhook → CallEvent) writing the same call record; no vendor chosen (founder "
+                                 "decision); fixture provider for tests only"),
+    "IN-10": dict(status=P, code="reorder point per item and location → low-stock alert once a day → optionally (owner "
+                                 "switch on the Low-stock automation) a DRAFT requisition sized by the buying planner, "
+                                 "one open per item, never a purchase order; min/max not built", auto="✓",
+                  test="✓ test_low_stock_drafts_a_requisition_only_when_the_owner_asks"),
+})
