@@ -185,7 +185,7 @@ All of the following are unchanged in contract:
 ## 8. VERIFICATION
 
 What was **executed**, on the merged branch head against local Postgres 16 with all 90 migrations applied fresh:
-- **Full API + worker suite:** 1335 passed, 0 failed, under `pytest -n 8`. (Two further full runs were in progress at the time of this commit; their results follow in the next commit.)
+- **Full API + worker suite:** 1335 passed, 0 failed, under `pytest -n 8`. Run three times in a row: 1335 passed, 0 failed each time (the two earlier flakes did not recur).
 - **Parallel flakes, root cause:**
   - Five test modules (`test_website_publish`, `test_marketplace_*` ×4) drained the async-job queue **unscoped**. Under `pytest -n` every worker shares one database, so they could claim another test's `website.generate` or `interview.read_document` job and run it in a process without that test's stubs. That produced "every draw failed" and "document superseded", exactly the two flakes.
   - `claim_job_batch` / `poll_and_execute_jobs` now take an optional `business_id` (test isolation, like the existing `job_type`; production omits it), and each drain is scoped to its own business.
