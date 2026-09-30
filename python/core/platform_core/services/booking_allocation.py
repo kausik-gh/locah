@@ -456,6 +456,73 @@ class BookingAllocationService:
         return len(allocations)
 
     @staticmethod
+    async def allocate_first_free(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        booking_id: uuid.UUID,
+        location_id: uuid.UUID,
+        provider_id: uuid.UUID | None,
+        starts_at: datetime,
+        ends_at: datetime,
+        party_size: int = 1,
+    ) -> BookingResource | None:
+        """Hold a free resource for a guest who did not choose one.
+
+        A website or WhatsApp guest is never asked which table or chair; the
+        business may move them later. The booking must still hold one, or every
+        guest "gets" the only table. Candidates are the same ones the public
+        availability answer offers (every active resource at the location that
+        fits the party), tried tightest fit first, each under its subject lock
+        inside a savepoint - a candidate taken since the read is skipped
+        cleanly and the next one tried. Returns None when the business
+        allocates no resources at all (the provider, if any, is still claimed).
+        """
+        provider_only = BookingAllocationService.requests_for(
+            resources=[], provider_id=provider_id, party_size=party_size
+        )
+        if not await BookingAllocationService.has_resources(
+            session, business_id=business_id, location_id=location_id
+        ):
+            await BookingAllocationService.allocate(
+                session, business_id=business_id, booking_id=booking_id, requests=provider_only,
+                starts_at=starts_at, ends_at=ends_at, party_size=party_size,
+            )
+            return None
+
+        free = await BookingAllocationService.free_resources(
+            session, business_id=business_id, location_id=location_id, resource_type=None,
+            starts_at=starts_at, ends_at=ends_at, party_size=party_size,
+        )
+        candidates = await BookingAllocationService.load_many(
+            session, business_id=business_id,
+            resource_ids=[uuid.UUID(str(r["resource_id"])) for r in free],
+        )
+        candidates.sort(key=lambda r: (
+            r.max_party_size is None, r.max_party_size or 0, r.allocation_mode != "exclusive",
+            r.capacity, r.name,
+        ))
+        for resource in candidates:
+            try:
+                async with session.begin_nested():
+                    await BookingAllocationService.allocate(
+                        session, business_id=business_id, booking_id=booking_id,
+                        requests=BookingAllocationService.requests_for(
+                            resources=[resource], provider_id=provider_id, party_size=party_size
+                        ),
+                        starts_at=starts_at, ends_at=ends_at, party_size=party_size,
+                    )
+                return resource
+            except ConflictError as exc:
+                details = exc.detail.get("details", {}) if isinstance(exc.detail, dict) else {}
+                if "provider_id" in details:
+                    raise  # the provider is taken; another table will not change that
+        raise ConflictError(
+            "Nothing is free for this time",
+            details={"code": "no_resource_free", "party_size": party_size},
+        )
+
+    @staticmethod
     async def has_resources(
         session: AsyncSession, *, business_id: uuid.UUID, location_id: uuid.UUID | None = None
     ) -> bool:

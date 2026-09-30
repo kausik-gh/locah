@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import uuid
 import zlib
+from datetime import datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.exceptions import ConflictError, ValidationError
-from platform_core.models import Booking
+from platform_core.business_types import DEFAULT_TIMEZONE
+from platform_core.models import Booking, BusinessLocation, Offering
 from platform_core.services.workforce import WorkforceService
 from platform_core.validation.booking import RESERVATION_MODES
 
@@ -28,34 +31,130 @@ class AvailabilityService:
         *,
         business_id: uuid.UUID,
         location_id: uuid.UUID,
-        provider_id: uuid.UUID | None,
-        offering_id: uuid.UUID | None,
         reservation_mode: str,
     ) -> None:
-        """Serialize overlapping create/reschedule checks (concurrency / overbooking)."""
-        key = (
-            f"{business_id}:{location_id}:{provider_id or ''}:"
-            f"{offering_id or ''}:{reservation_mode}"
-        )
+        """Serialise every capacity check for one mode at one location.
+
+        The key used to include the provider and the offering, so a request
+        naming the instructor and one that did not queued on different locks
+        and could both see the last place free. The pool being summed is the
+        location's bookings of this mode (narrowed by offering when there is
+        one), so that is what the lock covers. Held to the end of the
+        transaction: the check and the insert commit together. Provider
+        exclusivity does not rely on it - that is the allocation's exclusion
+        constraint.
+        """
+        key = f"{business_id}:{location_id}:{reservation_mode}"
         lock_id = zlib.crc32(key.encode("utf-8")) & 0x7FFFFFFF
         await session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_id})
 
     @staticmethod
-    async def _assert_provider_at_location(
+    async def configured_capacity(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        offering_id: uuid.UUID | None,
+        reservation_mode: str,
+    ) -> int | None:
+        """A class's places per session, as the owner set them on the class.
+
+        Configuration outranks the request: a caller must not be able to lift
+        the limit by sending a bigger number, and a guest - who sends none -
+        must still meet it.
+        """
+        if reservation_mode != "class_session" or offering_id is None:
+            return None
+        attributes = (
+            await session.execute(
+                select(Offering.attributes).where(
+                    Offering.id == offering_id, Offering.business_id == business_id
+                )
+            )
+        ).scalar_one_or_none()
+        try:
+            places = int((attributes or {}).get("capacity") or 0)
+        except (TypeError, ValueError):
+            return None
+        return places if places > 0 else None
+
+    @staticmethod
+    async def assert_provider_can_take(
         session: AsyncSession,
         *,
         business_id: uuid.UUID,
         provider_id: uuid.UUID,
         location_id: uuid.UUID,
         offering_id: uuid.UUID | None,
+        starts_at: datetime,
+        ends_at: datetime,
     ) -> None:
-        await WorkforceService.assert_provider_eligible(
+        """Works here, does this service, and is on duty then (Workforce's own
+        schedule: weekly hours, dated leave or one-off hours, blocks)."""
+        member = await WorkforceService.assert_provider_eligible(
             session,
             business_id=business_id,
             provider_id=provider_id,
             location_id=location_id,
             offering_id=offering_id,
         )
+        location = await session.get(BusinessLocation, location_id)
+        await WorkforceService.assert_on_duty(
+            session,
+            business_id=business_id,
+            member=member,
+            location_id=location_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            zone=(location.timezone if location is not None else None) or DEFAULT_TIMEZONE,
+        )
+
+    @staticmethod
+    def closed_reason(
+        location: BusinessLocation, reservation_mode: str, starts_at: datetime, ends_at: datetime
+    ) -> str | None:
+        """Why a guest cannot book this time at this location, from the opening
+        hours the owner saved ({"mon": [["09:00", "18:00"]], ...}); None if open.
+
+        No hours saved means none are known, and none are invented. Stays and
+        rentals run across days and are not held to a day's opening spans.
+        """
+        hours = location.hours or {}
+        if not hours or reservation_mode not in {"appointment", "table", "class_session"}:
+            return None
+        tz = ZoneInfo(location.timezone or DEFAULT_TIMEZONE)
+        local_start, local_end = starts_at.astimezone(tz), ends_at.astimezone(tz)
+        day = local_start.date()
+        ends_at_midnight = local_end.date() == day + timedelta(days=1) and local_end.time() == time(0, 0)
+        if local_end.date() != day and not ends_at_midnight:
+            return "That runs past closing time"
+        begin, finish = local_start.time(), (time(23, 59, 59) if ends_at_midnight else local_end.time())
+        spans = []
+        for span in hours.get(day.strftime("%a").lower()[:3]) or []:
+            try:
+                spans.append((time.fromisoformat(span[0]), time.fromisoformat(span[1])))
+            except (ValueError, TypeError, IndexError):
+                continue
+        if not spans:
+            return "Closed that day"
+        if not any(open_at <= begin and close_at >= finish for open_at, close_at in spans):
+            return "Outside opening hours"
+        return None
+
+    @staticmethod
+    async def assert_open(
+        session: AsyncSession,
+        *,
+        location_id: uuid.UUID,
+        reservation_mode: str,
+        starts_at: datetime,
+        ends_at: datetime,
+    ) -> None:
+        location = await session.get(BusinessLocation, location_id)
+        if location is None:
+            return
+        reason = AvailabilityService.closed_reason(location, reservation_mode, starts_at, ends_at)
+        if reason:
+            raise ConflictError(reason, details={"code": "closed", "location_id": str(location_id)})
 
     @staticmethod
     async def _provider_conflict(
@@ -129,19 +228,27 @@ class AvailabilityService:
             session,
             business_id=business_id,
             location_id=location_id,
-            provider_id=provider_id,
+            reservation_mode=reservation_mode,
+        )
+        configured = await AvailabilityService.configured_capacity(
+            session,
+            business_id=business_id,
             offering_id=offering_id,
             reservation_mode=reservation_mode,
         )
+        if configured is not None:
+            capacity = configured
 
         # Appointment: provider exclusivity — NOT a capacity/room pool (Doc 11 §17.5).
         if provider_id:
-            await AvailabilityService._assert_provider_at_location(
+            await AvailabilityService.assert_provider_can_take(
                 session,
                 business_id=business_id,
                 provider_id=provider_id,
                 location_id=location_id,
                 offering_id=offering_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
             )
             if await AvailabilityService._provider_conflict(
                 session,

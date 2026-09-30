@@ -239,6 +239,7 @@ class BookingLifecycleService:
         correlation_id: str,
         payload: dict[str, Any],
         expected_version: int | None = None,
+        enforce_opening_hours: bool = False,
     ) -> Booking:
         business = await BusinessService.get_by_id(session, business_id)
         assert_business_mutable(business.state, action="reschedule booking")
@@ -250,6 +251,14 @@ class BookingLifecycleService:
         before = BookingResolver.serialize_booking(booking)
         old_starts = booking.starts_at.isoformat()
         old_ends = booking.ends_at.isoformat()
+        if enforce_opening_hours:
+            await AvailabilityService.assert_open(
+                session,
+                location_id=booking.location_id,
+                reservation_mode=booking.reservation_mode,
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
+            )
 
         # Move the claims first. reallocate_for_booking releases the old
         # interval before taking the new one, which is what lets a booking slide
@@ -263,6 +272,16 @@ class BookingLifecycleService:
             ends_at=validated["ends_at"],
             party_size=booking.party_size,
         )
+        if moved and booking.provider_id:
+            await AvailabilityService.assert_provider_can_take(
+                session,
+                business_id=business_id,
+                provider_id=booking.provider_id,
+                location_id=booking.location_id,
+                offering_id=booking.offering_id,
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
+            )
         if not moved:
             # Nothing allocated: a booking from before resources existed, or one
             # that names neither a resource nor a provider. The legacy check is

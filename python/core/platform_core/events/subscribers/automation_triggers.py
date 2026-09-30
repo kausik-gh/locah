@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_core.automation import AutomationEngine, StepOutcome, step_handler
 from platform_core.automation.engine import DueStep
+from platform_core.exceptions import ValidationError
 from platform_core.events.registry import EventContext, subscribe
 
 
@@ -89,7 +91,44 @@ async def alert_low_stock(session: AsyncSession, step: DueStep) -> StepOutcome:
         required_permission=INVENTORY_READ, severity="warning", resource_type="inventory_record",
         resource_id=step.entity_id, payload={"level": level, "threshold": threshold},
     )
-    return StepOutcome("done", f"Told you {title} is low ({level} left)", {"level": level})
+    drafted = await _draft_requisition(session, step, threshold)
+    return StepOutcome("done", f"Told you {title} is low ({level} left)" + (f"; {drafted}" if drafted else ""),
+                       {"level": level})
+
+
+async def _draft_requisition(session: AsyncSession, step: DueStep, threshold: Any) -> str | None:
+    """Owner opt-in (stock.low config draft_requisition): put a DRAFT
+    requisition on the Buying desk for this item, sized by the buying planner
+    (pack size, minimum order, inbound). A person reviews and approves it; no
+    purchase order is ever created or sent from here. One open draft per item."""
+    from platform_core.procurement.service import SupplyService
+
+    rule = await AutomationEngine.rule(session, step.business_id, "stock.low")
+    if not rule["config"].get("draft_requisition") or not await _module_on(session, step.business_id, "procurement"):
+        return None
+    item = (await session.execute(text(
+        "SELECT offering_id, location_id FROM inventory_records WHERE business_id = :b AND id = :id"),
+        {"b": str(step.business_id), "id": str(step.entity_id)})).first()
+    if item is None:
+        return None
+    open_draft = (await session.execute(text("""
+        SELECT 1 FROM procurement_requisitions r JOIN procurement_requisition_lines l ON l.requisition_id = r.id
+        WHERE r.business_id = :b AND r.source = 'reorder' AND r.status IN ('draft', 'submitted', 'approved')
+          AND l.offering_id = :o LIMIT 1"""), {"b": str(step.business_id), "o": str(item[0])})).first()
+    if open_draft is not None:
+        return "a requisition for it is already open"
+    owner = (await session.execute(text("SELECT primary_owner_identity_id FROM businesses WHERE id = :b"),
+                                   {"b": str(step.business_id)})).scalar()
+    try:
+        async with session.begin_nested():
+            await SupplyService.create_requisition(
+                session, step.business_id, owner,
+                {"offering_id": str(item[0]), "location_id": str(item[1]) if item[1] else None,
+                 "demand": max(int(threshold or 0), 1), "source": "reorder"},
+                permissions=None)
+    except ValidationError:
+        return "nothing to buy once inbound stock is counted"
+    return "a draft requisition is waiting on the Buying desk"
 
 
 # ---------------------------------------------------------------- lead.followup (leads)

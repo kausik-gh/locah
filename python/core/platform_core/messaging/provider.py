@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from platform_core.exceptions import ServiceUnavailable
-from platform_core.messaging.templates import LIBRARY, META_LANGUAGE
+from platform_core.messaging.templates import CODE_EXPIRY_MINUTES, LIBRARY, META_LANGUAGE
 from platform_core.secrets import is_development
 
 _META_ENV = ("META_APP_ID", "META_APP_SECRET", "META_GRAPH_VERSION", "META_ES_CONFIG_ID")
@@ -61,6 +61,7 @@ class SignupResult:
     display_phone: str | None
     display_name: str | None
     quality_rating: str | None
+    messaging_limit: str | None = None
 
 
 class Provider(Protocol):
@@ -76,6 +77,8 @@ class Provider(Protocol):
 
     async def submit_template(self, token: str | None, waba_id: str | None, key: str,
                               language: str) -> tuple[str, str | None, str | None]: ...
+
+    async def register_number(self, token: str | None, phone_number_id: str | None, pin: str) -> None: ...
 
 
 class SandboxProvider:
@@ -97,6 +100,9 @@ class SandboxProvider:
         # The sandbox approves at once, in the category asked for; Meta reviews
         # each template (usually minutes to a day) and decides its category.
         return "approved", f"sandbox-{key}-{language}", LIBRARY[key].category
+
+    async def register_number(self, token: str | None, phone_number_id: str | None, pin: str) -> None:
+        return None  # a test number needs no registration
 
 
 class MetaCloudProvider:
@@ -131,11 +137,15 @@ class MetaCloudProvider:
 
     async def send_template(self, token: str | None, phone_number_id: str | None, to: str, key: str, language: str,
                             params: list[str]) -> Sent:
+        components: list[dict[str, Any]] = [
+            {"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}]
+        if LIBRARY[key].category == "authentication":
+            # Meta's copy-code preset: the code in the body and behind the button.
+            components.append({"type": "button", "sub_type": "url", "index": "0",
+                               "parameters": [{"type": "text", "text": params[0]}]})
         return await self._send(token, phone_number_id, {
             "to": to, "type": "template",
-            "template": {"name": key, "language": {"code": META_LANGUAGE[language]},
-                         "components": [{"type": "body",
-                                         "parameters": [{"type": "text", "text": p} for p in params]}]}})
+            "template": {"name": key, "language": {"code": META_LANGUAGE[language]}, "components": components}})
 
     async def send_text(self, token: str | None, phone_number_id: str | None, to: str, body: str) -> Sent:
         return await self._send(token, phone_number_id, {
@@ -149,15 +159,30 @@ class MetaCloudProvider:
     async def submit_template(self, token: str | None, waba_id: str | None, key: str,
                               language: str) -> tuple[str, str | None, str | None]:
         t = LIBRARY[key]
-        body = t.bodies[language]
-        examples = [f"<{p}>" for p in t.params]
+        if t.category == "authentication":
+            # Only Meta's preset is accepted for one-time codes: no custom text.
+            components: list[dict[str, Any]] = [
+                {"type": "BODY", "add_security_recommendation": True},
+                {"type": "FOOTER", "code_expiration_minutes": CODE_EXPIRY_MINUTES},
+                {"type": "BUTTONS", "buttons": [{"type": "OTP", "otp_type": "COPY_CODE", "text": "Copy code"}]}]
+        else:
+            examples = [f"<{p}>" for p in t.params]
+            components = [{"type": "BODY", "text": t.bodies[language], "example": {"body_text": [examples]}}]
         data = await self._post(token, f"{waba_id}/message_templates", {
             "name": key, "language": META_LANGUAGE[language], "category": t.category.upper(),
-            "components": [{"type": "BODY", "text": body, "example": {"body_text": [examples]}}]})
+            "components": components})
         status = str(data.get("status") or "PENDING").lower()
         category = str(data.get("category") or "").lower() or None  # Meta's decision, which may differ
         return ("approved" if status == "approved" else "rejected" if status == "rejected" else "submitted",
                 str(data.get("id") or "") or None, category)
+
+    async def register_number(self, token: str | None, phone_number_id: str | None, pin: str) -> None:
+        """Register the number for Cloud API with its two-step verification PIN
+        (Meta: required after Embedded Signup before the number can send). The
+        PIN goes to Meta and nowhere else - LOCAH never stores it."""
+        if not phone_number_id:
+            raise _unavailable("This WhatsApp number is not fully connected")
+        await self._post(token, f"{phone_number_id}/register", {"messaging_product": "whatsapp", "pin": pin})
 
     async def complete_signup(self, code: str, waba_id: str, phone_number_id: str) -> SignupResult:
         """Embedded Signup's last step: exchange the code for the business's token,
@@ -173,10 +198,12 @@ class MetaCloudProvider:
             token = str(res.json().get("access_token") or "")
             await self._post(token, f"{waba_id}/subscribed_apps", {})
             info = await client.get(f"{self.base}/{phone_number_id}", headers={"Authorization": f"Bearer {token}"},
-                                    params={"fields": "display_phone_number,verified_name,quality_rating"})
+                                    params={"fields": "display_phone_number,verified_name,quality_rating,"
+                                                      "messaging_limit_tier"})
             details: dict[str, Any] = info.json() if info.status_code < 400 else {}
         return SignupResult(token, waba_id, phone_number_id, details.get("display_phone_number"),
-                            details.get("verified_name"), details.get("quality_rating"))
+                            details.get("verified_name"), details.get("quality_rating"),
+                            details.get("messaging_limit_tier"))
 
 
 def provider_for(kind: str) -> Provider:

@@ -106,7 +106,7 @@ All of the following are unchanged in contract:
 
 ## 7. ACTIVATION REQUIRED
 
-1. Apply migration `infra/supabase/migrations/20261001100000_website_v4_media_provenance_and_documents.sql`. It adds the provenance columns and the private `owner-documents` bucket with folder policies, and it is idempotent (applied twice locally).
+1. Apply migration `infra/supabase/migrations/20261001110000_website_v4_media_provenance_and_documents.sql`. It adds the provenance columns and the private `owner-documents` bucket with folder policies, and it is idempotent (applied twice locally).
 2. Set `GEMINI_API_KEY` on the API and worker. Optionally set `GEMINI_DOCUMENT_MODEL` and `IMAGE_PROVIDER=gemini`.
 3. Deploy the worker with the new job type `interview.read_document`.
 4. Remove any `XAI_API_KEY` / `AI_PROVIDER=grok` settings; they are no longer read.

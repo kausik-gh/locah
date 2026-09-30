@@ -321,3 +321,28 @@ async def set_availability(
         "data": {"id": str(row.id), "member_id": str(member_id)},
         "meta": {"correlation_id": actor.request.correlation_id},
     }
+
+
+@router.delete("/{business_id}/workforce/members/{member_id}/availability/{availability_id}")
+async def remove_availability(
+    business_id: UUID,
+    member_id: UUID,
+    availability_id: UUID,
+    actor: BusinessActorContext = Depends(
+        require_business_actor(WORKFORCE_MANAGE_AVAILABILITY, "workforce")
+    ),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    await WorkforceService.remove_availability(
+        session,
+        business_id=business_id,
+        member_id=member_id,
+        availability_id=availability_id,
+        actor_id=actor.request.identity_id,
+        correlation_id=actor.request.correlation_id,
+    )
+    await session.commit()
+    return {
+        "data": {"id": str(availability_id), "removed": True},
+        "meta": {"correlation_id": actor.request.correlation_id},
+    }

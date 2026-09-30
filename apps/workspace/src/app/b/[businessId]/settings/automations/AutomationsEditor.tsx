@@ -14,6 +14,8 @@ export type Automation = {
   stops_when: string
   enabled: boolean
   quiet_hours: boolean
+  /** Low stock only: also put a draft requisition on the Buying desk. */
+  draft_requisition?: boolean | null
   steps: Step[]
 }
 export type Activity = {
@@ -31,6 +33,7 @@ export type Activity = {
 export function AutomationCard({ businessId, automation }: { businessId: string; automation: Automation }) {
   const [enabled, setEnabled] = useState(automation.enabled)
   const [steps, setSteps] = useState(() => Object.fromEntries(automation.steps.map((s) => [s.key, s.on])))
+  const [draft, setDraft] = useState(Boolean(automation.draft_requisition))
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
@@ -65,6 +68,14 @@ export function AutomationCard({ businessId, automation }: { businessId: string;
       next[key] ? 'Step switched on.' : 'Step switched off.',
       () => setSteps(steps),
     )
+  }
+
+  const toggleDraft = () => {
+    const next = !draft
+    setDraft(next)
+    save({ config: { draft_requisition: next } },
+      next ? 'Low stock will also draft a requisition for you to review.' : 'No more draft requisitions.',
+      () => setDraft(!next))
   }
 
   const titleId = `auto-${automation.key.replace(/\W/g, '-')}`
@@ -112,6 +123,14 @@ export function AutomationCard({ businessId, automation }: { businessId: string;
           </li>
         ))}
       </ol>
+
+      {automation.draft_requisition !== null && automation.draft_requisition !== undefined ? (
+        <label className="bos-toggle">
+          <input type="checkbox" checked={draft} onChange={toggleDraft} disabled={pending || !enabled} />
+          <span className="bos-toggle__track" aria-hidden />
+          <span>Also put a draft requisition on the Buying desk (you review it; nothing is ordered)</span>
+        </label>
+      ) : null}
 
       <p className="bos-auto__foot">
         Stops when {automation.stops_when}.

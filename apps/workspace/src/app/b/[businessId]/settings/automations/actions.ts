@@ -6,7 +6,10 @@ import { sendJson, type ActionResult } from '@/lib/server-send'
 export async function saveAutomation(
   businessId: string,
   ladderKey: string,
-  change: { enabled?: boolean; config?: { disabled_steps: string[]; offset_hours?: Record<string, number> } },
+  change: {
+    enabled?: boolean
+    config?: { disabled_steps?: string[]; offset_hours?: Record<string, number>; draft_requisition?: boolean }
+  },
 ): Promise<ActionResult> {
   const r = await sendJson(
     `/v1/platform/businesses/${businessId}/automations/${encodeURIComponent(ladderKey)}`,

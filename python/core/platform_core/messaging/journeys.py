@@ -1106,7 +1106,7 @@ async def book_confirm(ctx: Ctx, arg: str) -> bool:
                      "party_size": 1, "payment_method": "pay_at_business", "channel": "whatsapp",
                      "resource_ids": hold or None,
                      "idempotency_key": f"wa-{ctx.conv.id}-{j.get('booking_key')}"},
-            allow_capacity_override=False)
+            allow_capacity_override=False, assign_free_resource=True, enforce_opening_hours=True)
     except PlatformError as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         await ctx.ask(buttons(ctx.tr("That did not go through: {reason}.", reason=detail.get("message") or exc.code),

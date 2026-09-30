@@ -4,7 +4,8 @@ import { getAccessToken } from '@/lib/supabase/access-token'
 import { apiTry, businessHeaders } from '@/lib/api'
 import { GateNotice, PageHeader } from '@/components/ui'
 import { WhatsAppSetup } from './WhatsAppSetup'
-import type { Setup } from './types'
+import { ConnectionPanel } from './ConnectionPanel'
+import type { CallRow, Setup } from './types'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,9 +19,10 @@ export default async function WhatsAppPage({ params }: { params: { businessId: s
   const token = await getAccessToken()
   if (!token) redirect('/login')
   const b = params.businessId
-  const [setup, me] = await Promise.all([
+  const [setup, me, calling] = await Promise.all([
     apiTry<{ data: Setup }>(`/v1/platform/businesses/${b}/messaging/setup`, token),
     apiTry<{ data: { permissions: string[] } }>('/v1/me/context', token, businessHeaders(b)),
+    apiTry<{ data: { calls: CallRow[] } }>(`/v1/platform/businesses/${b}/messaging/calling`, token),
   ])
   const header = (
     <PageHeader
@@ -36,6 +38,10 @@ export default async function WhatsAppPage({ params }: { params: { businessId: s
   return (
     <div className="bos-page">
       {header}
+      {setup.data.data.connection ? (
+        <ConnectionPanel businessId={b} connection={setup.data.data.connection}
+          calls={calling.ok ? calling.data.data.calls : []} canConfigure={perms.has('messaging.configure')} />
+      ) : null}
       <WhatsAppSetup businessId={b} setup={setup.data.data} canConfigure={perms.has('messaging.configure')} />
     </div>
   )

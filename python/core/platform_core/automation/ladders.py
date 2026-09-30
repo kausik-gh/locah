@@ -68,6 +68,33 @@ LADDERS: dict[str, Ladder] = {lad.key: lad for lad in (
         "the booking is cancelled or rescheduled",
     ),
     Ladder(
+        "booking.hold", "bookings", "Unpaid holds", "when the hold runs out", "booking",
+        (LadderStep("release", timedelta(0), "When the hold time runs out",
+                    "Release the slot if the deposit was not paid"),),
+        "the deposit is paid or the booking is cancelled",
+        quiet_hours=False,
+    ),
+    Ladder(
+        "booking.waitlist", "bookings", "Waitlist offers", "when a place someone is waiting for opens up",
+        "booking_waitlist_entry",
+        (LadderStep("offer", timedelta(0), "When a place opens up",
+                    "Offer it on WhatsApp to the first person waiting, with a link to take it"),),
+        "the place is taken, or nobody is waiting",
+    ),
+    Ladder(
+        "booking.waitlist_expiry", "bookings", "Waitlist offer time limit", "when an offer is sent",
+        "booking_waitlist_entry",
+        (LadderStep("expire", timedelta(0), "When the offer's time runs out",
+                    "Withdraw the offer and offer the place to the next person"),),
+        "the customer takes the place",
+        quiet_hours=False,
+    ),
+    Ladder(
+        "booking.no_show", "bookings", "No-show follow-up", "when a booking is marked no-show", "booking",
+        (LadderStep("follow_up", 1 * H, "1 hour after", "“We missed you” with a link to book again"),),
+        "the customer books again, or you switch it off",
+    ),
+    Ladder(
         "invoice.overdue", "invoicing", "Payment reminders", "the invoice due date", "invoice",
         (
             LadderStep("due_day", timedelta(0), "On the due date", "Statement with a payment link"),

@@ -86,6 +86,8 @@ class BookingService:
         correlation_id: str,
         payload: dict[str, Any],
         allow_capacity_override: bool = True,
+        assign_free_resource: bool = False,
+        enforce_opening_hours: bool = False,
     ) -> Booking:
         """Create a booking and claim whatever it consumes.
 
@@ -93,7 +95,16 @@ class BookingService:
         limit availability is checked against, so letting an anonymous caller
         supply it makes the check decorative. Staff may still set it for a
         business that has configured no resources, where nothing else knows the
-        number; once resources exist, they win regardless.
+        number; once resources exist, or the class states its places, those win
+        regardless.
+
+        `assign_free_resource` is True where the customer is never asked which
+        table or chair (website, WhatsApp): if the business allocates resources
+        and none was named, a free one is held under lock, or the booking is
+        refused - the check and the claim commit together.
+
+        `enforce_opening_hours` holds guest bookings to the location's saved
+        opening hours; the desk may still book outside them.
         """
         business = await BusinessService.get_by_id(session, business_id)
         assert_business_mutable(business.state, action="create booking")
@@ -137,9 +148,6 @@ class BookingService:
             session,
             business_id=business_id,
             resource_ids=validated["resource_ids"],
-        )
-        capacity = BookingAllocationService.effective_capacity(
-            resources, fallback=validated["capacity"] if allow_capacity_override else None
         )
         if validated["offering_id"]:
             offering = await OfferingResolver.resolve(
@@ -207,10 +215,43 @@ class BookingService:
                 details={"field": "title"},
             )
 
+        configured = await AvailabilityService.configured_capacity(
+            session,
+            business_id=business_id,
+            offering_id=validated["offering_id"],
+            reservation_mode=validated["reservation_mode"],
+        )
+        capacity = BookingAllocationService.effective_capacity(
+            resources,
+            fallback=configured
+            if configured is not None
+            else (validated["capacity"] if allow_capacity_override else None),
+        )
+
         # The legacy path stays for bookings that name no resource: a business
         # that has not configured any still gets provider exclusivity and the
         # offering-level pool it has always had. Where resources exist they are
         # the authority, and allocating them below is what enforces supply.
+        if enforce_opening_hours:
+            await AvailabilityService.assert_open(
+                session,
+                location_id=validated["location_id"],
+                reservation_mode=validated["reservation_mode"],
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
+            )
+        if resources and validated["provider_id"]:
+            # The legacy check below does this for bookings without resources;
+            # a chair plus a stylist must still get a stylist who is on duty.
+            await AvailabilityService.assert_provider_can_take(
+                session,
+                business_id=business_id,
+                provider_id=validated["provider_id"],
+                location_id=validated["location_id"],
+                offering_id=validated["offering_id"],
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
+            )
         if not resources:
             await AvailabilityService.assert_available(
                 session,
@@ -269,19 +310,34 @@ class BookingService:
         # Claim the subjects. Raises ConflictError if any is taken, which rolls
         # the whole request back - the booking row never survives without its
         # allocations, so a calendar entry cannot exist holding nothing.
-        await BookingAllocationService.allocate(
-            session,
-            business_id=business_id,
-            booking_id=booking.id,
-            requests=BookingAllocationService.requests_for(
-                resources=resources,
+        if not resources and assign_free_resource:
+            held = await BookingAllocationService.allocate_first_free(
+                session,
+                business_id=business_id,
+                booking_id=booking.id,
+                location_id=validated["location_id"],
                 provider_id=validated["provider_id"],
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
                 party_size=validated["party_size"],
-            ),
-            starts_at=validated["starts_at"],
-            ends_at=validated["ends_at"],
-            party_size=validated["party_size"],
-        )
+            )
+            if held is not None:
+                booking.capacity = BookingAllocationService.effective_capacity([held])
+                await session.flush()
+        else:
+            await BookingAllocationService.allocate(
+                session,
+                business_id=business_id,
+                booking_id=booking.id,
+                requests=BookingAllocationService.requests_for(
+                    resources=resources,
+                    provider_id=validated["provider_id"],
+                    party_size=validated["party_size"],
+                ),
+                starts_at=validated["starts_at"],
+                ends_at=validated["ends_at"],
+                party_size=validated["party_size"],
+            )
 
         history = BookingStatusHistory(
             business_id=business_id,
@@ -349,6 +405,25 @@ class BookingService:
                 },
                 business_id=business_id,
                 correlation_id=correlation_id,
+            )
+
+        # Founder §17: a slot waiting on an online deposit is held, not kept for
+        # ever - if the deposit is not paid within the owner's hold time the
+        # slot is released (booking.hold ladder).
+        if (
+            deposit_required
+            and deposit_amount > 0
+            and validated["payment_method"] == "online"
+            and booking.payment_status not in ("deposit_paid", "paid")
+        ):
+            from platform_core.automation import AutomationEngine
+
+            booking.hold_expires_at = datetime.now(timezone.utc) + timedelta(minutes=policy.hold_minutes)
+            await session.flush()
+            await AutomationEngine.schedule(
+                session, business_id, ladder_key="booking.hold", entity_id=booking.id,
+                anchor=booking.hold_expires_at,
+                period_key=booking.hold_expires_at.isoformat(timespec="seconds"),
             )
 
         after = BookingResolver.serialize_booking(booking)
@@ -476,6 +551,12 @@ class BookingService:
             policy.deposit_percent = payload["deposit_percent"]
         if "cancel_window_hours" in payload:
             policy.cancel_window_hours = int(payload["cancel_window_hours"])
+        if payload.get("hold_minutes") is not None:
+            policy.hold_minutes = int(payload["hold_minutes"])
+        if payload.get("waitlist_enabled") is not None:
+            policy.waitlist_enabled = bool(payload["waitlist_enabled"])
+        if payload.get("waitlist_offer_minutes") is not None:
+            policy.waitlist_offer_minutes = int(payload["waitlist_offer_minutes"])
         policy.version += 1
         policy.updated_at = datetime.now(timezone.utc)
         await session.flush()
@@ -494,9 +575,25 @@ class BookingService:
                 if policy.deposit_amount is not None
                 else None,
                 "cancel_window_hours": policy.cancel_window_hours,
+                "hold_minutes": policy.hold_minutes,
+                "waitlist_enabled": policy.waitlist_enabled,
+                "waitlist_offer_minutes": policy.waitlist_offer_minutes,
             },
         )
         return policy
+
+    @staticmethod
+    def serialize_policy(policy: BookingsPolicy) -> dict[str, Any]:
+        return {
+            "require_deposit": policy.require_deposit,
+            "deposit_amount": float(policy.deposit_amount) if policy.deposit_amount is not None else None,
+            "deposit_percent": float(policy.deposit_percent) if policy.deposit_percent is not None else None,
+            "cancel_window_hours": policy.cancel_window_hours,
+            "hold_minutes": policy.hold_minutes,
+            "waitlist_enabled": policy.waitlist_enabled,
+            "waitlist_offer_minutes": policy.waitlist_offer_minutes,
+            "version": policy.version,
+        }
 
     @staticmethod
     async def patch_booking(

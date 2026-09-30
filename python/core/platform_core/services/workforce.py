@@ -6,13 +6,19 @@ identity_id linkage is optional and NEVER grants Workspace access.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from platform_core.exceptions import ModuleNotActive, ResourceNotFound, ValidationError
+from platform_core.exceptions import (
+    ConflictError,
+    ModuleNotActive,
+    ResourceNotFound,
+    ValidationError,
+)
 from platform_core.gates import assert_business_mutable
 from platform_core.models import (
     BusinessModuleState,
@@ -365,18 +371,34 @@ class WorkforceService:
         await WorkforceService.get_member(session, business_id=business_id, member_id=member_id)
         start = payload.get("start_time")
         end = payload.get("end_time")
-        if isinstance(start, str):
-            parts = [int(p) for p in start.split(":")[:2]]
-            start = time(parts[0], parts[1])
-        if isinstance(end, str):
-            parts = [int(p) for p in end.split(":")[:2]]
-            end = time(parts[0], parts[1])
+        try:
+            if isinstance(start, str):
+                parts = [int(p) for p in start.split(":")[:2]]
+                start = time(parts[0], parts[1])
+            if isinstance(end, str):
+                parts = [int(p) for p in end.split(":")[:2]]
+                end = time(parts[0], parts[1])
+        except (ValueError, IndexError) as exc:
+            raise ValidationError("Times look like 09:00", details={"field": "start_time"}) from exc
+        if not isinstance(start, time) or not isinstance(end, time) or end <= start:
+            raise ValidationError("A span must start before it ends", details={"field": "end_time"})
+        weekday = payload.get("weekday")
+        on = payload.get("exception_date")
+        if isinstance(on, str):
+            try:
+                on = date.fromisoformat(on)
+            except ValueError as exc:
+                raise ValidationError("Dates look like 2026-10-05", details={"field": "exception_date"}) from exc
+        # Weekly hours name a weekday (0 = Monday, as Python counts); a leave,
+        # a day off or one-off hours name a date. Exactly one of the two.
+        if (weekday is None) == (on is None):
+            raise ValidationError("Give either a weekday or a date", details={"field": "weekday"})
         row = WorkforceAvailability(
             business_id=business_id,
             member_id=member_id,
             location_id=payload.get("location_id"),
-            weekday=payload.get("weekday"),
-            exception_date=payload.get("exception_date"),
+            weekday=weekday,
+            exception_date=on,
             start_time=start,
             end_time=end,
             is_available=bool(payload.get("is_available", True)),
@@ -421,6 +443,124 @@ class WorkforceService:
                 )
             ).scalars().all()
         )
+
+    @staticmethod
+    async def remove_availability(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        member_id: uuid.UUID,
+        availability_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        correlation_id: str,
+    ) -> None:
+        row = (
+            await session.execute(
+                select(WorkforceAvailability).where(
+                    WorkforceAvailability.id == availability_id,
+                    WorkforceAvailability.business_id == business_id,
+                    WorkforceAvailability.member_id == member_id,
+                )
+            )
+        ).scalars().first()
+        if row is None:
+            raise ResourceNotFound("Availability")
+        before = {
+            "weekday": row.weekday,
+            "exception_date": row.exception_date.isoformat() if row.exception_date else None,
+            "start_time": row.start_time.isoformat(),
+            "end_time": row.end_time.isoformat(),
+            "is_available": row.is_available,
+        }
+        await session.delete(row)
+        await session.flush()
+        await OutboxService.publish(
+            session,
+            event_type="workforce.availability_updated",
+            payload={"business_id": str(business_id), "member_id": str(member_id),
+                     "availability_id": str(availability_id), "removed": True},
+            business_id=business_id,
+            correlation_id=correlation_id,
+        )
+        await AuditService.record(
+            session,
+            event_type="workforce.availability_updated",
+            actor_identity_id=actor_id,
+            actor_context="business",
+            business_id=business_id,
+            resource_type="workforce_member",
+            resource_id=member_id,
+            action="availability_removed",
+            before_state=before,
+        )
+
+    @staticmethod
+    def _on_duty_problem(
+        rows: list[WorkforceAvailability],
+        *,
+        location_id: uuid.UUID,
+        starts_at: datetime,
+        ends_at: datetime,
+        zone: str,
+    ) -> str | None:
+        """Why this person cannot take [starts_at, ends_at), or None.
+
+        No schedule at all means none was set - nothing to enforce, and nothing
+        is invented. Once any hours exist they are the truth: a dated entry for
+        the day (one-off hours, or leave when is_available is false) outranks
+        the weekly pattern, blocks (is_available false) are never bookable, and
+        the booking must sit inside one working span. Rows tied to another
+        location do not count here.
+        """
+        rows = [r for r in rows if r.location_id is None or r.location_id == location_id]
+        if not rows:
+            return None
+        tz = ZoneInfo(zone)
+        local_start, local_end = starts_at.astimezone(tz), ends_at.astimezone(tz)
+        day = local_start.date()
+        ends_at_midnight = local_end.date() == day + timedelta(days=1) and local_end.time() == time(0, 0)
+        if local_end.date() != day and not ends_at_midnight:
+            return None  # overnight/multi-day stays are not provider slots
+        begin = local_start.time()
+        finish = time(23, 59, 59) if ends_at_midnight else local_end.time()
+        dated = [r for r in rows if r.exception_date == day]
+        weekly = [r for r in rows if r.exception_date is None and r.weekday == day.weekday()]
+        for block in [r for r in dated + weekly if not r.is_available]:
+            if block.start_time < finish and block.end_time > begin:
+                return "away"
+        working = [r for r in dated if r.is_available] or [r for r in weekly if r.is_available]
+        if not any(r.start_time <= begin and r.end_time >= finish for r in working):
+            return "off_duty"
+        return None
+
+    @staticmethod
+    async def assert_on_duty(
+        session: AsyncSession,
+        *,
+        business_id: uuid.UUID,
+        member: WorkforceMember,
+        location_id: uuid.UUID,
+        starts_at: datetime,
+        ends_at: datetime,
+        zone: str,
+    ) -> None:
+        """Bookings asks; Workforce answers from the person's own schedule."""
+        rows = await WorkforceService.list_availability(
+            session, business_id=business_id, member_id=member.id
+        )
+        problem = WorkforceService._on_duty_problem(
+            rows, location_id=location_id, starts_at=starts_at, ends_at=ends_at, zone=zone
+        )
+        if problem == "away":
+            raise ConflictError(
+                f"{member.display_name} is away then",
+                details={"code": "provider_away", "provider_id": str(member.id)},
+            )
+        if problem == "off_duty":
+            raise ConflictError(
+                f"{member.display_name} is not working then",
+                details={"code": "provider_off_duty", "provider_id": str(member.id)},
+            )
 
     @staticmethod
     async def assert_provider_eligible(

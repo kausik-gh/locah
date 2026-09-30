@@ -96,12 +96,19 @@ LIBRARY: dict[str, Template] = {t.key: t for t in (
         "Before a booking, on the booking reminder schedule",
     ),
     Template(
+        # Meta allows one-time codes only in its preset authentication format
+        # (checked 2026-09-30): Meta writes the words; LOCAH supplies the code,
+        # shown in the body and behind a copy-code button. These bodies are
+        # what the customer sees, kept for the inbox transcript.
         "quote_acceptance_code", "Code to accept a quote", "authentication", "customer",
-        ("quote number", "business name", "the 6-digit code"),
+        ("the 6-digit code",),
         {
-            "en": "Your code to accept quote {{1}} from {{2}} is {{3}}. It expires in 10 minutes; do not share it.",
-            "ta": "குறியீடு: மேற்கோள் {{1}} ({{2}}) ஏற்க உங்கள் குறியீடு {{3}}. இது 10 நிமிடங்களில் காலாவதியாகும்; பகிர வேண்டாம்.",
-            "hi": "कोटेशन {{1}} ({{2}}) स्वीकार करने के लिए आपका कोड {{3}} है। यह 10 मिनट में समाप्त होगा; किसी से साझा न करें।",
+            "en": "{{1}} is your verification code. For your security, do not share this code. "
+                  "This code expires in 10 minutes.",
+            "ta": "{{1}} உங்கள் சரிபார்ப்புக் குறியீடு. உங்கள் பாதுகாப்பிற்காக, இதை யாருடனும் பகிர வேண்டாம். "
+                  "இந்தக் குறியீடு 10 நிமிடங்களில் காலாவதியாகும்.",
+            "hi": "{{1}} आपका सत्यापन कोड है। अपनी सुरक्षा के लिए यह कोड किसी से साझा न करें। "
+                  "यह कोड 10 मिनट में समाप्त हो जाएगा।",
         },
         "A customer asks for the code to accept a quote on its page", phase="P2",
     ),
@@ -114,6 +121,26 @@ LIBRARY: dict[str, Template] = {t.key: t for t in (
             "hi": "सूचना: {{1}} पर आपकी बारी आने वाली है — टोकन {{2}}, आपसे पहले {{3}}। कृपया तैयार रहें।",
         },
         "When a queue token is next in line (the lane's 'tell them when … ahead')", phase="P2",
+    ),
+    Template(
+        "booking_waitlist_opening", "A place opened up", "utility", "customer",
+        ("business name", "what is booked", "date and time", "link to take it", "minutes it is held"),
+        {
+            "en": "Good news from {{1}}: a place opened up for {{2}} on {{3}}. Take it here: {{4}} (kept for you for {{5}} minutes, then offered to the next person).",
+            "ta": "நல்ல செய்தி: {{1}} இல் {{2}} க்கு {{3}} அன்று இடம் கிடைத்துள்ளது. இங்கே பெறுங்கள்: {{4}} ({{5}} நிமிடங்கள் உங்களுக்காக வைத்திருப்போம், பின்னர் அடுத்தவருக்கு).",
+            "hi": "खुशखबरी: {{1}} में {{2}} के लिए {{3}} को जगह खाली हुई है। यहाँ लें: {{4}} ({{5}} मिनट तक आपके लिए रखी है, फिर अगले व्यक्ति को)।",
+        },
+        "A place a customer is waiting for opens up (Bookings waitlist)", phase="P2",
+    ),
+    Template(
+        "booking_missed", "We missed you", "utility", "customer",
+        ("business name", "what was booked", "date and time", "link to book again"),
+        {
+            "en": "Hello from {{1}}: we missed you for {{2}} on {{3}}. Book another time here: {{4}} (or reply to this message).",
+            "ta": "வணக்கம்: {{1}} இல் {{2}} ({{3}}) க்கு உங்களைக் காணவில்லை. வேறு நேரம் முன்பதிவு செய்ய: {{4}} (அல்லது இங்கே பதில் அனுப்புங்கள்).",
+            "hi": "नमस्ते: {{1}} में {{2}} ({{3}}) के लिए आप नहीं आ पाए। दूसरा समय यहाँ बुक करें: {{4}} (या इस संदेश का जवाब दें)।",
+        },
+        "A booking is marked no-show (Bookings no-show follow-up)", phase="P2",
     ),
     Template(
         "review_request", "Review request", "utility", "customer",
@@ -218,6 +245,8 @@ LIBRARY: dict[str, Template] = {t.key: t for t in (
 )}
 
 _PARAM = re.compile(r"\{\{(\d+)\}\}")
+# Minutes an authentication code stays valid (Meta's code_expiration_minutes).
+CODE_EXPIRY_MINUTES = 10
 
 
 def check_library() -> list[str]:
@@ -232,7 +261,9 @@ def check_library() -> list[str]:
             found = [int(n) for n in _PARAM.findall(body)]
             if found != list(range(1, len(t.params) + 1)):
                 problems.append(f"{t.key}/{lang}: parameters {found} should be 1..{len(t.params)} in order")
-            if body.startswith("{{") or body.rstrip(" .।").endswith("}}"):
+            # Meta's own preset authentication wording starts on the code; the
+            # rule is for LOCAH-written bodies.
+            if t.category != "authentication" and (body.startswith("{{") or body.rstrip(" .।").endswith("}}")):
                 problems.append(f"{t.key}/{lang}: starts or ends on a parameter")
             if len(body) > 1024:
                 problems.append(f"{t.key}/{lang}: longer than 1024 characters")

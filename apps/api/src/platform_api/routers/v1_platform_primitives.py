@@ -65,6 +65,8 @@ def _ladder_view(key: str, rule: dict[str, Any]) -> dict[str, Any]:
         "key": key, "label": lad.label, "module": lad.module, "module_label": info.label if info else lad.module,
         "anchor": lad.anchor, "stops_when": lad.stops_when, "enabled": rule["enabled"],
         "quiet_hours": rule["config"].get("quiet_hours", lad.quiet_hours),
+        # Low stock only: also draft a requisition (owner opt-in; never an order).
+        "draft_requisition": bool(rule["config"].get("draft_requisition")) if key == "stock.low" else None,
         "steps": [
             {"key": s.key, "when": s.when, "does": s.does, "marketing": s.marketing, "on": s.key not in off,
              "offset_hours": offsets.get(s.key, int(s.offset.total_seconds() // 3600))}

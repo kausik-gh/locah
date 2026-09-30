@@ -64,7 +64,9 @@ export default async function BatchPage({ params }: { params: { businessId: stri
         <h2 style={{ marginTop: 0 }}>Students</h2>
         {enrolments.length ? <ul>{enrolments.map((e) => <li key={e.id}>{e.student_name}{e.guardian_name ? ` · guardian ${e.guardian_name}` : ''} <small>({e.status})</small></li>)}</ul>
           : <p>No students enrolled yet.</p>}
-        <form action={enrolStudent} style={{ display: 'grid', gap: '0.6rem' }}>
+        {/* Keyed on the roll so it starts empty after each enrolment: a guardian chosen for one
+            student must never carry over to the next. */}
+        <form key={`enrol-${enrolments.length}`} action={enrolStudent} style={{ display: 'grid', gap: '0.6rem' }}>
           <input type="hidden" name="businessId" value={b} /><input type="hidden" name="batchId" value={id} />
           <label>Student<select name="student_contact_id" required defaultValue=""><option value="">Choose student contact</option>{contacts.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
           <label>Guardian<select name="guardian_contact_id" defaultValue=""><option value="">No guardian / adult learner</option>{contacts.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
@@ -83,7 +85,7 @@ export default async function BatchPage({ params }: { params: { businessId: stri
           <label>Maximum marks<input name="maximum" type="number" min="0.01" step="0.01" required /></label>
           <button type="submit" className="btn">Add assessment</button>
         </form>
-        {uniqueAssessments.length && enrolments.length ? <form action={recordResult} style={{ display: 'grid', gap: '0.6rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
+        {uniqueAssessments.length && enrolments.length ? <form key={`result-${assessments.filter((a) => a.marks !== null).length}`} action={recordResult} style={{ display: 'grid', gap: '0.6rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
           <input type="hidden" name="businessId" value={b} /><input type="hidden" name="batchId" value={id} />
           <label>Test<select name="assessmentId" required defaultValue=""><option value="">Choose assessment</option>{uniqueAssessments.map((a) => <option key={a.id} value={a.id}>{a.title} / {a.maximum}</option>)}</select></label>
           <label>Student<select name="enrolment_id" required defaultValue=""><option value="">Choose student</option>{enrolments.filter((e) => e.status === 'active').map((e) => <option key={e.id} value={e.id}>{e.student_name}</option>)}</select></label>

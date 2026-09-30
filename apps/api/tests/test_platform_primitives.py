@@ -287,6 +287,53 @@ def test_low_stock_ladder_runs_once_and_is_visible(monkeypatch: Any) -> None:
 
 
 @DB
+def test_low_stock_drafts_a_requisition_only_when_the_owner_asks(monkeypatch: Any) -> None:
+    """Optional policy: low stock → a DRAFT requisition on the Buying desk. Off by
+    default; never a purchase order; one open draft per item."""
+    _, owner = new_identity(monkeypatch)
+    bid = create_business(client, owner, modules=("offerings-catalog", "inventory", "procurement"))
+    loc = primary_location(client, owner, bid)
+    base = f"/v1/platform/businesses/{bid}"
+    noon = datetime.now(IST).replace(hour=12, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+
+    def item(title: str) -> str:
+        oid = str(client.post(f"{base}/products", json={
+            "title": title, "sku": f"R-{uuid.uuid4().hex[:6]}", "track_inventory": True, "low_stock_threshold": 5,
+            "status": "active", "price_amount": 2400}, headers=owner).json()["data"]["id"])
+        client.post(f"{base}/inventory/opening-stock", json={"offering_id": oid, "location_id": loc, "quantity": 12},
+                    headers=owner)
+        return oid
+
+    def dip(oid: str, by: int) -> None:
+        r = client.post(f"{base}/inventory/adjust", json={"offering_id": oid, "location_id": loc,
+                                                          "quantity_delta": -by, "reason": "Used"}, headers=owner)
+        assert r.status_code == 200, r.text
+        drain_events(bid)
+        run_automation(bid, now=noon + timedelta(days=1))
+
+    def drafts() -> list[Any]:
+        return list(sql("select r.status, r.source, l.offering_id::text from procurement_requisitions r join "
+                        "procurement_requisition_lines l on l.requisition_id = r.id where r.business_id = :b", b=bid))
+
+    rice, dal = item("Basmati rice 25 kg"), item("Toor dal 30 kg")
+    dip(rice, 8)  # 12 → 4: below the reorder point
+    assert sql("select count(*) from platform_notifications where business_id = :b and "
+               "notification_type = 'inventory.low_stock'", b=bid)[0][0] >= 1
+    assert drafts() == [], "off by default: only the alert"
+    other = client.patch(f"{base}/automations/review.request", json={"config": {"draft_requisition": True}},
+                         headers=owner)
+    assert other.status_code == 422, "only low stock can draft one"
+    on = client.patch(f"{base}/automations/stock.low", json={"enabled": True, "config": {"draft_requisition": True}},
+                      headers=owner)
+    assert on.status_code == 200, on.text
+    dip(dal, 8)
+    dip(dal, 1)
+    run_automation(bid, now=noon + timedelta(days=2))
+    assert drafts() == [("draft", "reorder", dal)], "one open draft per item, never more than a draft"
+    assert sql("select count(*) from procurement_purchase_orders where business_id = :b", b=bid) == [(0,)]
+
+
+@DB
 def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
     """A ladder is shown only once every step has code behind it — the owner is
     never shown a switch that does nothing. Membership renewal and fee
@@ -304,13 +351,17 @@ def test_only_wired_ladders_are_offered(monkeypatch: Any) -> None:
     shown = [a["key"] for a in client.get(f"/v1/platform/businesses/{bid}/automations",
                                           headers=owner).json()["data"]["automations"]]
     # P2-02 wired the membership renewal and fee-instalment ladders.
-    assert shown == ["membership.renewal", "membership.instalment", "booking.reminder", "stock.low",
+    # Bookings depth wired unpaid holds, the waitlist offer and its time limit, and the no-show follow-up.
+    assert shown == ["membership.renewal", "membership.instalment", "booking.reminder", "booking.hold",
+                     "booking.waitlist", "booking.waitlist_expiry", "booking.no_show", "stock.low",
                      "order.tracking", "review.request", "lead.followup", "chat.waiting", "compliance.due",
                      "inventory.expiry"]
     assert {k for k in LADDERS if is_wired(k)} == {"stock.low", "lead.followup", "booking.reminder", "order.tracking",
                                                    "invoice.overdue", "ledger.statement", "chat.waiting",
                                                    "review.request", "compliance.due", "inventory.expiry",
-                                                   "membership.renewal", "membership.instalment", "task.due"}
+                                                   "membership.renewal", "membership.instalment", "task.due",
+                                                   "booking.hold", "booking.waitlist", "booking.waitlist_expiry",
+                                                   "booking.no_show"}
 
 
 @DB
