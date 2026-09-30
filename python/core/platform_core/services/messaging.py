@@ -76,6 +76,7 @@ STAFF_ALERTS: dict[str, tuple[str, str]] = {
     "lead.new": ("New enquiries", "leads.read"),
     "chat.waiting": ("Customers waiting for a person on WhatsApp", "messaging.read"),
     "khata.over_limit": ("Khata allowed over a customer's limit", "ledger.manage"),
+    "call.missed": ("WhatsApp calls LOCAH could not answer", "messaging.read"),
 }
 # "Talk to a person" in English, Tamil and Hindi (a button id, or words typed).
 PERSON_WORDS = ("talk to person", "talk to a person", "human", "agent", "person", "call me", "speak to someone",
@@ -143,6 +144,10 @@ class MessagingService:
                 "messaging_limit": c.messaging_limit, "last_error": c.last_error,
                 "last_webhook_at": c.last_webhook_at.isoformat() if c.last_webhook_at else None,
                 "connected_at": c.connected_at.isoformat() if c.connected_at else None,
+                "waba_id": c.waba_id,
+                "phone_registered_at": c.phone_registered_at.isoformat() if c.phone_registered_at else None,
+                "registration_error": c.registration_error, "calling_status": c.calling_status,
+                "calling_error": c.calling_error,
                 "sandbox": c.provider == "sandbox"}
 
     @staticmethod
@@ -179,6 +184,7 @@ class MessagingService:
         meters = {m["resource"]: m for m in await UsageMeterService.summary(session, business_id)}
         return {
             "channel": MessagingService.serialize_channel(channel),
+            "connection": await MessagingService.connection(session, business_id),
             "meta": meta_public_config(), "meta_ready": meta_configured(), "sandbox_available": sandbox_enabled(),
             "settings": {"language": s.language, "human_pause_hours": s.human_pause_hours,
                          "customer_updates": {k: MessagingService.update_on(s, k) for k in CUSTOMER_UPDATES},
@@ -190,6 +196,36 @@ class MessagingService:
                        if mine else None,
                        "kinds": {k: label for k, (label, perm) in STAFF_ALERTS.items() if perm in permissions}},
             "meter": meters.get("whatsapp_message"),
+        }
+
+    @staticmethod
+    async def connection(session: AsyncSession, business_id: uuid.UUID) -> dict[str, Any]:
+        """The honest state of WhatsApp messaging and calling for this business
+        (platform_core.messaging.connection), with what the owner must see."""
+        from platform_core.calling.voice import telephony_state
+        from platform_core.messaging.connection import calling_state, messaging_state
+
+        channel = await MessagingService.channel(session, business_id)
+        was_disconnected = channel is None and (await session.execute(select(MessagingChannel.id).where(
+            MessagingChannel.business_id == business_id, MessagingChannel.status == "disconnected").limit(1))
+        ).first() is not None
+        rows = list((await session.execute(select(MessagingTemplate).where(
+            MessagingTemplate.business_id == business_id))).scalars())
+        approved_utility = sum(1 for r in rows if r.status == "approved"
+                               and (r.category or (LIBRARY[r.template_key].category
+                                                   if r.template_key in LIBRARY else "")) == "utility")
+        awaiting = sum(1 for r in rows if r.status == "submitted")
+        messaging = messaging_state(channel=channel, was_disconnected=was_disconnected, meta_ready=meta_configured(),
+                                    sandbox_available=sandbox_enabled(), approved_utility=approved_utility,
+                                    awaiting_review=awaiting)
+        return {
+            "messaging": messaging,
+            "calling": calling_state(channel, messaging),
+            "telephony": telephony_state(),
+            "templates": {"approved": sum(1 for r in rows if r.status == "approved"), "approved_utility":
+                          approved_utility, "awaiting_review": awaiting,
+                          "rejected": sum(1 for r in rows if r.status == "rejected")},
+            "last_webhook_at": channel.last_webhook_at.isoformat() if channel and channel.last_webhook_at else None,
         }
 
     @staticmethod
@@ -232,26 +268,81 @@ class MessagingService:
         channel = MessagingChannel(business_id=business_id, kind="whatsapp", provider="sandbox", status="pending",
                                    display_phone=f"+{phone}", display_name=(display_name or (business.display_name
                                    if business else ""))[:120], phone_number_id=f"sandbox-{business_id.hex[:16]}",
-                                   waba_id=f"sandbox-{business_id.hex[:12]}")
+                                   waba_id=f"sandbox-{business_id.hex[:12]}", phone_registered_at=_now())
         session.add(channel)
         await session.flush()
         return await MessagingService._connected(session, business_id, actor_id, channel)
 
     @staticmethod
     async def complete_signup(session: AsyncSession, business_id: uuid.UUID, actor_id: uuid.UUID, *, code: str,
-                              waba_id: str, phone_number_id: str, coexistence: bool) -> MessagingChannel:
-        """Embedded Signup finished in the owner's browser; finish it with Meta."""
+                              waba_id: str, phone_number_id: str, coexistence: bool,
+                              pin: str | None = None) -> MessagingChannel:
+        """Embedded Signup finished in the owner's browser; finish it with Meta:
+        exchange the code, subscribe to the WABA's webhooks, then register the
+        number (Meta requires it before a Cloud API number can send). A number
+        kept on the WhatsApp Business app (coexistence) is already registered."""
         if await MessagingService.channel(session, business_id):
             raise ConflictError("A WhatsApp number is already connected; disconnect it first")
-        result = await MetaCloudProvider().complete_signup(code, waba_id, phone_number_id)
+        provider = MetaCloudProvider()
+        result = await provider.complete_signup(code, waba_id, phone_number_id)
         channel = MessagingChannel(
             business_id=business_id, kind="whatsapp", provider="meta_cloud", status="pending",
             display_phone=result.display_phone, display_name=result.display_name, phone_number_id=phone_number_id,
             waba_id=waba_id, coexistence=coexistence, quality_rating=result.quality_rating,
-            encrypted_token=encrypt_secret(result.token))
+            messaging_limit=result.messaging_limit, encrypted_token=encrypt_secret(result.token))
         session.add(channel)
         await session.flush()
+        if coexistence:
+            channel.phone_registered_at = _now()
+        elif pin:
+            await MessagingService._register(session, channel, pin)
+        if channel.phone_registered_at is None:
+            await AuditService.record(session, event_type="messaging.channel.registration_required",
+                                      actor_identity_id=actor_id, actor_context="business", action="signup",
+                                      business_id=business_id, resource_type="messaging_channel",
+                                      resource_id=channel.id, after_state=MessagingService.serialize_channel(channel))
+            return channel
         return await MessagingService._connected(session, business_id, actor_id, channel)
+
+    @staticmethod
+    async def _register(session: AsyncSession, channel: MessagingChannel, pin: str) -> bool:
+        if not re.fullmatch(r"\d{6}", pin or ""):
+            raise _err("pin", "The two-step verification PIN is 6 digits")
+        token = decrypt_secret(channel.encrypted_token) if channel.encrypted_token else None
+        try:
+            await provider_for(channel.provider).register_number(token, channel.phone_number_id, pin)
+        except PlatformError as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            channel.registration_error = str(detail.get("message") or exc.code)[:500]
+            await session.flush()
+            return False
+        channel.phone_registered_at, channel.registration_error = _now(), None
+        await session.flush()
+        return True
+
+    @staticmethod
+    async def register_number(session: AsyncSession, business_id: uuid.UUID, actor_id: uuid.UUID,
+                              pin: str) -> MessagingChannel:
+        """Finish a sign-up whose number is not registered yet. The PIN goes to
+        Meta only; it is never stored or logged."""
+        channel = await MessagingService.channel(session, business_id)
+        if channel is None or channel.status != "pending":
+            raise ConflictError("There is no WhatsApp number waiting to be registered")
+        if not await MessagingService._register(session, channel, pin):
+            return channel
+        return await MessagingService._connected(session, business_id, actor_id, channel)
+
+    @staticmethod
+    async def send_test(session: AsyncSession, business_id: uuid.UUID, actor_id: uuid.UUID,
+                        to: str) -> MessagingMessage:
+        """A test message from the business's number to one the owner names
+        (the staff-alert template, so it works outside any 24-hour window)."""
+        business = await session.get(Business, business_id)
+        return await MessagingService.send_template(
+            session, business_id, to=to, key="staff_alert", audience="staff", sent_via="workspace", sent_by=actor_id,
+            params=[business.display_name if business else "", "This is a test from LOCAH. WhatsApp messages "
+                                                               "from your number are working."],
+            idempotency_key=f"test:{business_id}:{_now().isoformat(timespec='seconds')}")
 
     @staticmethod
     async def disconnect(session: AsyncSession, business_id: uuid.UUID, actor_id: uuid.UUID) -> None:
@@ -421,6 +512,8 @@ class MessagingService:
             await session.flush()
             return msg
         msg.status, msg.provider_message_id, msg.status_at = "sent", sent.provider_message_id, _now()
+        if channel.last_error:
+            channel.last_error = None  # a send went through: the number is working again
         conv.last_outbound_at = _now()
         conv.last_preview = _preview(msg.body)
         conv.updated_at = _now()
@@ -562,10 +655,16 @@ class MessagingService:
     async def process_webhook(session: AsyncSession, payload: dict[str, Any]) -> dict[str, int]:
         """A delivery from WhatsApp (Cloud API webhook format): messages,
         status updates, and coexistence echoes of the owner's app replies."""
-        counts = {"messages": 0, "duplicates": 0, "statuses": 0, "echoes": 0, "unknown_number": 0}
+        counts = {"messages": 0, "duplicates": 0, "statuses": 0, "echoes": 0, "unknown_number": 0, "calls": 0,
+                  "templates": 0, "account": 0}
         for entry in payload.get("entry") or []:
             for change in entry.get("changes") or []:
                 value = change.get("value") or {}
+                field = str(change.get("field") or "")
+                if field in ("message_template_status_update", "phone_number_quality_update"):
+                    counts["templates" if field.startswith("message") else "account"] += \
+                        await MessagingService._account_event(session, str(entry.get("id") or ""), field, value)
+                    continue
                 phone_number_id = str((value.get("metadata") or {}).get("phone_number_id") or "")
                 channel = await MessagingService._bind(session, phone_number_id)
                 if channel is None:
@@ -580,6 +679,11 @@ class MessagingService:
                     counts["statuses"] += await MessagingService._status(session, channel, st)
                 for echo in value.get("message_echoes") or []:
                     counts["echoes"] += await MessagingService._echo(session, channel, echo)
+                if value.get("calls"):
+                    from platform_core.calling.service import CallService
+
+                    for call in value.get("calls") or []:
+                        counts["calls"] += await CallService.ingest_whatsapp(session, channel, call, names)
                 await session.execute(text("SELECT set_config('app.current_business_id', '', true)"))
         return counts
 
@@ -598,6 +702,53 @@ class MessagingService:
         await session.execute(text("SELECT set_config('app.current_business_id', :b, true)"),
                               {"b": str(channel.business_id)})
         return channel
+
+    # Meta's template events -> LOCAH's template states (the column allows these four).
+    _TEMPLATE_EVENTS = {"APPROVED": "approved", "REINSTATED": "approved", "UNARCHIVED": "approved",
+                        "REJECTED": "rejected", "PAUSED": "paused", "DISABLED": "paused", "ARCHIVED": "paused",
+                        "DELETED": "paused", "PENDING_DELETION": "paused", "PENDING": "submitted",
+                        "IN_APPEAL": "submitted"}
+
+    @staticmethod
+    async def _account_event(session: AsyncSession, waba_id: str, field: str, value: dict[str, Any]) -> int:
+        """WABA-level webhooks: a template's review result, a number's quality or limit."""
+        if not waba_id:
+            return 0
+        await session.execute(text("SELECT set_config('app.current_waba_id', :w, true)"), {"w": waba_id})
+        channels = list((await session.execute(select(MessagingChannel).where(
+            MessagingChannel.waba_id == waba_id, MessagingChannel.status == "connected"))).scalars())
+        await session.execute(text("SELECT set_config('app.current_waba_id', '', true)"))
+        done = 0
+        for channel in channels:
+            await session.execute(text("SELECT set_config('app.current_business_id', :b, true)"),
+                                  {"b": str(channel.business_id)})
+            channel.last_webhook_at = _now()
+            if field == "message_template_status_update":
+                key = str(value.get("message_template_name") or "")
+                lang = str(value.get("message_template_language") or "").split("_")[0].split("-")[0]
+                status = MessagingService._TEMPLATE_EVENTS.get(str(value.get("event") or "").upper())
+                row = await session.get(MessagingTemplate, (channel.business_id, key, lang)) if status else None
+                if row is not None:
+                    row.status, row.decided_at = status, _now()
+                    category = str(value.get("message_template_category") or "").lower()
+                    if category in ("utility", "marketing", "authentication"):
+                        row.category = category
+                    reason = str(value.get("reason") or "")
+                    row.rejected_reason = reason[:300] if status == "rejected" and reason not in ("", "NONE") else None
+                    done += 1
+            else:  # phone_number_quality_update
+                if value.get("display_phone_number") and normalise_phone(value["display_phone_number"]) != \
+                        normalise_phone(channel.display_phone or ""):
+                    continue
+                event = str(value.get("event") or "").upper()
+                if event in ("FLAGGED", "UNFLAGGED"):
+                    channel.quality_rating = "FLAGGED" if event == "FLAGGED" else "GREEN"
+                if value.get("current_limit"):
+                    channel.messaging_limit = str(value["current_limit"])[:40]
+                done += 1
+            await session.flush()
+            await session.execute(text("SELECT set_config('app.current_business_id', '', true)"))
+        return done
 
     @staticmethod
     def _content(m: dict[str, Any]) -> tuple[str, str | None, dict[str, Any]]:
@@ -658,6 +809,14 @@ class MessagingService:
         conv.updated_at = _now()
         contact.last_interaction_at = _now()
         await session.flush()
+        inter = m.get("interactive") or {}
+        if m.get("type") == "interactive" and inter.get("type") == "call_permission_reply":
+            from platform_core.calling.service import CallService
+
+            # The customer's answer to "may we call you?" - recorded, not routed to a journey.
+            await CallService.permission_reply(session, channel.business_id, wa_id, contact.id,
+                                               inter.get("call_permission_reply") or {})
+            return True
         await MessagingService.route(session, conv, kind, body or "", extra)
         return True
 

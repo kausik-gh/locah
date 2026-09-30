@@ -94,3 +94,19 @@ export async function sendDocument(b: string, what: 'bill' | 'statement', id: st
   if (r.ok) revalidatePath(`/b/${b}/inbox`)
   return r
 }
+
+export async function registerNumber(b: string, pin: string): Promise<ActionResult> {
+  const r = await sendJson(`${api(b)}/messaging/channel/register`, 'POST', { pin })
+  if (r.ok) refresh(b)
+  return r
+}
+
+export async function sendTestMessage(b: string, to: string): Promise<ActionResult> {
+  return sendJson(`${api(b)}/messaging/test`, 'POST', { to })
+}
+
+export async function setCalling(b: string, enabled: boolean): Promise<ActionResult> {
+  const r = await sendJson(`${api(b)}/messaging/calling`, 'POST', { enabled })
+  if (r.ok) refresh(b)
+  return r
+}

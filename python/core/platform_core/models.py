@@ -2739,9 +2739,65 @@ class MessagingChannel(Base):
     last_webhook_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     connected_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    # Meta requires the number to be registered for Cloud API (two-step PIN)
+    # after Embedded Signup; until then it cannot send.
+    phone_registered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    registration_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    calling_status: Mapped[str] = mapped_column(Text, nullable=False, default="off", server_default=text("'off'"))
+    calling_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    calling_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+
+
+class CallSession(Base):
+    """One call - WhatsApp or phone - and what happened to it. No media or SDP."""
+
+    __tablename__ = "calls_sessions"
+
+    id: Mapped[UUID] = _uuid_pk()
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"))
+    channel: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    direction: Mapped[str] = mapped_column(Text, nullable=False)
+    external_call_id: Mapped[str] = mapped_column(Text, nullable=False)
+    from_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    to_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    customer_contact_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("customer_relationships_contacts.id"), nullable=True)
+    state: Mapped[str] = mapped_column(Text, nullable=False, default="ringing", server_default=text("'ringing'"))
+    handled_by_type: Mapped[str] = mapped_column(Text, nullable=False, default="none", server_default=text("'none'"))
+    handled_by_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    within_business_hours: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    related_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    related_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    handoffs: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+
+
+class CallPermission(Base):
+    """A customer's permission for this business to call them on WhatsApp."""
+
+    __tablename__ = "calls_permissions"
+
+    business_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("businesses.id"), primary_key=True)
+    wa_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    customer_contact_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    is_permanent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    requests: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class MessagingSettings(Base):

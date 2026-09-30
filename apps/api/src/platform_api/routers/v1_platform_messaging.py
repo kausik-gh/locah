@@ -54,6 +54,43 @@ class SignupBody(BaseModel):
     waba_id: str = Field(min_length=3, max_length=64)
     phone_number_id: str = Field(min_length=3, max_length=64)
     coexistence: bool = False
+    # Two-step verification PIN for registering the number (Meta). Passed to
+    # Meta only; never stored or logged.
+    pin: str | None = Field(default=None, pattern=r"^\d{6}$")
+
+
+class RegisterBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pin: str = Field(pattern=r"^\d{6}$")
+
+
+class TestMessageBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    to: str = Field(min_length=10, max_length=20)
+
+
+class CallingBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+
+
+class CallPermissionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=5, max_length=500)
+
+
+class SandboxCallBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_phone: str = Field(min_length=10, max_length=20)
+    name: str | None = Field(default=None, max_length=120)
+    event: Literal["connect", "terminate"] = "connect"
+    call_id: str | None = Field(default=None, max_length=120)
+    duration: int | None = Field(default=None, ge=0, le=86400)
 
 
 class SettingsBody(BaseModel):
@@ -150,9 +187,75 @@ async def embedded_signup(
 ) -> dict[str, Any]:
     channel = await MessagingService.complete_signup(
         session, business_id, actor.request.identity_id, code=body.code, waba_id=body.waba_id,
-        phone_number_id=body.phone_number_id, coexistence=body.coexistence)
+        phone_number_id=body.phone_number_id, coexistence=body.coexistence, pin=body.pin)
     await session.commit()
     return {"data": MessagingService.serialize_channel(channel), "meta": _meta(actor)}
+
+
+@router.post("/{business_id}/messaging/channel/register")
+async def register_number(
+    business_id: UUID, body: RegisterBody,
+    actor: BusinessActorContext = Depends(require_business_actor(MESSAGING_CONFIGURE, MODULE)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    channel = await MessagingService.register_number(session, business_id, actor.request.identity_id, body.pin)
+    await session.commit()
+    return {"data": {"channel": MessagingService.serialize_channel(channel),
+                     "connection": await MessagingService.connection(session, business_id)}, "meta": _meta(actor)}
+
+
+@router.post("/{business_id}/messaging/test")
+async def send_test(
+    business_id: UUID, body: TestMessageBody,
+    actor: BusinessActorContext = Depends(require_business_actor(MESSAGING_CONFIGURE, MODULE)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    try:
+        msg = await MessagingService.send_test(session, business_id, actor.request.identity_id, body.to)
+    except NotSent as exc:
+        raise ConflictError(str(exc)) from exc
+    await session.commit()
+    return {"data": _sent(msg), "meta": _meta(actor)}
+
+
+@router.get("/{business_id}/messaging/calling")
+async def calling(
+    business_id: UUID,
+    actor: BusinessActorContext = Depends(require_business_actor(MESSAGING_READ, MODULE)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.calling.service import CallService
+
+    calls = await CallService.recent(session, business_id)
+    return {"data": {"connection": await MessagingService.connection(session, business_id),
+                     "calls": [CallService.serialize(c) for c in calls]}, "meta": _meta(actor)}
+
+
+@router.post("/{business_id}/messaging/calling")
+async def set_calling(
+    business_id: UUID, body: CallingBody,
+    actor: BusinessActorContext = Depends(require_business_actor(MESSAGING_CONFIGURE, MODULE)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.calling.service import CallService
+
+    data = await CallService.set_enabled(session, business_id, actor.request.identity_id, enabled=body.enabled)
+    await session.commit()
+    return {"data": data, "meta": _meta(actor)}
+
+
+@router.post("/{business_id}/messaging/conversations/{conversation_id}/call-permission")
+async def request_call_permission(
+    business_id: UUID, conversation_id: UUID, body: CallPermissionBody,
+    actor: BusinessActorContext = Depends(require_business_actor(MESSAGING_REPLY, MODULE)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from platform_core.calling.service import CallService
+
+    row = await CallService.request_permission(session, business_id, conversation_id, actor.request.identity_id,
+                                               body.reason)
+    await session.commit()
+    return {"data": {"status": row.status, "requests": row.requests}, "meta": _meta(actor)}
 
 
 @router.delete("/{business_id}/messaging/channel")
@@ -408,3 +511,36 @@ async def sandbox_inbound(
     counts = await MessagingService.process_webhook(session, payload)
     await session.commit()
     return {"data": counts, "meta": _meta(actor)}
+
+
+@router.post("/{business_id}/messaging/sandbox/call")
+async def sandbox_call(
+    business_id: UUID, body: SandboxCallBody,
+    actor: BusinessActorContext = Depends(require_business_actor(MESSAGING_CONFIGURE, MODULE)),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """A customer's WhatsApp call to the sandbox number, in Meta's `calls`
+    webhook format, through the same code path as a real one (no media)."""
+    import time as _time
+
+    if not sandbox_enabled():
+        raise ConflictError("The WhatsApp sandbox is only available on test stacks")
+    channel = await MessagingService.channel(session, business_id)
+    if channel is None or channel.provider != "sandbox":
+        raise ConflictError("Connect the sandbox number first")
+    now = str(int(_time.time()))
+    call: dict[str, Any] = {"id": body.call_id or f"wacid.sandbox.{uuid.uuid4().hex[:16]}",
+                            "from": body.from_phone.lstrip("+"), "to": str(channel.display_phone or "").lstrip("+"),
+                            "event": body.event, "timestamp": now, "direction": "USER_INITIATED"}
+    if body.event == "terminate":
+        call.update({"status": "COMPLETED", "end_time": now, "duration": body.duration or 0})
+    payload = {"object": "whatsapp_business_account", "entry": [{"id": channel.waba_id, "changes": [{
+        "field": "calls", "value": {"messaging_product": "whatsapp",
+                                    "metadata": {"phone_number_id": channel.phone_number_id,
+                                                 "display_phone_number": channel.display_phone},
+                                    "contacts": [{"profile": {"name": body.name or "Customer"},
+                                                  "wa_id": body.from_phone.lstrip("+")}],
+                                    "calls": [call]}}]}]}
+    counts = await MessagingService.process_webhook(session, payload)
+    await session.commit()
+    return {"data": {**counts, "call_id": call["id"]}, "meta": _meta(actor)}

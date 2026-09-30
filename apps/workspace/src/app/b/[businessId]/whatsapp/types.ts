@@ -29,6 +29,7 @@ export type TemplateRow = {
 
 export type Setup = {
   channel: Channel | null
+  connection?: Connection
   meta: { app_id: string; config_id: string; graph_version: string } | null
   meta_ready: boolean
   sandbox_available: boolean
@@ -124,4 +125,32 @@ export function until(iso: string | null): string {
   const d = new Date(iso)
   const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
   return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, ${time}`
+}
+
+/** The honest connection state (platform_core/messaging/connection.py). */
+export type Connection = {
+  messaging: {
+    state: string
+    reason: string | null
+    environment: 'sandbox' | 'production' | null
+    label: string | null
+    steps: { key: string; label: string; done: boolean }[]
+  }
+  calling: { state: string; reason: string | null; messaging_active: boolean }
+  telephony: { state: string; provider: string | null; reason: string | null }
+  templates: { approved: number; approved_utility: number; awaiting_review: number; rejected: number }
+  last_webhook_at: string | null
+}
+
+export type CallRow = {
+  id: string
+  channel: 'whatsapp_call' | 'pstn'
+  direction: 'inbound' | 'outbound'
+  from_number: string | null
+  state: string
+  handled_by_type: string
+  within_business_hours: boolean | null
+  started_at: string | null
+  duration_seconds: number | null
+  note: string | null
 }
