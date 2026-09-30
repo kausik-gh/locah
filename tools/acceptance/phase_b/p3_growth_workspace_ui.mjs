@@ -20,7 +20,8 @@ function check(cond, msg) {
 }
 
 const browser = await chromium.launch({
-  channel: 'chrome',
+  // CHROME_PATH uses a browser already on the machine, as pw.mjs does.
+  ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' }),
   headless: true,
   args: ['--no-sandbox'],
 })

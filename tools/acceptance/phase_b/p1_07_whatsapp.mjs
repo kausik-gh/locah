@@ -108,7 +108,7 @@ try {
   const last = await page.eval(`[...document.querySelectorAll('.bos-bubble--out')].pop()?.innerText || ''`)
   check(last.includes(`order ${order.order_number}`) && last.includes('₹560.00') && last.toUpperCase().includes('TEMPLATE'),
     `the customer hears their order arrived, as an approved template (${last.replace(/\s+/g, ' ').slice(0, 90)})`, results)
-  const alert = await api(`${base}/messaging/setup`).then(() => execFileSync('psql', ['-tA', 'postgresql://postgres@localhost:54329/locah_accept', '-c',
+  const alert = await api(`${base}/messaging/setup`).then(() => execFileSync(process.env.PSQL || 'psql', ['-tA', `postgresql://postgres@localhost:${process.env.PGPORT || '54329'}/${process.env.LOCAH_ACCEPT_DB || 'locah_accept'}`, '-c',
     `select m.status || '|' || c.wa_id || '|' || m.body from messaging_messages m join messaging_conversations c on c.id = m.conversation_id where m.business_id = '${biz.id}' and m.template_key = 'staff_alert'`], { encoding: 'utf8' }).trim())
   check(alert.startsWith(`sent|${ownerPhone.slice(1)}|`) && alert.includes(`New order ${order.order_number}`),
     `the owner got the new-order alert on their own WhatsApp (${alert.slice(0, 90)})`, results)
